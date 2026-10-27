@@ -1,0 +1,80 @@
+{
+  "Gate": false,
+  "Incomplete": true,
+  "Reason": "Three required assertions failed; exact user testhost then stopped under stop rule; remaining legs not run",
+  "SourceCommit": "996fb8a075002b0fd71241e12311508cee1e2acf",
+  "PublishedIdenticalTreeCommit": "eabda0e6717bb3449aaac5ecc1041bd3f95d9a56",
+  "Counters": {
+    "total": "3006",
+    "executed": "3006",
+    "passed": "3003",
+    "failed": "3",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "Failures": [
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"timeout\", reason: \"inspection_timeout\", overrideAllowed: True)",
+      "outcome": "Failed",
+      "duration": "00:00:05.1618949",
+      "message": "System.TimeoutException : The operation has timed out.",
+      "stdout": ""
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.OfficeContentCoverageTests.Office_allowlisted_clean_packages_are_approved(word: False)",
+      "outcome": "Failed",
+      "duration": "00:00:14.4292706",
+      "message": "Assert.Equal() Failure: Values differ\r\nExpected: Approved\r\nActual:   AllowedWithoutInspection",
+      "stdout": ""
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(staged: False)",
+      "outcome": "Failed",
+      "duration": "00:00:17.2846693",
+      "message": "Assert.InRange() Failure: Value not in range\r\nRange:  (5500 - 7500)\r\nActual: 17181",
+      "stdout": ""
+    }
+  ],
+  "AddedAccountingControls": [
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Startup_aggregate_charge_overflow_refuses_without_altering_durable_reservations",
+      "outcome": "Passed",
+      "duration": "00:00:00.0768321"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Admission_debits_replay_retirement_and_restart_preserve_exact_global_and_user_boundaries(restart: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.8157638"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Admission_debits_replay_retirement_and_restart_preserve_exact_global_and_user_boundaries(restart: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.2057228"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedLargeFileTests.Reconstructed_content_release_keeps_the_exact_user_metadata_debit_until_retirement",
+      "outcome": "Passed",
+      "duration": "00:00:00.1363064"
+    }
+  ],
+  "ExpectedUserCases": 3159,
+  "RemainingLegs": "feature-debug SYSTEM and both feature-release legs not run",
+  "RawTrx": {
+    "path": "driver/evidence/2026-10-27/exact-agent-matrix-m2t9totalsa1-feature-debug-results-agent-tests-user.trx",
+    "sha256": "9d9b2449f75359e9fc63c602d8197aacb8628350d181a9acd6f851f807480108"
+  },
+  "MatrixSummary": {
+    "path": "driver/evidence/2026-10-27/exact-agent-matrix-m2t9totalsa1-summary.txt",
+    "sha256": "80cb81cb2834cf658c202d8e4a8af3e3b4940fb4eb9df562cb767c67f7bcecdc"
+  }
+}

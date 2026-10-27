@@ -1,0 +1,4 @@
+win10: shut off
+su-builder2: shut off
+win10-debug2: shut off
+win10-debug3: shut off

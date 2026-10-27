@@ -1,0 +1,14 @@
+DiagnosticOnly=True ProductQualification=False
+{"InspectionWorkBudgetTests.cs": "8eea5c9d2caae5dad577fe33323b324e1026e9f17aca49a42f0d0bff2a3d787b", "StagedTransferPublisherTests.cs": "3d936582c6ad5c7eea68b23c1e9387b65a22f775ccc7492b16839bd573922474"}
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:13.93
+FinalTestCompile Debug PASS
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:14.31
+FinalTestCompile Release PASS

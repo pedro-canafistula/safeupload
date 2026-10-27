@@ -1,0 +1,20 @@
+[
+  {
+    "before": "e555f186e534ecc9a822c9cffc55683c00d67ae4",
+    "after": "54e7cb5cf79a30e45b7197c61c4f67bd01522b95",
+    "identicalTree": "71ce391798e703411c942f5a8c860929f79de333",
+    "subject": "T9 approve allocation wait; T8 add native MOTW completion probe"
+  },
+  {
+    "before": "efb4b0f417c15a75d7745baa97aa35fd7b863817",
+    "after": "a1877313a2224293e3a0962ae85491e0106e9d96",
+    "identicalTree": "06a7b5fccf6d6d344c8c4615f1b281da1b4a4a1a",
+    "subject": "T8 native probe: open alternate streams through exact native handles"
+  },
+  {
+    "before": "996fb8a075002b0fd71241e12311508cee1e2acf",
+    "after": "eabda0e6717bb3449aaac5ecc1041bd3f95d9a56",
+    "identicalTree": "f062f803c1ea904eae47ee9fd4ec75848552ec31",
+    "subject": "T9 maintain reservation charges across durable adoption and exact retirement"
+  }
+]

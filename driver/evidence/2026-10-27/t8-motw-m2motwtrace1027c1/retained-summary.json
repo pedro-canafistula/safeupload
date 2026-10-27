@@ -1,0 +1,46 @@
+{
+  "Label": "m2motwtrace1027c1",
+  "SourceCommit": "b4620691",
+  "Qualification": false,
+  "WholeVersionWitnessEstablished": false,
+  "Description": "Curated text representation; original CRLF receipts remain unchanged locally, bound below by SHA-256.",
+  "Receipts": {
+    "gate.txt": {
+      "sha256": "fe296f2fe08be23a595a30a2e1951716d7a28eeabb1e2ecc5294c6becff2cfc9",
+      "lines": [
+        "PSVersion=5.1.19041.2673",
+        "motw-completion-native-control.ps1:ParseErrors=0",
+        "T8MotwCompletionSignatureSelfCheck=PASS NativeCalls=False",
+        "explorer-paste-native-control.ps1:ParseErrors=0",
+        "T8ExplorerInputSignatureSelfCheck=PASS InputInjected=False NativeFiles=False"
+      ]
+    },
+    "wpr-stop.txt": {
+      "sha256": "aa645a071a555a1f4a85e149ff56dcf15271c493b35bb34f0cf9456969d17329",
+      "lines": [
+        "",
+        "This trace has dropped 1871347 events. Please record this trace again.",
+        "",
+        "Microsoft Windows Performance Recorder Version 10.0.19041 (CoreSystem)",
+        "Copyright (c) 2019 Microsoft Corporation. All rights reserved.",
+        "",
+        "WPR is not recording",
+        "{\"Length\":2850029568,\"FullName\":\"C:\\\\T8\\\\motw-trace-m2motwtrace1027c1\\\\fileio.etl\"}",
+        "OwnedFileIoCaptureStopped=True"
+      ]
+    },
+    "closure.txt": {
+      "sha256": "78b5b4e0a0758526e08621783944b5819dac9c8fa228ef7fa895031d69936d4b",
+      "lines": [
+        "",
+        "Microsoft Windows Performance Recorder Version 10.0.19041 (CoreSystem)",
+        "Copyright (c) 2019 Microsoft Corporation. All rights reserved.",
+        "",
+        "WPR is not recording",
+        "OwnedEdgeProcesses=0",
+        "{\"Hash\":\"056468CD1E6EA8244838F9A58E43387ECDDDCDBAC550E0F4FB573ECBDCAD735F\",\"Path\":\"C:\\\\T8\\\\motw-trace-m2motwtrace1027c1\\\\fileio.etl\"}",
+        "OwnedRecorderClosed=True"
+      ]
+    }
+  }
+}

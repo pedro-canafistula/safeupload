@@ -3,10 +3,11 @@ using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
+using Xunit.Abstractions;
 
 namespace SafeUpload.Agent.Tests;
 
-public sealed class InspectionWorkBudgetTests : IDisposable
+public sealed class InspectionWorkBudgetTests(ITestOutputHelper output) : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     public void Dispose() => _workspace.Dispose();
@@ -107,17 +108,25 @@ public sealed class InspectionWorkBudgetTests : IDisposable
             ? service.InspectStagedAsync(current, shutdown.Token)
             : service.InspectAsync(current, shutdown.Token);
         var first = new[] { Inspect(operation), Inspect(operation) };
+        long queuedAt = 0, releasedAt = 0, firstReturnedAt = 0, queuedReturnedAt = 0;
+        long resultElapsedMs = -1;
         try
         {
             await extractor.BothEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             var elapsed = Stopwatch.StartNew();
+            queuedAt = Stopwatch.GetTimestamp();
             var queued = Inspect(queuedOperation);
             await Task.Delay(TimeSpan.FromSeconds(4));
+            releasedAt = Stopwatch.GetTimestamp();
             extractor.Release.TrySetResult();
             Assert.All(await Task.WhenAll(first), result => Assert.Equal(Verdict.Approved, result.Verdict));
+            firstReturnedAt = Stopwatch.GetTimestamp();
             await extractor.QueuedEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            AssertTimeout(await queued, staged);
+            var queuedResult = await queued;
+            queuedReturnedAt = Stopwatch.GetTimestamp();
+            resultElapsedMs = queuedResult.ElapsedMs;
+            AssertTimeout(queuedResult, staged);
             elapsed.Stop();
             // Resetting the timeout at admission would take about ten seconds
             // (four waiting + six parsing), instead of the single six-second budget.
@@ -127,9 +136,25 @@ public sealed class InspectionWorkBudgetTests : IDisposable
         }
         finally
         {
-            extractor.Release.TrySetResult();
-            shutdown.Cancel();
-            await WaitForWorkerReleaseAsync(service);
+            // Capture through xUnit so the TRX retains evidence on failure.
+            // Result.ElapsedMs ends before legacy audit; the outer assertion
+            // intentionally still includes that work and keeps its same band.
+            double Offset(long at) => queuedAt == 0 || at == 0 ? -1 :
+                (at - queuedAt) * 1000d / Stopwatch.Frequency;
+            try
+            {
+                output.WriteLine($"QueuedDeadline staged={staged} resultElapsedMs={resultElapsedMs} " +
+                    $"releaseMs={Offset(releasedAt):F1} firstResultsMs={Offset(firstReturnedAt):F1} " +
+                    $"parserEntryMs={Offset(Volatile.Read(ref extractor.QueuedEnteredAt)):F1} " +
+                    $"parserCancellationMs={Offset(Volatile.Read(ref extractor.QueuedCancelledAt)):F1} " +
+                    $"queuedReturnMs={Offset(queuedReturnedAt):F1}");
+            }
+            finally
+            {
+                extractor.Release.TrySetResult();
+                shutdown.Cancel();
+                await WaitForWorkerReleaseAsync(service);
+            }
         }
     }
 
@@ -227,6 +252,8 @@ public sealed class InspectionWorkBudgetTests : IDisposable
         public TaskCompletionSource QueuedEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource QueuedCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public long QueuedEnteredAt;
+        public long QueuedCancelledAt;
         private int _calls;
         public async Task<string> ExtractAsync(Stream content, CancellationToken token)
         {
@@ -237,13 +264,21 @@ public sealed class InspectionWorkBudgetTests : IDisposable
                 await Release.Task;
                 return "clean result";
             }
+            Interlocked.Exchange(ref QueuedEnteredAt, Stopwatch.GetTimestamp());
             QueuedEntered.TrySetResult();
             try
             {
                 await Task.Delay(Timeout.Infinite, token);
                 throw new InvalidOperationException("The queued parser must be cancelled.");
             }
-            finally { if (token.IsCancellationRequested) QueuedCancelled.TrySetResult(); }
+            finally
+            {
+                if (token.IsCancellationRequested)
+                {
+                    Interlocked.Exchange(ref QueuedCancelledAt, Stopwatch.GetTimestamp());
+                    QueuedCancelled.TrySetResult();
+                }
+            }
         }
     }
 }

@@ -1,0 +1,22 @@
+{
+  "Label": "m2motwtrace1027c1",
+  "Qualification": false,
+  "WholeVersionWitnessEstablished": false,
+  "Identity": "WIN10-DEBUGGED\\t5actor",
+  "Sid": "S-1-5-21-316478115-1595729549-2803163825-1279",
+  "Root": "C:\\T8\\explorer-m2motwtrace1027c1",
+  "SourceState": {
+    "Identity": "fy9j1kRj1krNiQQAAAAHAAAAAAAAAAAA",
+    "SameObjectAfter": true,
+    "Length": 67108864,
+    "Zone": "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.invalid/explorer-fixture\r\n",
+    "ZoneError": 0,
+    "ZoneSameObject": true,
+    "Error": 0
+  },
+  "SourceSha256": "FAE972222D455A2EAEE1661AD9625502EC3BFC5EC38B87A6EEC5AFD5107331B5",
+  "Failures": [
+    "Win+E did not open a new foreground Explorer window; navigation input refused"
+  ],
+  "NativeProbeCompleted": false
+}

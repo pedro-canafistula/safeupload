@@ -67,9 +67,34 @@ Relevant primary evidence:
   attaches to a caller-owned operation instance. A helper's own instrumented
   copy is not proof of interception of stock Explorer.
 
-Next: operation-level FileIO/stack trace of one installed Edge download and one
-actual Explorer paste, then a deterministic pause around annotation and a concrete
-adapter prototype. A positive prototype must register before first mutation,
+The follow-up **m2motwtrace1027c1**, source `b4620691`, did not complete either operation. Edge CDP
+never became ready, and Win+E did not produce a new foreground Explorer window;
+the input guard refused navigation, so no actual Explorer paste occurred.
+The broad verbose FileIO trace dropped **1,871,347 events** and created a
+2,850,029,568-byte ETL. It supplies no ordering proof and is not being retried.
+Running that trace alongside the builder was too costly; severe host I/O pressure
+was observed. Timing failures alone do not prove its exclusive cause.
+
+The recorder stopped normally. The original Edge PID/start-time-bound process
+was closed and owned-profile processes were verified absent. Commit `96423808`
+adds that exact-owned-process fallback to the probe; a real Windows PowerShell
+5.1 cleanup self-check subsequently passed. The failed Edge and Explorer results,
+gate, trace stop and closure receipts remain retained with the
+[Edge failure](t8-motw-m2motwtrace1027c1/edge-result.json),
+[Explorer failure](t8-motw-m2motwtrace1027c1/explorer-result.json),
+[WinPS 5.1 gate, trace stop and closure/ETL hash](t8-motw-m2motwtrace1027c1/retained-summary.json)
+tracked here. The curated summary binds unchanged raw CRLF receipts by SHA-256.
+Full ETL remains on preserved `demo1` at
+`C:\T8\motw-trace-m2motwtrace1027c1\fileio.etl`, SHA-256
+`056468CD1E6EA8244838F9A58E43387ECDDDCDBAC550E0F4FB573ECBDCAD735F`.
+The target is off, base/inactive XML unchanged; this is not fresh-disk restoration.
+
+Next engineering evidence must use a narrowly bounded operation trace with an
+idle host, an interactive-window preflight and a checked verdict before starting
+the next case. Then use a deterministic pause around annotation and a concrete
+adapter prototype. Further runs are stopped pending owner direction after the
+repeated component failures in the [T9 checkpoint](t9-reservation-totals-checkpoint.md).
+A positive prototype must register before first mutation,
 bind original grants and exact source/destination/stage/generation, and finalize
 both immutable streams with an enforced cutoff. Lost/stale completion, late ADS,
 producer death and a no-MOTW ordinary-save control remain required. A broker,

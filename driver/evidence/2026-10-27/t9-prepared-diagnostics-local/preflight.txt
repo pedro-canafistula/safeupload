@@ -1,0 +1,10 @@
+BaselineProfile=feature-debug path=/home/victor/Work/safeupload-staging/driver/evidence/2026-10-22/exact-agent-matrix-m2t8diaga3-feature-debug-results-agent-tests-discovered-fq.txt
+BaselineProfile=feature-release path=/home/victor/Work/safeupload-staging/driver/evidence/2026-10-22/exact-agent-matrix-m2t8diaga3-feature-release-results-agent-tests-discovered-fq.txt
+AgentTestPreflight root=/home/victor/Work/safeupload-staging profiles=feature-debug,feature-release baseline=m2t8diaga3 required=43 source_methods=1346 baseline_methods=1340 added=6 removed=0
+  added SafeUpload.Agent.Tests.BoundPublicationTransportTests.Normal_build_has_no_v26_publication_entry_points
+  added SafeUpload.Agent.Tests.PrivateCancellationDisabledTests.Normal_build_rejects_private_cancellation_and_has_no_typed_sender
+  added SafeUpload.Agent.Tests.StagedBoundReadinessTests.Normal_service_has_no_bound_readiness_or_native_proof_switch
+  added SafeUpload.Agent.Tests.StagedLargeFileTests.Admission_debits_replay_retirement_and_restart_preserve_exact_global_and_user_boundaries
+  added SafeUpload.Agent.Tests.StagedLargeFileTests.Reconstructed_content_release_keeps_the_exact_user_metadata_debit_until_retirement
+  added SafeUpload.Agent.Tests.StagedLargeFileTests.Startup_aggregate_charge_overflow_refuses_without_altering_durable_reservations
+AgentTestPreflight=PASS

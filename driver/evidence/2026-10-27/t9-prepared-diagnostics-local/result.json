@@ -1,0 +1,40 @@
+{
+  "DiagnosticOnly": true,
+  "Platform": "Linux",
+  "WindowsGate": false,
+  "ProductQualification": false,
+  "Purpose": "Verify captured timing diagnostics and preserve the unchanged two deadline assertions",
+  "Counters": {
+    "total": "2",
+    "executed": "2",
+    "passed": "2",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "Results": [
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(staged: False)",
+      "outcome": "Passed",
+      "duration": "00:00:06.0272735",
+      "output": "QueuedDeadline staged=False resultElapsedMs=6000 releaseMs=4000.8 firstResultsMs=4058.5 parserEntryMs=4011.7 parserCancellationMs=5999.9 queuedReturnMs=6000.7"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(staged: True)",
+      "outcome": "Passed",
+      "duration": "00:00:06.0011459",
+      "output": "QueuedDeadline staged=True resultElapsedMs=5998 releaseMs=3999.8 firstResultsMs=4004.7 parserEntryMs=4000.1 parserCancellationMs=5998.9 queuedReturnMs=5999.0"
+    }
+  ],
+  "RawTrxSha256": "81c4131f3576b76ea0499e523e5a103c14b1f02361623c7718decf96fbaf1fce"
+}

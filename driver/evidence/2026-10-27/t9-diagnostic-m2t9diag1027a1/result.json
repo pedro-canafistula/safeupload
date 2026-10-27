@@ -1,0 +1,82 @@
+{
+  "Label": "m2t9diag1027a1",
+  "DiagnosticOnly": true,
+  "AgentMatrixGate": false,
+  "ProductQualification": false,
+  "Builder": "builder1 / DESKTOP-O1LP5DG / 19045.6466",
+  "TestSourceCommit": "996fb8a075002b0fd71241e12311508cee1e2acf",
+  "PublishedIdenticalTreeCommit": "eabda0e6717bb3449aaac5ecc1041bd3f95d9a56",
+  "TestDllSha256": "79509AFA2FE9EB6BB5280A722DFE89A44F30A8CD179EE326A9E81D6ECB347BA9",
+  "Leg": "feature-debug user only",
+  "NativeHarnessSourceCommit": "96423808",
+  "WindowsPowerShell": "5.1.19041.6456",
+  "ParseSignatureAndOwnedProcessCleanup": "PASS",
+  "Counters": {
+    "total": "83",
+    "executed": "83",
+    "passed": "80",
+    "failed": "3",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "Failures": [
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"image\", reason: \"unsupported_format\", overrideAllowed: True)",
+      "outcome": "Failed",
+      "duration": "00:00:10.2674463",
+      "message": "System.TimeoutException : The operation has timed out.",
+      "stack": "   at SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(String failure, String reason, Boolean overrideAllowed) in C:\\Users\\vika\\Documents\\exact-agent-matrix-m2t9totalsa1\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferPublisherTests.cs:line 1195\r\n--- End of stack trace from previous location ---"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"timeout\", reason: \"inspection_timeout\", overrideAllowed: True)",
+      "outcome": "Failed",
+      "duration": "00:00:06.9560324",
+      "message": "System.TimeoutException : The operation has timed out.",
+      "stack": "   at SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(String failure, String reason, Boolean overrideAllowed) in C:\\Users\\vika\\Documents\\exact-agent-matrix-m2t9totalsa1\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\StagedTransferPublisherTests.cs:line 1195\r\n--- End of stack trace from previous location ---"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(staged: False)",
+      "outcome": "Failed",
+      "duration": "00:00:09.9995037",
+      "message": "Assert.InRange() Failure: Value not in range\r\nRange:  (5500 - 7500)\r\nActual: 9940",
+      "stack": "   at SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(Boolean staged) in C:\\Users\\vika\\Documents\\exact-agent-matrix-m2t9totalsa1\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\InspectionWorkBudgetTests.cs:line 124\r\n   at SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(Boolean staged) in C:\\Users\\vika\\Documents\\exact-agent-matrix-m2t9totalsa1\\out\\profile-src-feature-debug\\agente\\SafeUpload.Agent.Tests\\InspectionWorkBudgetTests.cs:line 133\r\n--- End of stack trace from previous location ---"
+    }
+  ],
+  "PassedControlsByClass": {
+    "StagedLargeFileTests": 36,
+    "StagedLargeIntegrationTests": 10,
+    "StagedLargeDefaultsTests": 18,
+    "StagedAllocationRecoveryTests": 5,
+    "StagedTransferPublisherTests": 8,
+    "InspectionWorkBudgetTests": 1,
+    "OfficeContentCoverageTests": 2
+  },
+  "RetainedRaw": {
+    "diagnostic.trx": {
+      "path": "driver/evidence/2026-10-27/t9-diagnostic-m2t9diag1027a1/diagnostic.trx",
+      "sha256": "e90f6d03d587f1b081ff677f56216d2fb76f75addc05e94af4ce74e473140d78"
+    },
+    "tests.txt": {
+      "path": "driver/evidence/2026-10-27/t9-diagnostic-m2t9diag1027a1/tests.txt",
+      "sha256": "c168144eeaba7490682bd2fb3bbc64288b12f52fdeb6d3eed358a78329a22f20"
+    },
+    "run.txt": {
+      "path": "driver/evidence/2026-10-27/t9-diagnostic-m2t9diag1027a1/run.txt",
+      "sha256": "cdc72d213a13e43c4976bc3bd1e28643d5ebd5247da31abbdeee98d43509ad0c"
+    },
+    "run.ps1": {
+      "path": "driver/evidence/2026-10-27/t9-diagnostic-m2t9diag1027a1/run.ps1",
+      "sha256": "bd62292b4954065c985a2795d77d2b40b7f85f1b64ef01fcdf02e5ea09cf389e"
+    }
+  }
+}

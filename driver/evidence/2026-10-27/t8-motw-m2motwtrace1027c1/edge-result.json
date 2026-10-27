@@ -1,0 +1,21 @@
+{
+  "Label": "m2motwtrace1027c1",
+  "Qualification": false,
+  "ProductImplementation": false,
+  "Identity": "WIN10-DEBUGGED\\t5actor",
+  "Sid": "S-1-5-21-316478115-1595729549-2803163825-1279",
+  "Root": "C:\\T8\\motw-m2motwtrace1027c1",
+  "OS": "10.0.19045.0",
+  "Edge": "154.0.4258.62",
+  "Mechanism": "installed headed Edge; fresh profile; loopback HTTP attachment; CDP instrumentation",
+  "WholeVersionWitnessEstablished": false,
+  "Cases": [],
+  "Failures": [
+    "Edge CDP did not become ready",
+    "Owned Edge browser did not exit; preserve fixture"
+  ],
+  "BrowserPid": 3128,
+  "BrowserStartTicks": 639287238951927507,
+  "NativeProbeCompleted": false,
+  "BrowserExited": false
+}

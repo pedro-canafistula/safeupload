@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Xunit.Abstractions;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -24,9 +25,11 @@ public sealed class StagedTransferPublisherTests : IDisposable
     private readonly NotificationHub _notifications = NotificationTestHub.Create();
     private readonly StagedTransferJournal _journal;
     private readonly StagedTransferPublisher _publisher;
+    private readonly ITestOutputHelper _output;
 
-    public StagedTransferPublisherTests()
+    public StagedTransferPublisherTests(ITestOutputHelper output)
     {
+        _output = output;
         _stagingRoot = Path.Combine(_workspace.Root, "staging");
         Directory.CreateDirectory(_stagingRoot);
         _journal = new StagedTransferJournal(Path.Combine(_workspace.Root, "journal"));
@@ -1175,10 +1178,12 @@ public sealed class StagedTransferPublisherTests : IDisposable
         };
         var gate = new RecordingPublicationGate(false);
         var broker = new StagedJustifications();
+        var diagnosticLog = new PublisherDiagnosticLog();
+        var timing = new StagedRequestTiming();
         var publisher = new StagedTransferPublisher(new InspectionService(store,
             new LocalQueueAuditSink(_workspace.QueueFile), registry, new VerdictCache()),
             _notifications, _journal, _stagingRoot, gate, broker,
-            logger: new PublisherDiagnosticLog(),
+            logger: diagnosticLog,
             handbackCopier: new VerifiedSnapshotHandbackCopier(_workspace.Root),
             sessionUserSidResolver: _ => TestRequestorSid);
         string content = failure == "size" ? new string('x', 1024 * 1024 + 1) : "Clean fixture bytes.";
@@ -1190,6 +1195,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
         byte[] inspectedBytes = await File.ReadAllBytesAsync(transfer.StagePath);
         await File.WriteAllTextAsync(transfer.DestinationPath, "public original");
         using var subscription = _notifications.Subscribe(7, TestRequestorSid);
+        using var timingScope = timing.Activate();
         try
         {
             Assert.Equal(StagedTransferOutcome.Blocked,
@@ -1276,18 +1282,30 @@ public sealed class StagedTransferPublisherTests : IDisposable
                 Assert.Equal("public original", await File.ReadAllTextAsync(transfer.DestinationPath));
             }
         }
-        finally { paused.Continue.TrySetResult(); }
+        finally
+        {
+            try
+            {
+                var live = timing.Snapshot();
+                _output.WriteLine($"PublisherFailure failure={failure} overrideAllowed={overrideAllowed} " +
+                    $"livePhase={live.Phase} elapsedMs={live.AgeMs:F1} phases={timing}");
+                _output.WriteLine(diagnosticLog.ToString());
+            }
+            finally { paused.Continue.TrySetResult(); }
+        }
     }
 
     // Keep the existing deadlines and assertions. If publication stalls, the
     // TRX captures the last reached native step instead of only TimeoutException.
     private sealed class PublisherDiagnosticLog : ILogger
     {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _entries = new();
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel level) => true;
         public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter) =>
-            Console.WriteLine($"Publisher QPC={System.Diagnostics.Stopwatch.GetTimestamp()} {level}: {formatter(state, exception)} {exception}");
+            _entries.Enqueue($"Publisher QPC={System.Diagnostics.Stopwatch.GetTimestamp()} {level}: {formatter(state, exception)} {exception}");
+        public override string ToString() => string.Join(Environment.NewLine, _entries);
     }
 
     private sealed class ThrowingExtractor : ITextExtractor
