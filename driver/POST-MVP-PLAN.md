@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-21. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-27. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](docs/history/POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -22,6 +22,13 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-27 (M2 execution) — seed wait approved; test transparent MOTW completion first.** Owner, in the session: "1. Agreed / 2. Yes, test that first. Go, start following the plan."
+The opener of a large existing file may wait up to **120 s** for allocation/seeding, using one monotonic issuance-to-adoption deadline; expiry fails closed with a diagnostic distinguishing
+timeout from exhausted storage. Late or uncertain allocation stays charged until exact resolution; this changes no inspection deadline or recovery authority. For T8, first test whether
+real Edge downloads and downloaded-file copies can supply transparent whole-version completion evidence. No broker, extension, new UI step or unsupported-client refusal is selected.
+Execute T9 budgets → publication/reopen → metadata/MOTW → integrated app acceptance → final-pair qualification → review/PR, with metadata/MOTW feasibility work alongside T9.
+The agreed deferrals, current gates and lab boundaries remain in force; owner merge and cutover remain separate.
 
 **2026-10-22 (T8 discovery 1) — publication-window wait yes, folders not now.** Owner, in the session, on [discovery 1](evidence/2026-10-22/t8-discovery-1.md): (1) an operation on a name whose
 publication is in flight waits (bounded, proposed 10 s) and then proceeds instead of failing; design [T8-PUBLICATION-WINDOW.md](docs/design/publication-and-namespace/T8-PUBLICATION-WINDOW.md),
@@ -637,11 +644,11 @@ latest [development checkpoint](evidence/2026-10-19/m2-checkpoint.md) record ret
 | T item | Current state | Next required result |
 |---|---|---|
 | T4 | **Closed for now (owner, 2026-10-21).** Pair `d1068cc3` + `586ae7cb`: smoke 256/256; 10k (budget disabled, isolation) ordinary and runtime Verifier PASS, boot Verifier functional PASS with the pool endpoint over the band; raw cells zero forbidden bytes. [Checkpoint](evidence/2026-10-20/t4-checkpoint.md). | Carried to the final M2 pair: boot-Verifier 10k under the 128 KiB endpoint band (owner, future rows), raw-cell MVP gate, lost-reply row, budget-on 10k after the T9 fixes. |
-| T5 | Native namespace corrections reviewed. Latest [real Notepad diagnostic](evidence/2026-10-19/m2dev1019f-result.md): unprotected control passes; protected old-dev-pair save refuses for space. | Passing four-leg agent matrix, forced native delete orders, clean/CPF Notepad and public operations in all three modes. |
-| T6 | Copy-fallback component evidence and owner-approved folder/cross-drive metadata contract exist; merged namespace/folder source is unqualified. | Final-pair file/folder moves, idle rename and pending conflicts in all required modes. |
+| T5 | **Closed for now** on reviewed `m2t5d7k6`/`m2t5a5`, three-mode budget-off native-delete and Notepad rows ([checkpoint](evidence/2026-10-21/t5-checkpoint.md)). | Final-pair budget-on reruns and applicable lifecycle/recovery conditions; Word follows T8. The full namespace edge-case matrix stays at M4. |
+| T6 | File copy-fallback component evidence exists; directory moves, folder rename/delete and Recycle Bin remain postponed. | Final-pair supported single-file moves, copies and pending conflicts in all required modes, with native metadata. |
 | T7 | Windows-authorized read design retained. | Final-pair authorized/denied reads and exact bytes. |
 | T8 | Standard-user app dev evidence exists; final metadata implementation/qualification remains incomplete. | Eight required app workflows, matching owner/DACL/SACL/label/times/attributes/MOTW controls in all modes. |
-| T9 | Whole-SID allocation causes overlapping-save refusals; proved-refusal repair passes 156 focused Windows controls. Growing reservations approved; [design revised after review](docs/design/large-files/UX-LARGE-CONCURRENCY.md), acceptance pending. | Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
+| T9 | Whole-SID allocation causes overlapping-save refusals. Growing-reservation revision 5 is accepted with implementation conditions; the 120 s allocation/seed wait is approved (2026-10-27). | Concrete protocol/accounting implementation, then Windows budgets/upgrade, parser bounds, large-file and failure UX on the matched pair. |
 | T10 | Earlier runtime-Verifier component pass exists. | Final-pair permissions/ownership rows in all modes with metadata preservation. |
 | T11 | Epoch/archive and context retirement repairs integrated; component controls are distinct from qualification. | Final journal/recovery/lifetime gates and one adversarial review of the working M2 pair. |
 
@@ -799,7 +806,7 @@ Owner-approved runtime budget/default formulas are in Owner decisions. Bounded s
   [component evidence](evidence/2026-10-10/m2-agent-component-gates.json).
 - [x] T9: owner resolves all-zero card and exact PANOSE/Office-owner-file/PowerPoint-thumbnail choices; preserve the remaining content refusals.
 - [x] T9 growing reservations: design accepted with conditions at revision 5 (2026-10-22; initial window, retirement receipt, custody leases, maintained totals, lane ordering, startup table;
-  [design](docs/design/large-files/UX-LARGE-CONCURRENCY.md)). **Owner decision pending: the opener of a large existing file waits up to 120 s for its seed copy (recommended).** Implementation not started.
+  [design](docs/design/large-files/UX-LARGE-CONCURRENCY.md)). **Owner approved the 120 s allocation/seed wait on 2026-10-27.** Concrete protocol/accounting implementation is next.
 - [ ] T9: qualify integrated identity-bound capacity grants, per-SID/total/free-space budgets, exact snapshot/orphan accounting, failed-prefix refusal,
   legacy upgrade and startup recovery; [latest local source receipt](evidence/2026-10-16/ux-large5-local/result.md) is not Windows pair qualification.
 - [ ] T9: finish/qualify whole-file streaming, all required format/encoding/extraction coverage, seeding cost and capture/storage/parser bounds.

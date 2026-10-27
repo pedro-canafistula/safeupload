@@ -53,6 +53,7 @@ writes `driver/evidence/<date>/<label>-*` with a `<label>-verdict.txt`. The exit
 | `Invoke-StagePermissions.sh` | T10: permission and owner changes | `t10/` |
 | `Invoke-InstallerWorkload.sh`, `Invoke-NewProfileDiagnosis.sh` | T3 / T2: installers, first sign-in of a new user | `t3/` |
 | `t8/Invoke-MetadataConstructionNativeControl.sh` | T8: native metadata construction control | `t8/` |
+| `t8/motw-completion-native-control.ps1` | T8: unprotected Edge/shell MOTW completion feasibility probe; see its adjacent `.md` | `t8/` |
 
 ## Phase 4 invariant suite (raw-volume cells)
 

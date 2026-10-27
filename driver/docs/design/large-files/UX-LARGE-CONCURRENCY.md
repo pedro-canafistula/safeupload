@@ -337,7 +337,7 @@ undoing a proved write retirement. `CLEANUP`, zero user handles, "growth closed"
 - **Deadline.** The roughly 3 s the driver waits is `SafeUploadPolicyVerdictTimeout` of the shared exchange (`Communication.c:1731`), not an allocation constant; seeding has its own 120 s
   (`StagedSpaceBudget.SeedTimeout`). A small initial window completes in milliseconds, but a seed of a large existing file cannot. Staged allocation gets its own **monotonic overall
   deadline** (queueing + preparation + seeding + persistence), not restarted by retries and separate from the inspection timeout. A seed larger than the fast path uses a bounded
-  pending/completion exchange; the opener waits up to the declared bound. **Owner decision needed (below)** on that bound and the user-visible failure.
+  pending/completion exchange; the opener waits up to the declared bound. **Owner approved 120 s on 2026-10-27 (below)** with distinct timeout and space diagnostics.
 - **On expiry** the save/create fails after the declared bound with a diagnostic that distinguishes *timeout* from *space exhausted*; the destination stays protected; a late committed
   allocation stays charged until exact resolution and cleanup; recovery releases the stranded name automatically when proved safe, without attaching the failed CREATE or requiring the
   original process to exit; the reply never claims `NoAllocationCommitted` while a duplicate may still commit elsewhere.
@@ -373,11 +373,12 @@ deadline expiry during queueing, seeding and post-commit reply delivery, with la
 growth with available budget fallen; admission measured against increasing completed history (queue time and end-to-end); v1 grace/replay preservation and unsupported downgrade with modern
 retained accounting; concurrent policy/namespace/publication stress; the budget-on T5 reruns carried by the status plan. F3/F4 publication-window failures stay separate from F5 results.
 
-### Owner decision needed
+### Owner allocation wait decision (approved 2026-10-27)
 
-Opening a large existing file for editing needs its seed copy: should the opener **wait up to 120 s** (the existing `SeedTimeout`) with the application showing its normal "opening" state and then fail
-with a clear "not enough time / space" message, or fail sooner? Recommendation: wait up to 120 s (a 200 MB document copies in seconds on SSD; 120 s covers a slow disk), diagnostic distinguishes
-timeout from space. Small saves are unaffected (initial window, milliseconds).
+The owner accepted the recommended **120 s** wait for opening a large existing file, with the application in its normal "opening" state and a clear failure distinguishing timeout from
+exhausted storage. This is the overall monotonic allocation issuance-to-adoption bound, including queueing, preparation, seeding, persistence and reply delivery; retries never renew it.
+The existing `SeedTimeout` is not itself the protocol. Expiry ends the caller's wait, not uncertain allocation custody or its charge. Small initial-window saves have no intentional grace wait;
+their actual latency remains a measurement requirement.
 
 ## Revision 5 (2026-10-22)
 
@@ -427,7 +428,7 @@ The monotonic **allocation deadline** originates when the driver issues the allo
 adopts the reply (queueing, preparation, seeding, persistence and reply delivery included). Pending-operation bound: at most a fixed number of in-flight pending allocations per
 connection and per SID; cancellation or connection loss abandons the driver side only. Abandonment/resolution evidence for automatic name recovery: the exact allocation intent and
 identity from the ledger plus a proof that no CREATE can still adopt it; expiry may end the CREATE promptly while the cleanup stays charged, and it never releases a possibly committed name.
-"Small saves finish in milliseconds" is a measurement to record, not an assumption. The **120 s bound is an owner decision** (see revision 4), not implied by the seed timeout.
+"Small saves finish in milliseconds" is a measurement to record, not an assumption. The **120 s bound was approved by the owner on 2026-10-27** (see revision 4), not inferred from the seed timeout.
 
 ### R5.4 Added controls (finding 6)
 
@@ -445,7 +446,7 @@ accounting-disabled startup.
   and reentrant metadata dependencies; concrete mechanism addendum retained.
 - [x] T4/T9: design accepted with conditions at revision 5 ([review](../../../evidence/2026-10-22/t9-growing-rev5-review-sol-high.md), four reviews 2026-10-22).
   Before implementation: fixed-width wire layouts, schema and state transitions, slot incarnation and pending-creation representation, exact release/adoption evidence,
-  maintained-total update rules, concrete pending bounds and the monotonic clock representation; the owner's seed-wait decision for that dependent behaviour.
+  maintained-total update rules, concrete pending bounds and the monotonic clock representation. The owner approved the dependent 120 s allocation/seed wait on 2026-10-27.
   Review the coherent changed kernel against the conditions before its first VM boot.
 - [ ] T9 F5 regression: fresh budget-on state; overlapping distinct-name one-line files, Word temp/target saves, Excel SaveAs/edit/reopen, repetition with retained state;
   successful exact reservations without the 1500 ms grace; record backend cause and application result.
