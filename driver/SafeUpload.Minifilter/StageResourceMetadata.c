@@ -785,6 +785,9 @@ static NTSTATUS MetadataQueryDirectory(_In_ PFLT_INSTANCE Instance, _In_ PFILE_O
     FILE_ATTRIBUTE_TAG_INFORMATION tag;
     ULONG bytes = 0;
     NTSTATUS status;
+    /* Set the _Out_ identity on every path: PREfast cannot see that the
+     * diagnostic wrapper returns its argument unchanged (C6101). */
+    RtlZeroMemory(Identity, sizeof(*Identity));
     RtlZeroMemory(&id, sizeof(id));
     RtlZeroMemory(&standard, sizeof(standard));
     RtlZeroMemory(&tag, sizeof(tag));
