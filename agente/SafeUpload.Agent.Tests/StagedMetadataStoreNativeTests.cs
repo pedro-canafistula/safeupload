@@ -40,6 +40,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         internal int FlushCount;
         private MetadataNativeResult Invoke(string name, Func<MetadataNativeResult> action) =>
             Fail == name ? new(unchecked((int)0xC0000022), 0) : action();
+        public uint HeldHandleShare => inner.HeldHandleShare;
         public long Alignment => inner.Alignment;
         public long AllocationUnit => inner.AllocationUnit;
         public StagedStageIdentity ParentIdentity => inner.ParentIdentity;
@@ -106,7 +107,8 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         string junction = Path.Combine(fixture.Root, "junction");
         CreateJunction(junction, fixture.Root);
         Assert.Throws<IOException>(() => StagedMetadataStoreNative.OpenAnchor(junction));
-        Assert.Throws<IOException>(() => fixture.Native.Open("junction", MetadataRoleV32.ManifestCurrent, actual.Identity));
+        var childRefusal = Assert.Throws<MetadataNativeException>(() => fixture.Native.Open("junction", MetadataRoleV32.ManifestCurrent, actual.Identity));
+        Assert.Equal(unchecked((int)0xC00000BA), childRefusal.Result.Status);
         Directory.Delete(junction);
     }
 
@@ -191,7 +193,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void N_U4_05_Held_target_class10_replace_lost_bookkeeping_repeat_interrupted_recovery()
+    public void N_U4_05_Held_target_class65_posix_replace_lost_bookkeeping_repeat_interrupted_recovery()
     {
         if (!OperatingSystem.IsWindows()) return;
         using var fixture = new Fixture(); var old = fixture.Plan(128); StagedStageIdentity oldId;
@@ -200,22 +202,27 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
             var baseline = fixture.Store.Execute(first); Log(fixture, old, baseline);
             Assert.Equal(MetadataStoreDisposition.Committed, baseline.Disposition); oldId = fixture.Native.Query(first.Output!).Identity;
         }
+        using var witness = fixture.Native.Open("current", MetadataRoleV32.ManifestCurrent, oldId);
+        using var witnessPin = fixture.Accounting.Pin(oldId);
         int before = fixture.Native.SuccessfulRenames;
         var next = fixture.Plan(192, predecessor: oldId);
         using var tx = fixture.Store.TryClaim(next, "replacement.new", "current", Enumerable.Repeat((byte)2, 192).ToArray(), MetadataPhysicalClass.HotJournal)!;
         var lost = fixture.Store.Execute(tx, step => { if (step == MetadataStoreStep.Replace) throw new IOException("injected lost bookkeeping after native success"); });
         Log(fixture, next, lost); Assert.Equal(MetadataStoreDisposition.Held, lost.Disposition);
-        Assert.True(tx.MutationSucceeded, "The selected class-10 rename must succeed before bookkeeping recovery; a native refusal is not an unlinked predecessor.");
+        Assert.True(tx.MutationSucceeded, "The selected class-65/flags-3 rename must succeed before bookkeeping recovery; a native refusal is not an unlinked predecessor.");
         Assert.Contains(lost.Receipts, r => r.Step == MetadataStoreStep.Replace && r.Native.Success);
         Assert.Equal(before + 1, fixture.Native.SuccessfulRenames);
         Assert.NotNull(tx.Predecessor); Assert.False(tx.Predecessor!.IsClosed);
         var oldHeld = fixture.Native.Query(tx.Predecessor); Assert.Equal(oldId, oldHeld.Identity); Assert.Equal(0u, oldHeld.Links);
-        Assert.False(oldHeld.DeletePending);
+        Assert.True(oldHeld.DeletePending);
         Assert.Equal(MetadataObjectLinkState.UnlinkedHeld, fixture.Accounting.LinkState(oldId));
         Assert.Equal(Enumerable.Repeat((byte)1, 128), ReadHeldBytes(fixture.Native, tx.Predecessor, 128));
         var newId = fixture.Native.Query(tx.Output!).Identity;
         using (var independent = fixture.Native.Open("current", MetadataRoleV32.ManifestCurrent, newId))
-            Assert.Equal(newId, fixture.Native.Query(independent).Identity);
+        {
+            var observed = fixture.Native.Query(independent);
+            Assert.Equal(newId, observed.Identity); Assert.Equal(1u, observed.Links); Assert.False(observed.DeletePending);
+        }
         Assert.NotEqual(oldId, newId); Assert.Equal(before + 1, fixture.Native.SuccessfulRenames);
         output.WriteLine($"IndependentOld Identity={oldId} EOF={oldHeld.EndOfFile} AllocationSize={oldHeld.AllocationSize} Links={oldHeld.Links} UnlinkedHeld={oldHeld.Links == 0} DeletePending={oldHeld.DeletePending} RetainedCharge={fixture.Accounting.Charge(old.Object)}");
         Assert.Equal(MetadataStoreDisposition.Held, fixture.Store.RecoverBookkeeping(tx, _ => throw new IOException("second interruption")).Disposition);
@@ -225,6 +232,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         Assert.Equal(old.PeakAllocation + next.PeakAllocation, fixture.Accounting.Totals.HotJournal);
         Assert.Equal(StagedMetadataStoreReplacementPlanTests.ExpectedProductionReplacement, StagedMetadataStoreNative.RenameOperationFor(true));
         Assert.Equal(Enumerable.Repeat((byte)2, 192), ReadSharedBytes(Path.Combine(fixture.Root, "current")));
+        AssertRetainedUntilPinsDrain(fixture, tx, old, oldId, witness, witnessPin, Enumerable.Repeat((byte)1, 128).ToArray());
     }
 
     [Fact]
@@ -278,17 +286,45 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
                 fixture.Accounting.Totals.Shared);
         }
         fixture.Adapter.Fail = null;
+        using var witness = fixture.Native.Open("replaceable", MetadataRoleV32.InventoryCurrent, oldId);
+        using var witnessPin = fixture.Accounting.Pin(oldId);
         var successor = fixture.Plan(128, MetadataRoleV32.InventoryNew, oldId);
         using var replacement = fixture.Store.TryClaim(successor, "successor-inventory.new", "replaceable", new byte[128], MetadataPhysicalClass.Shared)!;
         var success = fixture.Store.Execute(replacement); Log(fixture, successor, success);
         Assert.Equal(MetadataStoreDisposition.Committed, success.Disposition);
         var predecessor = fixture.Native.Query(replacement.Predecessor!);
-        Assert.Equal(0u, predecessor.Links); Assert.False(predecessor.DeletePending); Assert.Equal(oldId, predecessor.Identity);
+        Assert.Equal(0u, predecessor.Links); Assert.True(predecessor.DeletePending); Assert.Equal(oldId, predecessor.Identity);
         Assert.Equal(new byte[128], ReadHeldBytes(fixture.Native, replacement.Predecessor!, 128));
         Assert.Equal(MetadataObjectLinkState.UnlinkedHeld, fixture.Accounting.LinkState(oldId));
+        var successorId = fixture.Native.Query(replacement.Output!).Identity;
+        using (var independent = fixture.Native.Open("replaceable", MetadataRoleV32.InventoryCurrent, successorId))
+        {
+            var observed = fixture.Native.Query(independent);
+            Assert.Equal(successorId, observed.Identity); Assert.Equal(1u, observed.Links); Assert.False(observed.DeletePending);
+            Assert.Equal(new byte[128], ReadHeldBytes(fixture.Native, independent, 128));
+        }
         Assert.Equal(extension.PeakAllocation + residue.PeakAllocation + old.PeakAllocation + refusedPlan.PeakAllocation + successor.PeakAllocation,
             fixture.Accounting.Totals.Shared);
         output.WriteLine($"RetainedPredecessor Identity={predecessor.Identity} L=128 P={old.PaddedExtent} Q={old.PeakAllocation} EOF={predecessor.EndOfFile} AllocationSize={predecessor.AllocationSize} Links={predecessor.Links} DeletePending={predecessor.DeletePending}; no release inferred from selection or unlink");
+        AssertRetainedUntilPinsDrain(fixture, replacement, old, oldId, witness, witnessPin, new byte[128]);
+    }
+
+    private void AssertRetainedUntilPinsDrain(Fixture fixture, StagedMetadataStore.Transaction replacement,
+        BoundedOutputPlan old, StagedStageIdentity identity, SafeFileHandle witness, IDisposable witnessPin, byte[] bytes)
+    {
+        Assert.Equal(2, fixture.Accounting.Handles(identity));
+        Assert.Throws<IOException>(() => fixture.Accounting.Apply(new(old.Object, identity, 1, 0, true, true, false, true)));
+        replacement.Dispose();
+        Assert.Equal(1, fixture.Accounting.Handles(identity));
+        Assert.Equal(MetadataObjectLinkState.UnlinkedHeld, fixture.Accounting.LinkState(identity));
+        Assert.Equal(bytes, ReadHeldBytes(fixture.Native, witness, bytes.Length));
+        Assert.Equal(old.PeakAllocation, fixture.Accounting.Charge(old.Object));
+        Assert.Throws<IOException>(() => fixture.Accounting.Apply(new(old.Object, identity, 1, 0, true, true, false, true)));
+        witness.Dispose(); witnessPin.Dispose();
+        Assert.Equal(0, fixture.Accounting.Handles(identity));
+        Assert.Equal(MetadataObjectLinkState.UnlinkedDrained, fixture.Accounting.LinkState(identity));
+        Assert.Equal(old.PeakAllocation, fixture.Accounting.Charge(old.Object));
+        output.WriteLine($"AllPredecessorPinsDrained=true Identity={identity} RetainedCharge={fixture.Accounting.Charge(old.Object)} ExactStorageReleaseStillRequired=true");
     }
 
     private static byte[] ReadSharedBytes(string path)

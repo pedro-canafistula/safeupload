@@ -7,9 +7,9 @@ using Xunit.Abstractions;
 
 namespace SafeUpload.Agent.Tests;
 
-// Builder OS discovery only. Native refusal is recorded, never treated as a
-// pass of the strict N-U4-05 positive store/recovery gate. No production choice
-// is made from these hypotheses, and each fresh fixture issues one rename.
+// Builder OS mechanism regression evidence only. Assert the measured table,
+// including native refusals; those negative rows do not satisfy the strict
+// N-U4-05 positive store/recovery gate. Each fixture issues one rename.
 [Trait("Category", "NativeWindows")]
 public sealed class StagedMetadataStoreReplacementNativeTests(ITestOutputHelper output)
 {
@@ -20,6 +20,12 @@ public sealed class StagedMetadataStoreReplacementNativeTests(ITestOutputHelper 
         foreach (bool shareDelete in new[] { false, true })
         foreach (bool predecessorDeleteAccess in new[] { false, true })
             yield return [mechanism, keepPredecessor, shareDelete, predecessorDeleteAccess];
+    }
+
+    internal static int ExpectedStatus(string mechanism, bool keepPredecessor, bool shareDelete)
+    {
+        if (!keepPredecessor || mechanism == "ReleasedClassic") return 0;
+        return mechanism == "ExtendedPosix" ? (shareDelete ? 0 : unchecked((int)0xC0000043)) : unchecked((int)0xC0000022);
     }
 
     [Theory]
@@ -70,17 +76,22 @@ public sealed class StagedMetadataStoreReplacementNativeTests(ITestOutputHelper 
         output.WriteLine($"Step=Rename AttemptCount=1 Class={operation.InformationClass} Flags=0x{operation.Flags:X8} " +
             $"NTSTATUS=0x{renamed.Status:X8} Information={renamed.Information} SuccessfulRenamesBefore={mutationsBefore} " +
             $"SuccessfulRenamesAfter={native.SuccessfulRenames} DiscoveryOnly=true PositiveGatePass=false");
-        // No Require() on the discovery rename: all native statuses are data.
+        Assert.Equal(ExpectedStatus(mechanism, keepPredecessor, shareDelete), renamed.Status);
+        Assert.Equal(mutationsBefore + (renamed.Success ? 1 : 0), native.SuccessfulRenames);
         if (renamed.Success)
         {
             var flushed = native.Flush(source);
             output.WriteLine($"Step=F3 NTSTATUS=0x{flushed.Status:X8} Information={flushed.Information} PowerLossCertificate=false");
+            flushed.Require();
         }
-        TryObserve("NewHeldAfter", native, source);
+        var newHeld = Observe("NewHeldAfter", native, source);
+        Assert.Equal(sourceIdentity, newHeld.Identity); Assert.Equal(1u, newHeld.Links); Assert.False(newHeld.DeletePending);
         if (heldAtIssue)
         {
-            TryObserve("OldHeldAfter", native, predecessor);
-            TryRead("OldHeldBytesAfter", native, predecessor, oldBytes);
+            var oldHeld = Observe("OldHeldAfter", native, predecessor);
+            Assert.Equal(oldIdentity, oldHeld.Identity);
+            Assert.Equal(renamed.Success ? 0u : 1u, oldHeld.Links); Assert.Equal(renamed.Success, oldHeld.DeletePending);
+            ReadExpected("OldHeldBytesAfter", native, predecessor, oldBytes);
         }
         else output.WriteLine("OldHeldAfter=Unavailable OldHeldReadability=Unavailable Reason=NoPredecessorHandleOrSectionRetained");
 
@@ -90,17 +101,14 @@ public sealed class StagedMetadataStoreReplacementNativeTests(ITestOutputHelper 
         using var independent = native.OpenForReplacementDiscovery("target", MetadataStoreRoles.Read, 7, out var independentOpen);
         output.WriteLine($"Step=IndependentOpen Leaf=target Access=0x{MetadataStoreRoles.Read:X8} Share=7 " +
             $"NTSTATUS=0x{independentOpen.Status:X8} Information={independentOpen.Information}");
-        if (independentOpen.Success)
-        {
-            var current = TryObserve("IndependentCurrentAfter", native, independent);
-            if (current is not null)
-            {
-                bool successor = current.Identity == sourceIdentity, original = current.Identity == oldIdentity;
-                output.WriteLine($"IndependentSuccessorOpenable={successor} IndependentOriginalStillNamed={original}");
-                TryRead("IndependentCurrentBytesAfter", native, independent, successor ? newBytes : oldBytes);
-                if (!heldAtIssue && original) LogObservation("OldAfterFromIndependentName", current);
-            }
-        }
+        independentOpen.Require();
+        var current = Observe("IndependentCurrentAfter", native, independent);
+        Assert.Equal(renamed.Success ? sourceIdentity : oldIdentity, current.Identity);
+        Assert.Equal(1u, current.Links); Assert.False(current.DeletePending);
+        bool successor = current.Identity == sourceIdentity, original = current.Identity == oldIdentity;
+        output.WriteLine($"IndependentSuccessorOpenable={successor} IndependentOriginalStillNamed={original}");
+        ReadExpected("IndependentCurrentBytesAfter", native, independent, successor ? newBytes : oldBytes);
+        if (!heldAtIssue && original) LogObservation("OldAfterFromIndependentName", current);
         output.WriteLine("DiscoveryRecorded=true ProductGateVerdict=None ModernAdmission=NotReady NoRenameRetry=true");
     }
 
@@ -121,13 +129,13 @@ public sealed class StagedMetadataStoreReplacementNativeTests(ITestOutputHelper 
     private void LogObservation(string label, MetadataNativeObservation observation) => output.WriteLine(
         $"Step={label} QueryClass=FileStandardInformation(5) Identity={observation.Identity} EOF={observation.EndOfFile} " +
         $"AllocationSize={observation.AllocationSize} Links={observation.Links} DeletePending={observation.DeletePending}");
-    private MetadataNativeObservation? TryObserve(string label, StagedMetadataStoreNative native, SafeFileHandle file)
+    private MetadataNativeObservation Observe(string label, StagedMetadataStoreNative native, SafeFileHandle file)
     {
         try { var observation = native.Query(file); LogObservation(label, observation); return observation; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        { LogFailure(label, error); return null; }
+        { LogFailure(label, error); throw; }
     }
-    private void TryRead(string label, StagedMetadataStoreNative native, SafeFileHandle file, byte[] expected)
+    private void ReadExpected(string label, StagedMetadataStoreNative native, SafeFileHandle file, byte[] expected)
     {
         try
         {
@@ -136,9 +144,10 @@ public sealed class StagedMetadataStoreReplacementNativeTests(ITestOutputHelper 
             bool readable = read.Success && read.Information >= (ulong)expected.Length;
             bool equal = readable && block.AsSpan(0, expected.Length).SequenceEqual(expected);
             output.WriteLine($"Step={label} NTSTATUS=0x{read.Status:X8} Information={read.Information} Readable={readable} ExpectedBytesMatch={equal}");
+            Assert.Equal(0, read.Status); Assert.True(readable); Assert.True(equal);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        { LogFailure(label, error); }
+        { LogFailure(label, error); throw; }
     }
     private void LogFailure(string label, Exception error)
     {

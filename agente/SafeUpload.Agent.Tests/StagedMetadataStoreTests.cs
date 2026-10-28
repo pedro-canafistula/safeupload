@@ -159,6 +159,54 @@ public sealed class StagedMetadataStoreTests
     }
 
     [Fact]
+    public void Predecessor_without_SHARE_DELETE_is_refused_before_reservation_or_native_issue()
+    {
+        var native = new MetadataMemoryNative(); var account = Accounting(); using var store = new StagedMetadataStore(native, account);
+        var old = Plan(); StagedStageIdentity identity;
+        using (var first = store.TryClaim(old, "old.new", "current", new byte[192], MetadataPhysicalClass.HotOther)!)
+        { Assert.Equal(MetadataStoreDisposition.Committed, store.Execute(first).Disposition); identity = native.Query(first.Output!).Identity; }
+        var next = Plan(predecessor: identity); int calls = native.Mutations.Count;
+        native.HeldHandleShare = 3;
+        Assert.Throws<ArgumentException>(() => store.TryClaim(next, "next.new", "current", new byte[192], MetadataPhysicalClass.HotOther));
+        Assert.Equal(calls, native.Mutations.Count); Assert.Equal(old.PeakAllocation, account.Totals.HotOther);
+        native.HeldHandleShare = 7;
+        using var tx = store.TryClaim(next, "next.new", "current", new byte[192], MetadataPhysicalClass.HotOther)!;
+        native.HeldHandleShare = 3; // A changed adapter contract also refuses before opening/creating anything.
+        Assert.Equal(MetadataStoreDisposition.Held, store.Execute(tx).Disposition);
+        Assert.Equal(calls, native.Mutations.Count); Assert.False(tx.MutationSucceeded); Assert.Null(tx.Predecessor);
+    }
+
+    [Fact]
+    public void Production_initial_and_append_extent_sequences_preallocate_before_chunked_writes()
+    {
+        var native = new MetadataMemoryNative(4096); var account = Accounting(); using var store = new StagedMetadataStore(native, account);
+        var plan = Plan(8192, MetadataRoleV32.Segment, 4096);
+        using var tx = store.TryClaim(plan, "segment", "segment", new byte[8192], MetadataPhysicalClass.Shared)!;
+        Assert.Equal(MetadataStoreDisposition.Committed, store.Execute(tx).Disposition);
+        Assert.Equal(new[] { ("Allocation", 0L, 8192L), ("Write", 0L, 4096L), ("Write", 4096L, 4096L) }, native.ExtentCalls);
+        AssertSafeExtentSequence(native.ExtentCalls, 8192);
+        native.ExtentCalls.Clear();
+        var extension = BoundedOutputPlan.Create(MetadataRoleV32.Segment, plan.Object, 12288, 4096, 4096);
+        Assert.Equal(MetadataStoreDisposition.Committed, store.Append(tx, extension, 8192, new byte[4096], 1, new byte[4096]).Disposition);
+        Assert.Equal(new[] { ("Allocation", 0L, 12288L), ("Write", 8192L, 4096L), ("Write", 4096L, 4096L) }, native.ExtentCalls);
+        AssertSafeExtentSequence(native.ExtentCalls, 12288);
+        // A single full-extent write is a measured alternative. Successive
+        // unpreallocated extension is the conservation-negative control.
+        AssertSafeExtentSequence([("Write", 0, 8192)], 8192);
+        Assert.Throws<Xunit.Sdk.TrueException>(() => AssertSafeExtentSequence([("Write", 0, 4096), ("Write", 4096, 4096)], 8192));
+    }
+    private static void AssertSafeExtentSequence(IEnumerable<(string Operation, long Offset, long Length)> calls, long padded)
+    {
+        bool allocated = false;
+        foreach (var call in calls)
+        {
+            if (call.Operation == "Allocation") allocated = call.Length >= padded;
+            else if (call.Operation == "Write")
+                Assert.True(allocated || call.Offset == 0 && call.Length == padded, "Chunked extension requires preallocation of P before the first write.");
+        }
+    }
+
+    [Fact]
     public void Success_has_ordered_F1_EOF_F2_replace_F3_and_pre_normalization_observations()
     {
         var native = new MetadataMemoryNative(); var account = Accounting(); using var store = new StagedMetadataStore(native, account);
@@ -200,7 +248,7 @@ public sealed class StagedMetadataStoreTests
         Assert.Equal(MetadataStoreDisposition.Committed, store.Execute(tx).Disposition);
         Assert.NotNull(tx.Predecessor); Assert.False(tx.Predecessor!.IsClosed);
         Assert.Equal(0u, native.Query(tx.Predecessor).Links);
-        Assert.False(native.Query(tx.Predecessor).DeletePending);
+        Assert.True(native.Query(tx.Predecessor).DeletePending);
         Assert.Equal(MetadataObjectLinkState.UnlinkedHeld, account.LinkState(oldId));
         Assert.Equal(new byte[192], ReadFakeHeld(native, tx.Predecessor, 192));
         var release = new MetadataStorageTransition(old.Object, oldId, 1, 0, true, true, false, true);
@@ -344,7 +392,9 @@ internal sealed class MetadataMemoryNative(long alignment = 65536, long unit = 4
     internal Action? BeforeCreate;
     internal int Renames;
     internal List<string> Mutations { get; } = new();
+    internal List<(string Operation, long Offset, long Length)> ExtentCalls { get; } = new();
     internal List<(long Offset, byte First)> Writes { get; } = new();
+    public uint HeldHandleShare { get; set; } = 7;
     public long Alignment => alignment;
     public long AllocationUnit => unit;
     public StagedStageIdentity ParentIdentity => new(1, 0, 1);
@@ -369,6 +419,7 @@ internal sealed class MetadataMemoryNative(long alignment = 65536, long unit = 4
     internal byte[] Bytes(string leaf) => _names[leaf].Data[..(int)_names[leaf].Eof];
     public MetadataNativeResult Write(SafeFileHandle handle, long offset, ReadOnlySpan<byte> bytes)
     {
+        ExtentCalls.Add(("Write", offset, bytes.Length));
         var result = Result("Write", (ulong)bytes.Length); if (!result.Success) return result;
         var file = _handles[handle]; long end = checked(offset + bytes.Length);
         if (end > file.Data.Length) Array.Resize(ref file.Data, (int)end);
@@ -384,6 +435,7 @@ internal sealed class MetadataMemoryNative(long alignment = 65536, long unit = 4
     public MetadataNativeResult Flush(SafeFileHandle handle) => Result("Flush" + ++_flush);
     public MetadataNativeResult Allocation(SafeFileHandle handle, long length)
     {
+        ExtentCalls.Add(("Allocation", 0, length));
         var result = Result("Allocation");
         if (result.Success) _handles[handle].Allocation = BoundedOutputPlan.Round(length, unit) + (OverallocateOnAllocation ? unit : 0);
         return result;
@@ -394,7 +446,7 @@ internal sealed class MetadataMemoryNative(long alignment = 65536, long unit = 4
     {
         var result = Result("Rename"); if (!result.Success) return result;
         var file = _handles[handle]; string old = _names.Single(p => ReferenceEquals(p.Value, file)).Key;
-        if (_names.TryGetValue(leaf, out var predecessor)) { if (!replace) return new(Failure, 0); predecessor.Unlinked = true; }
+        if (_names.TryGetValue(leaf, out var predecessor)) { if (!replace) return new(Failure, 0); predecessor.Unlinked = true; predecessor.Deleted = true; }
         _names.Remove(old); _names[leaf] = file; Renames++; return result;
     }
     public MetadataNativeResult Delete(SafeFileHandle handle) { _handles[handle].Deleted = true; return Result("Delete"); }

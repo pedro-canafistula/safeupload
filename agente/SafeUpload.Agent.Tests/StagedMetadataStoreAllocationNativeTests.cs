@@ -6,9 +6,9 @@ using Xunit.Abstractions;
 
 namespace SafeUpload.Agent.Tests;
 
-// Discovery, not a positive store/qualification verdict. These experiments
-// deliberately compare potentially over-allocating paths. Existing N-U8-01
-// still requires Committed; Held here never satisfies that positive baseline.
+// Builder OS mechanism regression evidence, not target qualification. Assert
+// the measured peaks, including deliberately over-allocating negative paths.
+// Held here never satisfies the strict N-U8-01 Committed baseline.
 [Trait("Category", "NativeWindows")]
 public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper output)
 {
@@ -18,6 +18,18 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
         foreach (bool stricterQuantum in new[] { false, true })
         foreach (int length in new[] { 64, 192, 1192, 8192, 65537, 131072 })
             yield return [mechanism, stricterQuantum, length];
+    }
+
+    internal static (long Peak, int Writes) ExpectedAllocation(string mechanism, bool stricterQuantum, int logical)
+    {
+        long alignment = stricterQuantum ? 65536 : 4096;
+        long padded = BoundedOutputPlan.Round(logical, alignment);
+        if (mechanism == "Chunked")
+        {
+            if (!stricterQuantum && logical == 65537) return (131072, 17);
+            if (logical == 131072) return (196608, stricterQuantum ? 2 : 27);
+        }
+        return (padded, checked((int)(mechanism.EndsWith("Single", StringComparison.Ordinal) ? 1 : padded / alignment)));
     }
 
     private sealed class HeldFile(SafeFileHandle file, IDisposable pin) : IDisposable
@@ -43,12 +55,16 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
         var initial = native.Query(file); fixture.Accounting.Bind(plan.Object, initial.Identity);
         using var lifetime = new HeldFile(file, fixture.Accounting.Pin(initial.Identity));
         bool exceeded = false;
+        var expected = ExpectedAllocation(mechanism, stricterQuantum, logical);
         long maximumObserved = 0;
         int writes = 0;
         output.WriteLine($"DiscoveryOnly=true MechanismEvidence=BuilderOSOnly OS={Environment.OSVersion} Mechanism={mechanism} " +
             $"Role={plan.Role} Access=0x{MetadataStoreRoles.Access(plan.Role):X} Share={StagedMetadataStoreNative.ChildShare} " +
             $"Options=0x{StagedMetadataStoreNative.OutputOptions:X} NativeRequiredA={native.Alignment} TestA={alignment} ActualU={native.AllocationUnit} " +
             $"L={logical} P={plan.PaddedExtent} NominalQ={plan.PeakAllocation} A>U={alignment > native.AllocationUnit}");
+        // This regression table was measured with native A=U=4096 on the
+        // builder. A different geometry must fail visibly, not borrow its proof.
+        Assert.Equal(4096, native.Alignment); Assert.Equal(4096, native.AllocationUnit);
         if (alignment <= native.AllocationUnit)
             output.WriteLine("A>U=UnavailableForThisQuantumAndActualVolume; no simulated-native claim");
 
@@ -65,6 +81,10 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
                 $"RetainedCharge={fixture.Accounting.Charge(plan.Object)} ExpectedProductHold={exceeded}");
             Assert.True(fixture.Accounting.Charge(plan.Object) >= measured.AllocationSize);
             Assert.Equal(initial.Identity, measured.Identity);
+            Assert.Equal(1u, measured.Links); Assert.False(measured.DeletePending);
+            if (step == "Create") Assert.Equal(0, measured.AllocationSize);
+            else if (step is "F1-BeforeEOFNormalization" or "EOF" or "F2") Assert.Equal(expected.Peak, measured.AllocationSize);
+            else if (step != "Write" || mechanism != "Chunked") Assert.Equal(plan.PeakAllocation, measured.AllocationSize);
             result.Require(); return measured;
         }
 
@@ -91,12 +111,14 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
         // This remains an isolated, held diagnostic object if the write stopped.
         // Normalize only already-written bytes; never extend an incomplete probe.
         long normalizedEof = Math.Min(logical, written);
-        Capture("EOF", native.EndOfFile(file, normalizedEof), length: normalizedEof);
-        Capture("F2", native.Flush(file));
+        Assert.Equal(normalizedEof, Capture("EOF", native.EndOfFile(file, normalizedEof), length: normalizedEof).EndOfFile);
+        Assert.Equal(normalizedEof, Capture("F2", native.Flush(file)).EndOfFile);
         // Explicit post-EOF allocation normalization is observed separately.
         // Its success/lower allocation is never used to erase a witnessed peak.
         Capture("AllocationAfterEOF", native.Allocation(file, plan.PaddedExtent), length: plan.PaddedExtent);
         Capture("FlushAfterAllocation", native.Flush(file));
+        Assert.Equal(expected.Peak, maximumObserved); Assert.Equal(expected.Writes, writes);
+        Assert.Equal(expected.Peak > plan.PeakAllocation, exceeded);
         long retained = Math.Max(plan.PeakAllocation, BoundedOutputPlan.Round(maximumObserved, native.AllocationUnit));
         Assert.Equal(retained, fixture.Accounting.Charge(plan.Object));
         Assert.Equal(retained, fixture.Accounting.Totals.Shared);

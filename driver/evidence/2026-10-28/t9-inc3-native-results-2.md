@@ -21,7 +21,7 @@ With class 65/flags 3 over a held SHARE_DELETE predecessor: rename status 0, `Su
 |---|---|
 | Single padded write, with or without preallocation | within Q in all 12 + 12 cases |
 | Preallocate P (FileAllocationInformation) then chunked writes | within Q in all 12 cases |
-| **Unpreallocated chunked writes** | **OVER in 3 of 12**: L=65537 peak 131072 vs Q 69632; L=131072 peak 196608 vs Q 131072 (+50%), also with the 64 KiB quantum; the excess disappears after EOF normalization (final allocation = Q) |
+| **Unpreallocated chunked writes** | **OVER in 3 of 12**: L=65537 peak 131072 vs Q 69632; L=131072 peak 196608 vs Q 131072 (+50%), also with the 64 KiB quantum; the excess persists through EOF normalization and the second flush and falls only after the later allocation normalization (`FileAllocationInformation`), ending at Q |
 
 **Reading:** NTFS over-allocates transiently while a file is extended by successive writes; preallocating P (now in production) or writing the padded extent in one call keeps allocation within Q. The strict N-U8-01 now commits its initial append (allocation held at 8192 throughout) and fails only at its later class-10 held-target replacement step.
 

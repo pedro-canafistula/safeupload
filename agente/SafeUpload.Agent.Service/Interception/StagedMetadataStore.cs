@@ -17,6 +17,8 @@ internal sealed record MetadataOperationReceipt(MetadataStoreStep Step, Metadata
     MetadataNativeObservation? Observation, long RetainedCharge = 0);
 internal interface IStagedMetadataNative : IDisposable
 {
+    // The adapter uses this sharing for every Create/Open handle retained by the store.
+    uint HeldHandleShare { get; }
     long Alignment { get; }
     long AllocationUnit { get; }
     StagedStageIdentity ParentIdentity { get; }
@@ -113,6 +115,8 @@ internal sealed class StagedMetadataStore : IDisposable
             (plan.ExpectedPredecessor is not null && string.Equals(outputLeaf, targetLeaf, StringComparison.OrdinalIgnoreCase)) ||
             (!MetadataStoreRoles.CanReplace(plan.Role) && outputLeaf != targetLeaf))
             throw new ArgumentException("Invalid exact metadata claim or verified units.");
+        if (plan.ExpectedPredecessor is not null && (_native.HeldHandleShare & 4) == 0)
+            throw new ArgumentException("Held predecessor handles must include FILE_SHARE_DELETE.");
         lock (_claimsGate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -136,6 +140,8 @@ internal sealed class StagedMetadataStore : IDisposable
         tx.Issued = true;
         try
         {
+            if (tx.Plan.ExpectedPredecessor is not null && (_native.HeldHandleShare & 4) == 0)
+                throw new IOException("Held predecessor sharing changed after claim; no native work is permitted.");
             _native.ValidateParent();
             if (tx.Plan.ExpectedPredecessor is { } expected)
             {

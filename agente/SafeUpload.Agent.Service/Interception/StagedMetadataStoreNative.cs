@@ -19,9 +19,9 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
 {
     internal const uint AnchorAccess = 0x120081, AnchorShare = 3, ChildShare = 7;
     internal const uint OutputOptions = 0x0020006A; // NO_BUFFERING | WRITE_THROUGH | SYNC_NONALERT | OPEN_REPARSE_POINT
-    // Adoption changes this one selection, after native evidence/design review.
-    // Discovery explicitly supplies a mechanism; production remains class 10.
-    internal const MetadataReplacementMechanism SelectedReplacement = MetadataReplacementMechanism.Classic;
+    // Builder mechanism evidence selects POSIX replacement; target qualification
+    // remains separate. Discovery also preserves the refused legacy mechanisms.
+    internal const MetadataReplacementMechanism SelectedReplacement = MetadataReplacementMechanism.ExtendedPosix;
     internal static int RenameInformationClass => RenameOperationFor(true).InformationClass;
     internal static MetadataRenameOperation ReplacementOperation(MetadataReplacementMechanism mechanism) => mechanism switch
     {
@@ -38,6 +38,7 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
     private readonly ConditionalWeakTable<SafeFileHandle, byte[]> _security = new();
     internal int NativeWriteCalls { get; private set; }
     internal int SuccessfulRenames { get; private set; }
+    public uint HeldHandleShare => ChildShare;
     public long Alignment { get; }
     public long AllocationUnit { get; }
     public StagedStageIdentity ParentIdentity { get; }
