@@ -1,0 +1,49 @@
+{
+  "DiagnosticOnly": true,
+  "StartHEAD": "4b2bdfe6",
+  "EndHEAD": "4b2bdfe682b114303b7cde4e7bfa79f1b708f9e7",
+  "Review": "driver/evidence/2026-10-28/t9-growth-rev8-review-sol-high.md",
+  "Finding1": "OPEN; work list only, no product implementation",
+  "SDK": "10.0.400",
+  "Runner": "In-process Fact/InlineData discovery, real xUnit assertions; no Windows matrix/native verdict",
+  "Counts": {
+    "debug": {
+      "discovered": 309,
+      "executed": 309,
+      "passed": 309,
+      "failed": 0,
+      "skipped": 0
+    },
+    "release": {
+      "discovered": 309,
+      "executed": 309,
+      "passed": 309,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "AdditionalReviewCasesByFinding": {
+    "2": 14,
+    "3": 9,
+    "4": 6,
+    "5": 12
+  },
+  "ContractCasesPerConfiguration": 239,
+  "FitCasesPerConfiguration": 70,
+  "LocalCompile": "feature Debug/Release Service/App/Tests PASS, all six builds warnings-as-errors",
+  "SourceSha256": {
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md": "7c86dd384133f1733fce31c32c669ea2989fb68319f17a3d28cd41a9776e5393",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs": "93232560bf2f88cc91853bad631670df203959691121476b300cc2803f1eb9c9"
+  },
+  "ArtifactSha256": {
+    "bin/Debug/net10.0/Models.dll": "5e6ff4ceac54d4c4d5242be7ae882870888cc1d25d8cfd76b1237f74682d799b",
+    "bin/Release/net10.0/Models.dll": "231ba8578cebb6958da57c94ed22887878e40dfdd96a401fe21e930e573addbb"
+  },
+  "ResultSha256": {
+    "results/inprocess-debug.json": "4b527bc0ea1f9f3dd58df4ca9086f6241e40287d0e7238faca0060c78e4ced3b",
+    "results/inprocess-release.json": "4b527bc0ea1f9f3dd58df4ca9086f6241e40287d0e7238faca0060c78e4ced3b",
+    "local-compile-final.log": "82cb215e50dcef58d053c05614443bb9d817eee514811e20da956cb3952e92d1"
+  },
+  "IndependentReReview": "Pending",
+  "CommitMade": false
+}

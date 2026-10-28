@@ -281,7 +281,7 @@ public sealed class GrowthArchiveContractModelTests
         archive.Copy(Base());
         for (int crash = 0; crash < 2; crash++)
             Assert.Equal("FrontierOnly", Recover(old, new byte[4096], frame, plan, frame));
-        Assert.Equal("BookkeepingOnly", Recover(old, target, [], plan, frame));
+        Assert.Equal("BookkeepingOnly", Recover(old, target, frame, plan, frame));
         Assert.Equal(1, archive.NativeCopies);
         archive.Copy(Base());
         Assert.Equal(1, archive.NativeCopies);
@@ -810,6 +810,218 @@ public sealed class GrowthArchiveContractModelTests
             new ReleaseClaim(Segment, 3, 9, 0, 0, 0, true, true)));
     }
 
+    [Fact]
+    public void Durable_approval_roundtrip_preserves_two_policy_fingerprints_at_same_version()
+    {
+        string first = new('A', 64), second = new('B', 64);
+        // Exact review counterexample: the existing JsonIgnore-style projection collides.
+        Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(new IgnoredFingerprintFixture(7) { PolicyContentFingerprint = first }),
+            JsonSerializer.SerializeToUtf8Bytes(new IgnoredFingerprintFixture(7) { PolicyContentFingerprint = second }));
+        byte[] a = WriteApproval(Approval(first)), b = WriteApproval(Approval(second));
+        Assert.False(a.AsSpan().SequenceEqual(b));
+        Assert.Equal(first, ReadApproval(a).Inspection.PolicyContentFingerprint);
+        Assert.Equal(second, ReadApproval(b).Inspection.PolicyContentFingerprint);
+        Assert.Equal(a, WriteApproval(ReadApproval(a))); Assert.Equal(b, WriteApproval(ReadApproval(b)));
+    }
+
+    [Theory]
+    [InlineData("missing-fingerprint")]
+    [InlineData("ignored-fingerprint")]
+    [InlineData("mismatched-current-policy")]
+    [InlineData("mismatched-operation")]
+    [InlineData("mismatched-version")]
+    [InlineData("unknown")]
+    [InlineData("duplicate")]
+    public void Durable_approval_serialization_mutants_reject_missing_or_changed_authority(string mutation)
+    {
+        DurableApproval a = Approval(new string('A', 64));
+        string bytes = Encoding.UTF8.GetString(WriteApproval(a));
+        switch (mutation)
+        {
+            case "missing-fingerprint":
+                string token = ",\"PolicyContentFingerprint\":\"" + new string('A', 64) + "\"";
+                int first = bytes.IndexOf(token, StringComparison.Ordinal); Need(first >= 0);
+                bytes = bytes.Remove(first, token.Length); break; // Keep PolicyCheck fingerprint intact.
+            case "ignored-fingerprint": bytes = bytes.Replace("\"PolicyContentFingerprint\"", "\"IgnoredFingerprint\"", StringComparison.Ordinal); break;
+            case "mismatched-current-policy": a = a with { PolicyCheck = a.PolicyCheck with { PolicyContentFingerprint = new string('B', 64) } }; break;
+            case "mismatched-operation": a = a with { PolicyCheck = a.PolicyCheck with { Operation = a.Operation with { ProcessId = 8 } } }; break;
+            case "mismatched-version": a = a with { Inspection = a.Inspection with { PolicyVersion = 8 } }; break;
+            case "unknown": bytes = bytes.Replace("\"Version\":1", "\"Version\":1,\"Extra\":0", StringComparison.Ordinal); break;
+            case "duplicate": bytes = bytes.Replace("\"Version\":1", "\"Version\":1,\"Version\":1", StringComparison.Ordinal); break;
+        }
+        if (mutation.StartsWith("mismatched-", StringComparison.Ordinal)) bytes = Encoding.UTF8.GetString(JsonSerializer.SerializeToUtf8Bytes(a, ApprovalJson));
+        Assert.ThrowsAny<Exception>(() => ReadApproval(Encoding.UTF8.GetBytes(bytes)));
+    }
+
+    [Theory]
+    [InlineData("fingerprint")]
+    [InlineData("blocked-fingerprint")]
+    [InlineData("binding")]
+    [InlineData("override")]
+    [InlineData("expired-at-consumption")]
+    [InlineData("space-failure")]
+    public void Justification_approval_mutants_cannot_change_the_checked_policy_or_version(string mutation)
+    {
+        DurableApproval a = Approval(new string('A', 64), true);
+        Assert.True(ReadApproval(WriteApproval(a)).Justified);
+        a = mutation switch
+        {
+            "fingerprint" => a with { Justification = a.Justification! with { PolicyContentFingerprint = new string('B', 64) } },
+            "blocked-fingerprint" => a with { Justification = a.Justification! with { BlockedPolicyFingerprint = new string('B', 64) } },
+            "binding" => a with { Justification = a.Justification! with { Binding = a.Binding with { DestinationGeneration = 6 } } },
+            "override" => a with { PolicyCheck = a.PolicyCheck with { OverrideAllowed = false } },
+            "expired-at-consumption" => a with { Justification = a.Justification! with { ConsumedAtUtcTicks = 2 } },
+            _ => a with { Inspection = a.Inspection with { Reason = "not_enough_staging_space" } }
+        };
+        Assert.Throws<InvalidDataException>(() => WriteApproval(a));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Durable_MayHaveIssued_refuses_the_review_second_native_mutation_after_restart(int kind)
+    {
+        var m = new PublicTransferModel(kind); m.NativeSuccess(); m = m.Restart();
+        Assert.Throws<InvalidDataException>(m.NativeSuccess); // Review's exact NativeSuccess/Restart/NativeSuccess sequence.
+        Assert.Equal(1, m.Copies); Assert.Equal(1, m.Renames);
+        Assert.Equal(kind == 1 ? "CompleteJournalOnly" : "Hold", m.RecoveryDecision);
+        if (kind == 1) { m.CompleteJournal(); m.PersistBudget(); }
+        else Assert.Throws<InvalidDataException>(m.CompleteJournal);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void MayHaveIssued_without_any_native_result_survives_restart_and_holds(int kind)
+    {
+        var m = new PublicTransferModel(kind); m.MayHaveIssuedBeforeNativeReturn(); m = m.Restart();
+        Assert.Equal("Hold", m.RecoveryDecision); Assert.Throws<InvalidDataException>(m.NativeSuccess);
+        Assert.Equal(0, m.Renames); Assert.True(m.FullDebitHeld);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Zero_acceptance_completion_replays_after_unrelated_budget_revision_and_slot_reuse(int kind)
+    {
+        var m = new PublicTransferModel(kind); m.NativeSuccess(); m.CompleteJournal();
+        byte[] source = m.OriginalCompletion;
+        m.AdvanceUnrelatedBudgetRevision(); m.AdvanceUnrelatedBudgetRevision();
+        Assert.Equal(11, m.CurrentBudgetRevision);
+        m.PersistBudget(source); m.Adopt();
+        Assert.Equal(12, BinaryPrimitives.ReadInt64LittleEndian(m.Receipt!.AsSpan(160)));
+        m.ReuseSlot(); m.AdvanceUnrelatedBudgetRevision(); m = m.Restart();
+        m.PersistBudget(source); m.Adopt();
+        Assert.Equal(33792, m.Charge); Assert.Equal(14, m.CurrentBudgetRevision); Assert.Equal(1, m.BudgetCommits);
+        Assert.Equal(0, BinaryPrimitives.ReadInt64LittleEndian(source.AsSpan(160)));
+    }
+
+    [Fact]
+    public void Held_reader_with_zero_reader_witness_is_not_a_storage_release()
+    {
+        var held = new ReleaseClaim(Segment, 3, 9, 1, 0, 0, false, false);
+        var forged = held with { Readers = 0, Persisted = true };
+        Assert.False(CanRelease(held, forged)); // Exact review counterexample.
+        var owners = new OwnerInventory(); int reader = owners.Admit(OwnerKind.Reader);
+        owners.Cancel(); owners.CloseAdmission();
+        Assert.False(owners.CanRelease(forged)); Assert.Throws<InvalidDataException>(() => owners.PersistWitness());
+        owners = owners.Restart(); Assert.False(owners.CanRelease(forged));
+        owners.Complete(reader); Assert.True(owners.CanRelease(owners.PersistWitness()));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Actual_owner_drain_and_admission_fence_are_independent_of_persisted_zero_counts(int kind)
+    {
+        var owners = new OwnerInventory(); int owner = owners.Admit((OwnerKind)kind);
+        owners.Cancel(); Assert.False(owners.AdmissionClosed);
+        owners.CloseAdmission();
+        var falseWitness = new ReleaseClaim(Segment, 3, 9, 0, 0, 0, true, false);
+        Assert.False(owners.CanRelease(falseWitness));
+        Assert.Throws<InvalidDataException>(() => owners.Admit(OwnerKind.Reader));
+        owners.Complete(owner); // A late native operation completes its old owner, never admits a new one.
+        Assert.True(owners.CanRelease(owners.PersistWitness()));
+        Assert.Throws<InvalidDataException>(() => owners.Admit(OwnerKind.Operation));
+    }
+
+    [Fact]
+    public void Zero_owner_count_without_closed_admission_is_not_a_drain_boundary()
+    {
+        var owners = new OwnerInventory();
+        Assert.False(owners.CanRelease(new(Segment, 3, 9, 0, 0, 0, true, false)));
+        Assert.Throws<InvalidDataException>(() => owners.PersistWitness());
+        owners.CloseAdmission(); Assert.True(owners.CanRelease(owners.PersistWitness()));
+    }
+
+    [Fact]
+    public void Public_transfer_cannot_use_asserted_Drained_while_a_reader_survives_cancellation()
+    {
+        var m = new PublicTransferModel(1); int reader = m.Owners.Admit(OwnerKind.Reader);
+        m.NativeSuccess(); m.Owners.Cancel();
+        Assert.True(m.Drained); Assert.Throws<InvalidDataException>(m.CompleteJournal);
+        Assert.Throws<InvalidDataException>(() => m.PersistBudget()); Assert.True(m.FullDebitHeld);
+        m.Owners.Complete(reader); m.CompleteJournal(); m.PersistBudget(); m.Adopt(); Assert.False(m.FullDebitHeld);
+    }
+
+    private static (byte[] Slot0, byte[] Slot1, byte[] Frames, byte[] Candidate, AppendPlan Plan) RecoveryScenario(int expectedSequence)
+    {
+        byte[] prior = expectedSequence == 1 ? [] : Frame([7, 8], 4096);
+        if (prior.Length > 0) Transfer.TryWriteBytes(prior.AsSpan(12, 16));
+        byte[] candidate = Frame([1, 2], 4096);
+        var plan = new AppendPlan((ulong)expectedSequence, 8192 + prior.Length, (ulong)expectedSequence + 1,
+            8192 + prior.Length + candidate.Length, Transaction);
+        byte[] old = Slot(4096, (ulong)expectedSequence, plan.ExpectedEnd, expectedSequence == 1 ? Guid.Empty : Segment);
+        byte[] target = Slot(4096, plan.TargetSequence, plan.TargetEnd, Transaction);
+        return expectedSequence == 1 ? (old, target, [.. prior, .. candidate], candidate, plan) :
+            (target, old, [.. prior, .. candidate], candidate, plan);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Valid_target_frontier_with_zero_candidate_is_held_in_both_parities(int expectedSequence)
+    {
+        var x = RecoveryScenario(expectedSequence);
+        Assert.Equal("Hold", Recover(x.Slot0, x.Slot1, x.Frames, x.Plan, new byte[4096]));
+    }
+
+    [Theory]
+    [InlineData(1, "payload")]
+    [InlineData(1, "hash")]
+    [InlineData(1, "padding")]
+    [InlineData(2, "payload")]
+    [InlineData(2, "hash")]
+    [InlineData(2, "padding")]
+    [InlineData(2, "earlier-prefix-payload")]
+    [InlineData(2, "earlier-prefix-padding")]
+    public void Valid_frontier_never_hides_independently_corrupt_selected_frame(int expectedSequence, string mutation)
+    {
+        var x = RecoveryScenario(expectedSequence); byte[] observed = x.Frames.ToArray();
+        int offset = mutation.StartsWith("earlier-", StringComparison.Ordinal) ? 0 : x.Plan.ExpectedEnd - 8192;
+        observed[offset + (mutation.EndsWith("padding", StringComparison.Ordinal) ? 62 : mutation == "hash" ? 28 : 60)] ^= 1;
+        Assert.Equal("Hold", Recover(x.Slot0, x.Slot1, observed, x.Plan, x.Candidate));
+        Assert.Equal("BookkeepingOnly", Recover(x.Slot0, x.Slot1, x.Frames, x.Plan, x.Candidate));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Repeated_interrupted_frontier_recovery_validates_prefix_and_never_issues_another_append(int expectedSequence)
+    {
+        var x = RecoveryScenario(expectedSequence); byte[][] slots = [x.Slot0, x.Slot1];
+        int targetIndex = (int)((x.Plan.TargetSequence - 1) % 2);
+        byte[] torn = slots[targetIndex].ToArray(); torn[96] ^= 1;
+        slots[targetIndex] = torn;
+        for (int attempt = 0; attempt < 2; attempt++) Assert.Equal("FrontierOnly", Recover(slots[0], slots[1], x.Frames, x.Plan, x.Candidate));
+        slots[targetIndex] = Slot(4096, x.Plan.TargetSequence, x.Plan.TargetEnd, Transaction);
+        for (int attempt = 0; attempt < 2; attempt++) Assert.Equal("BookkeepingOnly", Recover(slots[0], slots[1], x.Frames, x.Plan, x.Candidate));
+    }
+
     private static byte[] Decode64(string value, int length)
     {
         byte[] bytes = Convert.FromBase64String(value);
@@ -930,35 +1142,70 @@ public sealed class GrowthArchiveContractModelTests
         return high;
     }
     private sealed record AppendPlan(ulong ExpectedSequence, int ExpectedEnd, ulong TargetSequence, int TargetEnd, Guid Transaction);
-    private static string Recover(byte[] old, byte[] other, byte[] tail, AppendPlan? plan, byte[] candidate)
+    private static void ValidateSelectedPrefix(byte[] frames, int committedBytes)
+    {
+        Need(committedBytes >= 0 && committedBytes <= frames.Length);
+        int offset = 0;
+        while (offset < committedBytes)
+        {
+            Need(committedBytes - offset >= 60);
+            int length = BinaryPrimitives.ReadInt32LittleEndian(frames.AsSpan(offset + 8));
+            Need(length is > 0 and <= EnvelopeLimit);
+            int stride = Round(checked(60 + length), 4096);
+            Need(stride <= committedBytes - offset);
+            Guid id = new(frames.AsSpan(offset + 12, 16)); Need(id != Guid.Empty);
+            _ = ReadFrame(frames.AsSpan(offset, stride).ToArray(), 4096, id);
+            offset = checked(offset + stride);
+        }
+        Need(offset == committedBytes);
+    }
+    // Slots are physical slot 0/1. Frames contain independent observed bytes from
+    // segment offset 2*A to EOF, including the selected prefix and any actual tail.
+    private static string Recover(byte[] slot0, byte[] slot1, byte[] frames, AppendPlan? plan, byte[] candidate)
     {
         try
         {
-            Frontier expected = ReadSlot(old, 4096, 0);
-            bool zero = other.AsSpan().IndexOfAnyExcept((byte)0) < 0;
-            bool torn = false;
+            byte[][] slots = [slot0, slot1];
+            if (plan is null)
+            {
+                Frontier selected = SelectSlots(slot0, slot1);
+                Need(frames.Length == selected.End - 8192);
+                ValidateSelectedPrefix(frames, frames.Length); return "Idle";
+            }
+            Need(plan.ExpectedSequence > 0 && plan.TargetSequence == checked(plan.ExpectedSequence + 1) && plan.Transaction != Guid.Empty);
+            int expectedIndex = (int)((plan.ExpectedSequence - 1) % 2), targetIndex = 1 - expectedIndex;
+            Frontier expected = ReadSlot(slots[expectedIndex], 4096, expectedIndex);
+            Need(expected.Sequence == plan.ExpectedSequence && expected.End == plan.ExpectedEnd);
+            _ = ReadFrame(candidate, 4096, RecordId); // A zero candidate is never completion evidence.
+            Need(plan.TargetEnd == checked(expected.End + candidate.Length) && plan.TargetEnd <= SegmentLimit);
+            byte[] other = slots[targetIndex];
+            Need(other.Length == 4096);
+            bool zero = other.AsSpan().IndexOfAnyExcept((byte)0) < 0, torn = zero && expected.Sequence != 1;
             Frontier? next = null;
             if (!zero)
             {
-                try { next = ReadSlot(other, 4096, 1); }
+                try { next = ReadSlot(other, 4096, targetIndex); }
                 catch (InvalidDataException)
                 {
-                    // A fully checksummed conflicting slot is corruption, not a torn write.
-                    Need(other.Length == 4096 && !SHA256.HashData(other.AsSpan(0, 96)).AsSpan().SequenceEqual(other.AsSpan(96, 32)));
+                    // A checksummed conflicting slot is corruption, not a tear to overwrite.
+                    Need(!SHA256.HashData(other.AsSpan(0, 96)).AsSpan().SequenceEqual(other.AsSpan(96, 32)));
                     torn = true;
                 }
             }
-            if (plan is null) return !torn && zero && expected.Sequence == 1 && tail.Length == 0 ? "Idle" : "Hold";
-            Need(plan.ExpectedSequence == expected.Sequence && plan.ExpectedEnd == expected.End &&
-                plan.TargetSequence == checked(expected.Sequence + 1) && plan.Transaction != Guid.Empty);
-            Need(plan.TargetEnd == checked(expected.End + candidate.Length) && plan.TargetEnd <= SegmentLimit);
-            if (next is not null)
+            int oldBytes = checked(expected.End - 8192);
+            ValidateSelectedPrefix(frames, oldBytes);
+            if (next is not null && next.Sequence == plan.TargetSequence)
             {
-                Need(next.Sequence == plan.TargetSequence && next.End == plan.TargetEnd && next.Transaction == plan.Transaction && tail.Length == 0);
+                Need(next.End == plan.TargetEnd && next.Transaction == plan.Transaction && next.Transaction != expected.Transaction);
+                Need(frames.Length == next.End - 8192);
+                ValidateSelectedPrefix(frames, frames.Length); // Before BookkeepingOnly, not after.
+                Need(frames.AsSpan(oldBytes).SequenceEqual(candidate));
                 return "BookkeepingOnly";
             }
-            if (tail.Length == 0) return torn ? "Hold" : "IssueOnce";
-            Need(tail.AsSpan().SequenceEqual(candidate)); _ = ReadFrame(tail, 4096, RecordId);
+            if (next is not null) Need(next.Sequence + 1 == expected.Sequence && next.End < expected.End && next.Transaction != expected.Transaction);
+            if (frames.Length == oldBytes) return torn ? "Hold" : "IssueOnce";
+            Need(frames.AsSpan(oldBytes).SequenceEqual(candidate));
+            ValidateSelectedPrefix(frames, frames.Length);
             return "FrontierOnly";
         }
         catch (InvalidDataException) { return "Hold"; }
@@ -1168,64 +1415,195 @@ public sealed class GrowthArchiveContractModelTests
         if (kind == 1) Need(b.AsSpan(192, 64).SequenceEqual(b.AsSpan(1264, 64)) &&
             b.AsSpan(256, 4).SequenceEqual(b.AsSpan(1328, 4)) && leaf == original);
     }
+    private sealed record ApprovalIdentity(ulong VolumeSerialNumber, ulong FileIdLow, ulong FileIdHigh);
+    private sealed record ApprovalBinding(Guid OperationId, Guid TransferId, long AllocationGeneration, long DestinationGeneration,
+        ApprovalIdentity StageIdentity, ApprovalIdentity SnapshotIdentity, long Length, string Sha256, string RequestorSid, uint SessionId);
+    private sealed record ApprovalOperation(string FilePath, string FileName, string Extension, long SizeBytes, long LastWriteUtcTicks,
+        string ProcessName, int ProcessId, string DestinationPath, int Destination);
+    private sealed record ApprovalFinding(int Category, string MaskedSnippet, string? MemberName);
+    private sealed record ApprovalInspection(int Verdict, ApprovalFinding[] Findings, string? Reason, long ElapsedMs,
+        bool FromCache, int PolicyVersion, bool InScope, string PolicyContentFingerprint);
+    private sealed record ApprovalPolicyCheck(ApprovalOperation Operation, int PolicyVersion, string PolicyContentFingerprint,
+        bool ProcessExcluded, bool DestinationMonitored, bool ExtensionMonitored, bool OverrideAllowed);
+    private sealed record ApprovalJustification(Guid ReceiptId, ApprovalBinding Binding, int PolicyVersion,
+        string PolicyContentFingerprint, int BlockedPolicyVersion, string BlockedPolicyFingerprint,
+        long ConsumedAtUtcTicks, long ExpiresAtUtcTicks);
+    private sealed record DurableApproval(int Version, ApprovalBinding Binding, ApprovalOperation Operation,
+        ApprovalInspection Inspection, ApprovalPolicyCheck PolicyCheck, bool Justified, ApprovalJustification? Justification);
+    private sealed record IgnoredFingerprintFixture(int PolicyVersion)
+    {
+        [System.Text.Json.Serialization.JsonIgnore] public string? PolicyContentFingerprint { get; init; }
+    }
+    private static readonly JsonSerializerOptions ApprovalJson = new()
+    {
+        MaxDepth = 16, RespectRequiredConstructorParameters = true,
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow
+    };
+    private static DurableApproval Approval(string fingerprint, bool justified = false)
+    {
+        var identity = new ApprovalIdentity(ulong.MaxValue, 9, ulong.MaxValue);
+        var binding = new ApprovalBinding(Transaction, Transfer, 4, 5, identity, identity, 123,
+            new string('C', 64), "S-1-5-21-1-2-3-1001", 1);
+        var op = new ApprovalOperation("private", "saved.txt", ".txt", 123, 1, "app.exe", 7, "destination", 2);
+        return new(1, binding, op, new(justified ? 1 : 0, [], null, 1, false, 7, true, fingerprint),
+            new(op, 7, fingerprint, false, true, true, justified), justified,
+            justified ? new(RecordId, binding, 7, fingerprint, 7, fingerprint, 1, 2) : null);
+    }
+    private static bool Hex64(string? value) => value is { Length: 64 } && value.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F');
+    private static void ValidateApproval(DurableApproval a)
+    {
+        Need(a.Version == 1 && a.Binding is not null && a.Operation is not null && a.Inspection is not null && a.PolicyCheck is not null);
+        var b = a.Binding!; var op = a.Operation!; var i = a.Inspection!; var c = a.PolicyCheck!;
+        Need(b.OperationId != Guid.Empty && b.TransferId != Guid.Empty && b.AllocationGeneration > 0 && b.DestinationGeneration > 0 &&
+            b.StageIdentity is not null && b.SnapshotIdentity is not null && (b.StageIdentity.FileIdLow | b.StageIdentity.FileIdHigh) != 0 &&
+            (b.SnapshotIdentity.FileIdLow | b.SnapshotIdentity.FileIdHigh) != 0 && b.Length >= 0 && Hex64(b.Sha256) && !string.IsNullOrEmpty(b.RequestorSid));
+        Need(op.SizeBytes == b.Length && op.LastWriteUtcTicks >= 0 && op.LastWriteUtcTicks <= DateTime.MaxValue.Ticks && op.ProcessId > 0 &&
+            op.FilePath is { Length: > 0 and <= 512 } && op.DestinationPath is { Length: > 0 and <= 512 } &&
+            op.FileName is { Length: > 0 and <= 255 } && op.Extension is { Length: <= 255 } &&
+            op.ProcessName is { Length: > 0 and <= 512 } && op.Destination is >= 0 and <= 4);
+        foreach (string value in new[] { op.FilePath, op.FileName, op.Extension, op.ProcessName, op.DestinationPath })
+        { Need(!value.Contains('\0')); _ = new UnicodeEncoding(false, false, true).GetByteCount(value); }
+        Need(i.InScope && i.ElapsedMs >= 0 && i.PolicyVersion > 0 && Hex64(i.PolicyContentFingerprint) && i.Findings is not null);
+        foreach (var f in i.Findings!) Need(f.Category is >= 0 and <= 4 && f.MaskedSnippet is not null);
+        Need(c.Operation == op && c.PolicyVersion == i.PolicyVersion && c.PolicyContentFingerprint == i.PolicyContentFingerprint &&
+            !c.ProcessExcluded && c.DestinationMonitored && (op.SizeBytes == 0 && !a.Justified || c.ExtensionMonitored));
+        if (!a.Justified) Need(i.Verdict == 0 && a.Justification is null);
+        else
+        {
+            var j = a.Justification;
+            Need(i.Verdict == 1 && i.Reason != "not_enough_staging_space" && c.OverrideAllowed && j is not null);
+            Need(j!.ReceiptId != Guid.Empty && j.Binding == b && j.PolicyVersion == i.PolicyVersion &&
+                j.PolicyContentFingerprint == i.PolicyContentFingerprint && j.BlockedPolicyVersion == i.PolicyVersion &&
+                j.BlockedPolicyFingerprint == i.PolicyContentFingerprint && j.ConsumedAtUtcTicks >= 0 &&
+                j.ConsumedAtUtcTicks < j.ExpiresAtUtcTicks && j.ExpiresAtUtcTicks <= DateTime.MaxValue.Ticks);
+        }
+    }
+    private static byte[] WriteApproval(DurableApproval a)
+    { ValidateApproval(a); byte[] b = JsonSerializer.SerializeToUtf8Bytes(a, ApprovalJson); Need(b.Length <= ControlLimit); return b; }
+    private static DurableApproval ReadApproval(byte[] bytes)
+    {
+        Need(bytes.Length is > 0 and <= ControlLimit); _ = new UTF8Encoding(false, true).GetString(bytes);
+        using JsonDocument d = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 16 }); Unique(d.RootElement);
+        DurableApproval result = JsonSerializer.Deserialize<DurableApproval>(bytes, ApprovalJson) ?? throw new InvalidDataException();
+        ValidateApproval(result); return result;
+    }
+    private enum PublicIssueState { ReservedNotIssued = 1, MayHaveIssued = 2, Completed = 3 }
     private sealed class PublicTransferModel(int kind)
     {
         private readonly byte[] _binding = PublicCompletion(kind);
         private bool _liveSuccess, _boundFacts, _journal, _applied, _reused;
+        private PublicIssueState _issue = PublicIssueState.ReservedNotIssued; // Durable claim, never reset by restart.
+        public OwnerInventory Owners { get; private set; } = new();
+        public long CurrentBudgetRevision { get; private set; } = 9;
+        public byte[] OriginalCompletion => _binding.ToArray();
         public byte[]? Receipt { get; private set; }
         public bool Authority = true, Drained = true, ExactNativeFacts = true, AmbiguousPersistence, OtherHold;
         public int Copies { get; private set; }
         public int Renames { get; private set; }
         public int BudgetCommits { get; private set; }
-        public int Charge { get; private set; } = 66560; // 4*C + metadata, C=16384.
+        public int Charge { get; private set; } = 66560;
         public bool FullDebitHeld => !_applied || OtherHold;
+        public string RecoveryDecision => Receipt is not null ? "AdoptOnly" : _journal ? "PersistBudgetOnly" :
+            _issue == PublicIssueState.MayHaveIssued ? (_liveSuccess || _boundFacts && ExactNativeFacts ? "CompleteJournalOnly" : "Hold") : "IssuePermitted";
+        public void MayHaveIssuedBeforeNativeReturn()
+        {
+            Need(RecoveryDecision == "IssuePermitted" && _issue == PublicIssueState.ReservedNotIssued);
+            _issue = PublicIssueState.MayHaveIssued; // Persist before invoking copy/rename.
+        }
         public void NativeSuccess()
         {
-            Need(!_liveSuccess && !_journal && Receipt is null);
+            Need(RecoveryDecision == "IssuePermitted");
+            int operation = Owners.Admit(OwnerKind.Operation);
+            MayHaveIssuedBeforeNativeReturn();
             Copies++; Renames++; _liveSuccess = true; _boundFacts = kind == 1;
+            Owners.CloseAdmission(); Owners.Complete(operation);
         }
         public void CompleteJournal()
-        { if (_journal) return; Need(_liveSuccess || _boundFacts && ExactNativeFacts); _journal = true; }
-        public byte[] ExpectedReceipt() { byte[] b = _binding.ToArray(); Put64(b, 160, 10); return b; }
+        {
+            if (_journal) return;
+            Need(RecoveryDecision == "CompleteJournalOnly" && Owners.ActuallyDrained);
+            _journal = true; _issue = PublicIssueState.Completed;
+        }
+        public void AdvanceUnrelatedBudgetRevision() => CurrentBudgetRevision = checked(CurrentBudgetRevision + 1);
+        public byte[] ExpectedReceipt()
+        {
+            if (Receipt is not null) return Receipt.ToArray();
+            byte[] b = _binding.ToArray(); Put64(b, 160, checked(CurrentBudgetRevision + 1)); return b;
+        }
         public void PersistBudget(byte[]? bytes = null)
         {
-            bytes ??= ExpectedReceipt();
-            if (Receipt is not null) { Need(Receipt.AsSpan().SequenceEqual(bytes)); return; }
-            Need(_journal && Authority && Drained && ExactNativeFacts && !AmbiguousPersistence && !_reused);
-            ValidatePublicEncoding(bytes, completion: false);
-            Need(BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(160)) == 10);
-            byte[] normalized = bytes.ToArray(); Put64(normalized, 160, 0);
+            bytes ??= OriginalCompletion; // Actual API input is the zero-acceptance journal completion.
+            byte[] normalized = bytes.ToArray();
+            Need(normalized.Length == 2048);
+            long suppliedRevision = BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(160));
+            Put64(normalized, 160, 0);
+            if (Receipt is not null)
+            {
+                byte[] acceptedSource = Receipt.ToArray(); Put64(acceptedSource, 160, 0);
+                Need(normalized.AsSpan().SequenceEqual(acceptedSource) && (suppliedRevision == 0 || bytes.AsSpan().SequenceEqual(Receipt)));
+                return; // Before inspecting a possibly reused current slot/revision.
+            }
+            Need(_journal && _issue == PublicIssueState.Completed && Authority && Drained && Owners.ActuallyDrained &&
+                ExactNativeFacts && !AmbiguousPersistence && !_reused);
+            ValidatePublicEncoding(normalized, completion: true);
             Need(normalized.AsSpan().SequenceEqual(_binding));
-            Receipt = bytes.ToArray(); BudgetCommits++;
+            long accepted = checked(CurrentBudgetRevision + 1);
+            Need(suppliedRevision == 0 || suppliedRevision == accepted);
+            Receipt = normalized; Put64(Receipt, 160, accepted);
+            CurrentBudgetRevision = accepted; BudgetCommits++;
         }
         public void Adopt()
         {
             Need(Receipt is not null);
             if (_applied) return;
-            _applied = true; Charge = OtherHold ? 66560 : 17408;
+            _applied = true; Charge = OtherHold ? 66560 : _reused ? 33792 : 17408;
         }
-        public void ReuseSlot() { Need(_applied); _reused = true; Charge = 33792; }
+        public void ReuseSlot() { Need(_applied); _reused = true; AdvanceUnrelatedBudgetRevision(); Charge = OtherHold ? 66560 : 33792; }
         public PublicTransferModel Restart()
         {
             var next = new PublicTransferModel(kind)
             {
-                _boundFacts = _boundFacts, _journal = _journal, Receipt = Receipt?.ToArray(), _reused = _reused,
+                _issue = _issue, _boundFacts = _boundFacts, _journal = _journal, Receipt = Receipt?.ToArray(), _reused = _reused,
+                Owners = Owners.Restart(), CurrentBudgetRevision = CurrentBudgetRevision,
                 Authority = Authority, Drained = Drained, ExactNativeFacts = ExactNativeFacts, OtherHold = OtherHold,
                 Copies = Copies, Renames = Renames, BudgetCommits = BudgetCommits
             };
-            if (next.Receipt is not null)
-            {
-                next.Adopt();
-                // Current durable inventory can be newer than the saved receipt.
-                if (next._reused && !next.OtherHold) next.Charge = 33792;
-            }
+            if (next.Receipt is not null) next.Adopt();
             return next;
+        }
+    }
+    private enum OwnerKind { Reader, Section, Operation }
+    private sealed class OwnerInventory
+    {
+        private readonly Dictionary<int, OwnerKind> _active = new();
+        private int _next;
+        public bool AdmissionClosed { get; private set; }
+        public bool CancellationRequested { get; private set; }
+        public bool ActuallyDrained => AdmissionClosed && _active.Count == 0;
+        public int Admit(OwnerKind kind)
+        {
+            Need(!AdmissionClosed);
+            int id = checked(++_next); _active.Add(id, kind); return id;
+        }
+        public void Cancel() => CancellationRequested = true; // Does not close admission or dispose any owner.
+        public void CloseAdmission() => AdmissionClosed = true;
+        public void Complete(int id) { Need(_active.Remove(id)); }
+        public ReleaseClaim Held => new(Segment, 3, 9, _active.Values.Count(k => k == OwnerKind.Reader),
+            _active.Values.Count(k => k == OwnerKind.Section), _active.Values.Count(k => k == OwnerKind.Operation), false, false);
+        public ReleaseClaim PersistWitness()
+        { Need(ActuallyDrained); return Held with { Persisted = true }; }
+        public bool CanRelease(ReleaseClaim proof) => ActuallyDrained && GrowthArchiveContractModelTests.CanRelease(Held, proof);
+        public OwnerInventory Restart()
+        {
+            var result = new OwnerInventory { _next = _next, AdmissionClosed = AdmissionClosed, CancellationRequested = CancellationRequested };
+            foreach (var p in _active) result._active.Add(p.Key, p.Value); // Independent retained owners; restart proves no close.
+            return result;
         }
     }
     private sealed record ReleaseClaim(Guid Identity, long Incarnation, long Revision, int Readers, int Sections,
         int Operations, bool Persisted, bool PublicPromotion);
     private static bool CanRelease(ReleaseClaim held, ReleaseClaim proof) => held.Identity == proof.Identity &&
-        held.Incarnation == proof.Incarnation && held.Revision == proof.Revision && proof.Readers == 0 && proof.Sections == 0 &&
+        held.Incarnation == proof.Incarnation && held.Revision == proof.Revision && held.Readers == 0 && held.Sections == 0 && held.Operations == 0 && proof.Readers == 0 && proof.Sections == 0 &&
         proof.Operations == 0 && proof.Persisted && !proof.PublicPromotion;
     private static void Need(bool condition) { if (!condition) throw new InvalidDataException("Reference contract refused input"); }
 }

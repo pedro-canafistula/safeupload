@@ -1,7 +1,11 @@
 # T9 growing reservations: revision 8 implementation contracts
 
 2026-10-28. **Proposed addendum and pure models for independent review; no product implementation.**
-**Revision 8 is proposed, pending independent review.** It adds the increment-4
+**Revision 8 remains proposed, pending independent re-review.** The independent
+[revision-8 review](../../../evidence/2026-10-28/t9-growth-rev8-review-sol-high.md)
+returned REVISE. This follow-up changes findings 2–5 in the proposal/pure models;
+finding 1's actual serializer prerequisite remains OPEN with the ordered work
+list in 12.1.4. No review-acceptance or implementation gate is self-closed. It adds the increment-4
 before-coding audit (12.1.3), release ownership (9.3), strict archive/serializer
 contracts (10.5), and legacy migration (10.6), with product-independent models.
 O1/O2/O3 reflect the owner decisions of 2026-10-28; no checkbox or execution gate
@@ -2334,13 +2338,10 @@ retains original Transfer/SID/process identity, destination binding, security,
 seed/read/export evidence and relevant policy/justification history. WitnessId
 matches AuthorizationWitnessId; validate existing authorization checks against
 that exact snapshot, never a Boolean or a SYSTEM handle grant. PublicationApproval
-is required-null for hand-back; publication requires the complete existing
-publisher `{Operation, Inspection, Justified}` values (FileOperation,
-InspectionResult, Boolean) from the successful policy/justification check, also
-held by unbound ConfirmedPublication. The bound producer must carry the same
-publisher values and existing current-policy revalidation through its native
-permit path. Persist only from that checked successful operation; Entry
-Approved/Released alone does not reconstruct an inspection/authorization.
+is required-null for hand-back; publication requires the strict versioned DTO
+in **9.3.2**, explicitly copying PolicyContentFingerprint rather than using
+InspectionResult's JsonIgnore projection. Bound and unbound producers retain
+the same checked operation/inspection/justification and native-completion binding.
 Claim/Authorization are retained with the completion even after slot reuse or
 source compaction. CompletionBase64 is the exact receipt layout above
 with **AcceptedBudgetRevision=0 only here**; all other fields, including the
@@ -2416,6 +2417,97 @@ including complete source Entry, inspection/authorization and claim snapshots
 first boot as applicable. The actual schema-3 serializer prerequisite remains
 open; O3 itself is decided. R5-S05 below owns the pure/source/native/protected proof in **4**;
 no readiness, threshold, cap, ABI or cutover gate is closed here.
+
+### 9.3.2 Strict durable publication approval (review finding 2)
+
+`InspectionResult.PolicyContentFingerprint` is `[JsonIgnore]`; serializing that
+product type loses the inspected policy identity. Select this **explicit data
+schema**, not the product type's JSON projection. It records historical checked
+authority; it never authorizes publication/justification again after restart.
+All fields below are required, including explicit nulls; exact case, no unknown
+or duplicate properties at any depth, numeric strings/fractions/exponents,
+unknown enums or malformed UTF-8/UTF-16. Canonical writer order is the order below,
+compact UTF-8/default escaping, no BOM. Whole enclosing record depth <=16 and
+64/128 KiB limits still apply; there is no extra allowance for this snapshot.
+
+`PublicationApproval = {Version:1, Binding, Operation, Inspection, PolicyCheck,
+Justified Boolean, Justification}` with exact nested schemas:
+
+| Object | Exact fields / validation |
+|---|---|
+| Binding | `{OperationId GUID, TransferId GUID, AllocationGeneration i64, DestinationGeneration i64, StageIdentity, SnapshotIdentity, Length i64, Sha256 string, RequestorSid string, SessionId u32}`. IDs/nonzero identities/generations and original SID/session match the retained promotion claim, completion and original journal; SHA256 is 64 uppercase hex, length nonnegative. Digest binds inspected content only, never object authority. Snapshot identity is the exact inspected version, not a path lookup. |
+| Operation | `{FilePath, FileName, Extension, SizeBytes i64, LastWriteUtcTicks i64, ProcessName, ProcessId i32, DestinationPath, Destination i32}`: preserve all original FileOperation fields; strings strict UTF-16/NUL-free; FilePath/DestinationPath 1..512 UTF-16 characters, FileName 1..255, Extension 0..255, ProcessName 1..512 (the original bounded wire name remains the source); process ID positive, size=Binding.Length, destination enum 0..4. UTC ticks 0..DateTime.MaxValue.Ticks preserve LastWriteUtc's UTC instant. These locators do not replace held destination or caller authority. |
+| Inspection | `{Verdict i32, Findings, Reason nullable string, ElapsedMs i64, FromCache Boolean, PolicyVersion i32, InScope Boolean, PolicyContentFingerprint string}`. Explicitly copy fingerprint from the live result; require **64 uppercase hex**, positive policy version, InScope=true, elapsed>=0. Findings contains the complete masked `{Category i32 (0..4), MaskedSnippet string, MemberName nullable string}` list; no omission/truncation to fit. Do not persist computed Categories/IsBlocked/FailureKind as competing authority. |
+| PolicyCheck | `{Operation, PolicyVersion i32, PolicyContentFingerprint string, ProcessExcluded Boolean, DestinationMonitored Boolean, ExtensionMonitored Boolean, OverrideAllowed Boolean}` from the existing successful **current-policy recheck at the native promotion**, not a later policy load. Exact Operation equals the operation above; version and fingerprint equal Inspection ordinally. ProcessExcluded=false, DestinationMonitored=true. Clean zero-length approval has the existing extension exception; otherwise ExtensionMonitored=true. These fields must be supplied only by the existing checked publisher, not accepted as independently authentic booleans from a peer. |
+| Justification | Null exactly when Justified=false; otherwise `{ReceiptId GUID, Binding, PolicyVersion i32, PolicyContentFingerprint string, BlockedPolicyVersion i32, BlockedPolicyFingerprint string, ConsumedAtUtcTicks i64, ExpiresAtUtcTicks i64}`. Capture the actual one-use consumption and matching previously blocked journal evidence: Binding equals the approval Binding (including user/session, exact version/snapshot, length/digest); all three policy-version/fingerprint pairs equal Inspection/PolicyCheck; ReceiptId nonempty; 0<=ConsumedAt<ExpiresAt<=DateTime.MaxValue.Ticks. This is a historical timestamp check, not a renewed window. |
+
+Clean publication requires Justified=false, Inspection.Verdict=Approved (0),
+Justification=null and the existing `IsCurrentStagedApprovalAsync` check.
+Justified publication requires Blocked (1), Justified=true, the complete consumed
+justification above, PolicyCheck.OverrideAllowed=true and the existing
+`IsCurrentStagedJustificationAllowedAsync` plus seed/export checks; staging-space
+failure can never justify publication. Other verdicts supply no approval. This
+snapshot adds no exception to incomplete-inspection, caller-grant, seed-read/
+export or current-policy requirements. Record only the checked successful
+operation's evidence; approval serialization itself is no native permit.
+
+The producer must independently bind this DTO to the completion/claim/source
+Entry and actual inspection/justification, including BlockedPolicyFingerprint
+when justified. A missing fingerprint, even on an old clean Approved/Released
+Entry, cannot be filled from today's policy or inferred from the version number.
+After a durable completion, policy replacement does not rewrite historical
+accounting evidence; any fresh publication/export still needs fresh authority.
+Native unbound/bound producers must both carry these explicit fields instead
+of round-tripping InspectionResult. The source-state/receipt snapshots retain
+these bytes across slot reuse and packing.
+
+`GrowthArchiveContractModelTests` models this schema without product types,
+including a JsonIgnore-style collision mutant, two distinguishable fingerprints
+at the same human policy version, strict round trips and changed operation/
+policy/justification negatives. Complete product codecs/maximal shapes remain
+finding 1's separate work list in 12.1.4. Controls: **R5-S05 / increment 4
+[before-coding model/design acceptance]** and **[before-use] actual DTO codecs,
+producer correlation and source-boundary tests**, followed by its unchanged
+source-review/native/qualification gates.
+
+### 9.3.3 Durable issue uncertainty and independent owner drain (findings 3–4)
+
+The promotion claim's durable MayHaveIssued state survives loss of every volatile
+success flag and service restart. Before any native copy/rename it is persisted;
+restart never changes it to ReservedNotIssued. The only next actions are exact
+native-result reconciliation, completion/budget bookkeeping or Held. A retained
+bound native receipt may prove completion; absence of such proof for unbound or
+hand-back holds. Neither an existing path/digest nor a reset live-success flag
+permits another copy/rename. Only a definitive **closed-issuer non-creation**
+transition can discharge an issue claim that did no work; no timer/restart does.
+Completed source-journal state remains irreversible and is replayed as bookkeeping.
+
+Acceptance validates immutable ClaimRevision and all binding evidence separately
+from current budget R. Unrelated slot/namespace bookkeeping may advance R; a
+fresh acceptance recomputes the full transition at checked current R+1 without
+rewriting the source completion's zero acceptance word. After acceptance an
+exact original **zero-acceptance** completion resolves the retained receipt
+first and returns saved R, even after unrelated R changes/slot reuse; no second
+refund or repeated public mutation. Changed alias bytes refuse. R5-S05 / **4
+[before-coding model acceptance]** attempts NativeSuccess→Restart→NativeSuccess
+for **all three** proof kinds and drives reconciliation from durable issue state,
+including no-result MayHaveIssued, unrelated revisions and zero-word replay.
+
+Actual owner inventory is independent of the serialized witness. Admission of
+readers, sections and native operations is counted before ownership escapes;
+close admission irreversibly before asking for drain. Cancellation merely
+requests work to end; it neither disposes a reader nor completes a native call.
+Already admitted owners complete/dispose on their original claim after closure;
+new admission after closure refuses. A release requires **both** the actual
+closed inventory to have zero owners and the matching persisted identity/
+incarnation/claim/witness. A witness asserting zero cannot override a live reader
+or late operation, even if its other fields match. Restart/serialized zeros do
+not clear independent retained owner custody; unavailable evidence stays charged
+and sticky Unknown stays until reboot. R5-S04/R5-S05 / **4 [before-coding model
+acceptance]** cover held-reader/zero-witness, surviving cancellation, late native
+completion and post-closure admission; their **[before-first-boot]** actual
+lifetime/teardown review and **[before-qualification]** native/protected owners
+remain required. Pure counters establish no OS lifetime fact.
 
 ## 10. Shared completed history and persistent downgrade marker
 
@@ -2930,6 +3022,14 @@ and no extra tail: reestablish F1/EOF/F2 then frontier only. No issued bytes:
 issue once after fencing old native work. Partial/mismatched tail: retain charged
 residue/Held. Unknown extra tail, both slots invalid or identity mismatch: Held.
 A torn target slot with full exact frame permits inactive-slot repair only.
+The recovery model receives **independent observed segment bytes and candidate
+bytes**, plus physical slot 0/1, never a candidate as a stand-in for the selected
+prefix. Even a valid target frontier cannot yield BookkeepingOnly until every
+selected frame (including prior frames) has valid payload length/hash/zero
+padding and the intended target frame equals the saved candidate at its exact
+offset. A zero candidate or corrupt selected prefix holds. Both old/target slot
+parities and repeated interrupted frontier-only/bookkeeping recovery are modeled;
+actual codec/native selectors still require R4-H04/N-U8-02.
 Repeated interruption of recovery does not add an append or replay native success.
 This model deliberately does not simulate native allocation policy/durability.
 
@@ -3319,18 +3419,50 @@ VSTest's local socket was denied by the sandbox; a temporary in-process reflecti
 runner expanded all xUnit Fact/InlineData rows and invoked the same real xUnit
 assertions. It is not a Windows matrix runner.
 
-O3 follow-up at base `33666481` (same SDK and in-process xUnit runner):
+Earlier O3 follow-up at base `33666481` (same SDK and in-process xUnit runner):
 **81 added O3 cases + 117 prior contract cases + 70 unchanged fit cases = 268
 discovered/executed/passed per Debug/Release configuration; 536 executions,
 zero failures/skips in the final runs**. Feature Debug/Release Service/App/Tests
 compile passes all six builds with warnings treated as errors. These are local
 diagnostic results; independent review and actual source/native controls remain.
+
+Revision-8 review follow-up at base `4b2bdfe6` (SDK **10.0.400**, same
+in-process xUnit diagnostic runner): **41 additional review cases** (finding 2:
+14; finding 3: 9; finding 4: 6; finding 5: 12), **239 contract + 70 unchanged fit =
+309 discovered/executed/passed per Debug/Release configuration; 618 executions,
+zero failures/skips**. Final local feature Service/App/Tests compile passes all
+six builds with warnings treated as errors. These are pure DTO/state/byte models,
+not finding 1's actual schema-3 serializers, native custody or pair qualification.
 Actual serializer prerequisites,
 native storage/durability, source acceptance and protected-pair qualification
 remain separate; these counts close no checkbox. This revision permits no product source,
 network, builder/VM or commit work. All modern readiness/capability/admission and
 cap-removal gates remain open. New kind 4 and strict JSON/claim schema additions
 are proposals requiring independent review, not changes to shipped/passive ABIs.
+
+### 12.1.4 Finding 1: ordered passive-codec work before increment-4 consumers
+
+**OPEN; this revision implements none of this product-code work.** Increment-3
+first boot, a pure model or a 2048-byte receipt layout cannot discharge it.
+Paths below are under `agente/SafeUpload.Agent.Service/Interception/` unless
+qualified; names marked proposed are files to create in that separate task.
+Follow this order, retaining shipped v1/v2 behavior and all current admission/
+review/Windows gates. No consumer, native mutation or readiness success precedes
+the applicable passive proof.
+
+| Order / tag / files | Concrete deliverable and controls |
+|---|---|
+| 1 / **[before-coding dependent 4]** `ResourceStateV3.cs` (proposed types first); composed `ResourceStateCodecV3.cs` is step 3; read existing `ResourceStateV2.cs`/`ResourceStateCodecV2.cs` unchanged | Define complete schema 3 by extending the accepted v2 representation, never relabelling v2. Include InstallationId/InitialCapacity/RetirementWitnessId, every slot/incarnation/claim including DrainWitnessId, InitialResolution (all saved request/fence/query/ACK bytes), GrowthReplay HighWater/latest, IdentityCaptured companion transaction, HistoryHandoff, both CustodyTransfers cells with full completions, nested authorization Entries/explicit approval/native facts. Specify exact required-null/duplicate/unknown/enum/numeric/UTF-8/UTF-16/u64 and checked phase/debit/identity rules for the composed reader in step 3. Declare full typed shapes without an accepting partial reader or I/O/negotiation; type scaffolding closes no codec gate. |
+| 2 / **[before-coding dependent 4]** `PublicCustodyReceiptV3.cs`, `PublicationApprovalCodecV1.cs`, `ResourceStorageCodecV3.cs` (proposed); reuse `SafeUpload.Agent.Minifilter/ResourceWireV32.cs` and `ResourceControlWireV32.cs` | Exact Kind=5 2048-byte receipt/completion and explicit 9.3.2 DTO; fixed companion 192, marker/inventory 128, frame header 60 and frontier 128-in-A codecs. Validate canonical Base64 including 1192/160/1272/72/2112-byte source records, native order/length/reserved bytes, zero acceptance only on source completion. Paired existing C/C# passive ABI layout checks stay distinct; do not add a producer. `PublicCustodyReceiptV3Tests.cs`/`PublicationApprovalCodecV1Tests.cs` (proposed) cover **every occupied byte/length/reserved/role/kind mutation**, fingerprint JsonIgnore loss, full caller/generation/operation/native/justification binding and no cross-version interpretation. |
+| 3 / **[before-coding dependent 4]** `ResourceStateCodecV3.cs` and `StagedJournalEnvelopeV2Codec.cs` (proposed, composing step-2 leaf codecs); existing `StagedTransferJournal.cs` Entry shapes are source definitions, not authorization to edit their runtime paths yet | Complete strict ledger reader/serializer and phase/debit/identity validator from step 1, plus modern hot/closure envelope and Entry DTO with two CustodyTransferCompletions cells; complete source Entry snapshots omit their own completion field to prevent recursion. Preserve explicit fingerprint/inspection, consumed justification, claim/rundown and complete bound native receipt. Resource-only binding-null, TransferClosure and ACK delta nullability/base eligibility must round trip exactly. Add `ResourceStateV3Tests.cs` and `StagedJournalEnvelopeV2CodecTests.cs` (proposed): full valid shapes, v2 rejecting v3, original bytes/counters preserved, one-field phase/debit corruption, and duplicate/unknown properties at every depth, missing required-null fields and source-record cross-binding negatives. Legacy Entry/kind-4 reader unchanged. |
+| 4 / **[before-coding dependent 4]** `CompletedArchiveV3Codec.cs` and `CompletedArchiveSelectionV3.cs` (proposed); read `StagedTerminalArchive.cs`, `StagedSpaceUpgrade.cs` and 10.2–10.6 | Typed candidate, append.intent (including compaction owner/legacy tuple), compaction.intent/cursor, mixed legacy prefix and exact base/delta/ACK selection. Enforce four occupied child-credit schedule and <=32 source/target inventories in representation; no extra files/handles in a pure codec. `CompletedArchiveV3CodecTests.cs`/`CompletedArchiveSelectionV3Tests.cs` (proposed) compare actual codec bytes to independent frame/frontier/candidate model inputs, both parities, old+new inventory and all preserved witnesses; no modern tail truncation, numeric-range-only proof or automatic native recovery. |
+| 5 / **[before-coding dependent 4]** `ResourceTransitionsV3.cs` (proposed), consumed later by `StagedSpaceBudget.cs`/`StagedSpaceUpgrade.cs`/native store adapters | Pure expected-R/current-state→candidate-state transitions for reserve→MayHaveIssued→captured→drained, initial fence/success/ACK debt, growth/replay/companion, retirement/reduction, ordinary discard, Kind=5 acceptance/replay/reused slot, metadata-only/shared handoff. Immutable claim R and current budget R are separate; persist candidate before memory adoption; no journal/content/native calls. `ResourceTransitionsV3Tests.cs` (proposed) interrupt every persistence/adoption boundary, late completion/cancel, unrelated R advances, durable unknown issue, old slot/cookie/generation, forged/undrained witnesses and ambiguous write inputs. Prove no duplicate debit/refund or repeated public mutation decision. |
+| 6 / **[before-coding dependent 4]** the actual files/tests above, plus proposed `ResourceSerializationLimitsV3Tests.cs` | Serialize **complete combinations**, not synthetic strings/field sums: all four occupied slots/claims with maximum counters/u64 identities/SID/locators; both retained Kind=5 receipts and full completions simultaneously, each full authorization Entry, explicit approval/findings/member names/consumed justification, native facts/ACK fields; all pending replay/companion/initial-resolution/handoff shapes legal together. Also complete closure envelopes, resource-only/delta/legacy wrappers and 32-source/32-target controls with cursor. Measure actual compact default-escaped UTF-8 and full root depth, including duplicated nested snapshots. Exercise 65536/65537 and 131072/131073 byte boundaries, wrapper W=8192/+1, whole depth=16/17, max UTF-16 escapes/non-ASCII/surrogate rejects and all Base64 overhead. The review's otherwise valid **65536-byte Authorization Entry inside a 65536-byte ledger** must refuse the **whole** record before native creation/promotion, leaving source and debit intact. Native-issue spy/counter stays zero on rejection; never omit fingerprints/witnesses or increase limits to fit. |
+| 7 / **[before-coding dependent 4 acceptance]** coherent passive source/test set above | Re-run all actual strict-reader, transition and full maximal-shape controls in Debug/Release; inspect discovery/execution and limit+1 refusal before issue. Obtain independent acceptance before increment-4 consumers use these formats. If ordinary supported combinations cannot progress within current bounds, present the concrete failing full shape and reviewed format/splitting delta first; do not discover it only after successful public mutation or invent another envelope. Subsequent actual consumer source review, full Windows feature matrix, applicable kernel/static/import and native/protected rows remain separate and open. |
+
+This ordering is an actionable implementation list, not a new source-freeze,
+review-disposition framework, product-code authorization in this task or a closed
+serializer gate. The design/models in findings 2–5 do not replace any item.
 
 ### 12.2 Carried qualification rows
 
@@ -3406,10 +3538,10 @@ harness availability or permission to run them in this documents-only task.
 | R5-S01 inventory | zero-allocation mutable copy, four slots/fifth refusal | reserve-before-create; preallocation/zero EOF/normalization failures | snapshot/hand-back race reduction, charged physical allocation independent of EOF |
 | R5-S02 storage release | stale completion/incarnation reuse, uncertain drain | multiple readers, deletion-pending section/operations | final-close adapter proven, no slot reuse/refund from one reader closing |
 | R5-S03 receipt | full tuple/measurement/revision conflict + three crash points | immutable proof persisted before totals | lost/duplicate/stale receipts, lower adopted C after lost growth, no double reduction |
-| R4-H04 strict archive contracts / **4** | **[before-coding acceptance]** GrowthArchiveContractModelTests: strict JSON/actual UTF-8 lengths, byte-frame/frontier mutants, exact candidate/phase/tail and base/delta selection; **[before-coding 4] OPEN** prerequisite schema-3 actual serializer max-shape/limit+1 proof; actual new envelope/intent codecs must pass matching vectors during implementation before any use | **[before-qualification]** N-U8-02 actual classifier before tail repair, two interrupted recoveries, independent append/rename counts | Retain R4-H01 native/protected crashes; no inferred durability from pure models |
+| R4-H04 strict archive contracts / **4** | **[before-coding acceptance]** GrowthArchiveContractModelTests: strict JSON/actual UTF-8 lengths, byte-frame/frontier mutants, independent observed segment/candidate bytes, selected-prefix hash/padding validation in both parities, exact candidate/phase/tail and base/delta selection; **[before-coding 4] OPEN** prerequisite schema-3 actual serializer max-shape/limit+1 proof; actual new envelope/intent codecs must pass matching vectors during implementation before any use | **[before-qualification]** N-U8-02 actual classifier before tail repair, two interrupted recoveries, independent append/rename counts | Retain R4-H01 native/protected crashes; no inferred durability from pure models |
 | R4-H05 legacy migration / **4** | **[before-coding acceptance]** 10.6 capacity/selection/preservation models; **[before-coding 4]** reviewed kind-4/cursor/v1 contracts and pure models; actual codecs/selector checks follow implementation before use | **[before-qualification]** N-U8-03 copy/select/delete faults, missing selected suffix, oversized legacy wrapper and all witnesses retained | Repeated migration recovery, exact old+new inventory and no second mutation or refund |
-| R5-S04 role release / **4** | **[before-coding 4]** 9.3 claim/state/refcount contract, schema-size and pure controls for all roles; identity/incarnation/claim/undrained/persistence mutants | **[before-qualification]** each actual role's extra reader/duplicate, active operation, section where applicable, process death, preidentity and post-delete-before-persist faults | **[before-first-boot]** independent retirement/capture/paging/growth rundown review; R5-S01–03 and R3-X remain required |
-| R5-S05 public promotion / **4** | **[before-coding]** independently review decided-O3 9.3.1 exact 2048-byte Kind=5/source-proof/transition model and mutants; prerequisite schema-3 serializer proof remains OPEN. **[before-use]** actual modern journal/budget codecs: every byte/length/kind/identity/generation/claim/correlation mutation, required two fixed cells, escaped/max-size controls and no v2 reinterpretation | **[before-first-boot]** coherent source review of bound native receipt retention, unbound live-to-durable completion, hand-back identity/export capture, drain, journal→budget and duplicate/reuse ownership; **[before-qualification]** actual native/protected lost reply, lost journal completion, restart before adoption, ambiguous persistence and duplicate/shared replay for all three proof kinds | Independent mutation counts and exact old/new totals: no repeated copy/rename/export, no delete-to-refund, no path/digest/absence-only refund, original grants/security/export policy unchanged, other slots/Unknown retained; R3-X/R4-H/R5-S existing gates remain |
+| R5-S04 role release / **4** | **[before-coding 4]** 9.3 claim/state/refcount contract, schema-size and pure controls for all roles; identity/incarnation/claim/undrained/persistence mutants; independent actual owner admission/closure/drain versus persisted zero witnesses | **[before-qualification]** each actual role's extra reader/duplicate, active operation, section where applicable, process death, preidentity and post-delete-before-persist faults | **[before-first-boot]** independent retirement/capture/paging/growth rundown review; R5-S01–03 and R3-X remain required |
+| R5-S05 public promotion / **4** | **[before-coding]** independently review decided-O3 9.3.1 exact 2048-byte Kind=5/source proof, 9.3.2 explicit fingerprint DTO and 9.3.3 durable MayHaveIssued/current-R/zero-completion replay and owner-drain models; prerequisite schema-3 serializer proof remains OPEN. **[before-use]** actual modern journal/budget codecs: every byte/length/kind/identity/generation/claim/correlation mutation, required two fixed cells, escaped/max-size controls and no v2 reinterpretation | **[before-first-boot]** coherent source review of bound native receipt retention, unbound live-to-durable completion, hand-back identity/export capture, drain, journal→budget and duplicate/reuse ownership; **[before-qualification]** actual native/protected lost reply, lost journal completion, restart before adoption, ambiguous persistence and duplicate/shared replay for all three proof kinds | Independent mutation counts and exact old/new totals: no repeated copy/rename/export, no delete-to-refund, no path/digest/absence-only refund, original grants/security/export policy unchanged, other slots/Unknown retained; R3-X/R4-H/R5-S existing gates remain |
 | R5-H01 history cost | maintained hot/shared delta conservation | reconstruction includes padding/failed residue and retained measured R_phys, never only nominal Q | growing retained history incl 10k; record queue/metadata callback/end-to-end time and reconstructed physical totals, unchanged resource gates |
 
 ## 13. Unresolved before implementation
@@ -3452,4 +3584,4 @@ never silently change support, failure policy, grants or cutover.
 | 1–5 | Historical proposal/review corrections in the linked reviews and concurrency design; retain their provenance. |
 | 6 | Installed roots/ancestry, immutable transaction pools and actor deferral; 8.7 review ACCEPT WITH CONDITIONS for dormant substrate. |
 | 7 | Measured preallocation, retained R_phys and class-65/flags-3 mechanism delta; source acceptance and native/target qualification remain separate. |
-| 8 | **Proposed, pending independent review:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2/O3; 9.3.1 adds exact Kind=5 public custody transfer and journal/budget crash controls. No product code, checkbox closure, Windows execution or admission/cutover change. |
+| 8 | **Proposed, pending independent review:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2/O3; 9.3.1 adds exact Kind=5 public custody transfer and journal/budget crash controls. Review follow-up fixes 2–5: explicit durable fingerprint, durable issue/owner-drain models and independent selected-frame recovery; 12.1.4 orders separate finding-1 codec work. No product code, checkbox closure, Windows execution or admission/cutover change. |
