@@ -1,5 +1,5 @@
-/* Dormant registration/routing substrate. No modern admission or native child
- * data operation. See StageResourceMetadata.h for security and ownership. */
+/* Dormant opaque metadata I/O substrate. Forwarding conveys only the exact
+ * registered metadata role; negotiation never conveys resource authority. */
 #include "Filter.h"
 #include "StageNativeRecords.h"
 #include "StageResourceMetadata.h"
@@ -22,7 +22,16 @@ typedef struct DECLSPEC_ALIGN(16) _SU_METADATA_COMPLETION {
     struct _SU_METADATA_GROUP *Group;
     PFILE_OBJECT Object;
     UINT64 Incarnation;
-    ULONG RootIndex;
+    ULONG RootIndex, ChildIndex, TargetIndex;
+    UINT64 TargetId, Value;
+    ULONG InformationClass, Length;
+    PFILE_OBJECT Reference, TargetReference;
+    HANDLE TargetHandle;
+    NTSTATUS NativeStatus;
+    ULONG_PTR NativeInformation;
+    BOOLEAN Deferred, NativeValidation;
+    ULONG RenameBytes;
+    WCHAR RenameLeaf[256];
     UCHAR Operation;
     BOOLEAN InUse;
 } SU_METADATA_COMPLETION;
@@ -33,6 +42,7 @@ typedef struct _SU_METADATA_ROOT {
     PFILE_OBJECT Key;
     BOOLEAN Cleaned;
     SU_METADATA_COMPLETION Cleanup;
+    SU_METADATA_COMPLETION Io;
 } SU_METADATA_ROOT;
 
 typedef struct _SU_METADATA_TRANSACTION {
@@ -46,6 +56,14 @@ typedef struct _SU_METADATA_CHILD {
     UINT64 Id;
     SU_RESOURCE_CHILD_REQUEST Request;
     WCHAR FoldedLeaf[256]; /* computed at PASSIVE, compared under M */
+    PFILE_OBJECT Key;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 Identity;
+    PSECURITY_DESCRIPTOR Security;
+    ULONG SecurityBytes, Pins, TargetPins, ReplacementIndex;
+    UINT64 ReplacementId, PaddedExtent, Nominal, Peak, Retained, EndOfFile, Allocation, Preallocated, LogicalEof;
+    ULONG ShareAccess, LiveLeafBytes;
+    BOOLEAN Closed, Cleaned, Uncertain, Retiring, Renamed, NeedF3, F1, F2, EofSet, Frozen, Unlinked, Deleted;
+    SU_METADATA_COMPLETION Io, Cleanup;
 } SU_METADATA_CHILD;
 
 typedef struct _SU_METADATA_GROUP {
@@ -56,7 +74,7 @@ typedef struct _SU_METADATA_GROUP {
     PVOID MainCookie;
     GUID DriverInstance;
     SU_RESOURCE_NEGOTIATE_REQUEST Probe;
-    BOOLEAN Revoked;
+    BOOLEAN Revoked, AccountingHeld;
     BOOLEAN Paired;
     LONG MetadataControls;
     BOOLEAN RootBusy, AnchorsClosed, ForceForgetKeys;
@@ -64,6 +82,8 @@ typedef struct _SU_METADATA_GROUP {
     ULONG PostOwners;
     PFLT_VOLUME Volume;
     PFLT_INSTANCE Instance;
+    ULONG IoAlignment, AllocationUnit;
+    UINT64 LiveRetained, RetiredRetained, ObservedPeak, UnknownOutcomes;
     SU_METADATA_NODE Nodes[SU_METADATA_NODES];
     SU_METADATA_ROOT Roots[SU_METADATA_ROOTS];
     SU_METADATA_TRANSACTION Transactions[SU_METADATA_TRANSACTIONS];
@@ -72,8 +92,18 @@ typedef struct _SU_METADATA_GROUP {
 } SU_METADATA_GROUP;
 C_ASSERT(__alignof(SU_METADATA_COMPLETION) >= 16);
 C_ASSERT((FIELD_OFFSET(SU_METADATA_ROOT, Cleanup) & 15) == 0);
+C_ASSERT((FIELD_OFFSET(SU_METADATA_ROOT, Io) & 15) == 0);
+C_ASSERT((FIELD_OFFSET(SU_METADATA_CHILD, Io) & 15) == 0);
+C_ASSERT((FIELD_OFFSET(SU_METADATA_CHILD, Cleanup) & 15) == 0);
 C_ASSERT((FIELD_OFFSET(SU_METADATA_GROUP, Roots) & 15) == 0);
+C_ASSERT((FIELD_OFFSET(SU_METADATA_GROUP, Children) & 15) == 0);
 C_ASSERT(MEMORY_ALLOCATION_ALIGNMENT >= 16);
+C_ASSERT(sizeof(FILE_END_OF_FILE_INFORMATION) == sizeof(LARGE_INTEGER));
+C_ASSERT(sizeof(FILE_ALLOCATION_INFORMATION) == sizeof(LARGE_INTEGER));
+C_ASSERT(sizeof(FILE_DISPOSITION_INFORMATION) == sizeof(BOOLEAN));
+C_ASSERT(FileRenameInformationEx == 65);
+C_ASSERT((FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS) == 3);
+C_ASSERT(FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName) == 20); /* selected x64 native ABI */
 
 typedef struct _SU_METADATA_CONTROL_BUFFER {
     SU_RESOURCE_CONTROL_HEADER Header;
@@ -109,6 +139,11 @@ static SU_METADATA_GROUP *MetadataRetiringGroup;
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID MetadataFreeNode(_Inout_ SU_METADATA_NODE *Node);
 static VOID MetadataRemoveChildLocked(_Inout_ SU_METADATA_GROUP *Group, _In_ ULONG ChildIndex);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID MetadataServiceChildren(_Inout_ SU_METADATA_GROUP *Group);
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Root,
+    _Out_ PULONG Alignment, _Out_ PULONG Unit);
 
 typedef struct _SU_METADATA_REFUSAL_RECORD {
     UINT64 Sequence, Cookie, RootId, ChildId;
@@ -194,7 +229,10 @@ static VOID MetadataReap(_In_ SU_METADATA_GROUP *Group)
     RtlZeroMemory(nodes, sizeof(nodes));
     RtlZeroMemory(originals, sizeof(originals));
     KeAcquireSpinLock(&MetadataLock, &irql);
-    if (Group->RootBusy) { KeReleaseSpinLock(&MetadataLock, irql); return; }
+    if (Group->RootBusy || Group->PostOwners != 0) { KeReleaseSpinLock(&MetadataLock, irql); return; }
+    for (i = 0; i < SU_METADATA_CHILDREN; ++i)
+        if (Group->Children[i].State != 0) ready = FALSE;
+    if (!ready) { KeReleaseSpinLock(&MetadataLock, irql); return; }
     if (!Group->AnchorsClosed) {
         Group->AnchorsClosed = TRUE;
         release = TRUE;
@@ -248,14 +286,22 @@ _Use_decl_annotations_
 static VOID MetadataWorker(PVOID Parameter)
 {
     SU_METADATA_GROUP *group;
-    BOOLEAN stop;
+    BOOLEAN stop, pinned;
     KIRQL irql;
     UNREFERENCED_PARAMETER(Parameter);
     for (;;) {
         (VOID)KeWaitForSingleObject(&MetadataWork, Executive, KernelMode, FALSE, NULL);
         KeAcquireSpinLock(&MetadataLock, &irql);
-        group = MetadataRetiringGroup;
+        group = MetadataRoutingGroup;
+        pinned = group != NULL && ExAcquireRundownProtection(&group->Rundown);
         stop = MetadataWorkerStopping;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        if (pinned) {
+            MetadataServiceChildren(group);
+            ExReleaseRundownProtection(&group->Rundown);
+        }
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        group = MetadataRetiringGroup;
         KeReleaseSpinLock(&MetadataLock, irql);
         if (group != NULL) MetadataReap(group);
         if (stop) break;
@@ -305,8 +351,11 @@ VOID SafeUploadMetadataRevoke(PVOID MainCookie)
         (MainCookie == NULL || MainCookie == MetadataGroup->MainCookie)) {
         group = MetadataGroup;
         group->Revoked = TRUE; /* authority disappears before either port close */
-        for (i = 0; i < SU_METADATA_CHILDREN; ++i)
-            if (group->Children[i].State == SuMetadataPendingOpen) MetadataRemoveChildLocked(group, i);
+        for (i = 0; i < SU_METADATA_CHILDREN; ++i) {
+            SU_METADATA_CHILD *child = &group->Children[i];
+            if (child->State == SuMetadataPendingOpen) MetadataRemoveChildLocked(group, i);
+            else if (child->State != 0) child->State = SuMetadataRevoked;
+        }
         MetadataRetiredSerial = (UINT64)(ULONG_PTR)group->MainCookie;
         MetadataGroup = NULL;
         MetadataRetiringGroup = group;
@@ -501,6 +550,7 @@ typedef struct _SU_METADATA_CAPTURE {
     SU_METADATA_NODE Nodes[SU_METADATA_NODES];
     PFLT_VOLUME Volume;
     PFLT_INSTANCE Instance;
+    ULONG IoAlignment, AllocationUnit;
     WCHAR DeviceBuffer[512], SystemBuffer[512];
     UCHAR Scratch[SU_METADATA_SD_BYTES];
 } SU_METADATA_CAPTURE;
@@ -780,7 +830,17 @@ static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture
         !MetadataSecurityPredicate(&Capture->Nodes[2], TRUE, TRUE, &Capture->Nodes[5])) return STATUS_ACCESS_DENIED;
     for (i = 3; i < SU_METADATA_NODES; ++i)
         if (!MetadataSecurityPredicate(&Capture->Nodes[i], FALSE, FALSE, NULL)) return STATUS_ACCESS_DENIED;
-    return STATUS_SUCCESS;
+    return MetadataCaptureAlignment(Capture->Instance, Capture->Nodes[0].Object,
+        &Capture->IoAlignment, &Capture->AllocationUnit);
+}
+
+static BOOLEAN MetadataRootShape(_In_ const SU_RESOURCE_ROOT_REQUEST *Request)
+{
+    return Request->RootRole >= 1 && Request->RootRole <= 4 && Request->Flags == 0 && Request->Handle != 0 &&
+        (UINT64)(ULONG_PTR)Request->Handle == Request->Handle && Request->SecurityContractVersion == 1 &&
+        MetadataZero(Request->Reserved, sizeof(Request->Reserved)) &&
+        !MetadataZero(&Request->Identity, sizeof(Request->Identity)) &&
+        ((Request->RootRole == 1 || Request->RootRole == 3) == (Request->ParentRootId == 0));
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -797,11 +857,7 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
     NTSTATUS status = STATUS_INVALID_PARAMETER;
     KIRQL irql;
     Reply->Result = 2;
-    if (Request->RootRole < 1 || Request->RootRole > 4 || Request->Flags != 0 || Request->Handle == 0 ||
-        (UINT64)(ULONG_PTR)Request->Handle != Request->Handle || Request->SecurityContractVersion != 1 ||
-        !MetadataZero(Request->Reserved, sizeof(Request->Reserved)) ||
-        MetadataZero(&Request->Identity, sizeof(Request->Identity)) ||
-        ((Request->RootRole == 1 || Request->RootRole == 3) != (Request->ParentRootId == 0))) return status;
+    if (!MetadataRootShape(Request)) return status;
     index = Request->RootRole - 1;
     KeAcquireSpinLock(&MetadataLock, &irql);
     if (Group->Revoked || !Group->Paired) status = STATUS_ACCESS_DENIED;
@@ -827,7 +883,10 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
     if (capture == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     if (captureNeeded) {
         status = MetadataCaptureInstallation(capture);
-        if (!NT_SUCCESS(status)) goto Exit;
+        if (status != STATUS_SUCCESS) {
+            if (NT_SUCCESS(status)) status = STATUS_DEVICE_NOT_READY;
+            goto Exit;
+        }
     }
     node = captureNeeded ? &capture->Nodes[MetadataRoleNodes[index]] : &Group->Nodes[MetadataRoleNodes[index]];
     status = FltGetVolumeFromFileObject(SafeUploadData.Filter, original, &volume);
@@ -869,6 +928,8 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
         if (captureNeeded) {
             RtlCopyMemory(Group->Nodes, capture->Nodes, sizeof(Group->Nodes));
             RtlZeroMemory(capture->Nodes, sizeof(capture->Nodes));
+            Group->IoAlignment = capture->IoAlignment;
+            Group->AllocationUnit = capture->AllocationUnit;
             Group->Instance = capture->Instance; capture->Instance = NULL;
             Group->Volume = capture->Volume; capture->Volume = NULL;
         }
@@ -932,6 +993,11 @@ static NTSTATUS MetadataChildShape(_In_ const SU_RESOURCE_CHILD_REQUEST *Request
      * exchange. Its role alone cannot grant delete. */
     if ((Request->AccessMask & ~allowed) != 0 || Request->AccessMask == 0 ||
         (Request->CreateDisposition == FILE_CREATE && !output)) return STATUS_ACCESS_DENIED;
+    /* Reopening a candidate is recovery/read custody, not evidence that an
+     * existing immutable commit may be rewritten. Only its creating handle
+     * receives the bounded pre-F2 output phase. */
+    if (Request->Role == SuHistoryCandidate && Request->CreateDisposition == FILE_OPEN &&
+        (Request->AccessMask & FILE_WRITE_DATA) != 0) return STATUS_ACCESS_DENIED;
     if (!MetadataZero(&Request->ReplaceTargetIdentity, sizeof(Request->ReplaceTargetIdentity)) &&
         (!output || Request->Role == SuSegment || Request->Role == SuHistoryCandidate ||
          (Request->AccessMask & (DELETE | FILE_WRITE_DATA)) != (DELETE | FILE_WRITE_DATA)))
@@ -1031,14 +1097,25 @@ static BOOLEAN MetadataLeafRole(_In_ const SU_RESOURCE_CHILD_REQUEST *Request)
         RtlSuffixUnicodeString(&expected, &leaf, TRUE);
 }
 
-/* MetadataLock held. No child completion may retain this credit: this pass
- * refuses every claimed child CREATE synchronously, before lower dispatch. */
+/* M held. Slot retirement is legal only after all contexts/target pins and
+ * PASSIVE-only resources have gone. Closing moves diagnostic charge; it is
+ * never a storage-release receipt and cannot reduce retained accounting. */
 static VOID MetadataRemoveChildLocked(_Inout_ SU_METADATA_GROUP *Group, _In_ ULONG ChildIndex)
 {
     SU_METADATA_CHILD *child = &Group->Children[ChildIndex];
     SU_METADATA_TRANSACTION *transaction = &Group->Transactions[ChildIndex / SU_METADATA_CHILDREN_PER_TRANSACTION];
-    NT_ASSERT(child->State == SuMetadataPendingOpen || child->State == SuMetadataOpening);
+    NT_ASSERT(child->Pins == 0 && child->TargetPins == 0 && child->Key == NULL && child->Security == NULL);
+    if (child->ReplacementIndex != 0) {
+        SU_METADATA_CHILD *target = &Group->Children[child->ReplacementIndex - 1];
+        NT_ASSERT(target->Id == child->ReplacementId && target->TargetPins != 0);
+        --target->TargetPins;
+    }
     if (child->State == SuMetadataPendingOpen) transaction->Pending = FALSE;
+    NT_ASSERT(Group->AccountingHeld || Group->LiveRetained >= child->Retained);
+    if (!Group->AccountingHeld) Group->LiveRetained -= child->Retained;
+    if (Group->RetiredRetained <= (UINT64)MAXLONGLONG - child->Retained)
+        Group->RetiredRetained += child->Retained;
+    else { Group->RetiredRetained = (UINT64)MAXLONGLONG; Group->AccountingHeld = TRUE; }
     RtlZeroMemory(child, sizeof(*child));
     NT_ASSERT(transaction->Children != 0);
     if (--transaction->Children == 0) RtlZeroMemory(transaction, sizeof(*transaction));
@@ -1068,6 +1145,21 @@ static BOOLEAN MetadataTransactionClass(_In_ const GUID *Id, _In_ ULONG Role,
         Role <= SuCompactionIntentNew && (!*Growth || Role <= SuCompanionNew);
 }
 
+static ULONG MetadataCurrentRole(_In_ ULONG Role)
+{
+    switch (Role) {
+    case SuLedgerNew: return SuLedgerCurrent;
+    case SuCompanionNew: return SuCompanionCurrent;
+    case SuManifestNew: return SuManifestCurrent;
+    case SuInventoryNew: return SuInventoryCurrent;
+    case SuMarkerNew: return SuMarkerCurrent;
+    case SuEpochNew: return SuEpochCurrent;
+    case SuAppendIntentNew: return SuAppendIntentCurrent;
+    case SuCompactionIntentNew: return SuCompactionIntentCurrent;
+    default: return 0;
+    }
+}
+
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
     _In_ const SU_RESOURCE_CHILD_REQUEST *Request, _Out_ SU_RESOURCE_CHILD_REPLY *Reply)
@@ -1076,6 +1168,8 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
     ULONG i, root = SU_METADATA_ROOTS, transaction = SU_METADATA_TRANSACTIONS;
     ULONG first, end, childIndex = SU_METADATA_CHILDREN;
     BOOLEAN growth;
+    ULONG replacement = 0;
+    SU_METADATA_OUTPUT_PLAN plan;
     WCHAR folded[256];
     NTSTATUS status;
     KIRQL irql;
@@ -1084,10 +1178,13 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
     if (!NT_SUCCESS(status)) return status;
     if (!MetadataTransactionClass(&Request->TransactionId, Request->Role, &masked, &growth) ||
         !MetadataLeafRole(Request)) return STATUS_INVALID_PARAMETER;
+    status = SafeUploadMetadataPlanOutput(1, Request->MaximumLogicalBytes, Request->MaximumLogicalBytes,
+        Group->IoAlignment, Group->AllocationUnit, &plan);
+    if (!NT_SUCCESS(status)) return status;
     status = MetadataFoldLeaf(Request->Leaf, (USHORT)Request->LeafBytes, folded);
     if (!NT_SUCCESS(status)) return status;
     KeAcquireSpinLock(&MetadataLock, &irql);
-    if (Group->Revoked) { status = STATUS_ACCESS_DENIED; goto Unlock; }
+    if (Group->Revoked || Group->AccountingHeld) { status = STATUS_ACCESS_DENIED; goto Unlock; }
     for (i = 0; i < SU_METADATA_ROOTS; ++i)
         if (Group->Roots[i].Id == Request->RootId && Group->Roots[i].Key != NULL && !Group->Roots[i].Cleaned) { root = i; break; }
     if (root == SU_METADATA_ROOTS || !MetadataRoleRoot(Request->Role, root + 1)) {
@@ -1105,12 +1202,34 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
         }
         transaction = i;
     }
-    /* Short pending namespace claim. Native target-handle exclusion is not
-     * implemented; every child open is still refused before lower dispatch. */
+    /* A replacement's existing target pin belongs to its pending intent.
+     * Recognize exact replay BEFORE treating that pin as competing ownership. */
+    for (i = 0; i < SU_METADATA_CHILDREN; ++i) {
+        const SU_METADATA_CHILD *held = &Group->Children[i];
+        if (held->State != SuMetadataPendingOpen || held->Request.RootId != Request->RootId ||
+            held->LiveLeafBytes != Request->LeafBytes || !RtlEqualMemory(held->FoldedLeaf, folded, Request->LeafBytes)) continue;
+        if (RtlEqualMemory(&held->Request, Request, sizeof(*Request))) {
+            Reply->Result = 1; Reply->ChildIntentId = held->Id; status = STATUS_SUCCESS;
+        } else status = RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) ?
+            STATUS_INVALID_PARAMETER : STATUS_DEVICE_BUSY;
+        goto Unlock;
+    }
+    /* Exclusive store claim spans pending/active/retiring objects. One exact
+     * New -> Current pair in the same transaction shares its replacement
+     * claim; the current credit stays pinned until that new owner retires. */
     for (i = 0; i < SU_METADATA_CHILDREN; ++i) {
         const SU_METADATA_CHILD *held = &Group->Children[i];
         if (held->State == 0 || held->Request.RootId != Request->RootId) continue;
-        if ((held->Request.LeafBytes == Request->LeafBytes &&
+        if (!MetadataZero(&Request->ReplaceTargetIdentity, sizeof(Request->ReplaceTargetIdentity)) &&
+            held->State == SuMetadataActive && !held->Cleaned && held->Key != NULL &&
+            held->Request.Role == MetadataCurrentRole(Request->Role) &&
+            RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) &&
+            RtlEqualMemory(&held->Identity, &Request->ReplaceTargetIdentity, sizeof(held->Identity))) {
+            if (held->TargetPins != 0) { status = STATUS_DEVICE_BUSY; goto Unlock; }
+            replacement = i + 1;
+            continue;
+        }
+        if ((held->LiveLeafBytes == Request->LeafBytes &&
              RtlEqualMemory(held->FoldedLeaf, folded, Request->LeafBytes)) ||
             (!MetadataZero(&Request->ReplaceTargetIdentity, sizeof(Request->ReplaceTargetIdentity)) &&
              (RtlEqualMemory(&Request->ReplaceTargetIdentity, &held->Request.ReplaceTargetIdentity,
@@ -1120,12 +1239,13 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
             (!MetadataZero(&held->Request.ReplaceTargetIdentity, sizeof(held->Request.ReplaceTargetIdentity)) &&
              RtlEqualMemory(&held->Request.ReplaceTargetIdentity, &Request->ExpectedIdentity,
                  sizeof(Request->ExpectedIdentity)))) {
-            if (held->State == SuMetadataPendingOpen && RtlEqualMemory(&held->Request, Request, sizeof(*Request))) {
-                Reply->Result = 1; Reply->ChildIntentId = held->Id; status = STATUS_SUCCESS;
-            } else status = RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) ?
+            status = RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) ?
                 STATUS_INVALID_PARAMETER : STATUS_DEVICE_BUSY;
             goto Unlock;
         }
+    }
+    if (!MetadataZero(&Request->ReplaceTargetIdentity, sizeof(Request->ReplaceTargetIdentity)) && replacement == 0) {
+        status = STATUS_INVALID_PARAMETER; goto Unlock;
     }
     if (transaction == SU_METADATA_TRANSACTIONS) {
         for (i = first; i < end; ++i)
@@ -1154,8 +1274,16 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
     Group->Transactions[transaction].Pending = TRUE;
     Group->Children[childIndex].Id = ++Group->NextChildId;
     Group->Children[childIndex].Request = *Request;
+    Group->Children[childIndex].LiveLeafBytes = Request->LeafBytes;
     RtlCopyMemory(Group->Children[childIndex].FoldedLeaf, folded, Request->LeafBytes);
     Group->Children[childIndex].State = SuMetadataPendingOpen;
+    Group->Children[childIndex].PaddedExtent = plan.PaddedWriteExtent;
+    Group->Children[childIndex].Nominal = plan.PeakAllocation;
+    Group->Children[childIndex].ReplacementIndex = replacement;
+    if (replacement != 0) {
+        Group->Children[childIndex].ReplacementId = Group->Children[replacement - 1].Id;
+        ++Group->Children[replacement - 1].TargetPins;
+    }
     Reply->Result = 1;
     Reply->ChildIntentId = Group->Children[childIndex].Id;
     status = STATUS_SUCCESS;
@@ -1175,6 +1303,8 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
     SU_METADATA_GROUP *group = NULL;
     ULONG payload, replyBytes, slot = SU_METADATA_CONTROLS + 2, i, first, last;
     BOOLEAN revoke = FALSE, bootstrap = FALSE;
+    GUID masked;
+    BOOLEAN growth;
     NTSTATUS status = STATUS_INVALID_PARAMETER;
     KIRQL irql;
 
@@ -1304,13 +1434,18 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
             break;
         case SU_RESOURCE_REGISTER_ROOT:
             if (group == NULL) { status = STATUS_ACCESS_DENIED; break; }
+            if (!MetadataRootShape(&buffer->Request.Root)) { status = STATUS_INVALID_PARAMETER; break; }
             status = MetadataRegisterRoot(group, &buffer->Request.Root, &buffer->Reply.Root);
-            /* A root refusal has a typed reply and zero authority. Native
-             * access/shape failures also refuse, never a successful map entry. */
+            /* Malformed wire was rejected above. Well-formed native authority
+             * refusals are typed; exhaustion remains native Busy, with no ID. */
             if (status != STATUS_DEVICE_BUSY && !NT_SUCCESS(status)) status = STATUS_SUCCESS;
             break;
         case SU_RESOURCE_REGISTER_CHILD:
             if (group == NULL) { status = STATUS_ACCESS_DENIED; break; }
+            status = MetadataChildShape(&buffer->Request.Child);
+            if (status == STATUS_INVALID_PARAMETER ||
+                !MetadataTransactionClass(&buffer->Request.Child.TransactionId, buffer->Request.Child.Role, &masked, &growth) ||
+                !MetadataLeafRole(&buffer->Request.Child)) { status = STATUS_INVALID_PARAMETER; break; }
             status = MetadataRegisterChild(group, &buffer->Request.Child, &buffer->Reply.Child);
             if (status != STATUS_DEVICE_BUSY && !NT_SUCCESS(status)) status = STATUS_SUCCESS;
             break;
@@ -1402,8 +1537,648 @@ VOID SafeUploadMetadataInstanceTeardown(PFLT_INSTANCE Instance)
     KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
 }
 
-/* Only exact embedded owners can be decoded; never dereference an arbitrary
- * tagged address, or reinterpret an epoch/legacy completion as metadata. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataCheckName(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index, _In_ PFILE_OBJECT Object);
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataSameVolume(_In_ SU_METADATA_GROUP *Group, _In_ PFILE_OBJECT Object)
+{
+    PFLT_VOLUME volume = NULL;
+    NTSTATUS status = FltGetVolumeFromFileObject(SafeUploadData.Filter, Object, &volume);
+    if (status != STATUS_SUCCESS) return status;
+    status = volume == Group->Volume ? STATUS_SUCCESS : STATUS_NOT_SAME_DEVICE;
+    FltObjectDereference(volume);
+    return status;
+}
+
+typedef struct _SU_METADATA_MEASUREMENT {
+    SAFEUPLOAD_STAGE_IDENTITY_V19 Identity;
+    UINT64 Eof, Allocation;
+    ULONG Links, SecurityBytes;
+    BOOLEAN DeletePending, Observed;
+    PSECURITY_DESCRIPTOR Security;
+} SU_METADATA_MEASUREMENT;
+
+static BOOLEAN MetadataPowerOfTwo(_In_ ULONG Value)
+{
+    return Value != 0 && (Value & (Value - 1)) == 0;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Root,
+    _Out_ PULONG Alignment, _Out_ PULONG Unit)
+{
+    FILE_FS_SECTOR_SIZE_INFORMATION sector;
+    FILE_FS_SIZE_INFORMATION size;
+    FILE_ALIGNMENT_INFORMATION alignment;
+    IO_STATUS_BLOCK io;
+    ULONG bytes = 0, a = 4096;
+    UINT64 unit;
+    NTSTATUS status;
+    *Alignment = *Unit = 0;
+    RtlZeroMemory(&sector, sizeof(sector));
+    RtlZeroMemory(&size, sizeof(size));
+    RtlZeroMemory(&alignment, sizeof(alignment));
+    RtlZeroMemory(&io, sizeof(io));
+    status = FltQueryVolumeInformation(Instance, &io, &sector, sizeof(sector), FileFsSectorSizeInformation);
+    if (status != STATUS_SUCCESS) return status;
+    if (io.Information != sizeof(sector)) return STATUS_INFO_LENGTH_MISMATCH;
+    status = FltQueryVolumeInformation(Instance, &io, &size, sizeof(size), FileFsSizeInformation);
+    if (status != STATUS_SUCCESS) return status;
+    if (io.Information != sizeof(size) || size.BytesPerSector != sector.LogicalBytesPerSector ||
+        size.TotalAllocationUnits.QuadPart <= 0 || size.AvailableAllocationUnits.QuadPart < 0 ||
+        size.AvailableAllocationUnits.QuadPart > size.TotalAllocationUnits.QuadPart)
+        return STATUS_INFO_LENGTH_MISMATCH;
+    status = FltQueryInformationFile(Instance, Root, &alignment, sizeof(alignment), FileAlignmentInformation, &bytes);
+    if (status != STATUS_SUCCESS) return status;
+    if (bytes != sizeof(alignment) || alignment.AlignmentRequirement >= 65536) return STATUS_NOT_SUPPORTED;
+    if (!MetadataPowerOfTwo(sector.LogicalBytesPerSector) ||
+        !MetadataPowerOfTwo(sector.PhysicalBytesPerSectorForAtomicity) ||
+        !MetadataPowerOfTwo(sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity) ||
+        !MetadataPowerOfTwo(alignment.AlignmentRequirement + 1)) return STATUS_NOT_SUPPORTED;
+    if (sector.LogicalBytesPerSector > a) a = sector.LogicalBytesPerSector;
+    if (sector.PhysicalBytesPerSectorForAtomicity > a) a = sector.PhysicalBytesPerSectorForAtomicity;
+    if (sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity > a)
+        a = sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity;
+    if (alignment.AlignmentRequirement + 1 > a) a = alignment.AlignmentRequirement + 1;
+    unit = (UINT64)size.SectorsPerAllocationUnit * size.BytesPerSector;
+    if (a > 65536 || unit > 65536 || !MetadataPowerOfTwo((ULONG)unit)) return STATUS_NOT_SUPPORTED;
+    *Alignment = a;
+    *Unit = (ULONG)unit;
+    return STATUS_SUCCESS;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataInspectChild(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index,
+    _In_ PFILE_OBJECT Object, _In_ BOOLEAN Opening, _Out_ SU_METADATA_MEASUREMENT *Measurement)
+{
+    FILE_ID_INFORMATION id;
+    FILE_STANDARD_INFORMATION standard;
+    FILE_ATTRIBUTE_TAG_INFORMATION tag;
+    SU_METADATA_NODE security;
+    ULONG bytes = 0;
+    NTSTATUS status;
+    RtlZeroMemory(Measurement, sizeof(*Measurement));
+    RtlZeroMemory(&security, sizeof(security));
+    RtlZeroMemory(&id, sizeof(id));
+    RtlZeroMemory(&standard, sizeof(standard));
+    RtlZeroMemory(&tag, sizeof(tag));
+    status = MetadataSameVolume(Group, Object);
+    if (status != STATUS_SUCCESS) return status;
+    status = FltQueryInformationFile(Group->Instance, Object, &id, sizeof(id), FileIdInformation, &bytes);
+    if (status != STATUS_SUCCESS) return status;
+    if (bytes != sizeof(id)) return STATUS_INFO_LENGTH_MISMATCH;
+    Measurement->Identity.VolumeSerialNumber = id.VolumeSerialNumber;
+    Measurement->Identity.FileId = id.FileId;
+    status = FltQueryInformationFile(Group->Instance, Object, &standard, sizeof(standard), FileStandardInformation, &bytes);
+    if (status != STATUS_SUCCESS) return status;
+    if (bytes != sizeof(standard) || standard.Directory || standard.EndOfFile.QuadPart < 0 ||
+        standard.AllocationSize.QuadPart < 0) return STATUS_FILE_INVALID;
+    Measurement->Observed = TRUE;
+    Measurement->Eof = (UINT64)standard.EndOfFile.QuadPart;
+    Measurement->Allocation = (UINT64)standard.AllocationSize.QuadPart;
+    Measurement->Links = standard.NumberOfLinks;
+    Measurement->DeletePending = standard.DeletePending;
+    status = FltQueryInformationFile(Group->Instance, Object, &tag, sizeof(tag), FileAttributeTagInformation, &bytes);
+    if (status != STATUS_SUCCESS) return status;
+    if (bytes != sizeof(tag) || tag.ReparseTag != 0 || FlagOn(tag.FileAttributes,
+        FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_SPARSE_FILE |
+        FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED))
+        return STATUS_FILE_INVALID;
+    /* The original relative leaf excludes ADS. Requerying identity below this
+     * instance supplies object authority; no name normalization is performed. */
+    if (Opening) {
+        if (!FlagOn(Object->Flags, FO_NO_INTERMEDIATE_BUFFERING) || !FlagOn(Object->Flags, FO_SYNCHRONOUS_IO) ||
+            ((Group->Children[Index].Request.AccessMask & FILE_WRITE_DATA) != 0 && !FlagOn(Object->Flags, FO_WRITE_THROUGH)))
+            return STATUS_INVALID_DEVICE_STATE;
+        status = MetadataCheckName(Group, Index, Object);
+        if (status != STATUS_SUCCESS) return status;
+        if (standard.NumberOfLinks != 1 || standard.DeletePending) return STATUS_FILE_INVALID;
+        if (Group->Children[Index].Request.CreateDisposition == FILE_OPEN &&
+            !RtlEqualMemory(&Measurement->Identity, &Group->Children[Index].Request.ExpectedIdentity, sizeof(id)))
+            return STATUS_FILE_INVALID;
+    } else {
+        if (!RtlEqualMemory(&Measurement->Identity, &Group->Children[Index].Identity, sizeof(id))) return STATUS_FILE_INVALID;
+        if (standard.NumberOfLinks != 1 && !(Group->Children[Index].Unlinked &&
+            standard.NumberOfLinks == 0 && standard.DeletePending)) return STATUS_FILE_INVALID;
+        if (standard.DeletePending && !Group->Children[Index].Unlinked && !Group->Children[Index].Deleted)
+            return STATUS_FILE_INVALID;
+    }
+    if (Measurement->Identity.VolumeSerialNumber != Group->Nodes[0].Identity.VolumeSerialNumber)
+        return STATUS_NOT_SAME_DEVICE;
+    security.Object = Object;
+    status = MetadataCaptureSecurity(Group->Instance, &security);
+    if (status == STATUS_SUCCESS && !MetadataSecurityPredicate(&security, FALSE, FALSE, NULL)) status = STATUS_ACCESS_DENIED;
+    if (status == STATUS_SUCCESS && !Opening && (security.SecurityBytes != Group->Children[Index].SecurityBytes ||
+        !RtlEqualMemory(security.Security, Group->Children[Index].Security, security.SecurityBytes)))
+        status = STATUS_INVALID_SECURITY_DESCR;
+    if (status == STATUS_SUCCESS && Opening) {
+        Measurement->Security = security.Security;
+        Measurement->SecurityBytes = security.SecurityBytes;
+        security.Security = NULL;
+    }
+    if (security.Security != NULL) ExFreePoolWithTag(security.Security, SU_METADATA_TAG);
+    return status;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataCheckAnchors(_In_ SU_METADATA_GROUP *Group)
+{
+    SU_METADATA_NODE security;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 id;
+    ULONG i;
+    NTSTATUS status;
+    for (i = 0; i < SU_METADATA_NODES; ++i) {
+        status = MetadataQueryDirectory(Group->Instance, Group->Nodes[i].Object, &id);
+        if (status != STATUS_SUCCESS || !RtlEqualMemory(&id, &Group->Nodes[i].Identity, sizeof(id))) return STATUS_FILE_INVALID;
+        RtlZeroMemory(&security, sizeof(security));
+        security.Object = Group->Nodes[i].Object;
+        status = MetadataCaptureSecurity(Group->Instance, &security);
+        if (status == STATUS_SUCCESS && (security.SecurityBytes != Group->Nodes[i].SecurityBytes ||
+            !RtlEqualMemory(security.Security, Group->Nodes[i].Security, security.SecurityBytes)))
+            status = STATUS_INVALID_SECURITY_DESCR;
+        if (security.Security != NULL) ExFreePoolWithTag(security.Security, SU_METADATA_TAG);
+        if (status != STATUS_SUCCESS) return status;
+    }
+    return STATUS_SUCCESS;
+}
+
+/* M held. Statistics never confer charge authority or authorize a refund.
+ * The agent must precharge Q derived from MaximumLogicalBytes BEFORE CREATE. */
+static NTSTATUS MetadataAccountLocked(_Inout_ SU_METADATA_GROUP *Group, _Inout_ SU_METADATA_CHILD *Child,
+    _In_ const SU_METADATA_MEASUREMENT *Measurement)
+{
+    UINT64 retained, delta;
+    if (Measurement->Allocation > (UINT64)MAXLONGLONG - (Group->AllocationUnit - 1)) {
+        if (Measurement->Allocation > Child->Peak) Child->Peak = Measurement->Allocation;
+        Child->Retained = (UINT64)MAXLONGLONG;
+        Child->Uncertain = TRUE;
+        Group->LiveRetained = (UINT64)MAXLONGLONG;
+        Group->ObservedPeak = (UINT64)MAXLONGLONG;
+        Group->AccountingHeld = TRUE;
+        if (Group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++Group->UnknownOutcomes;
+        return STATUS_INTEGER_OVERFLOW;
+    }
+    retained = (Measurement->Allocation + Group->AllocationUnit - 1) & ~((UINT64)Group->AllocationUnit - 1);
+    if (retained < Child->Nominal) retained = Child->Nominal;
+    if (retained > Child->Retained) {
+        delta = retained - Child->Retained;
+        Child->Retained = retained;
+        if (Group->LiveRetained > (UINT64)MAXLONGLONG - delta) {
+            Group->LiveRetained = (UINT64)MAXLONGLONG;
+            Group->AccountingHeld = TRUE;
+        } else Group->LiveRetained += delta;
+    }
+    if (Measurement->Allocation > Child->Peak) Child->Peak = Measurement->Allocation;
+    if (Group->LiveRetained > Group->ObservedPeak) Group->ObservedPeak = Group->LiveRetained;
+    Child->EndOfFile = Measurement->Eof;
+    Child->Allocation = Measurement->Allocation;
+    return Group->AccountingHeld ? STATUS_INTEGER_OVERFLOW :
+        (Measurement->Allocation > Child->Nominal || Measurement->Eof > Child->PaddedExtent) ? STATUS_DISK_FULL : STATUS_SUCCESS;
+}
+
+/* M held. The context consumes an existing reserved child credit. */
+static VOID MetadataStartContextLocked(_Inout_ SU_METADATA_GROUP *Group, _Inout_ SU_METADATA_COMPLETION *Context,
+    _In_ ULONG Root, _In_ ULONG Child, _In_ PFILE_OBJECT Object, _In_ UCHAR Operation)
+{
+    RtlZeroMemory(Context, sizeof(*Context));
+    Context->Signature = SU_METADATA_CONTEXT_SIGNATURE;
+    Context->Group = Group;
+    Context->RootIndex = Root;
+    Context->ChildIndex = Child;
+    Context->Object = Object;
+    Context->Operation = Operation;
+    Context->Incarnation = Child == SU_METADATA_CHILDREN ? Group->Roots[Root].Id : Group->Children[Child].Id;
+    Context->InUse = TRUE;
+    if (Child != SU_METADATA_CHILDREN) ++Group->Children[Child].Pins;
+    ++Group->PostOwners;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID MetadataReleaseIo(_Inout_ SU_METADATA_COMPLETION *Context)
+{
+    SU_METADATA_GROUP *group = Context->Group;
+    KIRQL irql;
+    /* Keep both record pins until releases finish, including reentrant CLOSE. */
+    if (Context->TargetHandle != NULL) ZwClose(Context->TargetHandle);
+    if (Context->TargetReference != NULL) ObDereferenceObject(Context->TargetReference);
+    if (Context->Reference != NULL) ObDereferenceObject(Context->Reference);
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (Context->TargetIndex != 0) {
+        SU_METADATA_CHILD *target = &group->Children[Context->TargetIndex - 1];
+        NT_ASSERT(target->Id == Context->TargetId && target->Pins != 0);
+        --target->Pins;
+    }
+    if (Context->ChildIndex != SU_METADATA_CHILDREN) {
+        NT_ASSERT(group->Children[Context->ChildIndex].Id == Context->Incarnation);
+        --group->Children[Context->ChildIndex].Pins;
+    }
+    Context->InUse = FALSE;
+    Context->Signature = 0;
+    --group->PostOwners;
+    KeReleaseSpinLock(&MetadataLock, irql);
+    ExReleaseRundownProtection(&group->Rundown);
+    KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID MetadataServiceChildren(_Inout_ SU_METADATA_GROUP *Group)
+{
+    ULONG i;
+    KIRQL irql;
+    for (i = 0; i < SU_METADATA_ROOTS; ++i) {
+        BOOLEAN deferred;
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        deferred = Group->Roots[i].Io.InUse && Group->Roots[i].Io.Deferred;
+        if (deferred) Group->Roots[i].Io.Deferred = FALSE;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        if (deferred) MetadataReleaseIo(&Group->Roots[i].Io);
+    }
+    for (i = 0; i < SU_METADATA_CHILDREN; ++i) {
+        SU_METADATA_CHILD *child = &Group->Children[i];
+        PSECURITY_DESCRIPTOR security = NULL;
+        BOOLEAN deferred, retire = FALSE;
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        if (Group->ForceForgetKeys && child->State != 0) {
+            child->Key = NULL; child->Closed = TRUE; child->Uncertain = TRUE;
+            if (child->State != SuMetadataPendingOpen) child->State = SuMetadataRevoked;
+        }
+        deferred = child->Io.InUse && child->Io.Deferred;
+        if (deferred) child->Io.Deferred = FALSE;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        if (deferred) MetadataReleaseIo(&child->Io);
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        if (child->State != 0 && child->Closed && child->Pins == 0 && child->TargetPins == 0 &&
+            !child->Io.InUse && !child->Cleanup.InUse && !child->Retiring) {
+            child->Retiring = TRUE;
+            security = child->Security;
+            child->Security = NULL;
+            retire = TRUE;
+        }
+        KeReleaseSpinLock(&MetadataLock, irql);
+        if (security != NULL) ExFreePoolWithTag(security, SU_METADATA_TAG);
+        if (retire) {
+            KeAcquireSpinLock(&MetadataLock, &irql);
+            MetadataRemoveChildLocked(Group, i);
+            KeReleaseSpinLock(&MetadataLock, irql);
+            KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
+        }
+    }
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    {
+        BOOLEAN held = Group->AccountingHeld && !Group->Revoked;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        if (held) SafeUploadMetadataRevoke(Group->MainCookie);
+    }
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataCreateShape(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
+    _In_ const SU_METADATA_CHILD *Child)
+{
+    ULONG options = Data->Iopb->Parameters.Create.Options & 0xffffffUL;
+    ULONG required = FILE_NO_INTERMEDIATE_BUFFERING | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
+    ULONG allowed = required | FILE_WRITE_THROUGH | FILE_NON_DIRECTORY_FILE | FILE_COMPLETE_IF_OPLOCKED;
+    ACCESS_MASK access;
+    if (!FLT_IS_IRP_OPERATION(Data) || Data->Iopb->MinorFunction != 0 || Objects->Transaction != NULL ||
+        Data->Iopb->OperationFlags != 0 || Data->Iopb->Parameters.Create.SecurityContext == NULL ||
+        Data->Iopb->Parameters.Create.EaLength != 0 || Data->Iopb->Parameters.Create.AllocationSize.QuadPart != 0 ||
+        (Data->Iopb->Parameters.Create.Options >> 24) != Child->Request.CreateDisposition ||
+        (options & required) != required || (options & ~allowed) != 0) return STATUS_ACCESS_DENIED;
+    access = Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
+    if (access != Child->Request.AccessMask ||
+        ((access & FILE_WRITE_DATA) != 0 && (options & FILE_WRITE_THROUGH) == 0)) return STATUS_ACCESS_DENIED;
+    if ((Data->Iopb->Parameters.Create.ShareAccess & ~(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) != 0 ||
+        (Child->Request.CreateDisposition == FILE_OPEN && Data->Iopb->Parameters.Create.ShareAccess !=
+            (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE))) return STATUS_SHARING_VIOLATION;
+    return STATUS_SUCCESS;
+}
+
+/* Retain a native handle as well as the record/FILE_OBJECT pin across rename
+ * or F3. A reference alone does not prevent the last handle's CLEANUP. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataHoldTarget(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index,
+    _Inout_ SU_METADATA_COMPLETION *Context, _In_ BOOLEAN Unlinked)
+{
+    SU_METADATA_CHILD *child = &Group->Children[Index], *target;
+    NTSTATUS status;
+    KIRQL irql;
+    if (child->ReplacementIndex == 0) return STATUS_FILE_INVALID;
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    target = &Group->Children[child->ReplacementIndex - 1];
+    if (Group->Revoked || target->Id != child->ReplacementId || target->State != SuMetadataActive ||
+        target->Cleaned || target->Key == NULL || target->Unlinked != Unlinked ||
+        target->ShareAccess != (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) status = STATUS_ACCESS_DENIED;
+    else if (target->Io.InUse || target->Pins != 0 || !FlagOn(target->Key->Flags, FO_HANDLE_CREATED))
+        status = STATUS_DEVICE_BUSY;
+    else {
+        ++target->Pins;
+        Context->TargetIndex = child->ReplacementIndex;
+        Context->TargetId = target->Id;
+        Context->TargetReference = target->Key;
+        /* Nonblocking reference under M prevents a CLOSE/address-reuse race.
+         * All dereferences/handle work occur after releasing M. */
+        ObReferenceObject(Context->TargetReference);
+        status = STATUS_SUCCESS;
+    }
+    KeReleaseSpinLock(&MetadataLock, irql);
+    if (status != STATUS_SUCCESS) return status;
+    /* A zero-access handle adds lifetime only, never caller authority. */
+    status = ObOpenObjectByPointer(Context->TargetReference, OBJ_KERNEL_HANDLE, NULL, 0,
+        *IoFileObjectType, KernelMode, &Context->TargetHandle);
+    if (status != STATUS_SUCCESS) return status;
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (Group->Revoked || target->Cleaned || target->Key != Context->TargetReference || target->Id != Context->TargetId)
+        status = STATUS_ACCESS_DENIED;
+    KeReleaseSpinLock(&MetadataLock, irql);
+    return status;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataRenamePre(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index,
+    _Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data)
+{
+    SU_METADATA_CHILD *child = &Group->Children[Index], *target;
+    PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+    PFILE_OBJECT parent = NULL;
+    SU_METADATA_MEASUREMENT measurement;
+    SAFEUPLOAD_STAGE_IDENTITY_V19 parentId;
+    ULONG bytes = Data->Iopb->Parameters.SetFileInformation.Length;
+    ULONG header = (ULONG)FIELD_OFFSET(FILE_RENAME_INFORMATION, FileName);
+    HANDLE rootHandle;
+    NTSTATUS status;
+    KIRQL irql;
+    if (rename == NULL || bytes < header || bytes > header + 510 || child->ReplacementIndex == 0 ||
+        child->Renamed || !child->F2 || MetadataCurrentRole(child->Request.Role) == 0) return STATUS_ACCESS_DENIED;
+    if (rename->Flags != (FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS) ||
+        rename->RootDirectory == NULL || rename->FileNameLength == 0 || rename->FileNameLength != bytes - header)
+        return STATUS_ACCESS_DENIED;
+    Context->RenameBytes = rename->FileNameLength;
+    RtlCopyMemory(Context->RenameLeaf, rename->FileName, Context->RenameBytes);
+    rootHandle = rename->RootDirectory;
+    Context->NativeValidation = TRUE;
+    status = ObReferenceObjectByHandle(rootHandle, 0, *IoFileObjectType, UserMode, (PVOID *)&parent, NULL);
+    if (status != STATUS_SUCCESS) return status;
+    if (Data->Iopb->Parameters.SetFileInformation.ParentOfTarget != NULL) {
+        status = MetadataQueryDirectory(Group->Instance, Data->Iopb->Parameters.SetFileInformation.ParentOfTarget, &parentId);
+        if (status != STATUS_SUCCESS || !RtlEqualMemory(&parentId,
+            &Group->Nodes[MetadataRoleNodes[Context->RootIndex]].Identity, sizeof(parentId))) {
+            ObDereferenceObject(parent);
+            return STATUS_FILE_INVALID;
+        }
+    }
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    target = &Group->Children[child->ReplacementIndex - 1];
+    if (Group->Revoked || parent != Group->Roots[Context->RootIndex].Key || target->Id != child->ReplacementId ||
+        Context->RenameBytes != target->LiveLeafBytes ||
+        !RtlEqualMemory(Context->RenameLeaf, target->Request.Leaf, target->LiveLeafBytes)) status = STATUS_ACCESS_DENIED;
+    else status = STATUS_SUCCESS;
+    KeReleaseSpinLock(&MetadataLock, irql);
+    ObDereferenceObject(parent);
+    if (status != STATUS_SUCCESS) return status;
+    status = MetadataHoldTarget(Group, Index, Context, FALSE);
+    if (status != STATUS_SUCCESS) return status;
+    status = MetadataCheckName(Group, Context->TargetIndex - 1, Context->TargetReference);
+    if (status != STATUS_SUCCESS) return status;
+    status = MetadataInspectChild(Group, Context->TargetIndex - 1, Context->TargetReference, FALSE, &measurement);
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (measurement.Observed) {
+        NTSTATUS account = MetadataAccountLocked(Group, target, &measurement);
+        if (status == STATUS_SUCCESS) status = account;
+    } else {
+        target->Uncertain = TRUE;
+        if (Group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++Group->UnknownOutcomes;
+    }
+    if (Group->Revoked || target->Cleaned || target->Key != Context->TargetReference ||
+        target->Id != Context->TargetId) status = STATUS_ACCESS_DENIED;
+    KeReleaseSpinLock(&MetadataLock, irql);
+    return status;
+}
+
+/* Captures all mutable pre-input before lower dispatch; completion never reads
+ * SET_INFORMATION input or user buffers. Exactly one ordinary I/O per child. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataOperationPre(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index,
+    _Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects)
+{
+    SU_METADATA_CHILD *child = &Group->Children[Index];
+    ULONG major = Data->Iopb->MajorFunction, length;
+    PVOID buffer;
+    LARGE_INTEGER offset;
+    UINT64 end;
+    NTSTATUS status;
+    BOOLEAN mutation = FALSE;
+    if (!FLT_IS_IRP_OPERATION(Data) || Data->Iopb->MinorFunction != 0 || Objects->Transaction != NULL ||
+        FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO)) return STATUS_ACCESS_DENIED;
+    switch (major) {
+    case IRP_MJ_READ: case IRP_MJ_WRITE:
+        if (!FlagOn(Data->Iopb->IrpFlags, IRP_NOCACHE)) return STATUS_ACCESS_DENIED;
+        if (major == IRP_MJ_WRITE) {
+            if ((child->Request.AccessMask & FILE_WRITE_DATA) == 0 || child->Renamed || child->Frozen || child->Deleted)
+                return STATUS_ACCESS_DENIED;
+            length = Data->Iopb->Parameters.Write.Length; offset = Data->Iopb->Parameters.Write.ByteOffset;
+            buffer = Data->Iopb->Parameters.Write.WriteBuffer;
+            if (Data->Iopb->Parameters.Write.MdlAddress != NULL) return STATUS_NOT_SUPPORTED;
+            mutation = TRUE;
+        } else {
+            if ((child->Request.AccessMask & FILE_READ_DATA) == 0) return STATUS_ACCESS_DENIED;
+            length = Data->Iopb->Parameters.Read.Length; offset = Data->Iopb->Parameters.Read.ByteOffset;
+            buffer = Data->Iopb->Parameters.Read.ReadBuffer;
+            if (Data->Iopb->Parameters.Read.MdlAddress != NULL) return STATUS_NOT_SUPPORTED;
+        }
+        if (offset.QuadPart < 0 || (UINT64)offset.QuadPart > child->PaddedExtent ||
+            length > child->PaddedExtent - (UINT64)offset.QuadPart ||
+            (((UINT64)offset.QuadPart | length | (UINT64)(ULONG_PTR)buffer) & (Group->IoAlignment - 1)) != 0 ||
+            (length != 0 && buffer == NULL)) return STATUS_INVALID_PARAMETER;
+        end = (UINT64)offset.QuadPart + length;
+        if (mutation && end > child->Preallocated) return STATUS_DEVICE_NOT_READY;
+        Context->Length = length;
+        Context->Value = end;
+        break;
+    case IRP_MJ_QUERY_INFORMATION:
+        Context->InformationClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
+        length = Data->Iopb->Parameters.QueryFileInformation.Length;
+        switch (Context->InformationClass) {
+        case FileIdInformation: Context->Length = sizeof(FILE_ID_INFORMATION); break;
+        case FileStandardInformation: Context->Length = sizeof(FILE_STANDARD_INFORMATION); break;
+        case FileAttributeTagInformation: Context->Length = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION); break;
+        default: return STATUS_NOT_SUPPORTED;
+        }
+        if (length < Context->Length || length > SU_METADATA_SD_BYTES) return STATUS_INVALID_BUFFER_SIZE;
+        break;
+    case IRP_MJ_QUERY_SECURITY:
+        if ((child->Request.AccessMask & READ_CONTROL) == 0 ||
+            Data->Iopb->Parameters.QuerySecurity.SecurityInformation == 0 ||
+            (Data->Iopb->Parameters.QuerySecurity.SecurityInformation &
+                ~(OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) != 0 ||
+            Data->Iopb->Parameters.QuerySecurity.Length > SU_METADATA_SD_BYTES) return STATUS_ACCESS_DENIED;
+        Context->Length = Data->Iopb->Parameters.QuerySecurity.Length;
+        break;
+    case IRP_MJ_FLUSH_BUFFERS:
+        if ((child->Request.AccessMask & FILE_WRITE_DATA) == 0 || child->Deleted ||
+            ((child->Renamed || child->Frozen) && !child->NeedF3)) return STATUS_ACCESS_DENIED;
+        mutation = TRUE;
+        if (child->NeedF3) {
+            Context->NativeValidation = TRUE;
+            if (child->ReplacementIndex == 0) return STATUS_FILE_INVALID;
+            status = MetadataHoldTarget(Group, Index, Context, TRUE);
+            if (status != STATUS_SUCCESS) return status;
+        }
+        break;
+    case IRP_MJ_SET_INFORMATION:
+        Context->InformationClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+        buffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+        length = Data->Iopb->Parameters.SetFileInformation.Length;
+        if (buffer == NULL || child->Deleted) return STATUS_ACCESS_DENIED;
+        switch (Context->InformationClass) {
+        case FileEndOfFileInformation: case FileAllocationInformation:
+            if ((child->Request.AccessMask & FILE_WRITE_DATA) == 0 || child->Renamed || child->Frozen ||
+                length != sizeof(FILE_END_OF_FILE_INFORMATION)) return STATUS_ACCESS_DENIED;
+            RtlCopyMemory(&offset, buffer, sizeof(offset)); /* both native classes carry one LARGE_INTEGER */
+            if (offset.QuadPart < 0 || (UINT64)offset.QuadPart > child->PaddedExtent) return STATUS_INVALID_PARAMETER;
+            Context->Value = (UINT64)offset.QuadPart;
+            if (Context->InformationClass == FileEndOfFileInformation) {
+                if (!child->F1 || Context->Value > child->Preallocated || Context->Value > child->Request.MaximumLogicalBytes ||
+                    (child->Request.Role == SuSegment && (Context->Value < child->EndOfFile ||
+                     (Context->Value & (Group->IoAlignment - 1)) != 0))) return STATUS_ACCESS_DENIED;
+            } else {
+                if (Context->Value < child->EndOfFile || (Context->Value & (Group->IoAlignment - 1)) != 0 ||
+                    (child->Request.Role == SuSegment && (Context->Value < child->Preallocated ||
+                    ((Context->Value + Group->AllocationUnit - 1) & ~((UINT64)Group->AllocationUnit - 1)) < child->Allocation)))
+                    return STATUS_ACCESS_DENIED;
+            }
+            break;
+        case FileRenameInformationEx:
+            if ((child->Request.AccessMask & DELETE) == 0) return STATUS_ACCESS_DENIED;
+            status = MetadataRenamePre(Group, Index, Context, Data);
+            if (status != STATUS_SUCCESS) return status;
+            break;
+        case FileDispositionInformation:
+            if ((child->Request.AccessMask & DELETE) == 0 || (child->Renamed ? MetadataCurrentRole(child->Request.Role) : child->Request.Role) == SuMarkerCurrent ||
+                child->Request.Role == SuLegacySecurity || child->Request.Role == SuLegacyNegative ||
+                child->Request.Role == SuSegment || child->TargetPins != 0 || child->Unlinked || length != sizeof(FILE_DISPOSITION_INFORMATION) ||
+                !((PFILE_DISPOSITION_INFORMATION)buffer)->DeleteFile) return STATUS_ACCESS_DENIED;
+            break;
+        default: return STATUS_NOT_SUPPORTED;
+        }
+        mutation = TRUE;
+        break;
+    default: return STATUS_NOT_SUPPORTED;
+    }
+    if (mutation) { Context->NativeValidation = TRUE; return MetadataCheckAnchors(Group); }
+    return STATUS_SUCCESS;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataRootIoPre(_Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects)
+{
+    ULONG length;
+    if (!FLT_IS_IRP_OPERATION(Data) || Objects->Transaction != NULL ||
+        (Data->Iopb->MajorFunction != IRP_MJ_DIRECTORY_CONTROL && Data->Iopb->MinorFunction != 0) ||
+        FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO)) return STATUS_ACCESS_DENIED;
+    switch (Data->Iopb->MajorFunction) {
+    case IRP_MJ_QUERY_VOLUME_INFORMATION:
+        Context->InformationClass = Data->Iopb->Parameters.QueryVolumeInformation.FsInformationClass;
+        length = Data->Iopb->Parameters.QueryVolumeInformation.Length;
+        switch (Context->InformationClass) {
+        case FileFsSizeInformation: Context->Length = sizeof(FILE_FS_SIZE_INFORMATION); break;
+        case FileFsFullSizeInformation: Context->Length = sizeof(FILE_FS_FULL_SIZE_INFORMATION); break;
+        case FileFsSectorSizeInformation: Context->Length = sizeof(FILE_FS_SECTOR_SIZE_INFORMATION); break;
+        default: return STATUS_NOT_SUPPORTED;
+        }
+        return length >= Context->Length && length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE;
+    case IRP_MJ_QUERY_INFORMATION:
+        Context->InformationClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
+        length = Data->Iopb->Parameters.QueryFileInformation.Length;
+        switch (Context->InformationClass) {
+        case FileIdInformation: Context->Length = sizeof(FILE_ID_INFORMATION); break;
+        case FileStandardInformation: Context->Length = sizeof(FILE_STANDARD_INFORMATION); break;
+        case FileAttributeTagInformation: Context->Length = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION); break;
+        default: return STATUS_NOT_SUPPORTED;
+        }
+        return length >= Context->Length && length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE;
+    case IRP_MJ_QUERY_SECURITY:
+        Context->Length = Data->Iopb->Parameters.QuerySecurity.Length;
+        return Context->Length <= SU_METADATA_SD_BYTES && Data->Iopb->Parameters.QuerySecurity.SecurityInformation != 0 &&
+            (Data->Iopb->Parameters.QuerySecurity.SecurityInformation &
+             ~(OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) == 0 ?
+             STATUS_SUCCESS : STATUS_ACCESS_DENIED;
+    case IRP_MJ_DIRECTORY_CONTROL:
+        if (Data->Iopb->MinorFunction != IRP_MN_QUERY_DIRECTORY) return STATUS_NOT_SUPPORTED;
+        Context->Length = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.Length;
+        Context->InformationClass = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileInformationClass;
+        if (Context->InformationClass != FileDirectoryInformation && Context->InformationClass != FileFullDirectoryInformation &&
+            Context->InformationClass != FileIdBothDirectoryInformation && Context->InformationClass != FileIdFullDirectoryInformation &&
+            Context->InformationClass != FileNamesInformation) return STATUS_NOT_SUPPORTED;
+        return Context->Length != 0 && Context->Length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE;
+    default: return STATUS_NOT_SUPPORTED;
+    }
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataRootIoPost(_In_ SU_METADATA_COMPLETION *Context)
+{
+    ULONG alignment, unit;
+    NTSTATUS status;
+    if (Context->NativeStatus != STATUS_SUCCESS) return STATUS_SUCCESS; /* native read-only failure is preserved */
+    if (Context->NativeInformation > Context->Length ||
+        ((Context->Operation == IRP_MJ_QUERY_INFORMATION || Context->Operation == IRP_MJ_QUERY_VOLUME_INFORMATION) &&
+         Context->NativeInformation != Context->Length)) return STATUS_INFO_LENGTH_MISMATCH;
+    if (Context->Operation != IRP_MJ_QUERY_VOLUME_INFORMATION) return STATUS_SUCCESS;
+    status = MetadataCaptureAlignment(Context->Group->Instance, Context->Object, &alignment, &unit);
+    if (status != STATUS_SUCCESS) return status;
+    return alignment == Context->Group->IoAlignment && unit == Context->Group->AllocationUnit ?
+        STATUS_SUCCESS : STATUS_FILE_INVALID;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataCheckName(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index, _In_ PFILE_OBJECT Object)
+{
+    static const PCWSTR roots[SU_METADATA_ROOTS] = {
+        L"\\ProgramData\\SafeUpload\\staging", L"\\ProgramData\\SafeUpload\\staging\\.space-reservations",
+        L"\\ProgramData\\SafeUpload\\staging-journal", L"\\ProgramData\\SafeUpload\\staging-journal\\completed"
+    };
+    PFILE_NAME_INFORMATION name;
+    UNICODE_STRING prefix, actual, leaf, expected;
+    ULONG bytes = 0, i, root = SU_METADATA_ROOTS;
+    const ULONG capacity = (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName) + 1024UL;
+    NTSTATUS status;
+    for (i = 0; i < SU_METADATA_ROOTS; ++i)
+        if (Group->Roots[i].Id == Group->Children[Index].Request.RootId) { root = i; break; }
+    if (root == SU_METADATA_ROOTS) return STATUS_FILE_INVALID;
+    name = ExAllocatePool2(POOL_FLAG_PAGED, capacity, SU_METADATA_TAG);
+    if (name == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    status = FltQueryInformationFile(Group->Instance, Object, name, capacity, FileNameInformation, &bytes);
+    if (status == STATUS_SUCCESS) {
+        if (bytes < (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName) || name->FileNameLength > 1024 ||
+            (name->FileNameLength & 1) != 0 || name->FileNameLength > bytes - (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName))
+            status = STATUS_INFO_LENGTH_MISMATCH;
+        else {
+            RtlInitUnicodeString(&prefix, roots[root]);
+            actual.Buffer = name->FileName;
+            actual.Length = actual.MaximumLength = prefix.Length;
+            if (name->FileNameLength != (ULONG)prefix.Length + sizeof(WCHAR) + Group->Children[Index].LiveLeafBytes ||
+                !RtlEqualUnicodeString(&prefix, &actual, TRUE) ||
+                name->FileName[prefix.Length / sizeof(WCHAR)] != L'\\') status = STATUS_FILE_INVALID;
+            else {
+                leaf.Buffer = name->FileName + prefix.Length / sizeof(WCHAR) + 1;
+                leaf.Length = leaf.MaximumLength = (USHORT)Group->Children[Index].LiveLeafBytes;
+                expected.Buffer = Group->Children[Index].FoldedLeaf;
+                expected.Length = expected.MaximumLength = leaf.Length;
+                if (!RtlEqualUnicodeString(&leaf, &expected, TRUE)) status = STATUS_FILE_INVALID;
+            }
+            for (i = 0; i < name->FileNameLength / sizeof(WCHAR); ++i)
+                if (name->FileName[i] == L':') { status = STATUS_ACCESS_DENIED; break; }
+        }
+    }
+    ExFreePoolWithTag(name, SU_METADATA_TAG);
+    return status;
+}
+
+/* Address membership precedes every dereference. Contexts remain resident and
+ * unreusable through their native completion, including deferred PASSIVE release. */
 _Use_decl_annotations_
 BOOLEAN SafeUploadMetadataIsContext(PVOID Context)
 {
@@ -1416,16 +2191,31 @@ BOOLEAN SafeUploadMetadataIsContext(PVOID Context)
     KeAcquireSpinLock(&MetadataLock, &irql);
     group = MetadataRoutingGroup;
     if (group != NULL) {
-        for (i = 0; i < SU_METADATA_ROOTS; ++i) {
-            SU_METADATA_COMPLETION *completion = &group->Roots[i].Cleanup;
-            if ((PVOID)((ULONG_PTR)completion | 3) == Context && completion->InUse &&
-                completion->Signature == SU_METADATA_CONTEXT_SIGNATURE && completion->Group == group &&
-                completion->RootIndex == i && completion->Incarnation == group->Roots[i].Id &&
-                completion->Object != NULL && completion->Operation == IRP_MJ_CLEANUP) { found = TRUE; break; }
+        for (i = 0; i < SU_METADATA_ROOTS + SU_METADATA_CHILDREN; ++i) {
+            SU_METADATA_COMPLETION *io = i < SU_METADATA_ROOTS ? &group->Roots[i].Io :
+                &group->Children[i - SU_METADATA_ROOTS].Io;
+            SU_METADATA_COMPLETION *cleanup = i < SU_METADATA_ROOTS ? &group->Roots[i].Cleanup :
+                &group->Children[i - SU_METADATA_ROOTS].Cleanup;
+            SU_METADATA_COMPLETION *c = (PVOID)((ULONG_PTR)io | 3) == Context ? io :
+                (PVOID)((ULONG_PTR)cleanup | 3) == Context ? cleanup : NULL;
+            if (c != NULL && c->InUse && !c->Deferred && c->Signature == SU_METADATA_CONTEXT_SIGNATURE &&
+                c->Group == group && c->RootIndex < SU_METADATA_ROOTS && c->Object != NULL &&
+                ((i < SU_METADATA_ROOTS && c->ChildIndex == SU_METADATA_CHILDREN &&
+                  c->RootIndex == i && c->Incarnation == group->Roots[i].Id) ||
+                 (i >= SU_METADATA_ROOTS && c->ChildIndex == i - SU_METADATA_ROOTS &&
+                  c->Incarnation == group->Children[i - SU_METADATA_ROOTS].Id))) { found = TRUE; break; }
         }
     }
     KeReleaseSpinLock(&MetadataLock, irql);
     return found;
+}
+
+_IRQL_requires_max_(APC_LEVEL)
+static FLT_PREOP_CALLBACK_STATUS MetadataRefuse(_Inout_ PFLT_CALLBACK_DATA Data, _In_ NTSTATUS Status)
+{
+    Data->IoStatus.Status = Status;
+    Data->IoStatus.Information = 0;
+    return FLT_PREOP_COMPLETE;
 }
 
 _Use_decl_annotations_
@@ -1433,62 +2223,71 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
     PVOID *Context, SU_METADATA_DISPATCH *Dispatch)
 {
     SU_METADATA_GROUP *group;
-    SU_METADATA_ROOT *root;
-    ULONG i, index = SU_METADATA_ROOTS, child = SU_METADATA_CHILDREN;
+    SU_METADATA_COMPLETION *completion = NULL;
+    SU_METADATA_CHILD *entry;
+    SU_METADATA_MEASUREMENT measured;
+    ULONG i, root = SU_METADATA_ROOTS, child = SU_METADATA_CHILDREN;
     PFILE_OBJECT object, related;
-    UCHAR operation = Data->Iopb->MajorFunction;
-    WCHAR folded[256]; /* the unmodified FILE_OBJECT name is folded in place of a second copy (stack budget) */
-    USHORT leafBytes = 0;
-    BOOLEAN validSubject = FALSE, live = FALSE, inputValid = FALSE;
-    NTSTATUS refusal = STATUS_DEVICE_NOT_READY;
+    UCHAR major = Data->Iopb->MajorFunction;
+    WCHAR folded[256];
+    USHORT bytes = 0;
+    BOOLEAN live, subject = FALSE, fault = FALSE;
+    NTSTATUS status = STATUS_ACCESS_DENIED;
     KIRQL irql;
     RtlZeroMemory(Dispatch, sizeof(*Dispatch));
     *Context = NULL;
     if (InterlockedCompareExchange(&MetadataInitialized, 0, 0) == 0 || Objects->FileObject == NULL)
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     object = Objects->FileObject;
-    related = operation == IRP_MJ_CREATE ? object->RelatedFileObject : NULL;
+    related = major == IRP_MJ_CREATE ? object->RelatedFileObject : NULL;
     KeAcquireSpinLock(&MetadataLock, &irql);
     group = MetadataRoutingGroup;
     if (group != NULL) {
-        for (i = 0; i < SU_METADATA_ROOTS; ++i) {
-            if (group->Roots[i].Key != NULL &&
-                group->Roots[i].Key == (operation == IRP_MJ_CREATE ? related : object)) { index = i; break; }
+        if (major != IRP_MJ_CREATE) {
+            for (i = 0; i < SU_METADATA_CHILDREN; ++i)
+                if (group->Children[i].Key == object && group->Children[i].State != 0) { child = i; break; }
+        }
+        for (i = 0; i < SU_METADATA_ROOTS; ++i)
+            if (group->Roots[i].Key != NULL && group->Roots[i].Key == (major == IRP_MJ_CREATE ? related : object))
+                { root = i; break; }
+        if (child != SU_METADATA_CHILDREN) {
+            for (i = 0; i < SU_METADATA_ROOTS; ++i)
+                if (group->Roots[i].Id == group->Children[child].Request.RootId) { root = i; break; }
         }
     }
-    if (index == SU_METADATA_ROOTS || !ExAcquireRundownProtection(&group->Rundown)) {
+    if (root == SU_METADATA_ROOTS || !ExAcquireRundownProtection(&group->Rundown)) {
         KeReleaseSpinLock(&MetadataLock, irql);
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
-    root = &group->Roots[index];
-    Dispatch->Handled = TRUE;
-    Dispatch->Cookie = (UINT64)(ULONG_PTR)group->MainCookie;
-    Dispatch->RootId = root->Id;
-    live = !group->Revoked && !root->Cleaned && Objects->Instance == group->Instance;
-    if (operation == IRP_MJ_CLOSE) {
-        root->Key = NULL; /* before the original FILE_OBJECT address can recycle */
+    Dispatch->Handled = TRUE; Dispatch->Cookie = (UINT64)(ULONG_PTR)group->MainCookie;
+    Dispatch->RootId = group->Roots[root].Id;
+    if (child != SU_METADATA_CHILDREN) {
+        Dispatch->ChildId = group->Children[child].Id;
+        Dispatch->Role = group->Children[child].Request.Role;
+    }
+    live = !group->Revoked && Objects->Instance == group->Instance &&
+        (child != SU_METADATA_CHILDREN || !group->Roots[root].Cleaned);
+    if (major == IRP_MJ_CLOSE) {
+        if (child == SU_METADATA_CHILDREN) group->Roots[root].Key = NULL;
+        else { group->Children[child].Key = NULL; group->Children[child].Closed = TRUE; }
         KeReleaseSpinLock(&MetadataLock, irql);
         ExReleaseRundownProtection(&group->Rundown);
         KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
-    if (operation == IRP_MJ_CLEANUP) {
-        root->Cleaned = TRUE;
-        for (i = 0; i < SU_METADATA_CHILDREN; ++i)
-            if (group->Children[i].State == SuMetadataPendingOpen &&
-                group->Children[i].Request.RootId == root->Id) MetadataRemoveChildLocked(group, i);
-        if (!root->Cleanup.InUse) {
-            root->Cleanup.Signature = SU_METADATA_CONTEXT_SIGNATURE;
-            root->Cleanup.Group = group;
-            root->Cleanup.Object = object;
-            root->Cleanup.Incarnation = root->Id;
-            root->Cleanup.RootIndex = index;
-            root->Cleanup.Operation = operation;
-            root->Cleanup.InUse = TRUE;
-            ++group->PostOwners;
-            *Context = (PVOID)((ULONG_PTR)&root->Cleanup | 3);
+    if (major == IRP_MJ_CLEANUP) {
+        if (child == SU_METADATA_CHILDREN) {
+            group->Roots[root].Cleaned = TRUE;
+            for (i = 0; i < SU_METADATA_CHILDREN; ++i)
+                if (group->Children[i].State == SuMetadataPendingOpen &&
+                    group->Children[i].Request.RootId == group->Roots[root].Id) MetadataRemoveChildLocked(group, i);
+            completion = &group->Roots[root].Cleanup;
+        } else { group->Children[child].Cleaned = TRUE; completion = &group->Children[child].Cleanup; }
+        if (!completion->InUse) {
+            MetadataStartContextLocked(group, completion, root, child, object, major);
+            *Context = (PVOID)((ULONG_PTR)completion | 3);
             KeReleaseSpinLock(&MetadataLock, irql);
-            return FLT_PREOP_SUCCESS_WITH_CALLBACK; /* context owns the pin */
+            return FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
         KeReleaseSpinLock(&MetadataLock, irql);
         ExReleaseRundownProtection(&group->Rundown);
@@ -1499,69 +2298,283 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
         ExReleaseRundownProtection(&group->Rundown);
         return FLT_PREOP_DISALLOW_FASTIO;
     }
-    if (operation == IRP_MJ_CREATE && KeGetCurrentIrql() == PASSIVE_LEVEL && live) {
-        validSubject = PsGetCurrentProcess() == group->Process && FltGetRequestorProcess(Data) == group->Process &&
-            MetadataAuthenticate(group);
-        if (validSubject && object->FileName.Buffer != NULL && object->FileName.Length != 0 &&
-            object->FileName.Length <= 510 && (object->FileName.Length & 1) == 0) {
-            leafBytes = object->FileName.Length;
-            inputValid = NT_SUCCESS(MetadataFoldLeaf(object->FileName.Buffer, leafBytes, folded));
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL || !live) {
+        ExReleaseRundownProtection(&group->Rundown);
+        return MetadataRefuse(Data, STATUS_DEVICE_NOT_READY);
+    }
+    subject = PsGetCurrentProcess() == group->Process && FltGetRequestorProcess(Data) == group->Process &&
+        MetadataAuthenticate(group);
+    if (!subject) {
+        ExReleaseRundownProtection(&group->Rundown);
+        return MetadataRefuse(Data, STATUS_ACCESS_DENIED);
+    }
+    if (major == IRP_MJ_CREATE && object->FileName.Buffer != NULL && object->FileName.Length != 0 &&
+        object->FileName.Length <= 510 && (object->FileName.Length & 1) == 0) {
+        bytes = object->FileName.Length;
+        status = MetadataFoldLeaf(object->FileName.Buffer, bytes, folded);
+    }
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (group->Revoked || (group->Roots[root].Cleaned && child == SU_METADATA_CHILDREN)) status = STATUS_DEVICE_NOT_READY;
+    else if (major == IRP_MJ_CREATE) {
+        if (status == STATUS_SUCCESS) {
+            for (i = 0; i < SU_METADATA_CHILDREN; ++i)
+                if (group->Children[i].State == SuMetadataPendingOpen && group->Children[i].Request.RootId == Dispatch->RootId &&
+                    group->Children[i].Request.LeafBytes == bytes && RtlEqualMemory(group->Children[i].FoldedLeaf, folded, bytes))
+                    { child = i; break; }
         }
+        if (child == SU_METADATA_CHILDREN) status = STATUS_ACCESS_DENIED;
+        else {
+            entry = &group->Children[child];
+            entry->State = SuMetadataOpening; entry->Key = object;
+            group->Transactions[child / SU_METADATA_CHILDREN_PER_TRANSACTION].Pending = FALSE;
+            completion = &entry->Io;
+            MetadataStartContextLocked(group, completion, root, child, object, major);
+            Dispatch->ChildId = entry->Id; Dispatch->Role = entry->Request.Role;
+            RtlZeroMemory(&measured, sizeof(measured));
+            status = MetadataAccountLocked(group, entry, &measured); /* precharge before native CREATE */
+        }
+    } else if (child != SU_METADATA_CHILDREN) {
+        entry = &group->Children[child];
+        if (entry->State != SuMetadataActive || entry->Cleaned || entry->Uncertain) status = STATUS_DEVICE_NOT_READY;
+        else if (entry->Io.InUse || entry->Pins != 0) status = STATUS_DEVICE_BUSY;
+        else {
+            completion = &entry->Io;
+            MetadataStartContextLocked(group, completion, root, child, object, major);
+            status = STATUS_SUCCESS;
+        }
+    } else if (group->Roots[root].Io.InUse) status = STATUS_DEVICE_BUSY;
+    else {
+        completion = &group->Roots[root].Io;
+        MetadataStartContextLocked(group, completion, root, SU_METADATA_CHILDREN, object, major);
+        status = STATUS_SUCCESS;
+    }
+    KeReleaseSpinLock(&MetadataLock, irql);
+    if (completion == NULL) {
+        ExReleaseRundownProtection(&group->Rundown);
+        return MetadataRefuse(Data, status);
+    }
+    /* The reservation and callback-owned original object precede this extra
+     * reference. Worker retirement cannot reuse the slot while it is pinned. */
+    ObReferenceObject(object);
+    completion->Reference = object;
+    if (status == STATUS_SUCCESS && major == IRP_MJ_CREATE) {
+        status = MetadataCreateShape(Data, Objects, &group->Children[child]);
+        if (status == STATUS_SUCCESS) {
+            status = MetadataCheckAnchors(group);
+            if (status != STATUS_SUCCESS) fault = TRUE;
+        }
+    } else if (status == STATUS_SUCCESS && child == SU_METADATA_CHILDREN) {
+        status = MetadataRootIoPre(completion, Data, Objects);
+    } else if (status == STATUS_SUCCESS) {
+        status = MetadataInspectChild(group, child, object, FALSE, &measured);
         KeAcquireSpinLock(&MetadataLock, &irql);
-        if (validSubject && inputValid && !group->Revoked && !root->Cleaned) {
-            for (i = 0; i < SU_METADATA_CHILDREN; ++i) {
-                SU_METADATA_CHILD *intent = &group->Children[i];
-                if (intent->State == SuMetadataPendingOpen && intent->Request.RootId == root->Id &&
-                    intent->Request.LeafBytes == leafBytes && RtlEqualMemory(intent->FoldedLeaf, folded, leafBytes)) {
-                    child = i;
-                    Dispatch->ChildId = intent->Id;
-                    Dispatch->Role = intent->Request.Role;
-                    /* Claim and consume before refusing. No lower CREATE, new
-                     * context or FILE_OBJECT reference is retained in this pass. */
-                    intent->State = SuMetadataOpening;
-                    group->Transactions[i / SU_METADATA_CHILDREN_PER_TRANSACTION].Pending = FALSE;
-                    break;
-                }
+        if (measured.Observed) {
+            NTSTATUS account = MetadataAccountLocked(group, &group->Children[child], &measured);
+            if (status == STATUS_SUCCESS) status = account;
+        } else {
+            group->Children[child].Uncertain = TRUE;
+            if (group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++group->UnknownOutcomes;
+        }
+        KeReleaseSpinLock(&MetadataLock, irql);
+        if (status != STATUS_SUCCESS) fault = TRUE;
+        if (status == STATUS_SUCCESS) {
+            status = MetadataOperationPre(group, child, completion, Data, Objects);
+            if (status != STATUS_SUCCESS && status != STATUS_DEVICE_BUSY && completion->NativeValidation) fault = TRUE;
+        }
+    }
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (group->Revoked || (child != SU_METADATA_CHILDREN &&
+        (group->Children[child].Cleaned || group->Children[child].Key != object))) status = STATUS_DEVICE_NOT_READY;
+    if (status != STATUS_SUCCESS && major == IRP_MJ_CREATE) {
+        group->Children[child].Key = NULL; group->Children[child].Closed = TRUE;
+        group->Children[child].State = SuMetadataRevoked;
+    }
+    if (status == STATUS_SUCCESS && major == IRP_MJ_CREATE)
+        group->Children[child].ShareAccess = Data->Iopb->Parameters.Create.ShareAccess;
+    KeReleaseSpinLock(&MetadataLock, irql);
+    if (status != STATUS_SUCCESS) {
+        if (fault) SafeUploadMetadataRevoke(group->MainCookie);
+        MetadataReleaseIo(completion);
+        return MetadataRefuse(Data, status);
+    }
+    *Context = (PVOID)((ULONG_PTR)completion | 3);
+    return FLT_PREOP_SYNCHRONIZE;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static __declspec(noinline) NTSTATUS MetadataPostNative(_Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects)
+{
+    SU_METADATA_GROUP *group = Context->Group;
+    SU_METADATA_CHILD *child = &group->Children[Context->ChildIndex];
+    SU_METADATA_MEASUREMENT measured;
+    NTSTATUS status;
+    BOOLEAN opening = Context->Operation == IRP_MJ_CREATE;
+    KIRQL irql;
+    if (Objects->Instance != group->Instance || Objects->FileObject != Context->Object) return STATUS_FILE_INVALID;
+    if (opening && (Context->NativeStatus != STATUS_SUCCESS || Context->NativeInformation !=
+        (child->Request.CreateDisposition == FILE_CREATE ? FILE_CREATED : FILE_OPENED))) return STATUS_FILE_INVALID;
+    /* Native successful mutation is recorded BEFORE observations/bookkeeping.
+     * No observation failure changes it into permission to repeat the call. */
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (Context->NativeStatus == STATUS_SUCCESS && Context->Operation == IRP_MJ_SET_INFORMATION) {
+        if (Context->InformationClass == FileRenameInformationEx) {
+            SU_METADATA_CHILD *target = &group->Children[Context->TargetIndex - 1];
+            child->Renamed = TRUE; child->NeedF3 = TRUE;
+            child->LiveLeafBytes = target->LiveLeafBytes;
+            RtlCopyMemory(child->FoldedLeaf, target->FoldedLeaf, target->LiveLeafBytes);
+            group->Children[Context->TargetIndex - 1].Unlinked = TRUE;
+        } else if (Context->InformationClass == FileDispositionInformation) child->Deleted = TRUE;
+    }
+    KeReleaseSpinLock(&MetadataLock, irql);
+    status = MetadataInspectChild(group, Context->ChildIndex, Objects->FileObject, opening, &measured);
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (measured.Observed) {
+        NTSTATUS account = MetadataAccountLocked(group, child, &measured);
+        if (status == STATUS_SUCCESS) status = account;
+    } else {
+        child->Uncertain = TRUE;
+        if (group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++group->UnknownOutcomes;
+    }
+    if (group->Revoked || child->Key != Context->Object || child->Cleaned) status = STATUS_DEVICE_NOT_READY;
+    if (status == STATUS_SUCCESS && opening) {
+        if (measured.Eof > child->Request.MaximumLogicalBytes) status = STATUS_FILE_INVALID;
+        else {
+            child->Identity = measured.Identity;
+            child->Security = measured.Security; measured.Security = NULL;
+            child->SecurityBytes = measured.SecurityBytes;
+            child->State = SuMetadataActive;
+        }
+    } else if (status == STATUS_SUCCESS && Context->NativeStatus == STATUS_SUCCESS) {
+        if ((Context->Operation == IRP_MJ_WRITE || Context->Operation == IRP_MJ_READ) &&
+            Context->NativeInformation > Context->Length) status = STATUS_INFO_LENGTH_MISMATCH;
+        if (Context->Operation == IRP_MJ_WRITE && Context->NativeInformation != Context->Length)
+            status = STATUS_UNEXPECTED_IO_ERROR;
+        if (Context->Operation == IRP_MJ_QUERY_INFORMATION && Context->NativeInformation != Context->Length)
+            status = STATUS_INFO_LENGTH_MISMATCH;
+        if (Context->Operation == IRP_MJ_QUERY_SECURITY && Context->NativeInformation > Context->Length)
+            status = STATUS_INFO_LENGTH_MISMATCH;
+        if (Context->Operation == IRP_MJ_WRITE) { child->F1 = FALSE; child->F2 = FALSE; child->EofSet = FALSE; }
+        if (Context->Operation == IRP_MJ_FLUSH_BUFFERS) {
+            if (child->EofSet && child->EndOfFile != child->LogicalEof) status = STATUS_FILE_INVALID;
+            child->F1 = TRUE;
+            if (child->EofSet) child->F2 = TRUE;
+            if (child->NeedF3) child->NeedF3 = FALSE;
+            if (child->Request.Role == SuHistoryCandidate && child->F2) child->Frozen = TRUE;
+        }
+        if (Context->Operation == IRP_MJ_SET_INFORMATION) {
+            if (Context->InformationClass == FileAllocationInformation) {
+                if (child->Allocation < Context->Value) status = STATUS_DISK_FULL;
+                else child->Preallocated = Context->Value;
+                child->F2 = FALSE;
+            } else if (Context->InformationClass == FileEndOfFileInformation) {
+                if (child->EndOfFile != Context->Value) status = STATUS_FILE_INVALID;
+                child->LogicalEof = Context->Value;
+                child->EofSet = TRUE; child->F2 = FALSE;
             }
         }
-        if (child != SU_METADATA_CHILDREN) MetadataRemoveChildLocked(group, child);
-        else refusal = STATUS_ACCESS_DENIED;
+    }
+    KeReleaseSpinLock(&MetadataLock, irql);
+    if (measured.Security != NULL) ExFreePoolWithTag(measured.Security, SU_METADATA_TAG);
+    if (Context->TargetIndex != 0) {
+        NTSTATUS targetStatus;
+        BOOLEAN replaced = Context->Operation == IRP_MJ_FLUSH_BUFFERS || Context->NativeStatus == STATUS_SUCCESS;
+        if (Context->Operation == IRP_MJ_SET_INFORMATION && Context->NativeStatus == STATUS_SUCCESS) {
+            NTSTATUS nameStatus = MetadataCheckName(group, Context->ChildIndex, Objects->FileObject);
+            if (status == STATUS_SUCCESS) status = nameStatus;
+        }
+        /* Even a failed rename may leave uncertain target custody. Observe
+         * both exact objects before dropping the exclusion handle. F3 holds
+         * the predecessor again and verifies the measured unlink separately. */
+        targetStatus = MetadataInspectChild(group, Context->TargetIndex - 1, Context->TargetReference, FALSE, &measured);
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        if (measured.Observed) {
+            NTSTATUS account = MetadataAccountLocked(group, &group->Children[Context->TargetIndex - 1], &measured);
+            if (targetStatus == STATUS_SUCCESS) targetStatus = account;
+        } else {
+            group->Children[Context->TargetIndex - 1].Uncertain = TRUE;
+            if (group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++group->UnknownOutcomes;
+        }
+        if (replaced && (measured.Links != 0 || !measured.DeletePending)) targetStatus = STATUS_FILE_INVALID;
+        if (group->Children[Context->TargetIndex - 1].Cleaned ||
+            group->Children[Context->TargetIndex - 1].Key != Context->TargetReference) targetStatus = STATUS_FILE_INVALID;
         KeReleaseSpinLock(&MetadataLock, irql);
-    } else if (operation != IRP_MJ_CREATE) refusal = STATUS_NOT_SUPPORTED;
-    /* No lower native child operation is implemented. This also refuses
-     * unmatched leaves under a registered root without generic name/policy work. */
-    Data->IoStatus.Status = refusal;
-    Data->IoStatus.Information = 0;
-    ExReleaseRundownProtection(&group->Rundown);
-    KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
-    return FLT_PREOP_COMPLETE;
+        if (status == STATUS_SUCCESS) status = targetStatus;
+        if (status == STATUS_SUCCESS) status = MetadataCheckAnchors(group);
+    }
+    if (status == STATUS_SUCCESS && Context->NativeStatus == STATUS_SUCCESS &&
+        Context->Operation == IRP_MJ_FLUSH_BUFFERS) status = MetadataCheckAnchors(group);
+    /* Native errors retain measured peaks, then hold; never retry a mutation. */
+    if (Context->NativeStatus != STATUS_SUCCESS && status == STATUS_SUCCESS &&
+        !(Context->Operation == IRP_MJ_READ && Context->NativeStatus == STATUS_END_OF_FILE) &&
+        !(Context->Operation == IRP_MJ_QUERY_SECURITY && (Context->NativeStatus == STATUS_BUFFER_TOO_SMALL ||
+          Context->NativeStatus == STATUS_BUFFER_OVERFLOW))) status = Context->NativeStatus;
+    UNREFERENCED_PARAMETER(Data);
+    return status;
 }
 
 _Use_decl_annotations_
 FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     PVOID Context, FLT_POST_OPERATION_FLAGS Flags)
 {
-    SU_METADATA_COMPLETION *completion = (SU_METADATA_COMPLETION *)((ULONG_PTR)Context & ~(ULONG_PTR)15);
-    SU_METADATA_GROUP *group = completion->Group;
-    BOOLEAN revoke;
+    SU_METADATA_COMPLETION *c = (SU_METADATA_COMPLETION *)((ULONG_PTR)Context & ~(ULONG_PTR)15);
+    SU_METADATA_GROUP *group = c->Group;
+    SU_METADATA_CHILD *child = c->ChildIndex == SU_METADATA_CHILDREN ? NULL : &group->Children[c->ChildIndex];
+    BOOLEAN draining = BooleanFlagOn(Flags, FLTFL_POST_OPERATION_DRAINING), revoke = FALSE;
+    NTSTATUS status = STATUS_SUCCESS;
     KIRQL irql;
-    /* No paged pre-input, lower I/O, cancellation or object release at drain.
-     * The exact embedded owner retains group storage through this return. */
-    KeAcquireSpinLock(&MetadataLock, &irql);
-    NT_ASSERT(completion->InUse && completion->Signature == SU_METADATA_CONTEXT_SIGNATURE);
-    revoke = completion->RootIndex >= SU_METADATA_ROOTS || completion->Group != MetadataRoutingGroup ||
-        completion->Object != Objects->FileObject || completion->Operation != Data->Iopb->MajorFunction ||
-        (completion->RootIndex < SU_METADATA_ROOTS &&
-         completion->Incarnation != group->Roots[completion->RootIndex].Id) ||
-        completion->Operation != IRP_MJ_CLEANUP ||
-        FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) || !NT_SUCCESS(Data->IoStatus.Status);
-    completion->InUse = FALSE;
-    completion->Signature = 0;
-    NT_ASSERT(group->PostOwners != 0);
-    --group->PostOwners;
-    KeReleaseSpinLock(&MetadataLock, irql);
+    if (c->Operation == IRP_MJ_CLEANUP) {
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        if (child != NULL) {
+            child->Cleaned = TRUE;
+            if (draining || Data->IoStatus.Status != STATUS_SUCCESS) child->Uncertain = TRUE;
+            --child->Pins;
+        }
+        c->InUse = FALSE; c->Signature = 0; --group->PostOwners;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        if (draining) SafeUploadMetadataRevoke(group->MainCookie);
+        ExReleaseRundownProtection(&group->Rundown);
+        KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+    c->NativeStatus = draining ? STATUS_PENDING : Data->IoStatus.Status;
+    c->NativeInformation = draining ? 0 : Data->IoStatus.Information;
+    if (draining || KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        if (child != NULL) { child->State = SuMetadataRevoked; child->Uncertain = TRUE; }
+        if (group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++group->UnknownOutcomes;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        SafeUploadMetadataRevoke(group->MainCookie);
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        c->Deferred = TRUE;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
+        return FLT_POSTOP_FINISHED_PROCESSING; /* PASSIVE owner releases refs/pins */
+    }
+    if (c->Operation == IRP_MJ_CREATE && !NT_SUCCESS(c->NativeStatus)) {
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        child->Key = NULL; child->Closed = TRUE; child->State = SuMetadataRevoked;
+        KeReleaseSpinLock(&MetadataLock, irql);
+        MetadataReleaseIo(c);
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+    if (child != NULL) status = MetadataPostNative(c, Data, Objects);
+    else status = MetadataRootIoPost(c);
+    if (status != STATUS_SUCCESS) {
+        KeAcquireSpinLock(&MetadataLock, &irql);
+        if (child != NULL) { child->Uncertain = TRUE; child->State = SuMetadataRevoked; }
+        KeReleaseSpinLock(&MetadataLock, irql);
+        revoke = TRUE;
+        if (c->Operation == IRP_MJ_CREATE) {
+            if (NT_SUCCESS(c->NativeStatus) && Objects->FileObject->FsContext != NULL)
+                FltCancelFileOpen(Objects->Instance, Objects->FileObject);
+            Data->IoStatus.Status = status; Data->IoStatus.Information = 0;
+            KeAcquireSpinLock(&MetadataLock, &irql);
+            child->Key = NULL; child->Closed = TRUE;
+            KeReleaseSpinLock(&MetadataLock, irql);
+        }
+    }
     if (revoke) SafeUploadMetadataRevoke(group->MainCookie);
-    ExReleaseRundownProtection(&group->Rundown);
-    KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
+    MetadataReleaseIo(c);
     return FLT_POSTOP_FINISHED_PROCESSING;
 }

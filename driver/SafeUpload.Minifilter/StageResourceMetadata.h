@@ -7,12 +7,19 @@
  *   Communication transition guard -> MetadataLock (DISPATCH spin lock).
  *   MetadataLock protects publication, admission, root keys, transactions,
  *   child credits, embedded completion owners and bounded refusal telemetry.
+ *   Each child owns one ordinary I/O context plus one cleanup context; each
+ *   root has the same two embedded owners. Admission is Busy, never a wait.
  *   Acquire group rundown under MetadataLock; release the lock before token
  *   queries, allocation, lower I/O, port close, object dereference or a wait.
  *   No edge from MetadataLock to communication, policy, epoch, namespace,
  *   upper-stream or service work. Registration never waits for map space.
- *   The PASSIVE reaper alone waits for group rundown and releases native
- *   references. Callback-source removal precedes final module destruction.
+ *   A lookup may take a nonblocking FILE_OBJECT reference under MetadataLock
+ *   to exclude CLOSE/address reuse. No dereference or handle work under it.
+ *   The PASSIVE worker alone waits for group rundown and retires descriptors;
+ *   ordinary PASSIVE post releases its own references. Higher-IRQL/draining
+ *   post publishes Deferred as its LAST context access and transfers that
+ *   owner to the worker. It never queues a pointer to callback/user buffers.
+ *   Callback-source removal precedes final module destruction.
  *   Each PendingOpen RESERVES one of its transaction's four child credits;
  *   at most one is unclaimed. Opening/Active/retiring and post owners retain
  *   that same credit. No pool borrowing and no fifth lower CREATE owner.
@@ -22,6 +29,16 @@
  *   the PASSIVE owner releases original references/anchors outside the lock.
  *   Instance teardown/final destruction explicitly forget keys (no future
  *   CLOSE is promised), then drain completions before releasing group storage.
+ *   Forgotten children are Revoked/uncertain, never Active. Losing filter
+ *   coverage cannot certify storage release; agent durable charge survives.
+ *   CLOSE removes the key, but record reuse waits for I/O, cleanup, PASSIVE
+ *   retirement and replacement pins. New -> Current is the only pin edge;
+ *   cancellation/retirement releases that edge once. No cycles or borrowing.
+ *   Rename and F3 take a transient zero-access kernel handle on the exact current
+ *   FILE_OBJECT (plus a reference) after pinning it. It adds no access grant.
+ *   The original predecessor shares READ|WRITE|DELETE. Both holds outlive the
+ *   native step and predecessor observation; no release-first retry. Loss of
+ *   the original predecessor before F3 holds/revokes instead of certifying F3.
  *
  * Security predicates (8.7 review condition 1):
  *   Four private roots: SY/BA owner, protected
@@ -41,10 +58,24 @@
  *   there. Both protected staging/journal children are checked separately.
  *   This conservative predicate does not repair ACLs or model deny cancellation.
  *
- * Native child CREATE/data/query/flush/EOF/rename remain unsupported. A matched
- * CREATE claims and consumes its intent, then fails NotReady before lower I/O.
- * No child becomes Active. Tag-3 completions currently own root CLEANUP only;
- * there is no forwarded CREATE or child CREATE post owner in this pass.
+ * Native child CREATE is synchronized and becomes Active only after exact
+ * identity, unnamed/single-link/non-reparse and protected-security validation.
+ * File data I/O is PASSIVE, synchronous, noncached, aligned and zero-minor;
+ * fast/paging/MDL-backed/cache paths are refused, never silently substituted.
+ * Normal post at PASSIVE measures each native step. Higher-IRQL post holds
+ * unknown, revokes, and defers only resource release; it cannot assert success.
+ * MaximumLogicalBytes denotes the agent's precharged extent claim: P=align(L,A)
+ * and Q=align(P,U), with independently cached native A/U. Writes require a
+ * successful measured class-19 preallocation covering their complete extent.
+ * New outputs require F1/EOF/F2 before replacement; renamed sources freeze
+ * except their required F3 flush/read/query/exact disposal. Segment allocation
+ * and EOF never shrink. Candidate output freezes at raw F2; that is NOT a
+ * schema-3 immutable-commit receipt. Reopened candidates are read/delete only.
+ * LegacyNegative delete stays unsupported without its serialized proof.
+ * Live/retired retained counters are diagnostic, additive and never refund on
+ * EOF/normalization/CLOSE. Overrun raises retained before hold. Unknown stays
+ * unknown; saturation holds. No kernel storage-admission policy or grant is
+ * inferred: the agent owns the authoritative durable debit and release proof.
  *
  * These product controls remain provisional. Commit cannot grant anything.
  * No diagnostic control number or test authority is introduced here.
