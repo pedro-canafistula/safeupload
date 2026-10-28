@@ -29,6 +29,7 @@
   <!-- Wire-contract tests run in normal and feature profiles alike. -->
   <ItemGroup>
     <InternalsVisibleTo Include="SafeUpload.Agent.Tests" />
+    <InternalsVisibleTo Include="SafeUpload.Agent.Service" />
   </ItemGroup>
 
 </Project>

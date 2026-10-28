@@ -94,7 +94,11 @@ public sealed partial class FilterPort : IDisposable
     {
         lock (_sendLifecycle)
         {
-            if (!_acceptingSends)
+            if (!_acceptingSends
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                || _resourceRevoked
+#endif
+                )
             {
                 throw new ObjectDisposedException(nameof(FilterPort));
             }
@@ -754,6 +758,9 @@ public sealed partial class FilterPort : IDisposable
             }
 
             _acceptingSends = false;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            CloseResourceSends();
+#endif
             while (_activeSenders != 0) Monitor.Wait(_sendLifecycle);
             handle = _handle;
             _handle = null;
@@ -762,6 +769,10 @@ public sealed partial class FilterPort : IDisposable
         try
         {
             handle?.Dispose();
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _resourceHandle?.Dispose();
+            _resourceHandle = null;
+#endif
         }
         finally
         {
