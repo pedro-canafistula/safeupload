@@ -19,7 +19,13 @@ function Require-Hash([string] $Path, [string] $Expected) {
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1 -or -not [Environment]::Is64BitProcess) { throw 'Requires x64 Windows PowerShell 5.1' }
 $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 if ([Environment]::OSVersion.Version.Build -ne 19045 -or $cv.UBR -ne 2965 -or (Get-CimInstance Win32_ComputerSystemProduct).UUID -ine 'FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3') { throw 'Wrong qualified component guest identity' }
-if (Confirm-SecureBootUEFI) { throw 'Secure Boot must be off' }
+# On the lab overlays (EFI variables reset at every start) the SecureBoot UEFI
+# variable is absent and Confirm-SecureBootUEFI throws 0xC0000100 (variable not
+# found; observed in nu501c1). That means Secure Boot is off; any other error stops.
+$secureBoot = $null
+try { $secureBoot = Confirm-SecureBootUEFI }
+catch { if ($_.Exception.Message -match '0xC0000100') { $secureBoot = $false } else { throw } }
+if ($secureBoot -ne $false) { throw 'Secure Boot must be off' }
 $bcd = & bcdedit.exe /enum '{current}' 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0 -or $bcd -notmatch '(?im)^testsigning\s+Yes\s*$') { throw 'Test signing must already be enabled' }
 $filters = & fltmc.exe filters 2>&1 | Out-String
