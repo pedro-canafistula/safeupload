@@ -13,9 +13,10 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 public sealed class AgentApiClient
 {
     private readonly HttpClient _http;
+    private readonly ICommunicationObserver? _observer;
     private const int MaxReceiptBytes = 16 * 1024;
 
-    public AgentApiClient(HttpClient http)
+    public AgentApiClient(HttpClient http, ICommunicationObserver? observer = null)
     {
         ArgumentNullException.ThrowIfNull(http);
         var uri = http.BaseAddress;
@@ -25,6 +26,7 @@ public sealed class AgentApiClient
             uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0)
             throw new ArgumentException("Cliente AgentApi exige base HTTP(S) terminada em /agent/, sem credenciais, query ou fragmento.", nameof(http));
         _http = http;
+        _observer = observer;
     }
 
     /// <summary>Somente para provisionamento controlado. Resposta perdida não autoriza novo cadastro.</summary>
@@ -41,9 +43,29 @@ public sealed class AgentApiClient
     public async Task HeartbeatAsync(int registeredHostId, CancellationToken token)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(registeredHostId);
-        using var document = await SendAsync("heartbeat", new HeartbeatBody(registeredHostId),
-            HttpStatusCode.OK, token).ConfigureAwait(false);
-        RequireStatus(document.RootElement, "OK");
+        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
+        try
+        {
+            using var document = await SendAsync("heartbeat", new HeartbeatBody(registeredHostId),
+                HttpStatusCode.OK, token).ConfigureAwait(false);
+            RequireStatus(document.RootElement, "OK");
+            observation.Success(200);
+        }
+        catch (AgentApiException exception)
+        {
+            bool receiptFailure = exception.Code is "invalid_receipt" or "receipt_too_large";
+            var failure = exception.Code switch
+            {
+                "http_status" => CommunicationFailure.HttpRejected,
+                "transport" => CommunicationFailure.TransportError,
+                "timeout" => CommunicationFailure.Timeout,
+                "invalid_receipt" or "receipt_too_large" => CommunicationFailure.InvalidResponse,
+                _ => CommunicationFailure.UnexpectedError
+            };
+            observation.Failure(failure, exception.StatusCode ?? (receiptFailure ? 200 : null));
+            throw;
+        }
+        catch (Exception exception) { observation.Exception(exception, token); throw; }
     }
 
     private async Task<JsonDocument> SendAsync<T>(string path, T body, HttpStatusCode expected, CancellationToken token)

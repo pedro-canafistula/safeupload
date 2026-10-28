@@ -23,7 +23,7 @@ public sealed record AgentHeartbeatConfiguration(int? RegisteredHostId)
         return new(id);
     }
 
-    public IAgentHeartbeat? CreateSender(HttpClient client) => RegisteredHostId is {} id
-        ? new RegisteredAgentHeartbeat(new AgentApiClient(client), id)
+    public IAgentHeartbeat? CreateSender(HttpClient client, ICommunicationObserver? observer = null) => RegisteredHostId is {} id
+        ? new RegisteredAgentHeartbeat(new AgentApiClient(client, observer), id)
         : null;
 }

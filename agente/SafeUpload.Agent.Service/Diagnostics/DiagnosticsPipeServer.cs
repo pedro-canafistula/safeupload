@@ -12,7 +12,8 @@ namespace SafeUpload.Agent.Service.Diagnostics;
 /// Administrator-only field diagnostics: one JSON request line in, one JSON reply line out, then the pipe closes.
 ///
 /// <para>The driver's filter port accepts a single client and this service holds it, so the Inspector cannot read
-/// driver state while the product runs. This pipe relays read-only queries over the service's own connection:
+/// driver state while the product runs. This pipe also serves process-local communication snapshots without a driver.
+/// Driver queries are relayed over the service's own connection:
 /// <c>{"query":"counters"}</c> and <c>{"query":"deny-ring","after":0}</c>. It changes nothing and is not reachable by
 /// standard users: the DACL grants only SYSTEM and Administrators. (There is deliberately no deny entry for the
 /// NETWORK group: a logon created for an administrator over SSH or a scheduled task carries it, and the harness and
@@ -30,14 +31,16 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private readonly DriverDiagnosticsSource _source;
     private readonly ILogger<DiagnosticsPipeServer> _logger;
     private readonly string _pipeName;
+    private readonly CommunicationHealth? _communicationHealth;
 
     /// <param name="pipeName">Only tests pass a name; the service always uses <see cref="PipeName"/>.</param>
     public DiagnosticsPipeServer(DriverDiagnosticsSource source, ILogger<DiagnosticsPipeServer> logger,
-        string pipeName = PipeName)
+        string pipeName = PipeName, CommunicationHealth? communicationHealth = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName;
+        _communicationHealth = communicationHealth;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -95,6 +98,10 @@ public sealed class DiagnosticsPipeServer : BackgroundService
 
             switch (query)
             {
+                case "communication-health":
+                    return _communicationHealth is null ? Error(query, "Communication monitoring is unavailable.") :
+                        Ok(query, JsonSerializer.SerializeToNode(_communicationHealth.Read(), new JsonSerializerOptions
+                        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                 case "counters":
                     return Ok(query, _source.ReadCounters());
                 case "deny-ring":
@@ -103,7 +110,8 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "help"),
+                        ["communicationHealth"] = "process-local communication results; counters reset on restart; no proof of API persistence or protection",
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
                         ["connected"] = _source.IsConnected,
                     });

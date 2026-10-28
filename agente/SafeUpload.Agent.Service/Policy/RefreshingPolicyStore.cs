@@ -1,6 +1,7 @@
 using SafeUpload.Agent.Core.Application;
 using DomainPolicy = SafeUpload.Agent.Core.Domain.Policy;
 using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Service.Diagnostics;
 
 namespace SafeUpload.Agent.Service.Policies;
 
@@ -71,7 +72,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Carga remota inicial falhou; política recuperada mantida.");
+            CommunicationLog.Warning(_logger, CommunicationLogStage.InitialPolicy, exception);
         }
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -100,7 +101,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception)
             {
-                _logger.LogWarning(exception, "Falha na atualização de política; último snapshot mantido.");
+                CommunicationLog.Warning(_logger, CommunicationLogStage.PolicyRefresh, exception);
             }
         }
     }

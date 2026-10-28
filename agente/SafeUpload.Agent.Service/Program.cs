@@ -28,7 +28,7 @@ public static class Program
     public const string ServiceName = "SafeUploadAgent";
 
     /// <summary>Cliente nomeado usado para falar com o Centro de Administração.</summary>
-    private const string HttpClientName = "CentroAdministracao";
+    internal const string HttpClientName = "CentroAdministracao";
 
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
@@ -142,6 +142,7 @@ public static class Program
         // seja configurado.
         string adminBaseUrl = builder.Configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
         string endpointId = Environment.MachineName;
+        builder.Services.AddSingleton(new CommunicationHealth(!string.IsNullOrWhiteSpace(adminBaseUrl)));
         var heartbeatConfiguration = AgentHeartbeatConfiguration.Parse(
             builder.Configuration["CentroAdministracao:HeartbeatProtocol"],
             builder.Configuration["CentroAdministracao:RegisteredHostId"],
@@ -174,12 +175,7 @@ public static class Program
 
             // A rede só é consultada em segundo plano. Inspeções usam o último
             // snapshot validado mesmo durante timeout, falha ou reconexão.
-            builder.Services
-                .AddHttpClient(HttpClientName, client =>
-                {
-                    client.BaseAddress = adminUri;
-                    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-                });
+            ConfigureAdministrationHttpClient(builder.Services, adminUri, timeoutSeconds);
 
             if (heartbeatConfiguration.RegisteredHostId is not null)
             {
@@ -198,7 +194,8 @@ public static class Program
                     new DurableHttpPolicyStore(
                         provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                         endpointId,
-                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json")),
+                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json"),
+                        provider.GetRequiredService<CommunicationHealth>()),
                     TimeSpan.FromSeconds(30),
                     provider.GetRequiredService<ILogger<RefreshingPolicyStore>>()));
             builder.Services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<RefreshingPolicyStore>());
@@ -211,11 +208,13 @@ public static class Program
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                     endpointId,
                     TimeSpan.FromSeconds(intervalSeconds),
-                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>())
+                    provider.GetRequiredService<ILogger<HttpAgentDispatcher>>(),
+                    provider.GetRequiredService<CommunicationHealth>())
                 {
                     HeartbeatSender = heartbeatConfiguration.RegisteredHostId is null ? null :
                         heartbeatConfiguration.CreateSender(
-                            provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName + "AgentApi"))
+                            provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName + "AgentApi"),
+                            provider.GetRequiredService<CommunicationHealth>())
                 });
         }
 
@@ -244,15 +243,17 @@ public static class Program
         if (string.Equals(mode, "Minifilter", StringComparison.OrdinalIgnoreCase))
         {
             builder.Services.AddHostedService<MinifilterInterceptor>();
-
-            // Administrator-only field diagnostics relayed over the interceptor's own filter-port connection
-            // (the port accepts a single client, so no other tool can read the driver while the service runs).
-            builder.Services.AddHostedService<DiagnosticsPipeServer>();
         }
         else
         {
             builder.Services.AddHostedService<FileSystemInterceptor>();
         }
+
+        // Communication diagnostics work without a loaded driver in either interception mode.
+        builder.Services.AddHostedService(provider => new DiagnosticsPipeServer(
+            provider.GetRequiredService<DriverDiagnosticsSource>(),
+            provider.GetRequiredService<ILogger<DiagnosticsPipeServer>>(),
+            communicationHealth: provider.GetRequiredService<CommunicationHealth>()));
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();
@@ -285,6 +286,13 @@ public static class Program
         Console.Error.WriteLine("--seed-boot-policy must be the only argument.");
         return 2;
     }
+
+    internal static IHttpClientBuilder ConfigureAdministrationHttpClient(IServiceCollection services, Uri adminUri, int timeoutSeconds) =>
+        services.AddHttpClient(HttpClientName, client =>
+        {
+            client.BaseAddress = adminUri;
+            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        }).RemoveAllLoggers();
 
     [SupportedOSPlatform("windows")]
     private static async Task<int> SeedBootPolicyAsync()

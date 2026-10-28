@@ -2,12 +2,16 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-Reads driver diagnostics from the running SafeUpload service (administrator only, read-only).
+Reads driver and communication diagnostics from the running SafeUpload service (administrator only, read-only).
 
 .DESCRIPTION
 The minifilter's communication port accepts a single client and the service holds it, so no other tool can read the
-driver while the product runs. The service relays two read-only queries over the SYSTEM/Administrators-only pipe
+driver while the product runs. The service exposes read-only queries over the SYSTEM/Administrators-only pipe
 \\.\pipe\SafeUpload.Agent.Diagnostics:
+
+  communication-health  policy/heartbeat/audit attempts, results and sanitized failure categories.
+                        No network/driver access is performed by this query. Counters reset on restart.
+                        Success is not proof of central persistence, applied policy or protection.
 
   counters   refusal counters, how often a path that could not resolve a name answered "the whole volume may be in
              scope", and the writer-state status (registry entries and capacity, reclaim-worker passes, sections,
@@ -24,7 +28,7 @@ driver while the product runs. The service relays two read-only queries over the
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'communication-health', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
@@ -58,6 +62,7 @@ function Invoke-DiagnosticsQuery([hashtable] $Request) {
 }
 
 switch ($Query) {
+    'communication-health' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'counters' { Invoke-DiagnosticsQuery @{ query = 'counters' } }
     'help' { Invoke-DiagnosticsQuery @{ query = 'help' } }
     'deny-ring' {
