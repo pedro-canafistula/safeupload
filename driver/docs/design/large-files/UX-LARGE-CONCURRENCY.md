@@ -440,6 +440,7 @@ accounting-disabled startup.
 
 ## Controls and delivery
 
+- [ ] T9: [Revision 6 contracts](UX-LARGE-GROWTH-PROTOCOL.md) — proposed concrete implementation addendum for independent review; no activation or qualification.
 - [x] T4/T9: owner approved growing reservations and replacement of the
   single-winner strategy assertion with stronger concurrent accounting controls.
 - [x] T4/T9: initial independent review identified MM recursion, ledger retirement
