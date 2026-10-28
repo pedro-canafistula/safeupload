@@ -1,0 +1,10 @@
+{
+  "Label": "m2t9diag1028a1",
+  "SourceCommit": "afd972efc73600cb247e76742a9842cf741445ff",
+  "Outcome": "PreflightRefused",
+  "Reason": "Builder1 free space 6139707392 bytes below unchanged 15 GiB diagnostic headroom requirement",
+  "CompilationStarted": false,
+  "TestsExecuted": false,
+  "EvidenceAndSourceDeleted": false,
+  "PreflightSha256": "4ab0c777bb43e0bf429cd8de5a227ffa479d2b062dee5a0b15ff222bb2f87502"
+}

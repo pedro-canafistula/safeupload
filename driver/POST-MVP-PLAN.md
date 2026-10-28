@@ -1,6 +1,6 @@
 # SafeUpload MVP status plan
 
-Updated 2026-10-27. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
+Updated 2026-10-28. **Goal:** replace process-taint enforcement with owned-stream staged writes for every supported protected
 destination, keeping unapproved bytes private throughout. M2 is the current milestone, not the completion boundary.
 Historical implementation narratives remain in Git history, [POST-MVP-LOG.md](docs/history/POST-MVP-LOG.md), and the local WIP branch noted below.
 
@@ -22,6 +22,10 @@ USB, SMB/UNC and cloud-sync are required MVP work; they are no longer deferred u
 respective support and qualification gates are met and the owner approves cutover.
 
 ## Owner decisions
+
+**2026-10-28 (M2 continuation) — focused timing diagnostic and persistent goal.** Owner: "Yes, and set a goal to finish M2 so that you don't stop."
+This approves the prepared 14-case Debug/user timing diagnostic from `afd972ef` after the recorded repeated-failure stop, and continuing towards the agreed M2 completion scope.
+The persistent goal is active. Keep the existing assertions, lab stop rules, scope deferrals, runtime gates and separate owner merge/cutover decisions; the goal does not waive them.
 
 **2026-10-27 (M2 execution) — seed wait approved; test transparent MOTW completion first.** Owner, in the session: "1. Agreed / 2. Yes, test that first. Go, start following the plan."
 The opener of a large existing file may wait up to **120 s** for allocation/seeding, using one monotonic issuance-to-adoption deadline; expiry fails closed with a diagnostic distinguishing
@@ -808,7 +812,7 @@ Owner-approved runtime budget/default formulas are in Owner decisions. Bounded s
 - [x] T9 growing reservations: design accepted with conditions at revision 5 (2026-10-22; initial window, retirement receipt, custody leases, maintained totals, lane ordering, startup table;
   [design](docs/design/large-files/UX-LARGE-CONCURRENCY.md)). **Owner approved the 120 s allocation/seed wait on 2026-10-27.** Concrete protocol/accounting implementation is next.
 - [x] T9 prerequisite: maintained global/per-SID reservation totals replace the foreground reservation scan; reconstruction, durable adoption and exact retirement remain conservative.
-  [Independent scoped review](evidence/2026-10-27/t9-reservation-totals-review-sol-high.md) ACCEPT WITH CONDITIONS; local compile, 36 focused controls and T5 offline controls pass. **Windows delivery gate failed/incomplete** (`m2t9totalsa1`); focused diagnostic `m2t9diag1027a1` repeats two failures, so further Windows runs stop pending owner direction. All 36 reservation controls pass there; this does not fix whole-allowance grants or metadata callback scans. [Checkpoint and next diagnostic](evidence/2026-10-27/t9-reservation-totals-checkpoint.md).
+  [Independent scoped review](evidence/2026-10-27/t9-reservation-totals-review-sol-high.md) ACCEPT WITH CONDITIONS; local compile, 36 focused controls and T5 offline controls pass. **Windows delivery gate failed/incomplete** (`m2t9totalsa1`); diagnostic `m2t9diag1027a1` repeats two failures. Owner authorized a fresh timing diagnostic on 2026-10-28: builder1 refused capacity preflight, then builder2 passed 14/14 unchanged cases (`m2t9diag1028a2`); full four-leg matrix `m2t9totalsb1` is running there. All 36 reservation controls passed the prior subset; this does not fix whole-allowance grants or metadata callback scans. [Latest timing checkpoint](evidence/2026-10-28/t9-timing-checkpoint.md); [retained failures](evidence/2026-10-27/t9-reservation-totals-checkpoint.md).
 - [ ] T9: qualify integrated identity-bound capacity grants, per-SID/total/free-space budgets, exact snapshot/orphan accounting, failed-prefix refusal,
   legacy upgrade and startup recovery; [latest local source receipt](evidence/2026-10-16/ux-large5-local/result.md) is not Windows pair qualification.
 - [ ] T9: finish/qualify whole-file streaming, all required format/encoding/extraction coverage, seeding cost and capture/storage/parser bounds.

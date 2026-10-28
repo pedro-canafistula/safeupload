@@ -1,0 +1,124 @@
+{
+  "SourceCommit": "afd972efc73600cb247e76742a9842cf741445ff",
+  "ArchiveSha256": "24b60f4485a0c5cab3962f4fe8a67acbcb982398a5f33740e1bd3819c38a4671",
+  "DiagnosticOnly": true,
+  "ProductQualification": false,
+  "ExpectedCases": 14,
+  "Leg": "feature-debug/user",
+  "Label": "m2t9diag1028a2",
+  "Builder": "builder2 / SU-BUILDER2 / 19045.6466",
+  "AgentMatrixGate": false,
+  "Counters": {
+    "total": "14",
+    "executed": "14",
+    "passed": "14",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "Results": [
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(staged: False)",
+      "outcome": "Passed",
+      "duration": "00:00:06.0582773",
+      "output": "QueuedDeadline staged=False resultElapsedMs=6002 releaseMs=3986.4 firstResultsMs=3997.7 parserEntryMs=3987.3 parserCancellationMs=6002.2 queuedReturnMs=6006.6"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"format\", reason: \"unsupported_format\", overrideAllowed: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0655773",
+      "output": "PublisherFailure failure=format overrideAllowed=True livePhase=dequeued elapsedMs=62.1 phases=journal-wait=0.0@61.9,journal-scan=6.4@62.1,journal-serialize=0.3@54.3,journal-flush=22.0@61.3,journal-replace=2.7@61.4,journal-write=22.9@56.0\r\nPublisher QPC=1102774655 Debug: Requesting kernel publication permission for 4cd5b3d1-71f9-41c5-b392-031f5209a6d8. \r\nPublisher QPC=1102776795 Debug: Approved publication file opened for 4cd5b3d1-71f9-41c5-b392-031f5209a6d8. \r\nPublisher QPC=1102797488 Debug: Approved publication bytes copied for 4cd5b3d1-71f9-41c5-b392-031f5209a6d8. \r\nPublisher QPC=1102797528 Debug: Renaming approved publication file for 4cd5b3d1-71f9-41c5-b392-031f5209a6d8. \r\nPublisher QPC=1102806142 Debug: Approved publication rename completed for 4cd5b3d1-71f9-41c5-b392-031f5209a6d8."
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"parser\", reason: \"parse_error:InvalidDataException\", overrideAllowed: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0441063",
+      "output": "PublisherFailure failure=parser overrideAllowed=False livePhase=dequeued elapsedMs=40.2 phases=journal-wait=0.0@35.1,journal-scan=3.4@35.3,journal-serialize=0.3@33.5,journal-flush=13.5@39.8,journal-replace=1.8@39.9,journal-write=13.2@35.1"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"parser\", reason: \"parse_error:InvalidDataException\", overrideAllowed: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0623941",
+      "output": "PublisherFailure failure=parser overrideAllowed=True livePhase=dequeued elapsedMs=58.8 phases=journal-wait=0.0@58.6,journal-scan=6.4@58.8,journal-serialize=0.4@51.8,journal-flush=20.1@58.0,journal-replace=2.6@58.1,journal-write=21.6@53.4\r\nPublisher QPC=1096735067 Debug: Requesting kernel publication permission for 2ebadc31-7ea0-4fe6-b7e5-7f9622ec5a0d. \r\nPublisher QPC=1096737492 Debug: Approved publication file opened for 2ebadc31-7ea0-4fe6-b7e5-7f9622ec5a0d. \r\nPublisher QPC=1096757268 Debug: Approved publication bytes copied for 2ebadc31-7ea0-4fe6-b7e5-7f9622ec5a0d. \r\nPublisher QPC=1096757319 Debug: Renaming approved publication file for 2ebadc31-7ea0-4fe6-b7e5-7f9622ec5a0d. \r\nPublisher QPC=1096765716 Debug: Approved publication rename completed for 2ebadc31-7ea0-4fe6-b7e5-7f9622ec5a0d."
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.OfficeContentCoverageTests.Office_allowlisted_clean_packages_are_approved(word: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.2681154",
+      "output": ""
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"image\", reason: \"unsupported_format\", overrideAllowed: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0684213",
+      "output": "PublisherFailure failure=image overrideAllowed=True livePhase=dequeued elapsedMs=64.8 phases=journal-wait=0.0@64.6,journal-scan=6.7@64.8,journal-serialize=0.4@57.2,journal-flush=21.5@63.8,journal-replace=2.6@63.9,journal-write=23.1@59.3\r\nPublisher QPC=1102122177 Debug: Requesting kernel publication permission for 5d6658d6-4894-4b29-86b0-f783f686c31b. \r\nPublisher QPC=1102124502 Debug: Approved publication file opened for 5d6658d6-4894-4b29-86b0-f783f686c31b. \r\nPublisher QPC=1102142594 Debug: Approved publication bytes copied for 5d6658d6-4894-4b29-86b0-f783f686c31b. \r\nPublisher QPC=1102142633 Debug: Renaming approved publication file for 5d6658d6-4894-4b29-86b0-f783f686c31b. \r\nPublisher QPC=1102151282 Debug: Approved publication rename completed for 5d6658d6-4894-4b29-86b0-f783f686c31b."
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"timeout\", reason: \"inspection_timeout\", overrideAllowed: True)",
+      "outcome": "Passed",
+      "duration": "00:00:02.0609501",
+      "output": "PublisherFailure failure=timeout overrideAllowed=True livePhase=dequeued elapsedMs=2057.3 phases=journal-wait=0.1@2057.0,journal-scan=9.2@2057.3,journal-serialize=0.6@2049.6,journal-flush=32.8@2056.3,journal-replace=3.0@2056.5,journal-write=35.1@2051.2\r\nPublisher QPC=1095234160 Debug: Requesting kernel publication permission for e6143127-84ff-49fd-afc0-0768c9f4d192. \r\nPublisher QPC=1095237342 Debug: Approved publication file opened for e6143127-84ff-49fd-afc0-0768c9f4d192. \r\nPublisher QPC=1095257047 Debug: Approved publication bytes copied for e6143127-84ff-49fd-afc0-0768c9f4d192. \r\nPublisher QPC=1095257113 Debug: Renaming approved publication file for e6143127-84ff-49fd-afc0-0768c9f4d192. \r\nPublisher QPC=1095266287 Debug: Approved publication rename completed for e6143127-84ff-49fd-afc0-0768c9f4d192."
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"size\", reason: \"file_too_large\", overrideAllowed: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.1575503",
+      "output": "PublisherFailure failure=size overrideAllowed=True livePhase=dequeued elapsedMs=152.7 phases=journal-wait=0.1@146.1,journal-scan=18.3@152.7,journal-serialize=0.8@136.1,journal-flush=30.0@144.1,journal-replace=3.3@144.2,journal-write=33.2@139.2\r\nPublisher QPC=1074278972 Debug: Requesting kernel publication permission for 07be4a72-06a8-451b-a620-7c1fd059dcc0. \r\nPublisher QPC=1074306691 Debug: Approved publication file opened for 07be4a72-06a8-451b-a620-7c1fd059dcc0. \r\nPublisher QPC=1074375827 Debug: Approved publication bytes copied for 07be4a72-06a8-451b-a620-7c1fd059dcc0. \r\nPublisher QPC=1074375975 Debug: Renaming approved publication file for 07be4a72-06a8-451b-a620-7c1fd059dcc0. \r\nPublisher QPC=1074409966 Debug: Approved publication rename completed for 07be4a72-06a8-451b-a620-7c1fd059dcc0."
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"size\", reason: \"file_too_large\", overrideAllowed: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0772126",
+      "output": "PublisherFailure failure=size overrideAllowed=False livePhase=dequeued elapsedMs=73.4 phases=journal-wait=0.0@67.8,journal-scan=4.4@68.1,journal-serialize=0.4@65.6,journal-flush=19.9@72.9,journal-replace=2.3@73.0,journal-write=20.3@67.8"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"format\", reason: \"unsupported_format\", overrideAllowed: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0417075",
+      "output": "PublisherFailure failure=format overrideAllowed=False livePhase=dequeued elapsedMs=38.2 phases=journal-wait=0.0@32.9,journal-scan=2.9@33.1,journal-serialize=0.2@31.1,journal-flush=14.7@37.7,journal-replace=1.7@37.9,journal-write=14.0@32.9"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"image\", reason: \"unsupported_format\", overrideAllowed: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.3931617",
+      "output": "PublisherFailure failure=image overrideAllowed=False livePhase=dequeued elapsedMs=389.1 phases=journal-wait=0.0@383.1,journal-scan=3.3@383.3,journal-serialize=0.3@381.2,journal-flush=25.9@388.6,journal-replace=2.0@388.8,journal-write=25.0@383.1"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.StagedTransferPublisherTests.Failed_inspection_is_blocked_with_exact_handback_and_policy_bound_justification(failure: \"timeout\", reason: \"inspection_timeout\", overrideAllowed: False)",
+      "outcome": "Passed",
+      "duration": "00:00:01.4326852",
+      "output": "PublisherFailure failure=timeout overrideAllowed=False livePhase=dequeued elapsedMs=1334.3 phases=journal-wait=1.6@1320.9,journal-scan=8.6@1321.4,journal-serialize=2.1@1316.7,journal-flush=18.1@1332.4,journal-replace=2.0@1332.6,journal-write=21.1@1318.7"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.InspectionWorkBudgetTests.Waiting_for_capacity_and_parsing_share_one_policy_deadline(staged: True)",
+      "outcome": "Passed",
+      "duration": "00:00:06.0079587",
+      "output": "QueuedDeadline staged=True resultElapsedMs=6004 releaseMs=3989.1 firstResultsMs=3989.4 parserEntryMs=3989.4 parserCancellationMs=6004.9 queuedReturnMs=6005.0"
+    },
+    {
+      "name": "SafeUpload.Agent.Tests.OfficeContentCoverageTests.Office_allowlisted_clean_packages_are_approved(word: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0378901",
+      "output": ""
+    }
+  ],
+  "RawSha256": {
+    "diagnostic.trx": "6620b83e570effa1a4dc385c895e74ea0589f226f0fd5d25aa5e89c44b8d1d8c",
+    "build.txt": "8d039c1c444cdb1171d773bc6fa53544f48528ce38883e581938935bc8f117eb",
+    "tests.txt": "51c9069bbf314b8a0128304640fa086bcb026ed111b39c86f70fd9b30eec3838",
+    "run.txt": "cce0b8359a714ec2ffe3654b7136cffe834d92ce0e97d841a555042e442e1a54",
+    "run.ps1": "f3708e0bea5f85c9d605deb7903fbcb3da1f5e2460a1389d485529ddf21c43b3",
+    "preflight.txt": "0db8052f00777de03afc4aefe2bf79358657f950bd591fbf54be232f8d5bd09c"
+  },
+  "TestDllSha256": "B169E8D4F94ACA08061907C5223B7F2EA766D9741BFD796A238B55A76D32DE5F"
+}
