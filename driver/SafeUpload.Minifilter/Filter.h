@@ -1019,6 +1019,11 @@ BOOLEAN SafeUploadConnectionPinAuthenticatedProcess(_In_ PVOID ConnectionCookie,
     _In_ LONG64 ConnectionGeneration, _Outptr_result_nullonfailure_ PEPROCESS *Process);
 VOID SafeUploadConnectionReleaseAuthenticatedProcess(_In_ PVOID ConnectionCookie,
     _In_ PEPROCESS Process);
+/* Provisional resource pairing also binds the primary token accepted at
+ * main-port publication. Existing stage controls keep their current contract. */
+_IRQL_requires_(PASSIVE_LEVEL)
+BOOLEAN SafeUploadConnectionIsOriginalToken(_In_ PVOID ConnectionCookie,
+    _In_ PACCESS_TOKEN Token);
 
 NTSTATUS SafeUploadRequestVerdictForPinnedConnection(
     _Inout_ PSAFEUPLOAD_EXCHANGE Exchange,

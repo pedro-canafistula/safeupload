@@ -26,6 +26,7 @@ Environment:
 #include "StageNativeRecords.h"
 #include "StageNativeWire.h"
 #include "StageBoundPublicationInternal.h"
+#include "StageResourceMetadata.h"
 #endif
 
 //
@@ -82,6 +83,7 @@ static BOOLEAN SafeUploadStageCallbackAdmissionClosed;
  * the owned reference; holders acquire their own reference and channel-use
  * pin before leaving that lock. */
 static PEPROCESS SafeUploadCurrentConnectionProcess;
+static PACCESS_TOKEN SafeUploadCurrentConnectionToken;
 #endif
 /* Protected by SafeUploadConnectionTransitionLock. Retiring blocks both a
  * replacement publish and a second close while FltCloseClientPort runs with
@@ -89,6 +91,21 @@ static PEPROCESS SafeUploadCurrentConnectionProcess;
 static BOOLEAN SafeUploadConnectionRetiring;
 static PVOID SafeUploadRetiringConnectionCookie;
 static BOOLEAN SafeUploadConnectionClosing;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static PFLT_PORT SafeUploadResourceServerPort;
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS SafeUploadResourcePortConnect(_In_ PFLT_PORT ClientPort,
+    _In_opt_ PVOID ServerPortCookie, _In_reads_bytes_opt_(SizeOfContext) PVOID ConnectionContext,
+    _In_ ULONG SizeOfContext, _Outptr_result_maybenull_ PVOID *ConnectionCookie);
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID SafeUploadResourcePortDisconnect(_In_opt_ PVOID ConnectionCookie);
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS SafeUploadResourcePortMessage(_In_opt_ PVOID PortCookie,
+    _In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer, _In_ ULONG InputBufferLength,
+    _Out_writes_bytes_to_opt_(OutputBufferLength, *ReturnOutputBufferLength) PVOID OutputBuffer,
+    _In_ ULONG OutputBufferLength, _Out_ PULONG ReturnOutputBufferLength);
+#endif
 
 static
 BOOLEAN
@@ -380,10 +397,15 @@ Return Value:
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageCallbackAdmissionClosed = FALSE;
     SafeUploadCurrentConnectionProcess = NULL;
+    SafeUploadCurrentConnectionToken = NULL;
 #endif
     SafeUploadConnectionRetiring = FALSE;
     SafeUploadRetiringConnectionCookie = NULL;
     SafeUploadConnectionClosing = FALSE;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    SafeUploadResourceServerPort = NULL;
+    SafeUploadMetadataInitialize();
+#endif
 
     RtlInitUnicodeString( &portName, SAFEUPLOAD_PORT_NAME );
 
@@ -416,6 +438,19 @@ Return Value:
                                          SafeUploadPortDisconnect,
                                          SafeUploadPortMessage,
                                          1 );
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (NT_SUCCESS(status)) {
+        NTSTATUS resourceStatus;
+        RtlInitUnicodeString(&portName, SAFEUPLOAD_RESOURCE_PORT_NAME);
+        resourceStatus = FltCreateCommunicationPort(SafeUploadData.Filter,
+            &SafeUploadResourceServerPort, &objectAttributes, NULL,
+            SafeUploadResourcePortConnect, SafeUploadResourcePortDisconnect,
+            SafeUploadResourcePortMessage, 1);
+        if (!NT_SUCCESS(resourceStatus))
+            SafeUploadTrace("provisional resource listener unavailable, status 0x%08X\n", resourceStatus);
+    }
+#endif
 
     //
     //  The descriptor is only needed for the duration of the call above,
@@ -473,6 +508,9 @@ Return Value:
 {
     PVOID connectionCookie;
     PFLT_PORT serverPortToClose = NULL;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    PFLT_PORT resourceServerToClose = NULL;
+#endif
     NTSTATUS status = STATUS_SUCCESS;
 
     PAGED_CODE();
@@ -490,6 +528,10 @@ Return Value:
     status = SafeUploadConnectionWaitForRetirement();
     serverPortToClose = SafeUploadData.ServerPort;
     SafeUploadData.ServerPort = NULL;
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    resourceServerToClose = SafeUploadResourceServerPort;
+    SafeUploadResourceServerPort = NULL;
+#endif
     FltReleasePushLock(&SafeUploadConnectionTransitionLock);
 
     /* Closing the server port prevents new connections; it does not terminate
@@ -498,6 +540,12 @@ Return Value:
      * close and let the explicit callback counts, not an API drain assumption,
      * govern the later bounded/unbounded waits. */
     if (serverPortToClose != NULL) FltCloseCommunicationPort(serverPortToClose);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (resourceServerToClose != NULL) FltCloseCommunicationPort(resourceServerToClose);
+    /* No transition guard is held across group rundown/client-port close.
+     * Both callback sources are denied before their local owners are joined. */
+    SafeUploadMetadataDestroy();
+#endif
 
     if (!Drain) return status;
 
@@ -861,16 +909,20 @@ static VOID SafeUploadConnectionResetInspectorProcessId(VOID)
     KIRQL oldIrql;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     PEPROCESS process;
+    PACCESS_TOKEN token;
 #endif
     KeAcquireSpinLock(&SafeUploadConnectionStateLock, &oldIrql);
     SafeUploadData.InspectorProcessId = 0;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     process = SafeUploadCurrentConnectionProcess;
     SafeUploadCurrentConnectionProcess = NULL;
+    token = SafeUploadCurrentConnectionToken;
+    SafeUploadCurrentConnectionToken = NULL;
 #endif
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     if (process != NULL) ObDereferenceObject(process);
+    if (token != NULL) PsDereferencePrimaryToken(token);
 #endif
 }
 
@@ -884,6 +936,7 @@ static BOOLEAN SafeUploadConnectionPublishClientPort(
     BOOLEAN published = FALSE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     PEPROCESS process;
+    PACCESS_TOKEN token;
 #endif
     if (ClientPort == NULL || ConnectionCookie == NULL ||
         ConnectionGeneration <= 0 || ProcessId == 0) return FALSE;
@@ -892,6 +945,7 @@ static BOOLEAN SafeUploadConnectionPublishClientPort(
     if (HandleToULong(PsGetCurrentProcessId()) != ProcessId) return FALSE;
     process = PsGetCurrentProcess();
     ObReferenceObject(process);
+    token = PsReferencePrimaryToken(process);
 #endif
 
     KeAcquireSpinLock(&SafeUploadConnectionStateLock, &oldIrql);
@@ -903,7 +957,7 @@ static BOOLEAN SafeUploadConnectionPublishClientPort(
             &SafeUploadCurrentConnectionCookie, NULL, NULL) == NULL &&
         SafeUploadData.ClientPort == NULL
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-        && SafeUploadCurrentConnectionProcess == NULL
+        && SafeUploadCurrentConnectionProcess == NULL && SafeUploadCurrentConnectionToken == NULL
 #endif
         ) {
         InterlockedExchange(&SafeUploadData.AuthenticatedClient, 0);
@@ -912,13 +966,17 @@ static BOOLEAN SafeUploadConnectionPublishClientPort(
         SafeUploadCurrentConnectionGeneration = ConnectionGeneration;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
         SafeUploadCurrentConnectionProcess = process;
+        SafeUploadCurrentConnectionToken = token;
 #endif
         InterlockedExchangePointer(&SafeUploadCurrentConnectionCookie, ConnectionCookie);
         published = TRUE;
     }
     KeReleaseSpinLock(&SafeUploadConnectionStateLock, oldIrql);
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (!published) ObDereferenceObject(process);
+    if (!published) {
+        PsDereferencePrimaryToken(token);
+        ObDereferenceObject(process);
+    }
 #endif
     return published;
 }
@@ -1177,6 +1235,7 @@ SafeUploadRetireCurrentConnection (
             &closeClientPort, &connectionGeneration)) return FALSE;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     SafeUploadStageProtocolConnectionReset(ConnectionCookie);
+    SafeUploadMetadataRevoke(ConnectionCookie);
 #endif
 
     /* FltCloseClientPort can deliver a disconnect callback. Release the
@@ -1373,6 +1432,51 @@ SafeUploadConnectionWaitForRetirement (
 }
 
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+_Use_decl_annotations_
+static NTSTATUS SafeUploadResourcePortConnect(PFLT_PORT ClientPort, PVOID ServerPortCookie,
+    PVOID ConnectionContext, ULONG SizeOfContext, PVOID *ConnectionCookie)
+{
+    BOOLEAN admitted;
+    PFLT_FILTER filter;
+    NTSTATUS status;
+    UNREFERENCED_PARAMETER(ServerPortCookie);
+    *ConnectionCookie = NULL;
+    if (!SafeUploadControlCallbackEnter(TRUE, TRUE, &admitted, &filter))
+        return STATUS_FLT_DELETING_OBJECT;
+    status = admitted ? SafeUploadMetadataPair(ClientPort, ConnectionContext, SizeOfContext, ConnectionCookie) :
+        STATUS_DEVICE_BUSY;
+    SafeUploadControlCallbackLeave(TRUE, filter);
+    return status;
+}
+
+_Use_decl_annotations_
+static VOID SafeUploadResourcePortDisconnect(PVOID ConnectionCookie)
+{
+    BOOLEAN admitted;
+    PFLT_FILTER filter;
+    if (!SafeUploadControlCallbackEnter(TRUE, FALSE, &admitted, &filter)) return;
+    SafeUploadMetadataDisconnect(ConnectionCookie);
+    SafeUploadControlCallbackLeave(TRUE, filter);
+}
+
+_Use_decl_annotations_
+static NTSTATUS SafeUploadResourcePortMessage(PVOID PortCookie, PVOID InputBuffer, ULONG InputBufferLength,
+    PVOID OutputBuffer, ULONG OutputBufferLength, PULONG ReturnOutputBufferLength)
+{
+    BOOLEAN admitted;
+    PFLT_FILTER filter;
+    NTSTATUS status;
+    *ReturnOutputBufferLength = 0;
+    if (!SafeUploadControlCallbackEnter(TRUE, TRUE, &admitted, &filter))
+        return STATUS_FLT_DELETING_OBJECT;
+    status = admitted ? SafeUploadMetadataControl(PortCookie, TRUE, InputBuffer, InputBufferLength,
+        OutputBuffer, OutputBufferLength, ReturnOutputBufferLength) : STATUS_DEVICE_BUSY;
+    SafeUploadControlCallbackLeave(TRUE, filter);
+    return status;
+}
+#endif
+
 static
 NTSTATUS
 SafeUploadPortConnect (
@@ -1495,6 +1599,12 @@ Return Value:
         FltReleasePushLock(&SafeUploadConnectionTransitionLock);
         return status;
     }
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (SafeUploadMetadataGroupDraining()) {
+        FltReleasePushLock(&SafeUploadConnectionTransitionLock);
+        return STATUS_DEVICE_BUSY;
+    }
+#endif
     /* Another connect may have won while the bounded drain wait released the
      * transition guard. Only one callback can claim the now-empty slot. */
     if (SafeUploadConnectionClosing || SafeUploadConnectionRetiring ||
@@ -1882,6 +1992,21 @@ VOID SafeUploadConnectionReleaseAuthenticatedProcess(_In_ PVOID ConnectionCookie
     SafeUploadConnectionUseRelease(ConnectionCookie);
 }
 
+_Use_decl_annotations_
+BOOLEAN SafeUploadConnectionIsOriginalToken(PVOID ConnectionCookie, PACCESS_TOKEN Token)
+{
+    BOOLEAN same;
+    KIRQL irql;
+    KeAcquireSpinLock(&SafeUploadConnectionStateLock, &irql);
+    same = ConnectionCookie != NULL && Token != NULL &&
+        SafeUploadCurrentConnectionToken == Token &&
+        InterlockedCompareExchangePointer(&SafeUploadCurrentConnectionCookie, NULL, NULL) == ConnectionCookie &&
+        !SafeUploadControlCallbackAdmissionClosed && SafeUploadData.ClientPort != NULL &&
+        InterlockedCompareExchange(&SafeUploadData.AuthenticatedClient, 0, 0) != 0;
+    KeReleaseSpinLock(&SafeUploadConnectionStateLock, irql);
+    return same;
+}
+
 BOOLEAN SafeUploadConnectionPinForStage(_In_ PVOID ConnectionCookie)
 {
     PVOID pinnedCookie = NULL;
@@ -1992,6 +2117,24 @@ Return Value:
         SafeUploadPortMessageRelease(PortCookie);
         return STATUS_ACCESS_DENIED;
     }
+
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    /* Independent per-call metadata scratch/admission, before the large
+     * legacy policy copy. No legacy/policy send gate or epoch is acquired. */
+    __try {
+        ProbeForRead(InputBuffer, sizeof(SAFEUPLOAD_CONTROL), __alignof(SAFEUPLOAD_CONTROL));
+        RtlCopyMemory(&controlHeader, InputBuffer, sizeof(controlHeader));
+        if (controlHeader.Command == SAFEUPLOAD_CONTROL_RESOURCE) {
+            status = SafeUploadMetadataControl(PortCookie, FALSE, InputBuffer, InputBufferLength,
+                OutputBuffer, OutputBufferLength, ReturnOutputBufferLength);
+            SafeUploadPortMessageRelease(PortCookie);
+            return status;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        SafeUploadPortMessageRelease(PortCookie);
+        return GetExceptionCode();
+    }
+#endif
 
     //
     //  From pool, never from the stack. A kernel stack is about 12 KB and

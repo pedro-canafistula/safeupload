@@ -79,6 +79,7 @@
     <ClCompile Include="Taint.c" />
     <ClCompile Include="DenyRing.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageDirectory.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
+    <ClCompile Include="StageResourceMetadata.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageStream.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageProtocol.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
     <ClCompile Include="StageSecurity.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
@@ -102,6 +103,7 @@
     <ClInclude Include="Filter.h" />
     <ClInclude Include="Protocol.h" />
     <ClInclude Include="Stage.h" />
+    <ClInclude Include="StageResourceMetadata.h" />
     <ClInclude Include="StageSecurity.h" />
     <ClInclude Include="StagePublic.h" />
     <ClInclude Include="StageWriterMetadata.h" />
