@@ -473,3 +473,4 @@ agent matrix and matched-pair ordinary/runtime-/boot-Verifier qualification rema
 
 Concrete implementation detail: [resource wire and accounting identity](UX-LARGE-RESOURCE-WIRE.md), accepted with conditions for a passive contract increment.
 Passive contract work does not enable growable admission or satisfy the remaining revision-5 conditions.
+Concrete schema increment: [modern reservation and custody state](UX-LARGE-RESOURCE-STATE.md), accepted with conditions for passive data validation; no active ledger/admission yet.

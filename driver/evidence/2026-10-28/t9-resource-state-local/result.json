@@ -1,0 +1,44 @@
+{
+  "DiagnosticOnly": true,
+  "Platform": "Linux",
+  "ProductQualification": false,
+  "WindowsMatrixGate": false,
+  "Counters": {
+    "total": "33",
+    "executed": "33",
+    "passed": "33",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "RawTrxSha256": "0d7f7484bf4cfe04d0d63e5ed4742a63c85366517c54fd881abb6b9656720f54",
+  "SourceSha256": {
+    "agente/SafeUpload.Agent.Service/Interception/ResourceStateV2.cs": "2aa5b3eb7a260f5c531ac528d0267a6d2c93883b9d0c1cab11a8034cd570b2c1",
+    "agente/SafeUpload.Agent.Service/Interception/ResourceStateCodecV2.cs": "0d9f11e2e577a7bd884d00f97f67e5fb3ac17c9c9a614730a28dee378d9d69a4",
+    "agente/SafeUpload.Agent.Tests/ResourceStateV2Tests.cs": "933e0608d09a14abe42e3ddd61da931d24a61b1c530d9644a88b22292ce50366"
+  },
+  "Builds": {
+    "Debug": {
+      "Succeeded": true,
+      "Warnings": 0,
+      "Errors": 0,
+      "LogSha256": "b2e7bec9095d371120c32c28047b655d3ac0c015579d468a7ad366db00b9a8d6"
+    },
+    "Release": {
+      "Succeeded": true,
+      "Warnings": 0,
+      "Errors": 0,
+      "LogSha256": "2ed2d9625eb1843634e1d936d6a6ba2ad618fc4921d1b4886ca9b3292b69fc91"
+    }
+  }
+}

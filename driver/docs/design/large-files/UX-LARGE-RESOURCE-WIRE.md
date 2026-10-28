@@ -178,6 +178,9 @@ aligned to the validated immutable granularity and at least 16 MiB. Before live
 adoption it must equal the exact companion/ledger binding's committed capacity;
 a valid wire shape alone supplies no authority. Retirement success has capacity
 zero and echoes the complete measurements, not a second grant.
+The successful allocation/growth revision is the capacity-commit GrantRevision
+also stored in the exact companion, not a later custody-update revision. A
+retirement acknowledgment retains its accepted-receipt revision across replay.
 
 V20 allocation-resolution helpers retain their existing larger reply/ALLOW/
 byte-identical original-request contract. No v32 result substitutes for that
