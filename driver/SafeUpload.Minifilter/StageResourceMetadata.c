@@ -134,7 +134,9 @@ static VOID MetadataReap(_In_ PVOID Parameter)
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static VOID MetadataWorker(_In_opt_ PVOID Parameter)
+static KSTART_ROUTINE MetadataWorker;
+_Use_decl_annotations_
+static VOID MetadataWorker(PVOID Parameter)
 {
     SU_METADATA_GROUP *group;
     BOOLEAN stop;
@@ -536,6 +538,7 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
     if (buffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     __try {
         ProbeForRead(Input, InputBytes, __alignof(SU_RESOURCE_CONTROL_HEADER));
+#pragma warning(suppress: 6001) /* ProbeForWrite never reads the buffer; same idiom as Communication.c */
         ProbeForWrite(Output, OutputBytes, __alignof(SU_RESOURCE_CONTROL_HEADER));
         RtlCopyMemory(buffer, Input, InputBytes);
         if (!RtlEqualMemory(&buffer->Header, &header, sizeof(header))) {
