@@ -71,11 +71,11 @@ public final class AgentContracts {
     ){}
 
     public record HeartbeatRequest (
-        @NotNull (message = "\"id_usuario_so\" não pode estar vazio")
-        Integer id_usuario_so
+        @NotNull (message = "\"id_host\" não pode estar vazio")
+        Integer id_host
     ){}
 
-    public record HeartbeatResponse (
+    public record DefaultResponse (
         HttpStatus status,
         String mensagem
     ){}
@@ -87,14 +87,17 @@ public final class AgentContracts {
         String descricao
     ){}
 
-    public record TicketsResponse (
-        HttpStatus status,
-        String mensagem
-    ){}
-
     public record ListEmpresaResponse(
         Integer id_empresa,
         String razao_social
     ){}
+
+    public record PolicyRequest(
+        Integer id_host
+    ){}
+
+    public record PolicyResponse(){}
+
+    
     
 }

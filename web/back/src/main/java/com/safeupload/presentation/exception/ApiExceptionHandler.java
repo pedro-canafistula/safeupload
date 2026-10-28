@@ -8,6 +8,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /*
@@ -16,6 +18,8 @@ A classe trata erros relacionados às operações dos controllers
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
     /*
     Retorna erro quando o Json recebido é válido, mas não é aceito pelos critérios do DTO
@@ -67,6 +71,7 @@ public class ApiExceptionHandler {
     /* Retorna erro genérico de acesso ao banco de dados. */ 
     @ExceptionHandler(DataAccessException.class) 
     public ResponseEntity<Map<String, Object>> handleDatabaseError( DataAccessException exception) { 
+        logger.error("Falha de acesso ao banco durante uma requisição da API.", exception);
         return ResponseEntity 
                 .status(HttpStatus.INTERNAL_SERVER_ERROR) 
                 .body(Map.of( 

@@ -4,7 +4,7 @@ USE app;
 
 CREATE TABLE IF NOT EXISTS hosts (
     id_host INT PRIMARY KEY AUTO_INCREMENT,
-    ip VARCHAR(15) NOT NULL UNIQUE,
+    ip VARCHAR(15),
     mascara INT CHECK(mascara BETWEEN 0 AND 32),
     hostname VARCHAR(100),
     sistema_operacional VARCHAR(40),
@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS hosts (
     fabricante VARCHAR(50),
     modelo VARCHAR(50),
     mac_address VARCHAR(20),
-    numero_serie VARCHAR(30)
+    numero_serie VARCHAR(30),
+    visto_por_ultimo TIMESTAMP(6),
+    ativo INT CHECK (ativo IN (0,1))
 ) ENGINE=InnoDB
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_0900_ai_ci;
@@ -23,8 +25,6 @@ CREATE TABLE IF NOT EXISTS usuarios_so (
     usuario_so VARCHAR(40) NOT NULL,
     dominio VARCHAR(50),
     admin INT,
-    visto_por_ultimo TIMESTAMP,
-    ativo INT,
     fk_id_host INT NOT NULL,
     CONSTRAINT fk_id_host_01 FOREIGN KEY (fk_id_host) REFERENCES hosts (id_host)
     ON DELETE CASCADE

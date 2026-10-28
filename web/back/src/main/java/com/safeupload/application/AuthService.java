@@ -24,7 +24,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 
@@ -51,7 +51,7 @@ public class AuthService {
         this.clock = clock;
     }
 
-    @Transactional 
+    @Transactional(transactionManager = "acessoTransactionManager")
     public DefaultPostResponse firstRegister(FirstRegisterRequest request){
         Empresa empresa = empresaRegister(request.empresa());
 
@@ -114,7 +114,7 @@ public class AuthService {
         return endereco;
     }
 
-    @Transactional 
+    @Transactional(transactionManager = "acessoTransactionManager")
     public DefaultPostResponse normalRegisterEmpresa (EmpresaRegister request){
         empresaRegister(request);
         return new DefaultPostResponse(
@@ -122,7 +122,7 @@ public class AuthService {
             "Empresa cadastrada com sucesso.");
     }
 
-    @Transactional 
+    @Transactional(transactionManager = "acessoTransactionManager")
     public DefaultPostResponse normalRegisterUsuario (UsuarioRegister request){
         Empresa empresa = empresaRepository.findById(request.fk_id_empresa())
             .orElseThrow(() -> new DatabaseErrorException("Empresa não encontrada."));
