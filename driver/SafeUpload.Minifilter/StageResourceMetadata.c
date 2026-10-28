@@ -693,10 +693,10 @@ static NTSTATUS MetadataCheckProgramData(_Inout_ SU_METADATA_CAPTURE *Capture)
     status = ZwQueryValueKey(key, &valueName, KeyValuePartialInformation, data, sizeof(Capture->Scratch), &returned);
     ZwClose(key);
     if (!NT_SUCCESS(status)) return status;
-    if (returned < FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) ||
+    if (returned < (ULONG)FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) ||
         (data->Type != REG_SZ && data->Type != REG_EXPAND_SZ) || data->DataLength < 2 ||
         data->DataLength > 512 * sizeof(WCHAR) || (data->DataLength & 1) != 0 ||
-        data->DataLength > returned - FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data)) return STATUS_INVALID_PARAMETER;
+        data->DataLength > returned - (ULONG)FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data)) return STATUS_INVALID_PARAMETER;
     value.Buffer = (PWCHAR)data->Data;
     value.MaximumLength = (USHORT)data->DataLength;
     value.Length = (USHORT)(value.MaximumLength - (USHORT)sizeof(WCHAR));
