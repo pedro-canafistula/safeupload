@@ -1,0 +1,106 @@
+{
+ "Label": "m2t9nu501a3",
+ "Gate": "PASS",
+ "Provenance": {
+  "SourceCommit": "7c3ab3e5e097d1ced8eb5b461a492dba66d3c90d",
+  "ArchiveSHA256": "9C0E80F45294CDCE751D25F6762F5E891E5AC6E27B2A13ED336D792C785C64D4",
+  "BuilderIdentity": {
+   "Builder": "builder1",
+   "BuilderHost": "192.168.122.210",
+   "BuilderComputerName": "DESKTOP-O1LP5DG"
+  },
+  "Profiles": [
+   "feature-debug",
+   "feature-release"
+  ],
+  "TestLegs": 4
+ },
+ "RuntimeQualification": false,
+ "ServiceInstalled": false,
+ "Profiles": {
+  "feature-debug": {
+   "user": {
+    "Counters": {
+     "total": "3740",
+     "executed": "3740",
+     "passed": "3740",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "notExecuted": "0"
+    }
+   },
+   "system": {
+    "Counters": {
+     "total": "25",
+     "executed": "25",
+     "passed": "25",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "notExecuted": "0"
+    }
+   },
+   "Builds": [
+    "feature-debug-build: exit=0 warnings=0 errors=0",
+    "feature-debug-app-build: exit=0 warnings=0 errors=0",
+    "feature-debug-test-build: exit=0 warnings=0 errors=0",
+    "feature-debug-tests-discovery-list: exit=0 warnings=0 errors=0",
+    "feature-debug-tests-discovery-fqns: exit=0 warnings=0 errors=0",
+    "feature-debug-tests-user: exit=0 warnings=0 errors=0",
+    "feature-debug-tests-system: exit=0 warnings=0 errors=0",
+    "feature-debug-tests: exit=0 warnings=0 errors=0"
+   ]
+  },
+  "feature-release": {
+   "user": {
+    "Counters": {
+     "total": "3740",
+     "executed": "3740",
+     "passed": "3740",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "notExecuted": "0"
+    }
+   },
+   "system": {
+    "Counters": {
+     "total": "25",
+     "executed": "25",
+     "passed": "25",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "notExecuted": "0"
+    }
+   },
+   "Builds": [
+    "feature-release-build: exit=0 warnings=0 errors=0",
+    "feature-release-app-build: exit=0 warnings=0 errors=0",
+    "feature-release-test-build: exit=0 warnings=0 errors=0",
+    "feature-release-tests-discovery-list: exit=0 warnings=0 errors=0",
+    "feature-release-tests-discovery-fqns: exit=0 warnings=0 errors=0",
+    "feature-release-tests-user: exit=0 warnings=0 errors=0",
+    "feature-release-tests-system: exit=0 warnings=0 errors=0",
+    "feature-release-tests: exit=0 warnings=0 errors=0",
+    "feature-release-publish: exit=0 warnings=0 errors=0",
+    "feature-release-app-publish: exit=0 warnings=0 errors=0"
+   ]
+  }
+ },
+ "FeatureReleasePackage": {
+  "package_sha256": "F8849FEB4C4F58259A720FAA85E44B3CB55FF6B480A3C1DFFCCC56408EFD6964",
+  "package_manifest_sha256": "16B3B59A6629C489806641C9580C5BD5D0F31D6801BD72078B30934D397F67EC"
+ },
+ "Scope": "Delivery gate for the N-U5-01 in-service harness (7c3ab3e5). Not protected-pair qualification.",
+ "PriorAttempts": {
+  "m2t9nu501a1": "FAIL 3739/3740 feature-debug/user: OfficeUnsupportedPayloadTests word/body/image got inspection_timeout instead of unsupported_format (case 15.5 s at 20:41:04Z) while freshly cold-booted builder1 was installing Defender signature/platform updates (20:41-20:49Z) and builder2 ran native discovery; remaining legs not run",
+  "m2t9nu501a2": "FAIL 3739/3740 feature-debug/user: StagedTerminalArchiveTests 10k sameDestination=True allocate 15187 ms > 1000 ms bound at 21:49:10Z on builder1 (Defender health report 21:48:57Z); remaining legs not run",
+  "Hypothesis": "post-cold-boot maintenance on builder1 (confirmed for a1, plausible for a2); a3 ran on a quiet host with warm builder1 and passed every leg. No test, assertion or threshold changed; failed receipts retained."
+ }
+}
