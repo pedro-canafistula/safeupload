@@ -2553,7 +2553,8 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT
     }
     if (c->Operation == IRP_MJ_CREATE && !NT_SUCCESS(c->NativeStatus)) {
         KeAcquireSpinLock(&MetadataLock, &irql);
-        child->Key = NULL; child->Closed = TRUE; child->State = SuMetadataRevoked;
+        /* A CREATE completion always owns a child; guard anyway so a logic defect cannot dereference NULL. */
+        if (child != NULL) { child->Key = NULL; child->Closed = TRUE; child->State = SuMetadataRevoked; }
         KeReleaseSpinLock(&MetadataLock, irql);
         MetadataReleaseIo(c);
         return FLT_POSTOP_FINISHED_PROCESSING;
@@ -2570,7 +2571,7 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT
                 FltCancelFileOpen(Objects->Instance, Objects->FileObject);
             Data->IoStatus.Status = status; Data->IoStatus.Information = 0;
             KeAcquireSpinLock(&MetadataLock, &irql);
-            child->Key = NULL; child->Closed = TRUE;
+            if (child != NULL) { child->Key = NULL; child->Closed = TRUE; }
             KeReleaseSpinLock(&MetadataLock, irql);
         }
     }
