@@ -1,8 +1,11 @@
 # T9 growing reservations: revision 6 implementation contracts
 
 2026-10-28. **Proposed addendum and pure models for independent review; no product implementation.**
-Revision 5 adds section 8.7 after the partial increment-3 kernel delivery;
-new contracts and diagnostic options await independent review.
+Revision 6 supplies the before-coding conditions of the
+[section 8.7 review](../../../evidence/2026-10-28/t9-growth-87-review-sol-high.md)
+(**ACCEPT WITH CONDITIONS** for dormant root/child registration and pools).
+Actor/echo is explicitly deferred to increment 6, separately from pool admission.
+This text does not claim implemented-source acceptance or native execution.
 The [re-review](../../../evidence/2026-10-28/t9-growth-protocol-rereview-sol-high.md)
 closed F1/F2/F3/F5/F7 as design corrections, with native/source/runtime proof
 still distinct. The [third review](../../../evidence/2026-10-28/t9-growth-protocol-rereview2-sol-high.md)
@@ -1001,8 +1004,9 @@ reuse. Revoke denies new mutations/opens immediately; already claimed operations
 settle conservatively with map rundown pins. Cleanup/CLOSE always progress;
 disconnect/instance teardown/unload finish locally without service ACK. A stale
 object pointer cannot match a new incarnation. Bound registration: four roots,
-at most one child intent + **four** live metadata child objects per active metadata
-worker; proposed **16 metadata transactions**, otherwise Busy before allocation.
+at most **four total child credits** per metadata transaction, including at most
+one pending intent (8.7.2); **16 metadata transactions**, otherwise Busy before
+allocation/lower dispatch. Pending/Opening/Active/retiring records share this bound.
 Section 8.7.2 fixes eight Growth and eight NonGrowth slots with immutable
 TransactionId class tags; Role alone cannot distinguish shared ledger uses.
 Neither pool borrows from the other; exhaustion returns Busy, never a cleanup
@@ -1013,8 +1017,8 @@ up to four. This is bounded map storage, not a cap on durable history.
 
 | Capability state / interruption | State transition / recovery action | Control |
 |---|---|---|
-| Child intent registered, open not issued | PendingOpen=1; consumes one bounded transaction slot; revoke removes unclaimed intent locally | R3-M02 |
-| Pre-CREATE claimed, lower create executing | Opening=2 with local rundown pin; revoke excludes subsequent mutation/exposure; settle native result against the durable creation claim | R3-M02 |
+| Child intent registered, open not issued | PendingOpen=1; consumes its transaction slot and one of four child credits; revoke removes locally, releasing only after every referencing owner drains | R3-M02 |
+| Pre-CREATE claimed, lower create executing | Opening=2 uses the same reserved child credit, with local rundown/context pin; revoke excludes subsequent mutation/exposure; settle native result against the durable creation claim | R3-M02 |
 | Post-CREATE exact validation succeeds | Active=3; publish original FILE_OBJECT tag only after identity/type/security checks; invalid result closes capability and retains uncertain native custody | R3-M01 |
 | Data/native replacement committed, service loses completion | capability is no durable receipt; recover from the ledger's pending exact identity/bytes, retain physical/debit charge; never repeat known-success replacement | R3-C03 |
 | Active → disconnect/instance revoke | Revoked=4; deny new I/O, locally finish pinned operations and permit cleanup/CLOSE; no service ACK | R3-M02 |
@@ -1068,7 +1072,8 @@ must be established in U4, not guessed. Failed CREATE, drain, cancellation and
 post-context allocation failures must conserve pins/credits without an epoch.
 R3-M01 must prove metadata routes here while a real counted epoch is closed,
 not through union denial/BP/namespace callbacks. Its increment-3 diagnostic
-actor/raw-store subset is subject to the selection/deferral in 8.7.3; its
+actor/raw-store subset is deferred to 6 in 8.7.3; early native/legacy-pause
+controls in 8.7.4 have narrower explicit coverage; its
 application-held growth/ledger/companion case remains increment 6. R3-M02 covers
 failed CREATE,
 draining posts and CLEANUP/CLOSE with address reuse. First-boot review includes
@@ -1333,15 +1338,12 @@ never relabelled positive recovery. Before-issue adapter alignment rejection
 records zero native calls; native-issued alignment negatives record the actual
 API result and preserve any admitted/created custody.
 
-R3-M01/M04 have proposed increment-3 **diagnostic actor** seams in sections
-8.6/8.7.3: hold a counted epoch while raw metadata work progresses. Actor artifact/
-host selection or explicit deferral to 6 is open; deferral leaves these subsets
-unexecuted rather than replacing them with raw native-only evidence. Their
-**real growth reply**
-assertions remain increment 6. R3-M03 reduction stress is retained for increment
-4 (growth saturation companion stress for 6); fence/ACK/snapshot require increment
-5. These later assertions are not deleted, weakened or satisfied by raw storage
-primitives. All protected rows follow their owning source's first-boot review.
+R3-M01/M04's kernel actor/echo seams are **deferred to increment 6** (8.7.3),
+separately from the accepted pools. Section 8.7.4 supplies early real-port
+N-U5-01 and legacy-reply-pause R3-M04P controls without new kernel authority;
+neither is full actor/growth evidence. R3-M03 reduction stress remains increment
+4 (growth saturation in 6); fence/ACK/snapshot remains 5. No later assertion is
+deleted or closed by raw/fake storage/transport tests.
 
 ### 8.6 Increment-3 deliverable and stable test seams (before-coding cut)
 
@@ -1369,7 +1371,9 @@ ResourceStateCodecV2 (:66) is schema 3. Proposed module/interface contracts:
 | Physical accounting | Bounded object inventory with peak Q for newly issued/failed objects and independently retained predecessor/residue; explicit exact measured-closed/release events lower charge. Maintain hot/shared deltas under short state serialization, no directory walk or content/journal callbacks on a foreground admission. |
 | Diagnostic fixtures | Inject finite native-call failures vs lost return/bookkeeping separately, observe independent mutation counts and repeat-interrupt recovery. Feed bounded opaque byte patterns and raw frame/frontier buffers, not a fabricated valid schema-3 allocation or archive receipt. |
 
-Add a separately identified, test-only **T9MetadataEpochHoldActor** seam: the
+**Deferred to increment 6:** retain the proposed test-only
+**T9MetadataEpochHoldActor** seam below as an unapproved future fixture, not
+increment-3 source. The early alternatives are in 8.7.4. In the deferred proposal, the
 harness acquires one real counted admission token, closes epoch admission through
 the normal policy transition, and releases the token only after a bounded
 **raw metadata** transaction completes or the monotonic diagnostic deadline ends.
@@ -1379,12 +1383,13 @@ resource authority; every actor/echo path must be absent in product builds. The
 artifact/host exclusion choice and exact test-only control/layout must
 be independently reviewed with implementing source, without changing these
 confirmed product ABIs. Section 8.7.3 now proposes the diagnostic layouts and
-artifact/host options; selection or explicit deferral is still required. Scope
+artifact/host options; **deferral to 6 is recorded**, with future fixture
+selection/review required before any actor code. Scope
 it to token acquire/release and captured diagnostic
 counters, not generic policy bypass or silent Unknown reset. Every timeout/cancel/
 teardown releases its token locally and reports failure, not PASS by a hold.
 
-Increment-3 R3-M01 seam: policy covers private roots, diagnostic token holds the
+Deferred actor R3-M01 seam: policy covers private roots, diagnostic token holds the
 epoch closed, opaque ledger/companion-shaped bytes still create/replace/flush
 through metadata branch. R3-M04 seam: SetPolicy occupies main send path and 64
 ordinary failure credits are stalled; provisional independent metadata controls/
@@ -1412,24 +1417,29 @@ their own checks. This explicitly narrows a dependency, not any
 carried final-pair assertion. O1/O2 need not be decided to code this dormant
 substrate; O2 gates 4, O1 gates 6.
 
-### 8.7 Inputs for completing the increment-3 kernel substrate (revision 5)
+### 8.7 Inputs for completing the increment-3 kernel substrate (revision 6)
 
 The worker report `~/Work/safeupload-tools/workers/t9-inc3-kernel-final.md`
 records **partial** delivery at `88d7850b`: pairing/authentication/revocation/
 control dispatch exist, but no successful registration, object maps, metadata
-pre/post routing or native store ownership. `StageResourceMetadata.c:379` refuses
-root authority explicitly; child dispatch at `:588`–`:592` also returns refusal.
+pre/post routing or native store ownership. At the section 8.7 review snapshot
+`44080deb`, the root stub is `StageResourceMetadata.c:361`–`:387`; child dispatch
+at `:588`–`:592` also returns refusal. These are reviewed snapshot anchors, not
+acceptance of concurrent implementation work.
 The following are proposed contracts for independent review, not evidence that
 those stubs can return success. They preserve every confirmed product ABI size
-and **Commit NotReady, Mode=0, no grants**. Actor selection remains open.
+and **Commit NotReady, Mode=0, no grants**. The review accepts the root/pool
+architecture conditionally; the predicates, Busy mapping and credit representation
+below supply its coding conditions. Actor/echo is **DEFERRED to increment 6**;
+no actor parser/helper is part of this kernel pass.
 
 #### 8.7.1 Installed-root authority: signed fixed table, not enrollment
 
-**Select for review:** the signed driver contains the following compile-time
+**Conditionally accepted selection:** the signed driver contains the following compile-time
 RootRole-to-absolute-NT-path table. RegisterRoot accepts a role and an original
 user handle, never a locator, configured prefix, environment expansion or an
 installer/service enrollment assertion. This is the recommended root-authority
-contract, awaiting review. The table supplies the missing namespace
+contract, with the review's separate security predicates below. The table supplies the missing namespace
 selection authority; native capture supplies the object authority.
 
 | RootRole | Fixed NT path | Required registered parent |
@@ -1470,32 +1480,25 @@ all map/epoch/policy/upper-stream locks; map space is reserved nonwaiting first.
    handles and KernelMode, not a general kernel-I/O bypass. Existing targeted
    open mechanics are at `StageStream.c:1223`–`:1225`; fixed-volume/NTFS checks
    at `:1192`–`:1202` are mechanics, not this new installed-root proof.
-3. Open **each table root by its absolute fixed NT path** with FILE_OPEN,
-   FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT|FILE_SYNCHRONOUS_IO_NONALERT,
-   root access from step 1 and FILE_SHARE_READ|FILE_SHARE_WRITE, no SHARE_DELETE.
-   Capture full native directory identity, volume identity/filesystem and held
-   owner/DACL. Separately walk and hold the exact ancestry from volume root,
-   validating each component without following a filesystem reparse point;
-   compare the absolute-open object to the object reached through that held
-   chain. Each chain open is relative to its already held parent with no-follow
-   validation and no SHARE_DELETE; the final absolute open must resolve through
-   the captured global C: mapping to that same object. Do not infer no-reparse
-   ancestry from the final component's flag.
-   Share chain references across the four roots (at most seven directories:
-   volume root, ProgramData, SafeUpload and the four roots), not four unbounded
-   path walks. If lower open/exclusion fails, refuse; no service wait or ACL repair.
-4. Each of the four private roots must have a protected, non-null DACL and owner
-   LocalSystem or Builtin Administrators, matching the existing private-store
-   trust scope (`StagedTransferJournal.cs:3581`–`:3588`). Deny registration if
-   any effective Allow ACE grants another principal data/directory mutation,
-   DELETE/DELETE_CHILD, WRITE_DAC or WRITE_OWNER (including generic-mask expansion
-   and relevant inherited ACEs); unknown/unsupported security form refuses.
-   Existing mutation/owner checks are at `:2083`–`:2096`, private grants at
-   `:3526`–`:3541`. Windows ancestors need not have a private protected DACL:
-   require that untrusted subjects cannot replace the **next captured component**
-   or change its authority through ancestor DELETE_CHILD/security rights.
-   Ordinary ProgramData create-in-other-names rights alone are not authority to
-   replace SafeUpload. An unproved ancestor replacement exclusion refuses.
+3. **Recommended mechanics:** hold the fixed installation ancestry once:
+   global C: volume root → `ProgramData` → `SafeUpload`. Open the first by its
+   independently resolved kernel NT volume locator, then each signed one-component
+   suffix relative to its already held parent, never a caller path. From held
+   SafeUpload resolve signed `staging` / `staging-journal` suffixes, then
+   `.space-reservations` / `completed` relative to the appropriate held root.
+   These are independent resolutions of the table's fixed absolute locations;
+   repeating four absolute opens is not extra authority and is not required.
+   Use FILE_OPEN, FILE_DIRECTORY_FILE|FILE_OPEN_REPARSE_POINT|
+   FILE_SYNCHRONOUS_IO_NONALERT, step-1 root access and
+   FILE_SHARE_READ|FILE_SHARE_WRITE **without SHARE_DELETE** on every retained
+   directory handle. Capture full identity, volume/instance, type and security
+   at each component, following no filesystem reparse point. Share at most seven
+   directory anchors. Retain the actual exclusion handles, not just FILE_OBJECT
+   references; a reference alone does not exclude replacement. Missing/no-follow/
+   share/security uncertainty refuses, with no ACL repair or service wait.
+4. Apply **PrivateRoot** to each of the four roots and **AncestorEdge** to the
+   volume-root/ProgramData/SafeUpload ancestry, as defined below. These are
+   distinct predicates, not a call to one generic trusted-owner helper.
 5. Compare the expected identity in the request, the original user FILE_OBJECT
    and the independently opened installed object: full volume serial/128-bit
    file ID, same pinned volume/instance, directory/type/security and exact held
@@ -1505,6 +1508,91 @@ all map/epoch/policy/upper-stream locks; map space is reserved nonwaiting first.
    integer after return. Kernel anchors and original references live through
    group/map rundown; remove keys before releasing them outside the map lock.
 
+**PrivateRoot(SD):** owner must equal LocalSystem (`S-1-5-18`) or Builtin
+Administrators (`S-1-5-32-544`), explicitly including Administrators. DACL must
+be present, non-null, structurally valid and protected. For directory generic
+mapping, mutation includes FILE_WRITE_DATA/ADD_FILE, FILE_APPEND_DATA/ADD_SUBDIRECTORY,
+WRITE_EA, WRITE_ATTRIBUTES, DELETE, FILE_DELETE_CHILD, WRITE_DAC and WRITE_OWNER.
+Every potentially applicable mutation Allow ACE, explicit or inherited, must
+name one of those two exact principals. Inspect inherit-only mutation grants
+for future descendants as well; an unsupported form cannot hide a grant.
+**TrustedInstaller and a separate SafeUpload service-SID mutation ACE are not
+automatically accepted**, even if the connecting token contains that SID.
+Neither an arbitrary caller/owner SID nor group membership enlarges this set.
+Read-only grants may name other valid SIDs. An ordinary mutation Allow to another
+principal refuses conservatively even when a Deny might restrict it; no ACL
+rewrite or speculative token-group enumeration converts it to acceptance.
+
+**AncestorEdge(parent SD, held child SD/identity, component):** Windows ancestors
+need not have private protected DACLs. Require a valid known owner and present,
+non-null valid DACL. Owner itself is security authority through owner-derived
+WRITE_DAC; an untrusted owner fails even if no Allow ACE lists mutation rights.
+For the Windows volume root and ProgramData only, the allowed security-authority
+set is LocalSystem, Builtin Administrators and the **exact Windows TrustedInstaller
+service SID**, derived from the fixed Windows service identity, never a friendly
+name/caller SID. These may own or receive destructive/security authority on those
+Windows ancestors. For the SafeUpload installation ancestor the set is only
+LocalSystem/Builtin Administrators, matching its private installation boundary.
+This explicit servicing exception does not apply PrivateRoot to Windows ancestors,
+and does not add TrustedInstaller to any private root's owner/grant set.
+
+For each edge, expand directory GENERIC masks, account for effective explicit
+and inherited ACEs and propagation flags, and reject any possible untrusted
+DELETE on the parent, FILE_DELETE_CHILD, WRITE_DAC or WRITE_OWNER. Also examine
+inheritable ACEs that actually reach this captured child: CONTAINER_INHERIT,
+INHERIT_ONLY and NO_PROPAGATE affect propagation, not trust. Refuse if they can
+grant the untrusted principal destructive/security authority on that child or
+mutation forbidden by the child's own predicate. An inherit-only ACE does not
+authorize the parent; it must still be evaluated for this edge. A verified
+protected child DACL blocks inheritance; do not invent inheritance across it,
+or rely on protection without capturing that actual child descriptor. Ordinary
+create-in-other-names rights on ProgramData do not replace the already held
+SafeUpload component and are not alone a refusal. Compare child type/identity/
+security again before publication; retain the no-SHARE_DELETE chain throughout.
+
+Both predicates parse bounded valid self-relative descriptors/ACLs and ordinary
+ACCESS_ALLOWED/ACCESS_DENIED ACEs with valid SIDs and recognized inheritance flags.
+AncestorEdge additionally resolves ordinary OWNER_RIGHTS ACEs to the captured
+owner (without using a Deny to excuse an untrusted owner), and inherit-only
+CREATOR_OWNER ACEs to the **captured next child's owner** when their inheritance
+flags apply. Check the resolved principal and actual resulting child descriptor;
+this supports ordinary Windows inheritance without treating every creator as
+trusted. Non-inherit-only CREATOR_OWNER, unresolved creator/group/substitution
+semantics, object/callback/conditional/resource-attribute ACEs, malformed masks/
+lengths/flags or an unproved owner/inheritance case **refuse with a diagnostic**.
+PrivateRoot's exact SID/mutation rule is not expanded by these ancestor-only
+resolutions; a private mutation grant outside SYSTEM/Admin still refuses.
+Do not silently skip them or infer absence of authority from an unknown ACE.
+The over-approximation of Allow rights is deliberately conservative; legitimate
+but unsupported descriptors require a reviewed predicate extension, not auto-repair.
+This specifies a capture rule, not a claim that today's kernel stub implements it.
+
+Source boundaries: `StagedTransferJournal.cs:2083` checks mutation grants;
+`:3544` checks the application parent and currently trusts only SYSTEM/Admin;
+`:3581` checks private-object owners. Reuse their private trust limits, not
+RequireTrustedOwner indiscriminately for Windows servicing-owned ancestors.
+Kernel implementation belongs at `StageResourceMetadata.c:361`–`:387`, which
+at the review snapshot references then releases a user object and returns unsupported.
+**R3-M05** must accept legitimate servicing-owned Windows ancestors with exact
+SYSTEM/Admin private roots, and reject an untrusted ancestor owner with an
+otherwise innocuous DACL, effective/inheritable destructive grants, unsupported
+ACEs, TI-owned private roots and separate service-SID mutation grants there.
+Include ordinary ancestor CREATOR_OWNER inheritance resolving to the real trusted
+child owner as a positive, and an untrusted/unresolved child-owner case as a negative.
+Admin-owned/granted private roots are positive controls. Owner/ACL checks never
+replace independently reached identities and retained exclusion handles.
+
+**Legitimate ACL repair:** revoke the whole group and close new admission, then
+drain accepted native operations, contexts, claims and exclusion handles **before**
+any directory/child security mutation; only then repair outside `_gate` and
+recapture all anchors/security on a new provisional group. Journal startup can
+write directory and child DACLs at `StagedTransferJournal.cs:307`–`:325`; future
+integration must place those writes before registration or behind this complete
+revoke/drain/repair/recapture order. No live capability survives a repair, no
+normalization of an untrusted object to pass, no release of uncertain charge.
+R3-M05/M02 includes a repair attempt with active contexts and proves mutation
+waits for real drain and old IDs never reactivate.
+
 The installer/service may establish a **missing** protected leaf through ordinary
 trusted setup outside metadata accounting, then retry bootstrap from scratch;
 the kernel neither creates it nor enrolls a substitute. The agent's bootstrap
@@ -1512,12 +1600,14 @@ first compares its actual CommonApplicationData-derived roots against these
 fixed C: locators (case-insensitive, no alternative drive/alias/reparse mapping);
 a mismatch holds startup before registration. That is a compatibility refusal,
 not kernel enrollment evidence: the kernel still independently performs the
-object checks above and never reads a service environment variable. An exact repeat for a
+object checks above and never reads a service environment variable. An exact
+repeat for a
 live role/identity returns its existing RootId; a different identity for that
 role refuses and revokes the group. ParentRootId=0 is legal only for roles 1/3;
 roles 2/4 must match the exact role/parent above. All four are required before
 any future Commit Ready. Security is rechecked before native commit as in 8.1;
-trusted rename/repair/uninstall first revokes and drains the group.
+trusted rename/repair/uninstall follows the revoke/drain-before-mutation and
+recapture rule above; kernel references alone are not a repair barrier.
 
 | Condition / interruption | Required failure/recovery; no implicit authority | Control |
 |---|---|---|
@@ -1547,7 +1637,7 @@ The Role field alone cannot classify all transactions. Growth uses only
 LedgerCurrent/New and CompanionCurrent/New, but initial allocation, abandonment
 and custody/reduction also use those four roles (8.2). A rule putting every
 ledger in growth's pool would let growth consume cleanup's reserved capacity.
-Select this minimal wire-neutral rule for review: reserve **bit 7 of native
+Use the conditionally accepted wire-neutral rule: reserve **bit 7 of native
 GUID byte 15 of TransactionId** as Pool (1 Growth, 0 NonGrowth). The other 127
 bits identify a fresh nonzero transaction (all-zero after masking the tag refuses); this is not a TransferId, request ID,
 FenceId or durable K. C# uses the native Guid byte layout already specified in
@@ -1572,58 +1662,138 @@ from the already trusted service, **not kernel proof of semantic purpose**;
 future growth/cleanup call sites must prove classification in their integration
 controls. Hostile authenticated service behavior is not a new isolation claim.
 
-Kernel transaction key is (live group cookie, exact TransactionId). First child
-reserves exactly one slot in the encoded pool before intent/context allocation;
-subsequent children join that same slot. Enforce at most one unclaimed intent
-and four live child objects per transaction; reserve child/context/rundown space
-before visibility. Neither pool borrows unused slots from the other. PendingOpen,
-Opening, Active, Revoked and locally retiring operations retain the slot until
-the last intent, original object and operation/context owner drains. Cancellation
-or CLOSE cannot refund it early; final local removal releases exactly once.
-An empty transaction has no persistent slot; a subsequent operation uses a fresh
-ID. A same-ID conflicting child tuple or attempt to change class refuses, never
-moves an existing transaction. Reject simultaneous IDs differing only in the tag
-bit to make attempted reclassification observable while either is retained.
-Reconnect must drain old maps before publishing a new group, not reset occupied
-slots underneath retained owners. These are bounded transient maps, separate
-from durable 8/4 initial debt and eight retained-success-shell credits.
+Kernel transaction key is (live group cookie, exact TransactionId), with a
+second retained masked-ID lookup to reject tag-flipped aliases. **Choose pending
+intents reserving one of the four child credits**, not separate extra storage.
+This refines 8.1's earlier "one intent + four live" wording: the total is four,
+not five. Existing `StageResourceMetadata.h:23`–`:26` bounds 16 transactions ×4
+child records =64 records; at most 16 of those records can be unclaimed intents.
+No 65th child record or uncounted Opening owner is implied by pending storage.
 
-On pool/child exhaustion return **native STATUS_DEVICE_BUSY**, with no successful
-registration/ChildIntentId (no reply Result=3 is introduced; 1/2 meanings stay).
-No transaction, context or native open is retained on that refusal. Service
-maps it to local Busy, releases serialization/owned admission before bounded
-retry within the original deadline, and keeps durable physical charge. Cleanup,
-CLOSE and already-admitted completion/rundown bypass new registration admission;
-no wait for a cleanup which requires the refused registration. Metadata-send
-slots remain shared 8-active/0-queued **short nondependent controls** under 8.3;
-transaction isolation is not a guarantee against stalled native calls occupying
-all send slots. Registration never retains a send slot while waiting for a
-transaction slot. R3-M04 must test both boundaries, not promise unfair scheduler
-or stuck-native progress.
+For each transaction, `PendingOpen + Opening + Active + Revoked/retiring <= 4`
+(each record counted once), `PendingOpen <= 1`, plus operation/context reference
+counts. Atomically under the short map lock: validate live group/tag/alias,
+join/create exactly one transaction in its encoded 8-slot pool, reserve a vacant
+child record **and** its bounded completion/rundown ownership, then publish the
+intent. No native I/O/allocation/wait under that lock. Reserve bounded backing
+storage before visibility; allocation failure rolls back only unpublished new
+ownership and never an existing transaction's owners. A duplicate exact pending
+registration returns its existing ID without another credit; changed reuse
+refuses. Concurrent first children for the same ID cannot allocate two
+transactions or two pending intents: one wins, the other gets exact duplicate
+success or Busy. Concurrent opposite-tag aliases cannot both win.
+
+| Child state / event | Credit, slot and completion ownership |
+|---|---|
+| Register while four records occupied, or a distinct unclaimed intent already pending | Busy **before lower dispatch**; no fifth Opening/Active/retiring child and no new retained ownership. Already-admitted completion/CLEANUP/CLOSE never needs this admission. |
+| PendingOpen → pre-CREATE claim → Opening | Atomically consume the intent **in the same reserved record**, acquiring its context/operation pin before lower dispatch. No temporary return/reacquire of a credit. |
+| Failed CREATE, invalid successful CREATE or draining post | Remove/disable nonowning key and mark retiring; retain record/transaction until native outcome, any actual object custody and every post/deferred-context pin settles. No Active authority on failure/ambiguity. |
+| Active → revoke/cancel/CLEANUP/CLOSE | Deny new use; retire original object key before address reuse. Cancellation is a signal, **not a slot refund** while a callback/completion/rundown context still refers to the record/transaction. |
+| Final local retirement | Return the child credit only after intent/object/operation/context owners are zero and deferred local work has finished. Return transaction pool slot only when all four records and transaction pins are zero; exactly one final owner releases it. |
+
+Neither pool borrows; no early refund on service cancellation or disconnect.
+Reconnect drains the old maps/contexts before publishing a new group. An empty
+transaction has no persistent slot and subsequent operations use fresh IDs;
+that is a trusted-service obligation, not permanent kernel replay storage.
+Unclaimed-intent cancellation cannot be inferred from a canceled service Task:
+absent a kernel-observed claim/completion, local group revoke/rundown retires it.
+No new cancel opcode or early agent-side slot refund is implied. These maps are
+separate from durable 8/4 initial debt and retained-success shells.
+
+**Both validators:** `MetadataChildShape` (`StageResourceMetadata.c:391`–`:440`)
+and `ResourceControlWireV32.TryReadChild` (`ResourceControlWireV32.cs:116`–`:139`)
+must examine native GUID bytes, reject all-zero **after masking byte15 bit7**
+(including the tag-only GUID), reject unknown roles, and for Growth permit
+**only roles 1–4**, independently of all existing size/access/name/identity rules.
+NonGrowth may use any known role only with its existing exact role/proof limits;
+no LegacyNegative delete proof or LegacySecurity size bound is fabricated.
+Both reviewed validators check only ordinary GUID nonzero, which is insufficient. Stateful
+retained-alias/concurrent-pool checks belong to the authoritative kernel map;
+the agent registration adapter must mirror its active ID discipline, not claim
+that a stateless wire parser can detect concurrent aliases. Existing opens as
+well as creates must prove unnamed-stream, regular single-link/no-reparse exact
+identity before becoming usable; user-native adapter checks alone are insufficient.
+
+**Registration outcomes must survive every layer:**
+
+| Outcome | Handler → kernel control dispatch → agent registration adapter |
+|---|---|
+| Local metadata send-class full | `ResourceSendStatus.Busy`, before input construction/native send; no native call, ID or retained new ownership. Release owned serialization before bounded retry. |
+| Kernel transaction/child/control capacity full | Handler returns STATUS_DEVICE_BUSY; dispatcher returns that status unchanged, ReturnedBytes=0, no output authority, rolls back unpublished reservations. It must not turn it into transport success + Refused. Adapter maps only the exact native Busy transport result to retryable Busy. |
+| Malformed header/payload/tag/role | STATUS_INVALID_PARAMETER/length error, no output ID; adapter reports malformed, never Busy and never retries as capacity exhaustion. Authentication failures remain access/refused errors. |
+| Well-formed but object/identity/security/role authority refused | Explicit STATUS_SUCCESS with existing Result=2 and zero RootId/ChildIntentId/identity, fully correlated header; permanent refusal/held diagnostic. No automatic retry as Busy or ACL normalization. |
+| Successful registration | STATUS_SUCCESS, exact native lengths/correlation and existing Result=1, verified nonzero ID; only this grants the transient capability. |
+
+The working dispatcher must replace `StageResourceMetadata.c:581`–`:592`'s
+blanket root-failure conversion and unconditional child success assignment with
+these branches. Shape failures do not reach pool mutation; Busy/failed allocation
+retains no **new** intent/transaction/context/open, and does not release preexisting
+owners. No wire Result=3 is invented; product 64/40 and 640/16 exchanges stay fixed.
+
+`FilterPort.ResourceSends.cs:123`–`:134` preserves HResult/BytesReturned but
+currently calls any returned native invocation **Completed**. Completed is
+transport completion, not successful registration. The agent adapter first
+handles local Busy/Canceled/Revoked, then checks native HResult **before parsing
+payload/ID**. For native FilterSendMessage use the exact Busy conversion
+`HRESULT_FROM_WIN32(ERROR_BUSY)`; preserve the original HRESULT in diagnostics.
+If a native sender explicitly exposes the NT HRESULT form, recognize exactly
+`HRESULT_FROM_NT(STATUS_DEVICE_BUSY)` too, not arbitrary HRESULT failures.
+R3-M08 must record which real FltLib conversion occurs; any different observed
+conversion stops adapter acceptance for an explicit mapping correction, never
+falls back to parsing zero/partial output or retrying every error. A failed
+native result cannot expose a success payload; BytesReturned must be zero on
+the specified kernel Busy path. Reject nonzero/invalid lengths as a protocol
+fault, not registration. Concurrent cancellation/revoke may terminate adoption
+instead; it still cannot turn Busy into a permanent authority refusal or free
+in-flight native buffers. Keep native send leases through actual return.
+
+Busy retries use the original operation deadline, release owned serialization/
+admission before bounded retry, preserve durable charges and never await cleanup
+requiring the refused registration. Cleanup/CLOSE and admitted completion/rundown
+bypass new registration. Shared metadata sends remain 8-active/0-queued; pool
+isolation is occupancy isolation, not fairness or a guarantee through stalled
+native calls. A registration does not hold a send slot waiting for a pool slot.
+
+**R3-M08 Busy propagation:** exhaust local send class and require zero native
+calls/zero buffer construction; separately fill each kernel pool, child records
+and control slots with a real connection and require native Busy, zero returned
+bytes/no new IDs or owners. Follow with malformed/tag/role and security/identity
+refusal cases and require distinct non-Busy classifications. Release the actual
+last owner, retry once within the original deadline and require exactly one
+registration; existing transactions remain unchanged by refusal. Test the
+handler/dispatcher/transport/adapter chain, not just direct handler return or a
+fake HRESULT. Counter/mutation models precede implementation; real-port mapping
+and native-owner conservation follow source review (8.7.4 gates).
 
 **R3-M06 pool isolation:** hold eight Growth transactions with actual children;
 require ninth Growth Busy without allocation, and independent NonGrowth
 registration/store/cleanup completion. Reverse the pools, require eight Growth
 transactions still usable, and exercise all role rows, mixed ledger/companion
-cleanup, tag-bit reclassification, four-child/one-intent bounds and cancel/
-revoke/CLOSE at every state. Prove 8+8 conservation including retiring owners,
+cleanup, the tag-only GUID, **every** disallowed Growth role 5–20, unknown roles,
+tag-flipped retained aliases, concurrent first children and the four-total-child/
+one-pending-intent bound. Inject failed CREATE, cancellation, revoke/CLOSE and
+draining completion at every state, including cancellation while a completion
+context still owns the record/transaction: no slot reuse until that pin drains. Prove 8+8 conservation including retiring owners,
 no cross-pool borrowing, bounded send Busy, release once and eventual reuse only
 after actual local drain. Pure tag/role/admission controls precede handlers;
 routed runtime cases follow their implemented first-boot review. Full production
 growth/cleanup classification remains an increment-4/5/6 integration gate.
 
-#### 8.7.3 Diagnostic actor: explicit review choice, not a product opcode
+#### 8.7.3 Diagnostic actor: deferred to increment 6, separate from pools
 
-8.6's actor/echo is **not implemented**. A debug configuration or the existing
-SAFEUPLOAD_ADMISSION_EVIDENCE feature flag alone is not sufficient exclusion:
-those builds contain product feature code. Review/orchestrator must choose the
-artifact/host boundary and timing below before a worker adds any diagnostic
-entry point. The recommendation is **A with controlled lab-only delivery**;
-if a technical production-host exclusion is required even for a copied diagnostic
-binary, require **B** and settle its missing host authority first. Do not call
-A a proof of that stronger property. Recommend settling the boundary and
-implementing the actor with increment 3 to expose the control cycle early;
-deferral is an explicit alternative below, not the recommendation or a selection.
+**Disposition: DEFERRED to increment 6.** No actor/echo opcode, parser, timer,
+policy helper or diagnostic receive branch is authorized for increment 3. Pool
+implementation proceeds independently under 8.7.2; actor deferral is not pool
+admission deferral. The options/layouts below remain future design material,
+not selected or accepted source contracts. N-U5-01/R3-M04P in 8.7.4 provide
+narrower early native/protected checks while full actor/echo evidence stays OPEN.
+
+A debug build or SAFEUPLOAD_ADMISSION_EVIDENCE flag is not enough to exclude an
+actor from product delivery. Future selection must exclude all actor surfaces
+from product-signed product drivers, irrespective of signing a diagnostic binary.
+A remains the smallest future lab-only candidate if its deployment boundary is
+explicitly accepted; B additionally needs independent host/permit authority;
+C remains rejected. None is selected by this deferral.
 
 | Concrete option | Attack surface / required review disposition |
 |---|---|
@@ -1631,8 +1801,8 @@ deferral is an explicit alternative below, not the recommendation or a selection
 | B: A plus one-boot lab authorization from an independent lab authority | Before exposing the diagnostic handler, require a verified, expiring permit bound to the approved target's independently authenticated machine identity, fresh driver-instance/boot challenge, diagnostic artifact hash and permitted actor/echo operations. Fail closed on missing/stale/replayed/mismatched permit; no registry/env/hostname/port caller assertion suffices. Product still compiles it out. Stronger host restriction but adds permit verification/provisioning/revocation surface. No such independent host-identity/permit source exists in the cited code; exact authority, evidence, verifier/imports and permit ABI need separate acceptance before implementing B. No claim of unforgeable lab identity from a local file or test-signing mode. |
 | C: runtime registry/config/test-signing/KD gate in a product binary | Reject for the stated requirement: diagnostic parsers/state remain in product and a privileged local actor could enable them. It supplies neither compile exclusion nor an independent production-host boundary. Not recommended. |
 
-The following is the **minimal proposed actor ABI shared by A/B**, subject to
-that choice and source review. It adds no product opcode/capability/size. Use the
+The following is the **deferred proposed actor ABI shared by A/B**, subject to
+future choice and source review; no handler is added in increment 3. It adds no product opcode/capability/size. Use the
 existing 64-byte control-36 header, resource port only, **diagnostic-only** opcode
 `0x80000001` EpochActor and `0x80000002` IssueEcho. At flag 0 these numbers stay
 unsupported; no fallback to ordinary requests, growth operation 23 or policy
@@ -1697,8 +1867,8 @@ hold: timeout/group rundown releases it. Unknown ActorId/nonce, stale group,
 wrong channel, flags/nonzero reserved/length mutations refuse. An expiry/revoke
 is diagnostic failure, not a passing completion or permission to reopen policy.
 
-**Review must decide:** A's delivery boundary versus B's independent host permit
-(or no actor yet); accept the diagnostic numbers/layouts, one-actor/echo/send
+**Before any later actor implementation, review must decide:** A's delivery
+boundary versus B's independent host permit; accept the diagnostic numbers/layouts, one-actor/echo/send
 bounds and half-drain maximum; validate the actual epoch-lock/token/timer/image
 lifetime helpers and exact test-only receive branch with implementing source.
 ABI/mutation, product-symbol/opcode-absence checks and coherent fixture lifetime
@@ -1706,21 +1876,107 @@ review precede its first boot; routed timeout/cancel/unload tests execute only
 after that review, not as impossible pre-implementation prerequisites. Nothing here adds
 an actor implementation or silently chooses an option.
 
-**Deferring the actor to increment 6 is an explicit scheduling alternative.**
-Increment 3 can still implement/review registration, raw store, confinement,
-rundown, bounded sends and native mechanism controls with Commit NotReady.
-However R3-M01's **closed held-epoch raw-metadata progress** and R3-M04's
-**SetPolicy/_sendGate + ordinary-failure saturation + side-port echo progress**
-subsets remain OPEN until the actor or the increment-6 production-growth actor
-exists. Pure fake-send tests or policy merely covering private roots do not
-replace them. A dependency-cycle defect in the real `_sendGate` break could then
-be discovered only during growth integration and force changes to 3/4/5; report
-that risk at the checkpoint. Do not report all R3-M01/M04 or increment-3 progress
-evidence complete. The real growth/reply rows remain increment 6, real fence/
-ACK/snapshot increment 5, and Commit activation/qualification still requires
-all their retained gates. Independent review/orchestrator must record implement-
-now versus defer, rather than a worker inventing a diagnostic hook or deleting
-these assertions.
+**Recorded evidence consequence of deferral:** R3-M01's directly observed
+**held-old-epoch raw-metadata progress** and R3-M04's full **SetPolicy + ordinary-
+failure saturation + diagnostic side-port echo** subsets stay OPEN to 6.
+N-U5-01 can expose real native send serialization early; R3-M04P can expose an
+actual legacy CREATE/drain dependency. Neither proves the missing actor-specific
+observations. A remaining `_sendGate`/drain integration flaw may still be found
+late and require revisiting 3/4/5; report exact early coverage and this residual
+risk, not "all progress deferred" or "all progress proved". Real modern growth/
+reply remains 6 and real fence/ACK/snapshot 5. Fake sends close none of the native/
+protected obligations. Commit activation/qualification needs every retained gate.
+
+#### 8.7.4 Early progress controls without the deferred kernel actor
+
+**N-U5-01 real native gate independence — before-first-boot checkpoint.** After
+coherent implemented-source review, run the agent-side
+`FilterPort.ResourceSends.cs:152` **HoldLegacySendForTesting** seam against real
+connected main/resource handles, the actual FilterSendMessage adapter and actual
+RegisterRoot/RegisterChildIntent callbacks. The harness is the authenticated
+original service subject; Probe/pair and fixed roots are real, Commit stays
+NotReady. Acquire the main EnterSend lease, signal a bounded independent latch
+only after `_sendGate` is actually held, then issue valid root registrations,
+a child intent and a relative raw metadata open/query/store transaction on the
+resource channel. Require exact correlated successful IDs/native results while
+the legacy lease remains held; an independent attempted legacy send must remain
+blocked until latch release. Reject arbitrary temp-root fixtures, fabricated
+handles/native senders and success stubs. Bound the latch and release it in a
+finally/independent watchdog on timeout, failure, cancellation or revoke; no
+progress being measured can be required to release it.
+
+Repeat with full local metadata admission, kernel transaction/child exhaustion,
+malformed/refused tuples, and disconnect during an admitted call (R3-M08/M02).
+Assert correct Busy distinction, finite drain and no native buffer/handle release
+before return. This demonstrates **real main-send-gate/resource-callback
+independence**, including native/adapter lifetime. It does **not** close/drain a
+real epoch, prove application-growth progress, prove the actor's held-old-epoch
+snapshot, side-port receive/reply echo or stalled ordinary failure-credit proof.
+Fake-send `ResourceSendTests.cs:9`–`:49` checks managed admission only and closes
+none of these native/protected execution obligations.
+
+This is a real-port kernel component control, **not** the section 8.5 user-native
+experiments without a new kernel. It requires the reviewed dormant driver loaded
+on a separately authorized native component host; run it after source review
+and before the first protected-target VM boot/that delivery checkpoint. No host
+load/run is authorized here. If no such reviewed/authorized real host exists,
+this obligation remains pending; do not claim a fake transport satisfies it or
+perform a kernel load before review to make a pre-boot checkbox green.
+
+**R3-M04P legacy allocation-reply pause — early protected alternative.** Prepare
+an agent-only diagnostic fixture for an **existing** legacy/unbound allocation
+exchange, without adding any kernel opcode, token owner or modern admission.
+StageDispatchEpoch already acquires the CREATE token at
+`StageStream.c:11333`–`:11354`; the unbound allocation calls
+SafeUploadStageAllocateV19 at `:2752` and the exchange at `StageProtocol.c:965`.
+After the allocation result is prepared, pause immediately **before** its actual
+reply: `MinifilterInterceptor.cs:657`–`:662` for the typed V19 create reply;
+`:666`–`:670` is the separate basename-only legacy branch. Record which branch
+and operation is actually routed; do not toggle bound-head NotReady to reach a
+branch. Preserve the exact response and normal ownership; no fake allocation,
+reply drop, duplicate reply or changed native outcome.
+
+Correlate main cookie/DriverInstance, original RequestId/message ID, CREATE and
+prepared result with the pause. Independently start normal SetPolicy and raw
+metadata registration/store work through the paired resource path while policy
+covers the private roots. Require independent trace/stack observation that the
+actual SetPolicy callback **has reached close/drain** (`Policy.c:1155`/`:1169`),
+the CREATE exchange remains awaiting this reply, and raw metadata completes in
+that interval. A merely outstanding SetPolicy task can be blocked elsewhere and
+is not sufficient; missing correlation/blocked-transition observation makes
+this case inconclusive/failing, never evidence of a broken cycle. Use reviewed
+passive tracing or an independent kernel-debugger observation, not a status RPC
+queued behind the held main gate. Existing current-epoch status alone does not
+identify the old token's epoch.
+
+The diagnostic-agent pause is one-shot for that exact request, compiled out of
+product agent artifacts. Its watchdog/release runs independently of Ordered,
+policy send, metadata work and any epoch drain. A source-reviewed finite pause
+interval must be **strictly within the remaining minimum of all existing
+allocation/exchange, policy drain and caller deadlines**, leaving measured reply/
+completion margin; select it in the case configuration, never renew on retry.
+The case must identify the actual source timeouts and independently observed
+remaining budget/release margin first; an unproved budget is not permission to
+insert the pause or lengthen an existing deadline.
+Do not substitute the modern 120 s contract for an existing legacy timeout or
+change any timeout/threshold. Release on success/failure/cancel/stop and send
+exactly the original reply once if the original waiter remains valid; otherwise
+follow existing exact lost-reply/cleanup handling and retain uncertainty. An
+unexpected deadline expiry fails the positive case and preserves evidence.
+After release require the original CREATE/SetPolicy to settle by their existing
+contracts, with private bytes/charges and no new readiness grant.
+
+This supplies evidence of **an actual legacy CREATE → allocation reply → epoch
+drain dependency plus concurrent raw metadata progress**, stronger than the
+synthetic held-send control. It still does **not** furnish the actor's direct
+snapshot of its held old epoch, diagnostic side-port echo under all 64 ordinary
+failure credits, modern growth/replay or fence/ACK progress. Run only after
+review of the actual kernel route/lifetimes and diagnostic-agent pause/release
+source, authorized protected/native-host setup and existing delivery gates.
+It is an early feedback alternative in increment 3 and retained progress evidence
+before qualification, not a prerequisite to writing the substrate. Its exact
+coverage cannot be reported as all R3-M01/M04 PASS. The full actor/production
+growth cases stay open to increment 6 and fence/ACK/snapshot to increment 5.
 
 ## 9. Custody, ordinary Discarded receipt and reduction
 
@@ -2367,8 +2623,8 @@ pre-existing/created MDLs, cancel-before/after-lock and exact credit/page custod
 | Order | Coherent implementation / dependencies / exit observable |
 |---|---|
 | T9 increment 1 | Review this addendum; extend passive C/C# ABI, strict schema-3 codec and pure transition/replay/fence models (sections 2–6, 8–10). No negotiation/admission. Linux ABI/mutation/conservation/crash controls; changed C gets paired WDK/static/import gates; agent gets full four-leg delivery matrix. Growth duration owner decision before its dependent producer. |
-| T9 increment 2 | Landed `272a33d1`: StagedRequestDispatcher/StagedRequestLane/MinifilterRequestDispatch preserve Ordered legacy FIFO and bound existing workers/failure replies. No growth handler. Native pre-dequeue credit/control/reply progress is **open U5**, prerequisite to increment 3, not closed by this component delivery. |
-| T9 increment 3 | **Provisional metadata substrate** (8.6): pair/register, route pre/post, bounded opaque-buffer native store, padded-peak accounting and lifetimes; passive layout/role/lifetime contracts first, **no schema-3 codec dependency**. Commit stays NotReady. Root authority/pool contracts are in 8.7.1/8.7.2. Test with raw primitives and the 8.7.3 actor **if selected now**; explicit deferral keeps closed-epoch/echo subsets open to 6. No growth/fence/selector consumers. `88d7850b` supplies only partial kernel pairing/auth/revoke/dispatch; registration/maps/routing/native ownership remain unimplemented. Later production assertions stay in their owning increments. |
+| T9 increment 2 | Landed `272a33d1`: bounded lanes/legacy FIFO and failure replies, no growth handler. U5's accepted two-direction progress **contracts** precede dependent substrate coding; implemented native progress does not. Source/lifetime review and subsequent real native/protected execution are separate pending obligations, not closed by fake-send tests. |
+| T9 increment 3 | **Provisional metadata substrate** (8.6): authenticated fixed-root capture, 8.7.1 separate security predicates, 8.7.2 Busy-preserving registration and 8+8 pools/four-total-child credits; outer pre/post, opaque bounded native store, padded-peak accounting and lifetimes, no schema-3 consumer. Commit NotReady. Actor/echo **deferred to 6** independently of pools; prepare early N-U5-01 and R3-M04P under 8.7.4's gates. Partial `88d7850b` pairing/auth/revoke/dispatch is not registration/maps/routing completion. No growth/fence/selector consumer or fake-test execution credit. |
 | T9 increment 4 | After 1–3; integrate custody/reduction, stage-write retirement producer, modern startup/shared history/marker and ordinary Discarded receipt, all release adapters (sections 3/9/10). R5/R4-H/R3-X controls prove reserve-before-create and exact reduction/release. Still no growable admission. |
 | T9 increment 5 | After 1–4; modern initial allocation and 120 s issuance-to-adoption/fence/recovery (sections 5/6), exact replay no reseed/double debit; lost identity/reply self-heals same name. R3-A/R4-D01; pre-boot CREATE/adoption review. Small-window production remains gated pending 6. |
 | T9 increment 6 | After 1–5 and approved growth duration; end-to-end ledger→companion→reply/adoption, semantic replay and **every MM path** (sections 3/4/7/11). R3-G/C, R4-D02/MM; coherent growth/MM security/lifetime/lock-order review before first boot. |
@@ -2391,11 +2647,15 @@ separate. The re-review closed the original F1/F2/F3/F5/F7 **design defects**;
 its residual 1–3 and this revision need independent acceptance. Do not require
 R3-M01/M04 diagnostic protected execution before increment 3 is written, or
 production-growth assertions before increment 6 exists. The table lists
-coverage now; results follow implemented source and first-boot review.
+coverage now; results follow implemented source and first-boot review. Accepted
+progress contracts permit coding dormant infrastructure; fake/native/protected
+results cannot substitute for each other. N-U5-01 is an after-source-review real
+component-host control before protected-target first boot, not a test requiring
+unreviewed kernel loading. R3-M04P needs its own reviewed protected/native setup.
 
 | Integration | Contract/fact required before implementation | Implemented source required before its first boot | Runtime/component evidence after implementation |
 |---|---|---|---|
-| T9 increment 3 | **Before-coding conjunction:** corrected independent A/U peak/conservation models accepted; 8.6 opaque-buffer interface/passive prerequisites and 8.7.1 fixed-root authority/8.7.2 class-tag contracts accepted; select 8.7.3 actor boundary/ABI now **or explicitly defer its evidence to 6**; U4/U5/outer ownership contracts settled for remaining handlers. O1/O2 not prerequisites. | **Before-first-boot:** coherent substrate source review of both wrappers/tag-3/refusal/drain/CLEANUP/CLOSE/reuse; both ports/auth/group rundown, signed table/global C:/system-volume and original-handle capture, immutable 8+8 pools and all actual captures/imports/roles; exact selected native class/masks/shares, graph, peak/residue accounting and PASSIVE owners; N-U4-01..05 and N-U8-01 raw native mechanisms, paired WDK/static/import gates and full agent matrix. | After review, R3-M05 roots/R3-M06 pools and R3-M02 lifetime plus R3-M03 raw subset execute on substrate. R3-M01/M04 **diagnostic epoch-hold/raw-store** subsets and R3-M07 fixture run only with the selected/reviewed actor; if deferred, those subsets stay OPEN until 6. Commit always NotReady. Real reduction/fence/snapshot/archive/growth assertions are retained in 4/5/6, not exits of 3. |
+| T9 increment 3 | **Before-coding:** accepted U4/U5/outer-hook and corrected peak contracts; 8.6 opaque/passive prerequisites; 8.7.1 PrivateRoot/AncestorEdge and fixed held installation ancestry; 8.7.2 preserved Busy, both validators and four-total-child credit representation. Actor deferral recorded separately, no O1/O2 prerequisite. | **Implemented source review before load/boot:** both wrappers/tag-3/drain/CLEANUP/CLOSE; actual auth/anchors/security/repair, imports, Busy dispatch+adapter, concurrent pools/context pins and native lifetimes/accounting. Exact-role N-U4/N-U8 mechanisms, WDK/static/import and full agent matrix remain. **N-U5-01 executes after source review on an authorized real component host, before first protected-target boot/checkpoint.** | R3-M05/M06/M08 and M02/M03 raw runtime cases follow their implementations/review. Early R3-M04P is optional feedback after reviewed authorized setup, narrower than actor proof. R3-M01 held-old-epoch and R3-M04 full saturation/echo remain OPEN to 6; real reduction/archive/fence/growth assertions retain 4/5/6 ownership. Fake-send tests close no execution cell. Commit NotReady. |
 | T9 increment 4 | Residual 1 successful-handoff eligibility; U3 every-role release owner/crash contract, U7 owner scope, strict U8 grammar/migration/candidate/tail/ACK/selection models and actual serializer limits. | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, **N-U8-02/03 actual selector/recovery/migration**, R3-M03 real reduction stress, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
 | T9 increment 5 | Residual 2 separate eight shell credits; U1 boot/old-instance and U2 complete CREATE/cancellation audit; authenticated receipts, bounded snapshot/ACK eviction scheduling, deadline through later lifecycle calls, fence-specific U5 Busy. | Capture-to-callback/exposure ownership, success/non-adoption evidence, eviction credits and reconnect, deadline/failure vs separately owned cleanup; coherent lifetime/lock-order review. | R3-A01..05/R4-D01, R3-M04 **real fence/ACK/snapshot** progress, repeated durable-success-before-ACK interruption, pending-vs-shell saturation, exact same-name recovery and no failed-CREATE adoption. |
 | T9 increment 6 | Residual 3 pre-buffer-lock owned-I/O credits/MDL ownership; U6 real Major/Minor/IRQL/resource/completion inventory and actual byte/structure maxima; measured 32/256/64 bounds and owner-selected O1. | Full growth/replay/companion/MM/MDL/paging/pin/retirement integration, including user buffers and cancellation ownership, reviewed before boot. | R4-D02/MM01..03 and R3-M01/M04 **production growth/reply** plus R3-M03 saturated growth/reduction integration; routed actor evidence, many writers before FltLockUserBuffer/resource acquire, borrowed/created MDL release, deadline/teardown/retirement races and Verifier. |
@@ -2407,10 +2667,11 @@ approval to expand M2 beyond the required 10k workload or owner deferrals.
 
 ### 12.1.2 Increment-3 readiness conjunction — required order
 
-- [ ] T9 **before-coding remaining increment-3 handlers**: retain the corrected L/P/Q, A/U cross-product, overlap/residue conservation and logical-EOF mutant; accept the bounded 8.6 source/test cut and opaque interface. Accept 8.7.1 signed fixed-root authority/original-handle capture and 8.7.2 immutable transaction tag/role/pool rule. Passive layouts/role/lifetime types must exist before consumers; no schema-3 consumer. Partial `88d7850b` is not completion of registration/routing.
-- [ ] T9 **before-coding actor, or explicitly defer**: independently choose A/B and host boundary, accept 8.7.3 test-only layouts/lifetimes and half-drain bound, then implement only in diagnostic artifacts; B additionally needs a concrete independent host/permit source. Alternatively record deferral to 6 with R3-M01 closed-epoch and R3-M04 SetPolicy/saturation/echo evidence OPEN and late-cycle risk accepted. No silent fixture invention or deleted gate.
-- [ ] T9 **before-first-boot**: implement only that dormant substrate; pass exact-role/class positive/negative native mechanism controls, compile/matrix and both WDK/static/import gates; independently review all coherent pre-boot source listed above. Include four-child-handle scheduling, signed root/ancestor capture, 8+8 pools, both ports, every send/receive/reply lifetime, matched-invalid telemetry, physical peak/release and failure graph. R3-M05/M06 follow implemented review; selected actor additionally needs product-opcode/symbol absence checks and review of the planned R3-M07 cases, which execute after that first-boot review. F3 is not a power-loss namespace certificate.
-- [ ] T9 **before-qualification**: after owning source exists and its first-boot review passes, complete 4's archive/custody/selector/migration, 5's CREATE/shell/fence/ACK, and 6's routed growth/MM/MDL/deadline assertions, then matched-pair gates. Diagnostic actor/raw tests never count as these production assertions.
+- [ ] T9 **before-coding remaining increment-3 handlers**: apply the section 8.7 review's accepted architecture with this revision's PrivateRoot/AncestorEdge, fixed ancestry capture, Busy propagation and both validators/four-total-child credits. Retain corrected peak models and the opaque 8.6 cut; no schema-3 consumer. Contracts precede implementation, runtime evidence does not. Partial stubs/static gates are not complete registration/routing.
+- [ ] T9 **actor disposition recorded — DEFERRED to 6**: no diagnostic kernel actor/echo code in this pass, independent of pools. Keep its full R3-M01/M04/M07 coverage OPEN; prepare 8.7.4 early controls without new kernel authority. Future fixture selection/source review remains required before its own coding/load.
+- [ ] T9 **implemented source before any new kernel load/boot**: coherent independent review of both wrappers, actual role/exclusion/security/repair, authentication, pool/tag/alias concurrency, Busy adapter and child/context/rundown conservation. Pass applicable exact-role N-U4/N-U8 user-native mechanisms, both WDK/static/import gates and full agent delivery matrix. No fake-send test closes any native/protected execution obligation.
+- [ ] T9 **before-first-protected-target-boot/checkpoint**: after that review, execute N-U5-01 using real connected handles and working registration callbacks on an authorized native component host. Missing reviewed real-host setup leaves this gate pending, not a reason to load unreviewed code or substitute fake handles. R3-M05/M06/M08 protected cases execute only after their source review/authorized setup.
+- [ ] T9 **before-qualification**: execute root/pool/Busy/lifetime and retained native/protected progress obligations; R3-M04P may supply early narrow legacy-drain feedback, but actor/growth proof remains 6. Complete 4's archive/custody/selector/migration, 5's CREATE/fence/ACK and 6's MM/MDL/deadlines, then matched-pair gates. O2 is required before coding 4, O1 before coding 6. No admission/cutover gate changes.
 
 The prerequisite is the accepted **contract/fact**, not a runtime control
 requiring unimplemented source. Implementing substrate source must not fill
@@ -2418,10 +2679,9 @@ NotReady stubs with partial modern authority merely to run a later row.
 
 No box is self-closed by this edit or its Linux model results. This conjunction
 allows remaining increment-3 coding only after its applicable **before-coding**
-contracts are accepted, with actor implementation gated separately from an
-explicit evidence deferral. It does not require later production-growth controls
-before the substrate is
-written, nor permit enabling Commit or dropping their final assertions.
+contracts are accepted, with the actor **deferred to 6 separately from pools**
+and early native/protected execution obligations retained. It does not require later production-growth controls
+before the substrate is written, nor permit enabling Commit or dropping their final assertions.
 
 ### 12.2 Carried qualification rows
 
@@ -2473,13 +2733,14 @@ harness availability or permission to run them in this documents-only task.
 | R3-A03 fence/ACK | duplicated/reordered fence and lost resolution ACK | changed intent/FenceId/identity refusal | no name release while any adopter/attach possibility remains; exactly-once cleanup/release |
 | R3-A04 reconnect | durable SID/family debt, origin/new cookie | service restart vs driver/boot proof adapter | churn cannot evade bounds; restart alone no receipt; identity-unknown reply loss recovers |
 | R3-Q01 bounds | current Ordered/Allocation/Continuation/Growth lanes and reply credits; bounded duplicates | exhaust ordinary pre-dequeue credits, stall accepted/rejected native replies, reconnect | prove the chosen bounded modern intake strategy permits resource progress; no unconditional claim from separate failure queues alone; local revoke before drains |
-| R3-M01 confinement | outer pre/post role/size/access/leaf/context mutations | 3: opaque noncached/padded-peak/EOF/F2/security primitives | **3 diagnostic subset if selected:** 8.7.3 actor proves held epoch closed while raw store/registration progresses, Commit NotReady; explicit deferral leaves that evidence OPEN until 6. **6 retained production gate:** actual application I/O waiting for growth, real ledger/companion/reply progress without BP/namespace recursion |
+| R3-M01 confinement | outer pre/post role/size/access/leaf/context mutations | 3: opaque noncached/padded-peak/EOF/F2/security primitives | **Actor held-old-epoch subset deferred to 6**; early R3-M04P has only its observed legacy-drain coverage. **6 production:** actual application waiting for growth, ledger/companion/reply without BP/namespace recursion. Commit NotReady through substrate. |
 | R3-M02 lifetime | metadata tag-3/pre/post context and incarnation/revoke conservation | failed lower CREATE, draining at permitted IRQL, CLEANUP/CLOSE; token/anchor/substitution/link/ADS faults | map key retired before FILE_OBJECT address reuse, generic epoch/BP post never sees metadata context; disconnect/unload, no UAF |
 | R3-M03 lock order | raw claim/fault model before 3 | 3: opaque store/physical delta callbacks, no content/journal dependency | **4 retained:** actual reduction/content lease stress; **6 retained:** saturated production growth + namespace/publication/reduction, no budget→journal cycle. Neither is a substrate exit. |
-| R3-M04 control progress | 3: provisional/bootstrap/metadata/revoke classes and paired lifetimes; 40 accepted + <=40 rejected/receive Growth transport bound | **3 diagnostic subset if selected:** actor holds epoch/SetPolicy, ordinary failure owner latch full, raw metadata control/diagnostic side-port echo progresses; explicit deferral keeps this evidence OPEN to 6, no fake progress or registry-success stubs | **3:** wrong group/process/channel, cancel/revoke/drain with Commit NotReady; **5 retained:** real fence/ACK/snapshot Busy/eviction; **6 retained:** production growth reply and ledger progress under saturation. Diagnostic echo never substitutes for either. |
-| R3-M05 installed roots | fixed table/role/parent/handle/identity/security mutations; zero authority on refusal | native ancestry/share/ACL/system-volume mechanism negatives added to N-U4-01/04, builder OS only | **3:** correct four roots succeed; arbitrary SYSTEM-owned lookalike, user C: alias, non-C: Windows system volume, missing/renamed/reparse/substituted roots refuse/Held; no kernel-created root or marker repair; revoke during capture drains |
-| R3-M06 transaction pools | native GUID byte-15 tag, full role table, immutable class and 8+8/child conservation | actual registration exhaustion, failed-open/cancel/CLOSE release | **3:** eight Growth cannot consume reserved NonGrowth slots and vice versa; ninth Busy before allocation; no waiting/borrowing, stale tag cannot move an active transaction. **4/5/6 retained:** actual cleanup/allocation/growth purpose classification |
-| R3-M07 diagnostic boundary | selected actor/echo layouts and all malformed/opcode/group/host-gate mutations; absence at flag 0 | product and diagnostic artifact/symbol/parser distinction, selected lab authorization, bounded timer/worker owners | Only after selection and source review: acquire/query/release real old epoch, timeout/lost Acquire reply, cancel/revoke/unload and exact echo reply; Commit NotReady. Product rejects both diagnostic opcodes with no state change; B additionally rejects absent/stale/wrong-host permits. Deferral leaves row OPEN. |
+| R3-M04 control progress | provisional/bootstrap/metadata/revoke classes and paired lifetime, accepted/rejected transport bounds | **N-U5-01 before-first-protected-boot:** real main-gate/resource callback independence after source review; no epoch claim | **R3-M04P early alternative:** observed legacy allocation/drain plus raw metadata, after reviewed setup. Full actor held-epoch/saturation/side-port echo remains OPEN to 6; real fence/ACK/snapshot in 5 and growth/reply in 6. Fake sends close none of these. |
+| R3-M05 installed roots | PrivateRoot versus AncestorEdge: Admin positives; TI/service-SID mutation negatives on roots; Windows-servicing ancestor positive; untrusted owner, effective/inheritable/unsupported ACE negatives | fixed ancestry capture, original handle/identity, exclusion/security and revoke/drain-before-ACL-repair mechanisms | **3:** correct fixed four roots succeed; lookalike/alias/non-C:/missing/reparse/substitute refuse/Held, no root/marker repair by kernel. Actual repair waits for contexts/handles to drain and recapture never revives IDs. |
+| R3-M06 transaction pools | tag-only/all-zero GUID; every disallowed Growth role 5–20; unknown roles, tag-flipped aliases/concurrent first children, four total credits | real registration exhaustion; Pending→Opening same credit, failed CREATE/revoke/CLOSE/context drain | **3:** 8+8 isolation, ninth Busy before allocation; never fifth Opening/Active/retiring child. Cancel with referencing completion context cannot free record/slot; release once after final drain. **4/5/6:** real purpose classification. |
+| R3-M07 diagnostic boundary | deferred actor/echo ABI and product absence proposal | **DEFERRED to 6**, not an increment-3 actor gate | Future fixture needs selection/host boundary, implementation review and bounded lifetime/teardown tests; no enabled actor in product-signed product driver. N-U5-01/R3-M04P are separately scoped and do not close this row. |
+| R3-M08 Busy propagation | local-send Busy/no construction; kernel Busy versus malformed/Refused and exact adapter mapping | real callback→FilterSendMessage HRESULT/ReturnedBytes→adapter; both pool/child and control exhaustion | Native Busy stays retryable without success ID/new ownership; invalid/refused stays distinct, no Result=3. Retry only after actual release/original deadline, no duplicate registration. Real execution follows source review; fake error injection alone is insufficient. |
 | R3-A05 initial success/tombstone | no Entry/K closure, InitialResolved and linked ACK delta count reconstruction | final-success query/ACK origin, cross-request/FenceId/duplicated-handle refusal | delayed final-success query plus immediate close/disposal/crash must keep ledger until InitialResolved; then ledger deletion before ACK, ACK reply/delta loss and restart: no fabricated Entry, duplicate TransferId base or 8/4 debt leak |
 | R3-X01 ordinary discard | strict new receipt, old StageDeleted still rejected | exact delete with reader/section/replacement | ordinary discard refunds after proof, snapshot remains charged, fresh name use |
 | R3-X02 discard crash | section-9 crash table, duplicate/reuse | receipt persist fault after exact native success | live/restart/hot/packed no lost barrier or duplicate release |
@@ -2510,8 +2771,8 @@ authorized by listing a control.
 | U1 BootDomain / old instance | Still open before 5: choose/verify OS boot identity and exclusion of old adopters; existing BootId use at StageStream.c:4369 is not the whole proof. No restart/GUID inference. |
 | U2 CREATE / shell ownership | Before 5: section 5.5 whole source audit, prompt final expiry vs separately owned cleanup, authenticated success/fence acceptance and exact eight retained-shell credits/snapshot/ACK eviction. Pure debt/shell model exists; current code clears old receipts (:4461/:4629) and does not implement this registry. |
 | U3 Release adapters | Before 4: identify each slot's actual final handle/section/operation owner and each crash/unknown release witness; retained mutable maximum and driver retirement remain separate. Builder handle/section tests may supply mechanism evidence, not stage rundown proof. |
-| U4 Metadata/native sequence | Contract selected in 8.1/8.4: root no-SHARE_DELETE, replace-target SHARE_DELETE plus trusted exclusive store claim, no invented share exclusion of WRITE_DAC; PASSIVE native work/local draining owner; exact F1/EOF/F2/relative rename/F3 and conservative undocumented-guarantee outcome. Before remaining 3 registration/routing coding accept 8.7.1 signed fixed table/absolute capture/global-C: and system-volume resolution, original UserMode handle comparison and ancestry/security exclusion, plus 8.7.2 tag/pool rule. No trusted enrollment source is missing from the proposed contract; native implementation/import/cancellation feasibility is still unproved. The partial `88d7850b` refuses registration; it is not those implementations. Retain the 8.6 opaque cut with no later schema consumer. Before first boot verify actual primitives/imports and exact role/class native controls. Implemented wrappers/IRQL/cancel/deferral/native exclusions must then pass coherent first-boot review; N-U4 controls and protected R3-M controls follow implementation. No unnamed future persistence barrier remains, and no stronger power-loss guarantee is claimed. |
-| U5 Two-direction progress | Physical growth port/group pairing; accepted Growth <=40 **plus** rejected/receive <=40; legacy/main accepted <=81 plus ordinary rejected/receive <=64; every send class (including negotiation/revoke/snapshot), revoke-before-send and drain-before-handle-publication selected in 6.2/8.3. Before remaining 3 handlers accept the 8.6 provisional-only cut and 8.7.2 shared-role tag/8+8 conservation; verify actual producers in 4/5/6. `88d7850b` pairing/dispatch and `01ffb09f` dormant sends are partial source, not runtime proof. **Actor before coding**: 8.7.3 A/B artifact/host boundary and diagnostic-only ABI/lifetime choice is OPEN; B additionally lacks an independent host/permit source. Explicit deferral to 6 is allowed only with R3-M01 held-epoch and R3-M04 SetPolicy/saturation/echo subsets OPEN and late `_sendGate` cycle risk recorded. Implemented group/auth/receive/cancel/send buffers require first-boot review; real fence/ACK/snapshot and growth are retained for 5/6. Real concurrent native FilterSendMessage/FilterReplyMessage/teardown and epoch-closed growth progress still need execution; fence Busy proof also before 5 boot. |
+| U4 Metadata/native sequence | Accepted dormant architecture with this revision's 8.7.1 PrivateRoot/AncestorEdge, servicing-only ancestor exception, one fixed held ancestry, original UserMode handle proof and revoke/drain-before-ACL-repair. 8.7.2 selects four total child credits including pending intent. Actual capture/query/IRQL/imports, pre/post exclusions, native F1/EOF/F2/relative rename/F3 and cancel/rundown remain implementation/source-review/native-mechanism facts before load/boot; partial registration stubs are not proof. Existing N-U4/N-U8 and R3-M02/M05/M06 runtime obligations remain. No stronger power-loss or O2 guarantee. |
+| U5 Two-direction progress | Accepted 6.2/8.3 bounded intake/send/lifetime contracts are coding prerequisites; real execution is not a prerequisite to writing the substrate. Working dispatcher+adapter must preserve local/kernel Busy and validate both tag/role rules (8.7.2/R3-M08); actual FltLib Busy HRESULT conversion needs real N-U5-01/M08 verification before accepting that adapter. Implemented source review precedes any kernel load; N-U5-01 real gate independence follows review before first protected-target boot/checkpoint. R3-M04P is an early reviewed legacy-drain alternative. **Actor/echo deferred to 6 separately from pools**; full held-old-epoch/saturation/echo proof remains OPEN, plus 5's fence Busy and 6's production growth/teardown. Fake-send tests close no native/protected execution obligation; real 4/5/6 purpose classification remains. |
 | U6 Owned MM/buffers | Before 6: finish owned :10927→:5903/:5948 Major/Minor/IRQL/resource/MDL/completion audit, and pre-FltLockUserBuffer credits at :4824. Supply actual structures/worst-case page/PFN/cancel storage and validate numerical bounds; no pin-only or unowned :11044 proof. R4-MM routing/native evidence follows implemented review. |
 | U7 Trust scope | Owner decision before 4 unchanged: existing trusted private-storage boundary or separately reviewed external erasure/rollback architecture with availability/repair/uninstall/reset rules. A builder test cannot settle this boundary. |
 | U8 Fit/grammar | Before 3 coding: GrowthArchiveFitModelTests now supplies independent L/P/Q and A/U peak arithmetic, explicit measured/released custody, logical-EOF conservation mutant, combined-envelope and corrected overlap/controls. Base transfer overlap fits existing halves in all 60 pairs (worst 640 KiB/1 MiB). ACK scheduling and independent snapshot unknown/missing input models are stronger pure controls; they are not real sends or durable/native reconciliation. Full independent Entry+closure maxima **do not fit** and retain ledger. Before 4 implement/validate actual serialization lengths/strict codecs and typed candidate/tail/delta/prefix selection against model; N-U8-01 raw peak primitives are before-3-first-boot mechanism controls; N-U8-02/03 actual selector/migration/recovery wait for increment 4, then required target evidence. No arithmetic result is native durability or qualification. |
@@ -2521,15 +2782,15 @@ authorized by listing a control.
 | Decision | User-visible effect / recommendation; still open |
 |---|---|
 | O1 Per-application-I/O growth wait | Recommend a **per-I/O growth-wait bound of 3 s**, from first crossing through sufficient adoption/reacquisition/recomputation, not 3 s per RPC. A larger joined extent/append race cannot renew it. A long save can encounter several pauses on different I/Os; expiry permanently fails that save privately. Alternatives 1 s/10 s shorten pauses or tolerate slower storage respectively. Owner must select duration and interpretation **before increment 6**; nothing here selects it or reopens the approved 120 s allocation interval. |
-| O2 Erasure/rollback boundary | Recommend retaining the existing trusted-service/private-storage scope for M2 unless stronger protection is explicitly required; surviving modern evidence with a missing/corrupt marker still holds. If stronger detection is wanted, identify a separate authority whose anchor local SYSTEM/admin/installer cannot erase **or roll back** (installer-owned on the same machine is insufficient), who can authorize recovery/reset, what happens while unavailable, and how repair/uninstall/reinstall preserves or explicitly discharges retained custody. Normal uninstall cannot silently reset that anchor. A separate reviewed architecture is required before claiming this stronger guarantee. Owner scope decision remains open **before increment 4**. |
+| O2 Erasure/rollback boundary | Recommend retaining the existing trusted-service/private-storage scope for M2 unless stronger protection is explicitly required; surviving modern evidence with a missing/corrupt marker still holds. If stronger detection is wanted, identify a separate authority whose anchor local SYSTEM/admin/installer cannot erase **or roll back** (installer-owned on the same machine is insufficient), who can authorize recovery/reset, what happens while unavailable, and how repair/uninstall/reinstall preserves or explicitly discharges retained custody. Normal uninstall cannot silently reset that anchor. A separate reviewed architecture is required before claiming this stronger guarantee. Owner scope decision remains open **before coding increment 4**; O1's growth-wait decision is separately required **before coding increment 6**. Neither is needed for dormant increment-3 pool implementation. |
 
 Pending/lane/capability work bounds above are concrete engineering proposals for
 independent review, not renewed questions about budget defaults or a new file
-size cap. O1/O2 are unchanged. The separate 8.7.3 diagnostic artifact/host-boundary and
-implement-now/deferral choice needs review/orchestrator disposition before its
-fixture is coded; it is not a new resource default or cutover decision. If native
-evidence makes
-the specified cleanup, metadata or MM contract impossible, present the exact
+size cap. O1/O2 remain open at their dependent increments. The separate 8.7.3
+actor/echo is deferred to 6; future selection/review is required before any such
+fixture is coded. Early 8.7.4 controls add no kernel authority, default or cutover
+decision. If native evidence makes the specified cleanup, metadata or MM
+contract impossible, present the exact
 failed precondition and user effect for a design delta; do not silently change
 support, failure policy, grants or assertions. Runtime activation and owner
 cutover remain separate from review, component gates and pair qualification.
