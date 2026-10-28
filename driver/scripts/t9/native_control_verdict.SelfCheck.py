@@ -74,12 +74,12 @@ def receipts(os='19045.2965'):
         rows += [dict(Kind='FaultResult', Result=r, Comparison='PASS'),
                  dict(Kind='RetentionResult', Key=name, Frames=copy.deepcopy(samples), Comparison='PASS')]
     samples = frames(['Initial', 'BeforeReplace', 'UnlinkedHeld', 'Closed'])
-    r = dict(RenameStatus='0x00000000', LinkedReopenStatus='0x00000000', HeldReopenStatus='0xC0000056',
-             ClosedReopenStatus='0xC000000F', RenameAttempts=1, Classification='NativeDestroyedChargeHeld', NativeDestroyed=True,
+    r = dict(RenameStatus='0x00000000', LinkedReopenStatus='0x00000000', HeldReopenStatus='0x00000000',
+             ClosedReopenStatus='0xC000000D', RenameAttempts=1, Classification='NativeDestroyedChargeHeld', NativeDestroyed=True,
              PersistedReleaseVerified=False, AccountingReleased=False,
              Before=observation('Predecessor'), Held=observation('Predecessor', links=0),
              Successor=observation('New', eof=192), Frames=samples)
-    for step, status in [('LinkedById','0x00000000'),('HeldById','0xC0000056'),('ClosedById','0xC000000F')]:
+    for step, status in [('LinkedById','0x00000000'),('HeldById','0x00000000'),('ClosedById','0xC000000D')]:
         rows.append(dict(Kind='Native', Operation='NtCreateFile/ById', Step=step, NTSTATUS=status, FileInternalId='01-02-03-04-05-06-07-08',
                          ExpectedIdentity=r['Before']['Identity'], Access=0x120081, Share=7, Options=0x20206A))
     rows += [dict(Kind='ReleaseResult', Result=r, Comparison='PASS'),

@@ -99,13 +99,13 @@ def validate(rows, expected_os, sha):
     r = event['Result']
     assert r['RenameAttempts'] == 1, 'Repeated/missing release rename'
     assert event['Comparison'] == 'PASS' and r['Classification'] == 'NativeDestroyedChargeHeld', 'Release classification'
-    assert (r['RenameStatus'], r['LinkedReopenStatus'], r['HeldReopenStatus'], r['ClosedReopenStatus']) == ('0x00000000', '0x00000000', '0xC0000056', '0xC000000F'), 'Release identity status'
+    assert (r['RenameStatus'], r['LinkedReopenStatus'], r['HeldReopenStatus'], r['ClosedReopenStatus']) == ('0x00000000', '0x00000000', '0x00000000', '0xC000000D'), 'Release identity status'
     assert r['NativeDestroyed'] is True and r['PersistedReleaseVerified'] is False and r['AccountingReleased'] is False, 'Release proof boundary'
     probes = [p for p in rows if p.get('Kind')=='Native' and p.get('Operation')=='NtCreateFile/ById']
     assert sorted(p['Step'] for p in probes)==['ClosedById','HeldById','LinkedById'], 'Missing/duplicate identity probe'
     assert len({p['FileInternalId'] for p in probes})==1, 'Identity probe ID changed'
     for probe in probes:
-        expected = {'LinkedById':'0x00000000', 'HeldById':'0xC0000056', 'ClosedById':'0xC000000F'}[probe['Step']]
+        expected = {'LinkedById':'0x00000000', 'HeldById':'0x00000000', 'ClosedById':'0xC000000D'}[probe['Step']]
         assert probe['NTSTATUS']==expected and probe['ExpectedIdentity']==r['Before']['Identity'], 'Identity probe status/binding'
         assert (probe['Access'], probe['Share'], probe['Options'])==(0x120081, 7, 0x20206A), 'Identity probe mask/options'
 

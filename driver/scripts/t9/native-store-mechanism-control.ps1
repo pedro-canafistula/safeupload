@@ -499,8 +499,8 @@ public sealed class T9NativeStoreControl {
         // then independent 19045.2965 reproduction; docs name statuses but do
         // not guarantee this POSIX-unlink combination on either revision.
         if(row.RenameAttempts!=1) return "Repeated/missing release rename";
-        if(row.RenameStatus!="0x00000000" || row.LinkedReopenStatus!="0x00000000" || row.HeldReopenStatus!="0xC0000056" ||
-            row.ClosedReopenStatus!="0xC000000F") return "Release identity status";
+        if(row.RenameStatus!="0x00000000" || row.LinkedReopenStatus!="0x00000000" || row.HeldReopenStatus!="0x00000000" ||
+            row.ClosedReopenStatus!="0xC000000D") return "Release identity status";
         if(!row.NativeDestroyed || row.PersistedReleaseVerified || row.AccountingReleased || row.Classification!="NativeDestroyedChargeHeld")
             return "Release proof boundary/classification";
         if(row.Before==null || row.Held==null || row.Successor==null || row.Before.Identity!=row.Held.Identity ||
@@ -623,6 +623,9 @@ public sealed class T9NativeStoreControl {
                     Completion(status,io,step);
                     Observation o=Observe(file,step+"/Reopened");
                     if(o.Identity!=expectedIdentity) Difference("FileId reopen returned wrong identity");
+                    // Measured on builder 19045.6466 (nu406b2): the held, POSIX-unlinked predecessor is
+                    // still reopenable by FileId; it must be the same unlinked DeletePending object.
+                    if(step=="HeldById" && (o.Links!=0 || !o.DeletePending)) Difference("Held FileId reopen is not the unlinked DeletePending object");
                 }
             }
             return Hex(status);
@@ -655,7 +658,9 @@ public sealed class T9NativeStoreControl {
                 long held=FreeClusters(anchor,"FreeWhileHeld");
                 old.Dispose(); old=null;
                 row.ClosedReopenStatus=ReopenId(anchor,id,"ClosedById",row.Before.Identity);
-                row.NativeDestroyed=row.ClosedReopenStatus=="0xC000000F";
+                // The identical by-ID request succeeded while held; after the last close NTFS
+                // refuses the stale file reference with STATUS_INVALID_PARAMETER (measured, nu406b2).
+                row.NativeDestroyed=row.ClosedReopenStatus=="0xC000000D";
                 row.Frames.Add(Retain("Closed",output,old,residue,charges));
                 long closed=FreeClusters(anchor,"FreeAfterClose");
                 Emit("FreeClusterObservation","Before",before,"Held",held,"AfterClose",closed,"Asserted",false,
@@ -831,8 +836,8 @@ public sealed class T9NativeStoreControl {
         var rows=new List<FaultRow>(); for(int i=0;i<7;i++) rows.Add(FakeFault(i)); return rows;
     }
     static ReleaseRow FakeRelease() {
-        var row=new ReleaseRow { RenameStatus="0x00000000", LinkedReopenStatus="0x00000000", HeldReopenStatus="0xC0000056",
-            ClosedReopenStatus="0xC000000F", NativeDestroyed=true, Classification="NativeDestroyedChargeHeld",
+        var row=new ReleaseRow { RenameStatus="0x00000000", LinkedReopenStatus="0x00000000", HeldReopenStatus="0x00000000",
+            ClosedReopenStatus="0xC000000D", NativeDestroyed=true, Classification="NativeDestroyedChargeHeld",
             Before=FakeObservation("Predecessor",4096,128,1), Held=FakeObservation("Predecessor",4096,128,0), Successor=FakeObservation("New",4096,192,1) };
         row.Frames.AddRange(FakeFrames(new string[]{"Initial","BeforeReplace","UnlinkedHeld","Closed"},true,0)); return row;
     }

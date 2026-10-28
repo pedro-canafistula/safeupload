@@ -139,8 +139,8 @@ The same strict new comparisons run on builder and target:
 | Current role (no write data): allocation/write/F1/EOF/F2/F3 | `0xC0000022` ACCESS_DENIED | Microsoft NtWriteFile/NtFlushBuffersFile/NtSetInformationFile access contracts; citation comments in C#; native behavior still to execute |
 | Rename, held predecessor without SHARE_DELETE | `0xC0000043` SHARING_VIOLATION | Measured class-65/flags-3 table in results below |
 | Positive rename; linked FileId reopen | `0x00000000` SUCCESS | Selected replacement table; linked reopen validates FileId/anchor mechanism before using negatives |
-| FileId reopen while unlinked/held | `0xC0000056` DELETE_PENDING | **Unmeasured discovery hypothesis**, MS-ERREF status name; this POSIX-unlink combination is not guaranteed by the cited docs |
-| FileId reopen after last close | `0xC000000F` NO_SUCH_FILE | **Unmeasured discovery hypothesis**, MS-ERREF status name; exact NTFS result must be established on builder, then target |
+| FileId reopen while unlinked/held | `0x00000000`, same identity, Links=0, DeletePending=True | **Measured** on builder 19045.6466 (`nu406b2`, the first discovery run that executed; the hypothesis `0xC0000056` was wrong). The target must reproduce it. |
+| FileId reopen after last close | `0xC000000D` INVALID_PARAMETER | **Measured** on builder (`nu406b2`; hypothesis `0xC000000F` was wrong). The identical request succeeded while held, so the change follows destruction. The target must reproduce it. |
 
 There is no status-family acceptance or fallback. In particular, a different
 FileId/anchor behavior must fail discovery and be resolved from its evidence
