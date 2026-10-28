@@ -49,9 +49,10 @@ internal static class MeetingSmoke
             // Do not follow directory junctions into another installation or workspace.
             for (var directory = new DirectoryInfo(root); directory is not null; directory = directory.Parent)
                 if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) throw new ArgumentException();
+            string stateFile = Path.Combine(root, "meeting-event.json");
+            if (mode != "prepare" && !File.Exists(stateFile)) throw new ArgumentException();
             using var workspaceLock = new FileStream(Path.Combine(root, "meeting.lock"),
                 FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            string stateFile = Path.Combine(root, "meeting-event.json");
             string queueFile = Path.Combine(root, mode == "replay" ? "meeting-replay.jsonl" : "meeting-queue.jsonl");
             AuditEvent audit;
             if (mode == "prepare")

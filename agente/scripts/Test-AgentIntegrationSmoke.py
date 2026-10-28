@@ -165,6 +165,12 @@ def main():
             invoke("prepare", unrelated, expected=2)
             require((unrelated / "keep.txt").read_text() == "preserve", "modified unrelated folder")
             case("unrelated-folder-refused")
+            count = len(calls)
+            invoke("status", unrelated, expected=2)
+            invoke("send", unrelated, expected=2)
+            require(len(calls) == count and {item.name for item in unrelated.iterdir()} == {"keep.txt"},
+                    "unprepared folder caused traffic or file creation")
+            case("unprepared-folder-no-network-or-files")
         print(json.dumps({"mode": "published-process-loopback", "javaTested": False, "serviceInstalled": False,
                           "results": results}, indent=2))
     finally:
