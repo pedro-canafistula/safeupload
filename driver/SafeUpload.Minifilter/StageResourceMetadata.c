@@ -1437,8 +1437,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
     ULONG i, index = SU_METADATA_ROOTS, child = SU_METADATA_CHILDREN;
     PFILE_OBJECT object, related;
     UCHAR operation = Data->Iopb->MajorFunction;
-    WCHAR leaf[256];
-    WCHAR folded[256];
+    WCHAR folded[256]; /* the unmodified FILE_OBJECT name is folded in place of a second copy (stack budget) */
     USHORT leafBytes = 0;
     BOOLEAN validSubject = FALSE, live = FALSE, inputValid = FALSE;
     NTSTATUS refusal = STATUS_DEVICE_NOT_READY;
@@ -1506,8 +1505,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
         if (validSubject && object->FileName.Buffer != NULL && object->FileName.Length != 0 &&
             object->FileName.Length <= 510 && (object->FileName.Length & 1) == 0) {
             leafBytes = object->FileName.Length;
-            RtlCopyMemory(leaf, object->FileName.Buffer, leafBytes);
-            inputValid = NT_SUCCESS(MetadataFoldLeaf(leaf, leafBytes, folded));
+            inputValid = NT_SUCCESS(MetadataFoldLeaf(object->FileName.Buffer, leafBytes, folded));
         }
         KeAcquireSpinLock(&MetadataLock, &irql);
         if (validSubject && inputValid && !group->Revoked && !root->Cleaned) {
