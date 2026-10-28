@@ -1,0 +1,50 @@
+{
+  "Label": "m2t9wirek1028a2",
+  "Gate": "PASS",
+  "SourceCommit": "c5e5c83cb17d13be0b82110de458a3434ba2ddb0",
+  "Builder": "builder2",
+  "ProductQualification": false,
+  "VmBooted": false,
+  "SummaryRows": [
+    "LABEL=m2t9wirek1028a2",
+    "ARCHIVE_SHA256=C2A4EF0C9FA23142DBB2D2B10166CBDAFCED073D99A125E17E3897CAAE17E901",
+    "SOURCE_COMMIT=c5e5c83cb17d13be0b82110de458a3434ba2ddb0",
+    "BUILDER=SU-BUILDER2",
+    "BUILD_END_UTC=2026-10-28T04:25:11.1215845Z",
+    "KernelBuildProfiles=owned-feature,owned-feature-release",
+    "Builder=builder2",
+    "BuilderHost=192.168.122.211",
+    "BuilderComputerName=SU-BUILDER2",
+    "ParityCheck=False",
+    "driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=8CFB5B83A854C515A79827D99034F7BDD554084C01CCE52A88200C0CCC363DE6",
+    "driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=C30602E90CF8B206176D7E801ACA89CDAB09CAA83273EA8256558D8A206EC67E",
+    "inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=F80162363E68F764989D28B39AD418F368349C905F7A272C54893363620D416A",
+    "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=2452CA4E2EE79C378051176FE0C2F6D8F25224922D610342E39A973EE3742EFD",
+    "sign : exit=0 unsigned_sha256=8CFB5B83A854C515A79827D99034F7BDD554084C01CCE52A88200C0CCC363DE6 signing_copy_sha256=8CFB5B83A854C515A79827D99034F7BDD554084C01CCE52A88200C0CCC363DE6 unsigned_unchanged=True store=LocalMachine output_sha256=07C8778F65144FCF83764182B424039230D58065879D7051FD851ED69E1009A1 signed_sha256=07C8778F65144FCF83764182B424039230D58065879D7051FD851ED69E1009A1 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38"
+  ],
+  "Signature": {
+    "CertificateStoreLocation": "LocalMachine",
+    "Builder": "builder2",
+    "SignatureValid": true,
+    "SignExit": 0,
+    "ActualSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+    "OutputSHA256": "07C8778F65144FCF83764182B424039230D58065879D7051FD851ED69E1009A1",
+    "SignatureStatus": "Valid",
+    "UTC": "2026-10-28T04:25:11.1059617Z",
+    "SigningCopySHA256Before": "8CFB5B83A854C515A79827D99034F7BDD554084C01CCE52A88200C0CCC363DE6",
+    "UnsignedArtifactUnchanged": true,
+    "ExpectedSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+    "BuilderComputerName": "SU-BUILDER2",
+    "SignedSHA256": "07C8778F65144FCF83764182B424039230D58065879D7051FD851ED69E1009A1",
+    "UnsignedSHA256": "8CFB5B83A854C515A79827D99034F7BDD554084C01CCE52A88200C0CCC363DE6",
+    "BuilderHost": "192.168.122.211",
+    "ParityCheck": false
+  },
+  "RawSha256": {
+    "exact-m2t9wirek1028a2-summary.txt": "6a953a4c73a7e0553dd1ca43269624fdc4ca2705fff13b5131e356457f624cd9",
+    "exact-m2t9wirek1028a2-signature-verification.json": "632871b2b6d9d001d2f5a8f5adbc36cfab26707fcbfd3c9be7b67acf87c49bd4",
+    "exact-m2t9wirek1028a2-imports.txt": "3cbb50bf84fd3f919a3ba33b52aeb4bdf4c4b443e49bf321e5084af90e5bde30",
+    "exact-m2t9wirek1028a2-owned-feature-wdk.txt": "a24fc67e803da9ae433ccd095fc97ccb0a952ccfdf32fcebc8d49ab65b205605",
+    "exact-m2t9wirek1028a2-owned-feature-release-wdk.txt": "2c2ab5fc64d27260872a9f2d503c180b6305a15f2f7864fac6795e1cab41d1fe"
+  }
+}

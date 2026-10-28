@@ -1,0 +1,27 @@
+{
+  "Label": "m2t9wirek1028a1",
+  "Gate": "FAIL",
+  "Reason": "Stale wrapper default requested absent CurrentUser certificate 220DD82C37FCF36048D59E4F10113185D81D5DC7",
+  "WdkAnalysisImportsPassed": true,
+  "Signature": {
+    "CertificateStoreLocation": "CurrentUser",
+    "Builder": "builder2",
+    "SignatureValid": false,
+    "SignExit": 1,
+    "ActualSigner": "NONE",
+    "OutputSHA256": "45A5602FD1E4928BBAC0A52186BC7CBE877A0952F4C5B64F15A6DEE43E0CC38D",
+    "SignatureStatus": "SigningFailed",
+    "UTC": "2026-10-28T04:09:25.9969081Z",
+    "SigningCopySHA256Before": "45A5602FD1E4928BBAC0A52186BC7CBE877A0952F4C5B64F15A6DEE43E0CC38D",
+    "UnsignedArtifactUnchanged": true,
+    "ExpectedSigner": "220DD82C37FCF36048D59E4F10113185D81D5DC7",
+    "BuilderComputerName": "SU-BUILDER2",
+    "SignedSHA256": "NONE",
+    "UnsignedSHA256": "45A5602FD1E4928BBAC0A52186BC7CBE877A0952F4C5B64F15A6DEE43E0CC38D",
+    "BuilderHost": "192.168.122.211",
+    "ParityCheck": false
+  },
+  "RawSha256": {
+    "exact-m2t9wirek1028a1-signature-verification.json": "93c7747e79cd808e0c7adb60511de3a0c9c05b17aac7136f742bb26dfb1c9d5c"
+  }
+}

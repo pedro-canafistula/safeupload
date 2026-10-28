@@ -19,8 +19,10 @@ label="${1:?label}"; commit="${2:-HEAD}"; mode="${3:-}"
 selection="$(python3 driver/scripts/approved_builders.py --role kernel-sign --label "$label" --format fields)" || exit 2
 read -r builder_name host builder_computer builder_user parity_check <<< "$selection"
 remote_args=("$host" --role kernel-sign --label "$label")
-thumb="${SAFEUPLOAD_SIGNING_THUMBPRINT:-220DD82C37FCF36048D59E4F10113185D81D5DC7}"
-store="${SAFEUPLOAD_SIGNING_STORE_LOCATION:-CurrentUser}"
+# Existing approved recovery signer on both lab builders (owner option B,
+# 2026-10-15). Explicit overrides still support other independently checked signers.
+thumb="${SAFEUPLOAD_SIGNING_THUMBPRINT:-A6D6CE1AA28835D509160A80ADB7894869AADF38}"
+store="${SAFEUPLOAD_SIGNING_STORE_LOCATION:-LocalMachine}"
 owner_fsp="${SAFEUPLOAD_OWNER_WINFSP_PROTOTYPE:-false}"
 reviewed_inputs="${SAFEUPLOAD_REVIEWED_INPUTS_JSON:-}"
 reviewed_sha="${SAFEUPLOAD_REVIEWED_INPUTS_SHA256:-}"
