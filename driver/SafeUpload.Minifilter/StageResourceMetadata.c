@@ -512,10 +512,12 @@ NTSTATUS SafeUploadMetadataPair(PFLT_PORT ClientPort, PVOID Context, ULONG Bytes
     NTSTATUS status = STATUS_ACCESS_DENIED;
     *Cookie = NULL;
     if (Context == NULL || Bytes != sizeof(pair)) return STATUS_INVALID_BUFFER_SIZE;
-    __try {
-        ProbeForRead(Context, sizeof(pair), __alignof(SU_RESOURCE_PAIR_CONTEXT));
-        RtlCopyMemory(&pair, Context, sizeof(pair));
-    } __except (EXCEPTION_EXECUTE_HANDLER) { return GetExceptionCode(); }
+    /* Filter Manager hands ConnectNotify the connection context from the create
+     * EA buffer, which the I/O manager has already captured into kernel memory,
+     * at an offset that need not be aligned. It is not a user address:
+     * ProbeForRead refused every real pair (N-U5-01 nu501c2, ERROR_NOACCESS).
+     * Copy the exact size; every field is validated below. */
+    RtlCopyMemory(&pair, Context, sizeof(pair));
     if (pair.ConnectionCookie == 0 || pair.ConnectionCookie > MAXLONGLONG ||
         (UINT64)(ULONG_PTR)pair.ConnectionCookie != pair.ConnectionCookie) return STATUS_ACCESS_DENIED;
     group = MetadataPin((PVOID)(ULONG_PTR)pair.ConnectionCookie);
