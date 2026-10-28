@@ -55,3 +55,27 @@ The remaining checks support the proposed architecture, subject to those correct
 - **Consistency and evidence:** the 192-byte reference, 256-byte headers, Base64 lengths and container arithmetic agree. Existing ledger/manifest/O3 limits and ABI sizes remain unchanged; role 21 and capability `0x100` are gated extensions. O1/O2/O3 remain consistent with the status plan. No checkbox or qualification gate is closed by the commit.
 
 I verified the retained source, artifact, runner and result hashes. Results contain 368 distinct passing rows per configuration, including the claimed new cases; the final compile log records six passes. Diff checks and the offline documentation-link check passed, with zero new broken links. These receipts corroborate the author’s execution claims; they do not constitute fresh execution or v4 acceptance.
+
+## Re-check (dd08c574, same reviewer resumed read-only): ACCEPT WITH CONDITIONS
+
+**ACCEPT WITH CONDITIONS — for implementing the §12.1.4 passive codecs under revision 9.**
+
+Both findings are closed. I found no new regression in `dd08c574`.
+
+1. **Finding 1 — CLOSED.** [The document:3316](../../../driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md:3316) now agrees with both model directions: Category@0, MemberIndex@4, SnippetUnits@8, UTF-16LE@12.
+
+   I independently decoded the literal vector containing the original `01 00 00 00 00 00 00 00` counterexample. With names `["a","b"]`, the findings are `(1,"A","a")` and `(0,"B","b")`. Swapping the interpretation produces `(0,"A","b")` and `(1,"B","a")`: valid ranges, incorrect evidence.
+
+   [The new oracle:1105](../../../agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs:1105) checks independently specified decoded values and exact writer bytes. I also verified that the retained temporary mutant changes only the reader’s field order; its hashed results record the three stated failures, including both new controls.
+
+2. **Finding 2 — CLOSED.** [U8:3943](../../../driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md:3943) explicitly labels the inline overflow as revision-8 history, states the **75,266-byte** v4 bound, and preserves the actual simultaneous serializer/strict-reader/maximal-shape obligations.
+
+The diff adds controls and clarifies the contract. It changes no product source, ABI size, evidence limit, owner decision, readiness gate or checkbox.
+
+Remaining conditions:
+
+- **[before-use passive codecs / before dependent increment-4 consumers]** Complete and independently accept §12.1.4’s actual v4 codecs, strict readers, selectors and transitions. Prove complete simultaneous legal shapes, producer-derived bounds, lossless evidence reconstruction, the independent finding vector, limit+1 refusal before native issue, exact owner binding, replay, accounting transfer and GC. Reproduce both measured ZIP cases. Passing surrogate models cannot discharge this condition.
+- **[before-first-boot]** Independently review integrated role-21/capability/marker handling, native I/O barriers, physical accounting, proof retention and rundown. Complete applicable agent, kernel/static/import and native prerequisite gates.
+- **[before-qualification]** Complete N-U8-04 and carried selector/migration/O3 controls: partial/orphan/substituted evidence, lost barrier/completion/budget replies, restart, slot reuse, retained readers, shared ownership and exact release. Require matched artifacts, independent mutation/byte observations, Verifier and separate restoration.
+
+Read-only verification confirmed receipt source/artifact/runner/result hashes, **370 distinct passing rows per configuration**, six recorded compile passes, clean commit diff checks and zero new broken documentation links. I independently checked the byte vector in memory; I did not rerun builds or model executables. Nothing was written, and no network or VM was accessed.
