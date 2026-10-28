@@ -1,0 +1,65 @@
+{
+ "Label": "m2t9i3k1028a7",
+ "Gate": "PASS",
+ "SourceCommit": "8bd4d0f0",
+ "Builder": "builder2",
+ "ProductQualification": false,
+ "VmBooted": false,
+ "Scope": "Static/build/import/signature gate of the COMPLETE dormant increment-3 kernel source (pass 3: forwarded child CREATE, Active children with post-CREATE validation, per-role operation enforcement, class-65 flags-3 held-target replacement, retirement pins, additive retained-charge counters). Commit always NotReady, no actor. Not boot-ready: the independent pre-boot lifetime/lock-order review, native builder controls on the kernel path and Verifier rows are outstanding.",
+ "PriorFailedAttempts": [
+  {
+   "Label": "m2t9i3k1028a6",
+   "SourceCommit": "98653e92",
+   "Failure": "C6011 possible NULL dereference of child in SafeUploadMetadataPost (1 error per configuration)",
+   "RawSha256": {
+    "exact-m2t9i3k1028a6-summary.txt": "0c4c57bfdbe09a6593b6ce54eccf9d8333adf61f2c93c105f84035962872f713"
+   }
+  },
+  {
+   "Note": "earlier pass-2 attempts a1/a3/a4 are recorded in t9-inc3-kernel-m2t9i3k1028a5/result.json"
+  }
+ ],
+ "Signature": {
+  "CertificateStoreLocation": "LocalMachine",
+  "Builder": "builder2",
+  "SignatureValid": true,
+  "SignExit": 0,
+  "ActualSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "OutputSHA256": "168E6D633F9E0A24D54AD9515A699AEA1647444DCD0F2E1F4A05C735CF12B444",
+  "SignatureStatus": "Valid",
+  "UTC": "2026-10-28T19:26:52.7181920Z",
+  "SigningCopySHA256Before": "A380CD0F7E983F47D287E46AA397ED05BCF15BD48AF6AC804980DB7C64D3E9B2",
+  "UnsignedArtifactUnchanged": true,
+  "ExpectedSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "BuilderComputerName": "SU-BUILDER2",
+  "SignedSHA256": "168E6D633F9E0A24D54AD9515A699AEA1647444DCD0F2E1F4A05C735CF12B444",
+  "UnsignedSHA256": "A380CD0F7E983F47D287E46AA397ED05BCF15BD48AF6AC804980DB7C64D3E9B2",
+  "BuilderHost": "192.168.122.211",
+  "ParityCheck": false
+ },
+ "SummaryRows": [
+  "LABEL=m2t9i3k1028a7",
+  "ARCHIVE_SHA256=6D4CB6E98142195C5FB404CC76E01454BEABE7A69B3485D366E2526A24AD8618",
+  "SOURCE_COMMIT=8bd4d0f00cb0774a8a0fe61734808c7f446b469f",
+  "BUILDER=SU-BUILDER2",
+  "BUILD_END_UTC=2026-10-28T19:26:52.7338176Z",
+  "KernelBuildProfiles=owned-feature,owned-feature-release",
+  "Builder=builder2",
+  "BuilderHost=192.168.122.211",
+  "BuilderComputerName=SU-BUILDER2",
+  "ParityCheck=False",
+  "driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=A380CD0F7E983F47D287E46AA397ED05BCF15BD48AF6AC804980DB7C64D3E9B2",
+  "driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=A06B1F82D68F253BF6A746EC501BE035DE437B34482A53DF253800289E730ABF",
+  "inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=3FC8E778FE7C46D0ADC9642E373FCF11E4BFFDD6C8EDAA656B1CFBC64B1FEAD7",
+  "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=0767F2D8B86828C0D3E5FA7B486114EBAA8F33736F8DA6524C3A0C785CD618B0",
+  "sign : exit=0 unsigned_sha256=A380CD0F7E983F47D287E46AA397ED05BCF15BD48AF6AC804980DB7C64D3E9B2 signing_copy_sha256=A380CD0F7E983F47D287E46AA397ED05BCF15BD48AF6AC804980DB7C64D3E9B2 unsigned_unchanged=True store=LocalMachine output_sha256=168E6D633F9E0A24D54AD9515A699AEA1647444DCD0F2E1F4A05C735CF12B444 signed_sha256=168E6D633F9E0A24D54AD9515A699AEA1647444DCD0F2E1F4A05C735CF12B444 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38"
+ ],
+ "RawSha256": {
+  "exact-m2t9i3k1028a7-summary.txt": "38c7510006d0b8a1ac57e32d5b866e1d9af849d7f3a00fe112e15e3a7d445c42",
+  "exact-m2t9i3k1028a7-imports.txt": "e47668ed9cc6b40e6c42542e5a80586816cf33ab30470e1cfb3d41ba184935ff",
+  "exact-m2t9i3k1028a7-owned-feature-wdk.txt": "a60896fe02ea6b37072950e6db3f0350f062972d19c57c05c6a8d7ae91bcd663",
+  "exact-m2t9i3k1028a7-owned-feature-release-wdk.txt": "e6acc710cdcd172de2de05065e0e8b88516c6b0c2d134b89cbff0354a82c926e",
+  "exact-m2t9i3k1028a7-signature-verification.json": "68378f4d7ce22a8e7380d078d17d87476e62f0d37e64687b3c777c1f1687de98",
+  "exact-m2t9i3k1028a7-artifact-hashes.txt": "23d0a49e3e343d468b94b01a43f95dc00dfe96dea8120941d89d283717339950"
+ }
+}
