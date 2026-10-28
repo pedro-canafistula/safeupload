@@ -15,11 +15,15 @@ import threading
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dotnet", default="dotnet")
+    parser.add_argument("--executable", type=Path, help="Executável publicado; dispensa runtime/SDK no ensaio.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     assembly = root / "SafeUpload.Agent.ApiSmoke/bin/Release/net10.0/SafeUpload.Agent.ApiSmoke.dll"
-    if not assembly.is_file():
+    if args.executable is not None and not args.executable.is_file():
+        parser.error("Executável publicado não encontrado.")
+    if args.executable is None and not assembly.is_file():
         parser.error("Compile SafeUpload.Agent.ApiSmoke em Release antes de executar.")
+    command = [str(args.executable.resolve())] if args.executable else [args.dotnet, str(assembly)]
     requests = []
     scenario = {"status": 200, "body": '{"status":"OK"}'}
     stopping = threading.Event()
@@ -91,12 +95,12 @@ def main():
             scenario.update(status=status, body=body, body_delay=delay)
             before = len(requests)
             target = f"http://127.0.0.1:{server.server_port}{prefix}/agent/"
-            result = subprocess.run([args.dotnet, str(assembly), "--base-url", target,
-                                     "--registered-user-id", "23"], capture_output=True,
+            result = subprocess.run(command + ["--base-url", target,
+                                     "--registered-host-id", "23"], capture_output=True,
                                     text=True, timeout=15)
             require(result.returncode == expected_exit, f"{name}: código de saída inesperado")
-            require(requests[before:] == [{"method": "POST", "path": prefix + "/agent/api/heartbeat",
-                                          "body": {"id_usuario_so": 23}}],
+            require(requests[before:] == [{"method": "POST", "path": prefix + "/agent/heartbeat",
+                                          "body": {"id_host": 23}}],
                     f"{name}: tráfego inesperado, retentativa ou redirecionamento")
             require("SYNTHETIC-SECRET" not in result.stdout + result.stderr,
                     f"{name}: saída expôs conteúdo do servidor")
@@ -110,8 +114,8 @@ def main():
             ("secret-query-rejected-no-http", url + "?token=SYNTHETIC-SECRET", "23"),
         ]:
             before = len(requests)
-            invalid = subprocess.run([args.dotnet, str(assembly), "--base-url", target,
-                                      "--registered-user-id", user_id], capture_output=True,
+            invalid = subprocess.run(command + ["--base-url", target,
+                                      "--registered-host-id", user_id], capture_output=True,
                                      text=True, timeout=15)
             require(invalid.returncode == 2 and len(requests) == before,
                     f"{name}: configuração inválida gerou tráfego ou código incorreto")
@@ -119,6 +123,13 @@ def main():
                     f"{name}: saída expôs configuração")
             results.append({"case": name, "passed": True, "exit_code": invalid.returncode,
                             "requests": 0})
+        before = len(requests)
+        old = subprocess.run(command + ["--base-url", url, "--registered-user-id", "23"],
+                             capture_output=True, text=True, timeout=15)
+        require(old.returncode == 2 and len(requests) == before,
+                "old-user-option-no-http: opção antiga gerou tráfego ou código incorreto")
+        results.append({"case": "old-user-option-no-http", "passed": True,
+                        "exit_code": old.returncode, "requests": 0})
         print(json.dumps({"mode": "synthetic-loopback-http", "java_tested": False,
                           "service_installed": False, "results": results}, indent=2))
     finally:

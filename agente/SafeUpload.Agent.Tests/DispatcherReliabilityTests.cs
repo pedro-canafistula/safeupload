@@ -92,8 +92,8 @@ public sealed class DispatcherReliabilityTests
             HeartbeatSender = new RegisteredAgentHeartbeat(new AgentApiClient(heartbeatClient), 23)
         };
         await dispatcher.RunCycleAsync(CancellationToken.None);
-        Assert.Equal("/agent/api/heartbeat", heartbeatHandler.Path);
-        Assert.Equal("{\"id_usuario_so\":23}", heartbeatHandler.Body);
+        Assert.Equal("/agent/heartbeat", heartbeatHandler.Path);
+        Assert.Equal("{\"id_host\":23}", heartbeatHandler.Body);
         Assert.Empty(await sink.ReadPendingOverridesAsync(100, CancellationToken.None));
         Assert.NotNull(auditHandler.Payload);
     }

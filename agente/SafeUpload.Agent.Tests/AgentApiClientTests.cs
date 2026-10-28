@@ -14,7 +14,7 @@ public sealed class AgentApiClientTests
         using var http = Client(handler);
         var registration = await new AgentApiClient(http).SynchronizeAsync(Request(), CancellationToken.None);
         Assert.Equal(new AgentRegistration(7, 23), registration);
-        Assert.Equal("/context/agent/api/synchronize", handler.Path);
+        Assert.Equal("/context/agent/synchronize", handler.Path);
         Assert.Equal(HttpMethod.Post, handler.Method);
         using var body = JsonDocument.Parse(handler.Body!);
         Assert.Equal(new[] { "host", "usuarioSo" }, body.RootElement.EnumerateObject().Select(p => p.Name));
@@ -26,13 +26,14 @@ public sealed class AgentApiClientTests
     }
 
     [Fact]
-    public async Task Registered_heartbeat_sends_only_existing_database_id()
+    public async Task Registered_heartbeat_sends_host_id_distinct_from_registration_user_id()
     {
         var handler = new Handler(200, "{\"status\":\"OK\",\"mensagem\":\"Heartbeat contabilizado\"}");
         using var http = Client(handler);
-        await new RegisteredAgentHeartbeat(new AgentApiClient(http), 23).SendAsync(CancellationToken.None);
-        Assert.Equal("/context/agent/api/heartbeat", handler.Path);
-        Assert.Equal("{\"id_usuario_so\":23}", handler.Body);
+        var registration = new AgentRegistration(7, 23);
+        await new RegisteredAgentHeartbeat(new AgentApiClient(http), registration.HostId).SendAsync(CancellationToken.None);
+        Assert.Equal("/context/agent/heartbeat", handler.Path);
+        Assert.Equal("{\"id_host\":7}", handler.Body);
         Assert.Equal(1, handler.Calls);
     }
 
@@ -179,13 +180,26 @@ public sealed class AgentApiClientTests
     public void Invalid_opt_in_fails_explicitly(string protocol, string? id)
         => Assert.Throws<InvalidOperationException>(() => AgentHeartbeatConfiguration.Parse(protocol, id));
 
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("Legacy", null)]
+    [InlineData("AgentApi", null)]
+    [InlineData("AgentApi", "7")]
+    public void Old_user_id_configuration_is_rejected_even_with_valid_host(string? protocol, string? hostId)
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            AgentHeartbeatConfiguration.Parse(protocol, hostId, "23"));
+        Assert.Contains("RegisteredHostId", ex.Message);
+        Assert.DoesNotContain("23", ex.Message);
+    }
+
     [Fact]
     public async Task Opt_in_builds_sender_for_existing_id()
     {
         var handler = new Handler(200, "{\"status\":\"OK\",\"futureField\":true}");
         using var http = Client(handler);
         await AgentHeartbeatConfiguration.Parse("AgentApi", "23").CreateSender(http)!.SendAsync(CancellationToken.None);
-        Assert.Equal("{\"id_usuario_so\":23}", handler.Body);
+        Assert.Equal("{\"id_host\":23}", handler.Body);
     }
 
     private static AgentSynchronization Request() => new(

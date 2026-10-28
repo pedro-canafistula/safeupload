@@ -144,8 +144,9 @@ public static class Program
         string endpointId = Environment.MachineName;
         var heartbeatConfiguration = AgentHeartbeatConfiguration.Parse(
             builder.Configuration["CentroAdministracao:HeartbeatProtocol"],
+            builder.Configuration["CentroAdministracao:RegisteredHostId"],
             builder.Configuration["CentroAdministracao:RegisteredUserId"]);
-        if (heartbeatConfiguration.RegisteredUserId is not null && string.IsNullOrWhiteSpace(adminBaseUrl))
+        if (heartbeatConfiguration.RegisteredHostId is not null && string.IsNullOrWhiteSpace(adminBaseUrl))
             throw new InvalidOperationException("Heartbeat AgentApi exige CentroAdministracao:BaseUrl.");
 
         if (string.IsNullOrWhiteSpace(adminBaseUrl))
@@ -180,7 +181,7 @@ public static class Program
                     client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
                 });
 
-            if (heartbeatConfiguration.RegisteredUserId is not null)
+            if (heartbeatConfiguration.RegisteredHostId is not null)
             {
                 // Cliente separado: não altera o transporte legado de política/auditoria.
                 builder.Services.AddHttpClient(HttpClientName + "AgentApi", client =>
@@ -212,7 +213,7 @@ public static class Program
                     TimeSpan.FromSeconds(intervalSeconds),
                     provider.GetRequiredService<ILogger<HttpAgentDispatcher>>())
                 {
-                    HeartbeatSender = heartbeatConfiguration.RegisteredUserId is null ? null :
+                    HeartbeatSender = heartbeatConfiguration.RegisteredHostId is null ? null :
                         heartbeatConfiguration.CreateSender(
                             provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName + "AgentApi"))
                 });

@@ -6,7 +6,7 @@ using SafeUpload.Agent.Core.Application;
 
 namespace SafeUpload.Agent.Core.Infrastructure;
 
-/// <summary>Contrato publicado em AgentController/AgentContracts na main efe93cf7.
+/// <summary>Contrato publicado em AgentController/AgentContracts na main d6605e4d.
 /// O HttpClient aponta para /agent/; cadastro NÃO tem retentativa automática.
 /// Não é cliente de política, tickets ou consulta administrativa.
 /// </summary>
@@ -32,16 +32,16 @@ public sealed class AgentApiClient
     {
         ArgumentNullException.ThrowIfNull(request);
         request.EnsureValid();
-        using var document = await SendAsync("api/synchronize", request, HttpStatusCode.Created, token).ConfigureAwait(false);
+        using var document = await SendAsync("synchronize", request, HttpStatusCode.Created, token).ConfigureAwait(false);
         var root = document.RootElement;
         RequireStatus(root, "CREATED");
         return new AgentRegistration(PositiveInt(root, "id_host"), PositiveInt(root, "id_usuario_so"));
     }
 
-    public async Task HeartbeatAsync(int registeredUserId, CancellationToken token)
+    public async Task HeartbeatAsync(int registeredHostId, CancellationToken token)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(registeredUserId);
-        using var document = await SendAsync("api/heartbeat", new HeartbeatBody(registeredUserId),
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(registeredHostId);
+        using var document = await SendAsync("heartbeat", new HeartbeatBody(registeredHostId),
             HttpStatusCode.OK, token).ConfigureAwait(false);
         RequireStatus(document.RootElement, "OK");
     }
@@ -107,7 +107,7 @@ public sealed class AgentApiClient
             throw new AgentApiException("invalid_receipt");
     }
 
-    private sealed record HeartbeatBody([property: JsonPropertyName("id_usuario_so")] int UserId);
+    private sealed record HeartbeatBody([property: JsonPropertyName("id_host")] int HostId);
 }
 
 /// <summary>Erro sanitizado: não guarda URL, corpo HTTP, SID, mensagem do servidor ou exceção interna.</summary>
@@ -161,11 +161,11 @@ public sealed record AgentOsUser(
     [property: JsonPropertyName("admin")] int Admin);
 
 /// <summary>Identificador fornecido pelo provisionamento; não confundir com SID ou endpointId.</summary>
-public sealed class RegisteredAgentHeartbeat(AgentApiClient client, int registeredUserId) : IAgentHeartbeat
+public sealed class RegisteredAgentHeartbeat(AgentApiClient client, int registeredHostId) : IAgentHeartbeat
 {
     private readonly AgentApiClient _client = client ?? throw new ArgumentNullException(nameof(client));
-    private readonly int _userId = registeredUserId > 0 ? registeredUserId :
-        throw new ArgumentOutOfRangeException(nameof(registeredUserId));
+    private readonly int _hostId = registeredHostId > 0 ? registeredHostId :
+        throw new ArgumentOutOfRangeException(nameof(registeredHostId));
 
-    public Task SendAsync(CancellationToken cancellationToken) => _client.HeartbeatAsync(_userId, cancellationToken);
+    public Task SendAsync(CancellationToken cancellationToken) => _client.HeartbeatAsync(_hostId, cancellationToken);
 }

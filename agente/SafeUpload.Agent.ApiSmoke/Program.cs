@@ -2,9 +2,9 @@ using SafeUpload.Agent.Core.Infrastructure;
 
 // Uma operação em cadastro EXISTENTE. Não instala serviço, cadastra host,
 // publica política, envia auditoria nem acessa driver/painel administrativo.
-if (args.Length != 4 || args[0] != "--base-url" || args[2] != "--registered-user-id")
+if (args.Length != 4 || args[0] != "--base-url" || args[2] != "--registered-host-id")
 {
-    Console.Error.WriteLine("Uso: --base-url http://localhost:8080/agent/ --registered-user-id ID_EXISTENTE");
+    Console.Error.WriteLine("Uso: --base-url http://localhost:8080/agent/ --registered-host-id ID_EXISTENTE");
     return 2;
 }
 

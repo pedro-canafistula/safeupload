@@ -1,5 +1,7 @@
 # Ponte do agente com o backend atual
 
+> Registro histórico de 26/10. O contrato abaixo foi substituído em 28/10: rotas sem `/api`, heartbeat por `id_host` e configuração `RegisteredHostId`. Para configurar ou testar a versão atual, use [Integração backend 28/10](INTEGRACAO-BACKEND-20261028.md); não use os exemplos antigos abaixo.
+
 Preparação de 26/10/2026 sobre main `efe93cf75aa668f2870c0951b48b3ef2c6332226`. Escopo: somente C# do agente, utilitário de ensaio e testes. Sem alteração Java, Angular, banco, driver, workflow ou configuração padrão de produção. Ponte publicada no PR #64, ainda sem homologação contra backend real.
 
 ## O que foi implementado
