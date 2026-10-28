@@ -1,0 +1,172 @@
+{
+  "DiagnosticOnly": true,
+  "Revision": "9 PROPOSED, pending independent review",
+  "StartHEAD": "052f883b0df139587d2cef8208a732adc2274e33",
+  "CompileBaseHEAD": "a01ac212cc9058912a6ae6c906d58f3bd2ad19e8",
+  "EndHEAD": "b90e8b5b9b1738d885d7b3101ef669ba4ba12681",
+  "ConcurrentWork": "External kernel/evidence commits advanced HEAD and a separate StageResourceMetadata.c edit appeared during final receipt. Preserved untouched. All passive agent source inputs other than this model match task-start HEAD.",
+  "ForeignTrackedChanges": [],
+  "MeasuredStop": {
+    "SourceCommit": "ad5e1824",
+    "Receipt": "driver/evidence/2026-10-28/t9-schema3-passive-local/receipt.json",
+    "Ascii": {
+      "ApprovalBytes": 81489,
+      "LedgerBytes": 107382
+    },
+    "NonAscii": {
+      "ApprovalBytes": 406609,
+      "LedgerBytes": 432502
+    },
+    "Findings": 128,
+    "MemberUtf16Units": 512,
+    "WholeDepth": 9
+  },
+  "ProposedLimits": {
+    "LedgerBytes": 65536,
+    "ManifestEnvelopeArchivePayloadBytes": 131072,
+    "O3ReceiptBytes": 2048,
+    "EvidenceReferenceBytes": 192,
+    "ReferenceBase64Characters": 256,
+    "EvidenceHeaderBytes": 256,
+    "ChunkHeaderBytes": 256,
+    "ChunkRecordBytes": 131072,
+    "ChunkPayloadBytes": 130816,
+    "Findings": 16384,
+    "MemberUtf16Units": 1179634,
+    "FrontCodedSuffixUnits": 8699904,
+    "LogicalEvidenceBytes": 18972672,
+    "Chunks": 146,
+    "EvidenceContainerBytes": 19202048,
+    "EnvelopeReferencePlusStatePlusWrapperUpperBound": 75266,
+    "ResourceSchema": 4,
+    "EnvelopeFormatVersion": 3,
+    "MarkerVersion": 4,
+    "RequiredCapabilities": "0x1ff",
+    "EvidenceRole": 21
+  },
+  "SDK": "10.0.400",
+  "Runner": "In-process Fact/InlineData reflection discovery with real xUnit assertions; no Windows matrix/native verdict",
+  "Counts": {
+    "debug": {
+      "discovered": 368,
+      "executed": 368,
+      "passed": 368,
+      "failed": 0,
+      "skipped": 0
+    },
+    "release": {
+      "discovered": 368,
+      "executed": 368,
+      "passed": 368,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "FinalExecutions": 736,
+  "ContractCasesPerConfiguration": 298,
+  "FitCasesPerConfiguration": 70,
+  "NewRevision9CasesPerConfiguration": 50,
+  "GuardRemovalCounterexamplesPerConfiguration": 15,
+  "GuardRemovalCounterexampleChecksFinalExecutions": 30,
+  "AllModelAttempts": {
+    "inprocess-debug-initial.json": {
+      "discovered": 363,
+      "executed": 363,
+      "passed": 363,
+      "failed": 0,
+      "skipped": 0
+    },
+    "inprocess-debug-pre-gc-recovery.json": {
+      "discovered": 368,
+      "executed": 368,
+      "passed": 368,
+      "failed": 0,
+      "skipped": 0
+    },
+    "inprocess-debug.json": {
+      "discovered": 368,
+      "executed": 368,
+      "passed": 368,
+      "failed": 0,
+      "skipped": 0
+    },
+    "inprocess-release-pre-gc-recovery.json": {
+      "discovered": 368,
+      "executed": 368,
+      "passed": 368,
+      "failed": 0,
+      "skipped": 0
+    },
+    "inprocess-release.json": {
+      "discovered": 368,
+      "executed": 368,
+      "passed": 368,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "AllModelAttemptsExecutions": 1835,
+  "AllModelAttemptsFailures": 0,
+  "AllModelAttemptsSkips": 0,
+  "LocalCompile": {
+    "Final": "PASS: all six feature Debug/Release Service/App/Tests builds, warnings as errors",
+    "EarlierIteration": "PASS: six builds, retained pre-GC-recovery log",
+    "TotalBuildPasses": 12,
+    "SnapshotPath": "/tmp/t9-rev9-compile-input.vwf8u8s2",
+    "InputManifestSha256": "dc82cb2d02d53788833e261a3a6ee23ce43780778c845f98d82caaa812a8e5ea",
+    "BaseArchiveSha256": "e8f482ea3f0dce2ac1ebc684d3e0af8130979b6334cc4c8002159594ed68d354"
+  },
+  "SourceSha256": {
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md": "2a9bbdf150cdda5d66a0df355a272f46c7ef4848a4943f112ee900c62fc16d9a",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs": "3916543a69aa5fb9dbbc8d520b55bb63ba2a42f494579bec59d2b3c70bb42b4f",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveFitModelTests.cs": "bb369dd9bb6d7d7eca680839d0289c7f47546575c53b6a721d1cb7a7ab55fb57",
+    "agente/SafeUpload.Agent.Service/Interception/ResourceStateV3.cs": "8953e51207ea26a1145576018f234107b364356d8639c782ca5a6e76a9e3c764",
+    "agente/SafeUpload.Agent.Service/Interception/PublicationApprovalCodecV1.cs": "5a569a1ee43004766c29715ac406fa353aad44adaf38cb0ad9d4595686e6f2b6",
+    "agente/SafeUpload.Agent.Service/Interception/PublicCustodyReceiptV3.cs": "a398c61076f0df828ffa23fbdef91b8929ec052fc61d0ce210b3ba32c003c3cb",
+    "agente/SafeUpload.Agent.Service/Interception/ResourceJsonV3.cs": "0bd839c1de9e7b714d5ac9e40b01f82ae240b95d706526ab004cb51b4525fd1a",
+    "agente/SafeUpload.Agent.Service/Interception/ResourceSerializationPreflightV3.cs": "050a9d4cecdc48b61a315e17e328c081db7a0b57a5dedbcc7fa3137eae4ee338",
+    "agente/SafeUpload.Agent.Tests/ResourceSerializationLimitsV3Tests.cs": "9ab2c5f9fb28303d856c9d07d40e9433fa27684a2c5745cada668b8aad955c66",
+    "driver/scripts/Invoke-LocalAgentCompile.sh": "0d43b20e68b299bc120014a834ad6b530ad9a78a1fcbee5098efaaa67ed2fdfc",
+    "driver/evidence/2026-10-28/t9-schema3-passive-local/receipt.json": "e88a685cad2f57facef5f920012df2faa042a8e724a05580ed025acf98c11a59"
+  },
+  "ArtifactSha256": {
+    "bin/Debug/net10.0/Models.dll": "21faae6eb1380807f683b6571283b9881960ea9e18d267e716e7704156823326",
+    "bin/Release/net10.0/Models.dll": "72a90dff53c6a14e0d639ecce532fcfe6bf729357e78691c248ff60877c5e47e"
+  },
+  "RunnerSha256": {
+    "Models.csproj": "a0c3c44d27be4cdf359b73ec0ff1038c976dcc33a9abe135cdc0a8d038352bd4",
+    "Program.cs": "37c7b4678919431a0e396f1b14aaebce1db2c1e6c86a1f93ef3cabdaa49c743d"
+  },
+  "ResultSha256": {
+    "debug-initial.log": "1bc449338be52e66f8ad0930b7734aeca5719d315d52b367fed52b186c4bf1fc",
+    "debug-pre-gc-recovery.log": "0e8855a3c5437da8916a50a4eabac5be5513593fa5cac5d10c169b88a2631562",
+    "debug.log": "0e8855a3c5437da8916a50a4eabac5be5513593fa5cac5d10c169b88a2631562",
+    "doc-links-final.log": "81180df7ca30ec4887c55a8670cc28e176304f9169e95400909916637fae6d76",
+    "doc-links.log": "81180df7ca30ec4887c55a8670cc28e176304f9169e95400909916637fae6d76",
+    "final-status.txt": "201944ca0fa904ed32c01e914d51e16d3999d1337ddc1192c080fca60ec80173",
+    "final.diff": "09c5a966c8e633a9ba1e3751e5c5bab13de112ad5169aba9729eabdc2cad8d13",
+    "local-compile-final.log": "d55725d84da424cf4a8cfb9c43795022b9fa17dac412b716b28503b262cbd760",
+    "local-compile-pre-gc-recovery.log": "42e14b60c05da0d3a7d61793ca53b508f4beeff1162a3be79315c9b49b4a5c30",
+    "local-compile.log": "42e14b60c05da0d3a7d61793ca53b508f4beeff1162a3be79315c9b49b4a5c30",
+    "release-pre-gc-recovery.log": "0e8855a3c5437da8916a50a4eabac5be5513593fa5cac5d10c169b88a2631562",
+    "release.log": "0e8855a3c5437da8916a50a4eabac5be5513593fa5cac5d10c169b88a2631562",
+    "results/inprocess-debug-initial.json": "c82ecd859eb25c2b6872d00b92787ac84e95ff7243ddffdc06213eb30554844c",
+    "results/inprocess-debug-pre-gc-recovery.json": "150cb6539a1a1e30ff7cba4032f46eb6a655dd2feb0a1f052b532531d8d1625b",
+    "results/inprocess-debug.json": "150cb6539a1a1e30ff7cba4032f46eb6a655dd2feb0a1f052b532531d8d1625b",
+    "results/inprocess-release-pre-gc-recovery.json": "150cb6539a1a1e30ff7cba4032f46eb6a655dd2feb0a1f052b532531d8d1625b",
+    "results/inprocess-release.json": "150cb6539a1a1e30ff7cba4032f46eb6a655dd2feb0a1f052b532531d8d1625b",
+    "start-head.txt": "00e6311d97d9853911a9ba52748f0d0543f432ad7de569aeb94ebffb53308d22"
+  },
+  "DocLinks": "DocLinks=PASS; broken=298; new=0; baseline=298",
+  "DiffCheck": "PASS for task-owned paths",
+  "CheckboxesUnchanged": true,
+  "FilesEditedByThisTask": [
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs"
+  ],
+  "PassiveProductSourceInputsUnchanged": true,
+  "ProductSourceEditedByThisTask": false,
+  "CommitMade": false,
+  "NetworkBuilderVMUsed": false,
+  "Open": "Independent revision-9 review, source-derived maximum proof and actual complete v4 codecs/strict readers/transitions/full-shape limits before consumers; all native/delivery/qualification gates remain open."
+}

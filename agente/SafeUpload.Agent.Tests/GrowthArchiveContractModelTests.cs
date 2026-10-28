@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace SafeUpload.Agent.Tests;
 
-// Revision-8 pure reference models. No product types, I/O, Windows or unfinished
+// Revision-8/9 pure reference models. No product types, I/O, Windows or unfinished
 // codecs. JSON tests measure the real default writer, not a schema-3 maximum.
 public sealed class GrowthArchiveContractModelTests
 {
@@ -1063,6 +1063,437 @@ public sealed class GrowthArchiveContractModelTests
         for (int attempt = 0; attempt < 2; attempt++) Assert.Equal("FrontierOnly", Recover(slots[0], slots[1], x.Frames, x.Plan, x.Candidate));
         slots[targetIndex] = Slot(4096, x.Plan.TargetSequence, x.Plan.TargetEnd, Transaction);
         for (int attempt = 0; attempt < 2; attempt++) Assert.Equal("BookkeepingOnly", Recover(slots[0], slots[1], x.Frames, x.Plan, x.Candidate));
+    }
+
+    private const int EvidenceFindings = 16384, EvidenceMemberUnits = 1179634, EvidenceSuffixUnits = 8699904;
+    private const int EvidenceLogicalLimit = 18972672, EvidenceFileLimit = 19202048, EvidenceChunk = 131072, EvidenceChunkPayload = 130816;
+    private static readonly UnicodeEncoding EvidenceUtf16 = new(false, false, true);
+    private sealed record EvidenceSpec(Guid Record, long Generation, ApprovalIdentity Identity, ApprovalBinding Binding, Guid Witness, int Alignment);
+    private sealed record EvidenceImage(byte[] Reference, byte[] File, EvidenceSpec Spec);
+    private static EvidenceSpec EvidenceOwner(DurableApproval approval, int alignment = 4096) =>
+        new(RecordId, 1, new(ulong.MaxValue, 17, 18), approval.Binding, Installation, alignment);
+    private static int CommonUnits(string left, string right)
+    {
+        int n = 0; while (n < Math.Min(left.Length, right.Length) && left[n] == right[n]) n++;
+        if (n > 0 && char.IsHighSurrogate(left[n - 1])) n--;
+        return n;
+    }
+    private static void EvidenceShape(int entries, int metadata, int findings, int names, long suffixUnits, long logical)
+    {
+        Need(entries is > 0 and <= EnvelopeLimit && metadata is > 0 and <= ControlLimit);
+        Need(findings is >= 0 and <= EvidenceFindings && names >= 0 && names <= findings);
+        Need(suffixUnits >= 0 && suffixUnits <= EvidenceSuffixUnits && logical is > 0 and <= EvidenceLogicalLimit);
+    }
+    private static byte[] EvidencePayloadBytes(DurableApproval approval, out int entryBytes, out int metadataBytes,
+        out int findings, out int names, out int suffixUnits)
+    {
+        ValidateApproval(approval); Need(approval.Inspection.Reason is null);
+        Need(approval.Inspection.Findings.Length <= EvidenceFindings);
+        foreach (var f in approval.Inspection.Findings)
+        {
+            Need(f.MaskedSnippet.Length <= 32); _ = EvidenceUtf16.GetByteCount(f.MaskedSnippet);
+            if (f.MemberName is not null) { Need(f.MemberName.Length <= EvidenceMemberUnits); _ = EvidenceUtf16.GetByteCount(f.MemberName); }
+        }
+        // This abstract Entry supplies binding, not a substitute for the actual
+        // product Entry/maximal ledger codec proof required by the design.
+        byte[] source = JsonSerializer.SerializeToUtf8Bytes(new { approval.Binding.TransferId, approval.Binding.OperationId, Revision = 1 });
+        byte[] metadata = WriteApproval(approval with { Inspection = approval.Inspection with { Findings = [] } });
+        string[] table = approval.Inspection.Findings.Select(f => f.MemberName).OfType<string>().Distinct(StringComparer.Ordinal)
+            .OrderBy(s => s, StringComparer.Ordinal).ToArray();
+        using var stream = new MemoryStream(); using var writer = new BinaryWriter(stream, EvidenceUtf16, leaveOpen: true);
+        writer.Write(source); writer.Write(metadata);
+        foreach (var f in approval.Inspection.Findings)
+        {
+            writer.Write((uint)f.Category); writer.Write(f.MemberName is null ? -1 : Array.IndexOf(table, f.MemberName));
+            writer.Write((uint)f.MaskedSnippet.Length); writer.Write(EvidenceUtf16.GetBytes(f.MaskedSnippet));
+        }
+        string previous = ""; suffixUnits = 0;
+        foreach (string name in table)
+        {
+            int prefix = CommonUnits(previous, name), suffix = name.Length - prefix;
+            suffixUnits = checked(suffixUnits + suffix);
+            writer.Write((uint)prefix); writer.Write((uint)suffix); writer.Write(EvidenceUtf16.GetBytes(name[prefix..])); previous = name;
+        }
+        entryBytes = source.Length; metadataBytes = metadata.Length; findings = approval.Inspection.Findings.Length; names = table.Length;
+        EvidenceShape(entryBytes, metadataBytes, findings, names, suffixUnits, stream.Length);
+        return stream.ToArray();
+    }
+    private static DurableApproval ReadEvidencePayload(byte[] payload, int entryBytes, int metadataBytes, int findings, int names, int suffixUnits)
+    {
+        EvidenceShape(entryBytes, metadataBytes, findings, names, suffixUnits, payload.Length);
+        Need(entryBytes + metadataBytes <= payload.Length);
+        using JsonDocument source = JsonDocument.Parse(payload.AsMemory(0, entryBytes)); Unique(source.RootElement);
+        DurableApproval metadata = ReadApproval(payload.AsSpan(entryBytes, metadataBytes).ToArray());
+        Need(metadata.Inspection.Findings.Length == 0 && metadata.Inspection.Reason is null);
+        Need(source.RootElement.GetProperty("TransferId").GetGuid() == metadata.Binding.TransferId &&
+            source.RootElement.GetProperty("OperationId").GetGuid() == metadata.Binding.OperationId);
+        using var stream = new MemoryStream(payload, writable: false); stream.Position = entryBytes + metadataBytes;
+        using var reader = new BinaryReader(stream, EvidenceUtf16);
+        var stored = new List<(int Category, int Member, string Snippet)>();
+        string Text(int units, int limit)
+        {
+            Need(units >= 0 && units <= limit && 2L * units <= stream.Length - stream.Position);
+            return EvidenceUtf16.GetString(reader.ReadBytes(checked(2 * units)));
+        }
+        for (int i = 0; i < findings; i++)
+        {
+            int category = checked((int)reader.ReadUInt32()), member = reader.ReadInt32(), units = checked((int)reader.ReadUInt32());
+            Need(category is >= 0 and <= 4 && member >= -1 && member < names);
+            stored.Add((category, member, Text(units, 32)));
+        }
+        var table = new List<string>(); string previous = ""; int totalSuffix = 0;
+        for (int i = 0; i < names; i++)
+        {
+            int prefix = checked((int)reader.ReadUInt32()), suffix = checked((int)reader.ReadUInt32());
+            Need(prefix <= previous.Length && (prefix == 0 || !char.IsHighSurrogate(previous[prefix - 1])));
+            string name = previous[..prefix] + Text(suffix, EvidenceMemberUnits);
+            Need(name.Length <= EvidenceMemberUnits && (i == 0 || StringComparer.Ordinal.Compare(previous, name) < 0));
+            Need(prefix == CommonUnits(previous, name)); totalSuffix = checked(totalSuffix + suffix);
+            Need(totalSuffix <= EvidenceSuffixUnits); table.Add(name); previous = name;
+        }
+        Need(totalSuffix == suffixUnits && stream.Position == stream.Length);
+        var full = metadata with { Inspection = metadata.Inspection with {
+            Findings = stored.Select(f => new ApprovalFinding(f.Category, f.Snippet, f.Member < 0 ? null : table[f.Member])).ToArray() } };
+        ValidateApproval(full); return full;
+    }
+    private static void EvidenceGuid(byte[] b, int at, Guid id) => id.TryWriteBytes(b.AsSpan(at, 16));
+    private static void EvidenceU32(byte[] b, int at, int value) => BinaryPrimitives.WriteUInt32LittleEndian(b.AsSpan(at), checked((uint)value));
+    private static void EvidenceIdentity(byte[] b, int at, ApprovalIdentity id)
+    {
+        BinaryPrimitives.WriteUInt64LittleEndian(b.AsSpan(at), id.VolumeSerialNumber);
+        BinaryPrimitives.WriteUInt64LittleEndian(b.AsSpan(at + 8), id.FileIdLow);
+        BinaryPrimitives.WriteUInt64LittleEndian(b.AsSpan(at + 16), id.FileIdHigh);
+    }
+    private static void EvidenceChunkHashes(byte[] file, int alignment)
+    {
+        byte[] previous = new byte[32];
+        for (int at = alignment; at < file.Length; at += EvidenceChunk)
+        {
+            int length = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(file.AsSpan(at + 64)));
+            SHA256.HashData(file.AsSpan(at + 256, length)).CopyTo(file.AsSpan(at + 72));
+            previous.CopyTo(file.AsSpan(at + 104)); previous = SHA256.HashData(file.AsSpan(at, EvidenceChunk));
+        }
+    }
+    private static EvidenceImage MakeEvidence(DurableApproval approval, EvidenceSpec? owner = null)
+    {
+        var s = owner ?? EvidenceOwner(approval); Need(s.Binding == approval.Binding);
+        Need(s.Alignment is >= 4096 and <= 65536 && (s.Alignment & (s.Alignment - 1)) == 0 && s.Generation > 0);
+        byte[] payload = EvidencePayloadBytes(approval, out int e, out int m, out int f, out int n, out int suffix);
+        int count = checked((payload.Length + EvidenceChunkPayload - 1) / EvidenceChunkPayload);
+        byte[] file = new byte[checked(s.Alignment + count * EvidenceChunk)]; Need(file.Length <= EvidenceFileLimit);
+        "SAFEVP01"u8.CopyTo(file); EvidenceU32(file, 8, 1); EvidenceU32(file, 12, 256);
+        EvidenceGuid(file, 16, Installation); EvidenceGuid(file, 32, s.Binding.TransferId); EvidenceGuid(file, 48, s.Binding.OperationId);
+        EvidenceGuid(file, 64, s.Record); Put64(file, 80, s.Generation); EvidenceIdentity(file, 88, s.Identity);
+        EvidenceU32(file, 112, 1); EvidenceU32(file, 116, e); EvidenceU32(file, 120, m); EvidenceU32(file, 124, f);
+        EvidenceU32(file, 128, n); EvidenceU32(file, 132, count); Put64(file, 136, suffix); Put64(file, 144, payload.Length); Put64(file, 152, file.Length);
+        Put64(file, 160, s.Binding.AllocationGeneration); Put64(file, 168, s.Binding.DestinationGeneration); EvidenceGuid(file, 176, s.Witness);
+        for (int i = 0, offset = 0; i < count; i++)
+        {
+            int at = s.Alignment + i * EvidenceChunk, length = Math.Min(EvidenceChunkPayload, payload.Length - offset);
+            "SAFEVC01"u8.CopyTo(file.AsSpan(at)); EvidenceU32(file, at + 8, 1); EvidenceU32(file, at + 12, 256);
+            EvidenceGuid(file, at + 16, s.Record); Put64(file, at + 32, s.Generation); Put64(file, at + 40, i);
+            Put64(file, at + 48, count); Put64(file, at + 56, offset); EvidenceU32(file, at + 64, length); EvidenceU32(file, at + 68, EvidenceChunk);
+            payload.AsSpan(offset, length).CopyTo(file.AsSpan(at + 256)); offset += length;
+        }
+        EvidenceChunkHashes(file, s.Alignment);
+        byte[] reference = new byte[192]; "SAFEVR01"u8.CopyTo(reference); EvidenceU32(reference, 8, 1); EvidenceU32(reference, 12, 192);
+        file.AsSpan(16, 96).CopyTo(reference.AsSpan(16)); Put64(reference, 112, file.Length);
+        SHA256.HashData(file).CopyTo(reference.AsSpan(120)); EvidenceU32(reference, 152, 1); file.AsSpan(160, 32).CopyTo(reference.AsSpan(160));
+        return new(reference, file, s);
+    }
+    private static bool EvidenceMatches(EvidenceImage saved, byte[]? observed, ApprovalIdentity openedIdentity,
+        EvidenceSpec? expected = null, string? omitGuard = null)
+    {
+        if (observed is null) return omitGuard == "presence"; // Explicit missing-evidence mutant.
+        try
+        {
+            EvidenceSpec s = expected ?? saved.Spec; byte[] r = saved.Reference, b = observed;
+            long I64(byte[] bytes, int at) => BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(at));
+            int U32(byte[] bytes, int at) => checked((int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(at)));
+            Need(r.Length == 192 && r.AsSpan(0, 8).SequenceEqual("SAFEVR01"u8) && U32(r, 8) == 1 && U32(r, 12) == 192 && U32(r, 156) == 0);
+            Need(b.Length <= EvidenceFileLimit && b.Length == I64(r, 112) && b.Length >= s.Alignment + EvidenceChunk);
+            Need(omitGuard == "digest" || SHA256.HashData(b).AsSpan().SequenceEqual(r.AsSpan(120, 32)));
+            byte[] identity = new byte[24]; EvidenceIdentity(identity, 0, openedIdentity);
+            Need(omitGuard == "identity" || openedIdentity == s.Identity && identity.AsSpan().SequenceEqual(r.AsSpan(88, 24)));
+            Need(b.AsSpan(0, 8).SequenceEqual("SAFEVP01"u8) && U32(b, 8) == 1 && U32(b, 12) == 256 && U32(b, 112) == 1);
+            Need(b.AsSpan(16, 96).SequenceEqual(r.AsSpan(16, 96)) && b.AsSpan(160, 32).SequenceEqual(r.AsSpan(160, 32)));
+            Need(new Guid(r.AsSpan(16, 16)) == Installation && new Guid(r.AsSpan(32, 16)) == s.Binding.TransferId);
+            Need(omitGuard == "binding" || new Guid(r.AsSpan(48, 16)) == s.Binding.OperationId &&
+                new Guid(r.AsSpan(64, 16)) == s.Record && I64(r, 80) == s.Generation &&
+                I64(r, 160) == s.Binding.AllocationGeneration && I64(r, 168) == s.Binding.DestinationGeneration && new Guid(r.AsSpan(176, 16)) == s.Witness);
+            Need(I64(r, 80) > 0 && U32(r, 152) == 1 && b.AsSpan(192, s.Alignment - 192).IndexOfAnyExcept((byte)0) < 0);
+            int count = U32(b, 132), logical = checked((int)I64(b, 144));
+            EvidenceShape(U32(b, 116), U32(b, 120), U32(b, 124), U32(b, 128), I64(b, 136), logical);
+            Need(count == (logical + EvidenceChunkPayload - 1) / EvidenceChunkPayload && count <= 146 &&
+                b.Length == s.Alignment + count * EvidenceChunk && I64(b, 152) == b.Length);
+            using var payload = new MemoryStream(); byte[] previous = new byte[32];
+            for (int i = 0; i < count; i++)
+            {
+                int at = s.Alignment + i * EvidenceChunk, length = U32(b, at + 64);
+                Need(b.AsSpan(at, 8).SequenceEqual("SAFEVC01"u8) && U32(b, at + 8) == 1 && U32(b, at + 12) == 256);
+                Need(b.AsSpan(at + 16, 16).SequenceEqual(r.AsSpan(64, 16)) && I64(b, at + 32) == I64(r, 80));
+                Need(I64(b, at + 40) == i && I64(b, at + 48) == count && I64(b, at + 56) == payload.Length && U32(b, at + 68) == EvidenceChunk);
+                Need(length == Math.Min(EvidenceChunkPayload, logical - payload.Length) && length > 0);
+                Need(SHA256.HashData(b.AsSpan(at + 256, length)).AsSpan().SequenceEqual(b.AsSpan(at + 72, 32)) &&
+                    previous.AsSpan().SequenceEqual(b.AsSpan(at + 104, 32)) && b.AsSpan(at + 136, 120).IndexOfAnyExcept((byte)0) < 0 &&
+                    b.AsSpan(at + 256 + length, EvidenceChunkPayload - length).IndexOfAnyExcept((byte)0) < 0);
+                payload.Write(b.AsSpan(at + 256, length)); previous = SHA256.HashData(b.AsSpan(at, EvidenceChunk));
+            }
+            DurableApproval full = ReadEvidencePayload(payload.ToArray(), U32(b, 116), U32(b, 120), U32(b, 124), U32(b, 128), checked((int)I64(b, 136)));
+            Need(omitGuard == "binding" || full.Binding == s.Binding); return true;
+        }
+        catch (Exception error) when (error is InvalidDataException or ArgumentException or OverflowException or EndOfStreamException or JsonException)
+        { return false; }
+    }
+
+    [Theory]
+    [InlineData("a")]
+    [InlineData("é")]
+    [InlineData("😀")]
+    [InlineData("\\u0001")]
+    public void Revision9_retains_128_findings_and_512_unit_member_without_inline_ledger_overflow(string character)
+    {
+        string member = string.Concat(Enumerable.Repeat(character, 512 / character.Length)).PadRight(512, 'a');
+        DurableApproval a = Approval(new string('A', 64), true);
+        a = a with { Inspection = a.Inspection with { Findings = Enumerable.Range(0, 128).Select(_ => new ApprovalFinding(0, "•••••••••25", member)).ToArray() } };
+        byte[] full = JsonSerializer.SerializeToUtf8Bytes(a, ApprovalJson); Assert.True(full.Length > ControlLimit);
+        EvidenceImage image = MakeEvidence(a); Assert.True(EvidenceMatches(image, image.File, image.Spec.Identity));
+        byte[] payload = EvidencePayloadBytes(a, out int e, out int m, out int f, out int n, out int suffix);
+        DurableApproval read = ReadEvidencePayload(payload, e, m, f, n, suffix);
+        Assert.Equal(full, JsonSerializer.SerializeToUtf8Bytes(read, ApprovalJson)); Assert.Equal(1, n); Assert.Equal(member.Length, suffix);
+        Assert.Equal(192, image.Reference.Length); Assert.Equal(256, Convert.ToBase64String(image.Reference).Length);
+        Assert.True(payload.Length < ControlLimit); // No repeated display string in the evidence stream.
+        byte[] fixedLedgerProjection = JsonSerializer.SerializeToUtf8Bytes(new { Version = 4, Authorization = new {
+            WitnessId = Installation, EvidenceReferenceBase64 = Convert.ToBase64String(image.Reference) } });
+        Assert.True(fixedLedgerProjection.Length < ControlLimit); // NOT the actual complete product ledger proof.
+    }
+
+    [Fact]
+    public void Revision9_preserves_more_than_512_units_and_the_existing_16384_finding_cap()
+    {
+        DurableApproval a = Approval(new string('B', 64), true);
+        a = a with { Inspection = a.Inspection with { Findings = Enumerable.Range(0, EvidenceFindings)
+            .Select(i => new ApprovalFinding(i % 5, "masked", new string('é', 1024) + (i % 2 == 0 ? "😀a" : "😁b"))).ToArray() } };
+        EvidenceImage image = MakeEvidence(a, EvidenceOwner(a, 65536));
+        Assert.True(image.File.Length > EvidenceChunk + 65536); Assert.True(EvidenceMatches(image, image.File, image.Spec.Identity));
+    }
+
+    [Theory]
+    [InlineData("entry")]
+    [InlineData("metadata")]
+    [InlineData("findings")]
+    [InlineData("names")]
+    [InlineData("suffix")]
+    [InlineData("logical")]
+    public void Revision9_all_dimension_maxima_fit_and_each_limit_plus_one_refuses_before_issue(string dimension)
+    {
+        Assert.Equal(131072 + 65536 + 16384L * (76 + 8) + 2 * EvidenceSuffixUnits, EvidenceLogicalLimit);
+        EvidenceShape(EnvelopeLimit, ControlLimit, EvidenceFindings, EvidenceFindings, EvidenceSuffixUnits, EvidenceLogicalLimit);
+        Assert.Equal(146, (EvidenceLogicalLimit + EvidenceChunkPayload - 1) / EvidenceChunkPayload);
+        Assert.Equal(EvidenceFileLimit, 65536 + 146 * EvidenceChunk);
+        int nativeIssues = 0;
+        Assert.Throws<InvalidDataException>(() => {
+            EvidenceShape(EnvelopeLimit + (dimension == "entry" ? 1 : 0), ControlLimit + (dimension == "metadata" ? 1 : 0),
+                EvidenceFindings + (dimension == "findings" ? 1 : 0), EvidenceFindings + (dimension == "names" ? 1 : 0),
+                EvidenceSuffixUnits + (dimension == "suffix" ? 1 : 0), EvidenceLogicalLimit + (dimension == "logical" ? 1 : 0)); nativeIssues++;
+        }); Assert.Equal(0, nativeIssues);
+    }
+
+    [Theory]
+    [InlineData("digest")]
+    [InlineData("identity")]
+    [InlineData("binding")]
+    [InlineData("presence")]
+    public void Revision9_reference_binding_mutants_must_accept_the_invalid_counterexample_only_when_its_guard_is_removed(string guard)
+    {
+        EvidenceImage image = MakeEvidence(Approval(new string('A', 64), true)); byte[]? observed = image.File.ToArray();
+        var opened = image.Spec.Identity; var expected = image.Spec;
+        switch (guard)
+        {
+            case "digest":
+                byte[] needle = "\"Revision\":1"u8.ToArray(); int at = observed.AsSpan().IndexOf(needle); Assert.True(at > 0);
+                observed[at + needle.Length - 1] = (byte)'2'; EvidenceChunkHashes(observed, image.Spec.Alignment); break;
+            case "identity": opened = opened with { FileIdLow = opened.FileIdLow + 1 }; break;
+            case "binding": expected = expected with { Generation = 2 }; break;
+            case "presence": observed = null; break;
+        }
+        Assert.False(EvidenceMatches(image, observed, opened, expected));
+        Assert.True(EvidenceMatches(image, observed, opened, expected, guard));
+    }
+
+    [Theory]
+    [InlineData("operation")]
+    [InlineData("allocation")]
+    [InlineData("destination")]
+    [InlineData("record")]
+    [InlineData("witness")]
+    [InlineData("caller")]
+    [InlineData("stage")]
+    [InlineData("snapshot")]
+    [InlineData("session")]
+    [InlineData("length")]
+    [InlineData("content-hash")]
+    public void Revision9_complete_reference_is_not_replay_authority_for_another_owner(string change)
+    {
+        EvidenceImage image = MakeEvidence(Approval(new string('A', 64), true)); var expected = image.Spec;
+        expected = change switch {
+            "operation" => expected with { Binding = expected.Binding with { OperationId = Segment } },
+            "allocation" => expected with { Binding = expected.Binding with { AllocationGeneration = 99 } },
+            "destination" => expected with { Binding = expected.Binding with { DestinationGeneration = 99 } },
+            "record" => expected with { Record = Segment }, "witness" => expected with { Witness = Segment },
+            "stage" => expected with { Binding = expected.Binding with { StageIdentity = new(1, 2, 3) } },
+            "snapshot" => expected with { Binding = expected.Binding with { SnapshotIdentity = new(1, 2, 4) } },
+            "session" => expected with { Binding = expected.Binding with { SessionId = 99 } },
+            "length" => expected with { Binding = expected.Binding with { Length = 99 } },
+            "content-hash" => expected with { Binding = expected.Binding with { Sha256 = new string('B', 64) } },
+            _ => expected with { Binding = expected.Binding with { RequestorSid = "S-1-5-21-9" } }
+        };
+        Assert.False(EvidenceMatches(image, image.File, image.Spec.Identity, expected));
+        Assert.True(EvidenceMatches(image, image.File, image.Spec.Identity, expected, "binding"));
+    }
+
+    private sealed class EvidenceLifecycle(EvidenceImage image)
+    {
+        internal EvidenceImage Image = image;
+        internal byte[]? DurableFile;
+        internal byte[]? DurableReference;
+        internal bool Reserved, MayHaveCreated, Prepared, MayHaveIssued, Completed, Accepted, Closed, Deleted, Released;
+        internal int Readers, Operations, Roots, NativeIssues, Adoptions;
+        internal long Charge;
+        internal void Reserve() { Need(!Reserved); Reserved = true; Charge = Image.File.Length; }
+        internal void Create() { Need(Reserved && !MayHaveCreated); MayHaveCreated = true; }
+        internal void Prepare()
+        {
+            Need(MayHaveCreated); DurableFile = Image.File.ToArray();
+            Need(EvidenceMatches(Image, DurableFile, Image.Spec.Identity)); Prepared = true;
+        }
+        internal void Reference()
+        {
+            Need(Prepared && EvidenceMatches(Image, DurableFile, Image.Spec.Identity));
+            DurableReference = Image.Reference.ToArray(); Roots = 1;
+        }
+        internal void Issue()
+        {
+            Need(!MayHaveIssued && DurableReference is not null && EvidenceMatches(Image, DurableFile, Image.Spec.Identity));
+            MayHaveIssued = true; NativeIssues++; // MayHaveIssued is durable before native issue.
+        }
+        internal string Recover() => Deleted && CanDelete(true) ? Released ? "Released" : "PersistReleaseOnly" :
+            DurableReference is not null && !EvidenceMatches(Image, DurableFile, Image.Spec.Identity) ? "Hold" :
+            MayHaveIssued ? Completed ? "BudgetOnly" : "Hold" :
+            DurableReference is not null && EvidenceMatches(Image, DurableFile, Image.Spec.Identity) ? "IssuePermitted" : "Hold";
+        internal void Completion() { Need(MayHaveIssued && EvidenceMatches(Image, DurableFile, Image.Spec.Identity)); Completed = true; }
+        internal void Accept(byte[] originalReference)
+        {
+            Need(Completed && DurableReference is not null && DurableReference.AsSpan().SequenceEqual(originalReference) &&
+                EvidenceMatches(Image, DurableFile, Image.Spec.Identity));
+            if (Accepted) return; Accepted = true; Adoptions++; // Evidence remains charged after content O3 release.
+        }
+        internal void Crash() { /* All modeled fields above are durable, or independent actual owner inventory. */ }
+        internal void DetachAllRoots() { Need(Accepted); Roots = 0; } // Abstract stable inventory proof, not an age/timer.
+        internal bool CanDelete(bool persistedZeroReaderWitness) => Closed && Roots == 0 && Readers == 0 && Operations == 0 && persistedZeroReaderWitness;
+        internal void Delete() { Need(!Deleted && CanDelete(true)); Deleted = true; DurableFile = null; }
+        internal void Release(ApprovalIdentity persistedIdentity)
+        { Need(Deleted && CanDelete(true) && persistedIdentity == Image.Spec.Identity); Released = true; Charge = 0; }
+    }
+    private static EvidenceLifecycle ReadyEvidence()
+    {
+        var m = new EvidenceLifecycle(MakeEvidence(Approval(new string('A', 64), true)));
+        m.Reserve(); m.Create(); m.Prepare(); m.Reference(); return m;
+    }
+
+    [Theory]
+    [InlineData("reserved")]
+    [InlineData("may-create")]
+    [InlineData("orphan")]
+    [InlineData("reference")]
+    [InlineData("issued")]
+    [InlineData("completion")]
+    [InlineData("acceptance")]
+    [InlineData("missing-after-reference")]
+    [InlineData("missing-after-completion")]
+    [InlineData("missing-after-acceptance")]
+    public void Revision9_crash_recovery_preserves_evidence_charge_and_never_reissues_a_public_mutation(string point)
+    {
+        var m = new EvidenceLifecycle(MakeEvidence(Approval(new string('A', 64), true))); m.Reserve();
+        if (point != "reserved") m.Create();
+        if (point is not ("reserved" or "may-create")) m.Prepare();
+        if (point is not ("reserved" or "may-create" or "orphan")) m.Reference();
+        if (point is "issued" or "completion" or "acceptance" or "missing-after-completion" or "missing-after-acceptance") m.Issue();
+        if (point is "completion" or "acceptance" or "missing-after-completion" or "missing-after-acceptance") m.Completion();
+        if (point is "acceptance" or "missing-after-acceptance") m.Accept(m.Image.Reference);
+        if (point.StartsWith("missing-", StringComparison.Ordinal)) m.DurableFile = null;
+        m.Crash();
+        Assert.Equal(m.Image.File.Length, m.Charge); Assert.False(m.Released);
+        string expected = point is "completion" or "acceptance" ? "BudgetOnly" : point == "reference" ? "IssuePermitted" : "Hold";
+        Assert.Equal(expected, m.Recover());
+        if (m.MayHaveIssued) { Assert.Throws<InvalidDataException>(m.Issue); Assert.Equal(1, m.NativeIssues); }
+        if (point == "missing-after-reference") Assert.Throws<InvalidDataException>(m.Issue);
+    }
+
+    [Fact]
+    public void Revision9_original_reference_completion_replay_after_restart_adopts_once_and_keeps_metadata_charged()
+    {
+        var m = ReadyEvidence(); m.Issue(); m.Completion(); m.Accept(m.Image.Reference); m.Crash(); m.Accept(m.Image.Reference);
+        Assert.Equal(1, m.NativeIssues); Assert.Equal(1, m.Adoptions); Assert.Equal(m.Image.File.Length, m.Charge);
+        byte[] changed = m.Image.Reference.ToArray(); changed[80] ^= 1;
+        Assert.Throws<InvalidDataException>(() => m.Accept(changed));
+        Assert.Equal(1, m.Adoptions); Assert.Equal(1, m.NativeIssues);
+    }
+
+    [Theory]
+    [InlineData("reference")]
+    [InlineData("reader")]
+    [InlineData("late-operation")]
+    [InlineData("admission-open")]
+    [InlineData("wrong-delete-identity")]
+    public void Revision9_gc_does_not_refund_referenced_undrained_or_unproven_storage(string obstacle)
+    {
+        var m = ReadyEvidence(); m.Issue(); m.Completion(); m.Accept(m.Image.Reference); m.DetachAllRoots(); m.Closed = true;
+        if (obstacle == "reference") m.Roots = 1;
+        if (obstacle == "reader") m.Readers = 1;
+        if (obstacle == "late-operation") m.Operations = 1;
+        if (obstacle == "admission-open") m.Closed = false;
+        if (obstacle == "wrong-delete-identity")
+        {
+            m.Delete(); Assert.Throws<InvalidDataException>(() => m.Release(m.Image.Spec.Identity with { FileIdLow = 99 }));
+        }
+        else
+        {
+            Assert.False(m.CanDelete(true)); // Even a persisted zero-reader assertion cannot erase an actual owner.
+            Assert.Throws<InvalidDataException>(m.Delete);
+        }
+        Assert.True(m.Charge > 0); Assert.False(m.Released);
+    }
+
+    [Fact]
+    public void Revision9_gc_delete_reply_loss_stays_charged_until_the_persisted_identity_transition()
+    {
+        var m = ReadyEvidence(); m.Issue(); m.Completion(); m.Accept(m.Image.Reference); m.DetachAllRoots(); m.Closed = true;
+        m.Delete(); m.Crash(); Assert.True(m.Charge > 0); Assert.False(m.Released);
+        Assert.Equal("PersistReleaseOnly", m.Recover()); Assert.Throws<InvalidDataException>(m.Delete);
+        m.Release(m.Image.Spec.Identity); m.Crash(); Assert.Equal(0, m.Charge); Assert.True(m.Released);
+        Assert.Equal("Released", m.Recover()); Assert.Equal(1, m.NativeIssues);
+    }
+
+    [Theory]
+    [InlineData("chunk-hash")]
+    [InlineData("padding")]
+    [InlineData("chunk-index")]
+    [InlineData("chunk-record")]
+    [InlineData("header-reserved")]
+    [InlineData("file-length")]
+    [InlineData("finding-limit")]
+    public void Revision9_matching_whole_digest_never_replaces_strict_frame_payload_and_bound_checks(string corruption)
+    {
+        EvidenceImage image = MakeEvidence(Approval(new string('A', 64), true)); byte[] file = image.File.ToArray();
+        int at = corruption switch {
+            "chunk-hash" => image.Spec.Alignment + 72, "padding" => file.Length - 1,
+            "chunk-index" => image.Spec.Alignment + 40, "chunk-record" => image.Spec.Alignment + 16,
+            "header-reserved" => 192, "file-length" => 152, _ => 124 };
+        file[at] ^= 1; if (corruption == "finding-limit") EvidenceU32(file, 124, EvidenceFindings + 1);
+        byte[] reference = image.Reference.ToArray(); SHA256.HashData(file).CopyTo(reference.AsSpan(120));
+        image = image with { Reference = reference };
+        Assert.False(EvidenceMatches(image, file, image.Spec.Identity));
     }
 
     private static byte[] Decode64(string value, int length)

@@ -1,7 +1,15 @@
-# T9 growing reservations: revision 8 implementation contracts
+# T9 growing reservations: revision 9 implementation contracts
+
+2026-10-28. **Revision 9 PROPOSED, pending independent review.** Section 10.7
+selects a format split after the real passive schema-3 fit stop at `ad5e1824`
+([measurement receipt](../../../evidence/2026-10-28/t9-schema3-passive-local/receipt.json)).
+It supersedes inline authorization/approval/Entry storage in 9.3.1–9.3.2,
+10.1–10.5 and the dependent work list; all other authority/lifetime/gate rules
+remain. The revision-8 text below records its review history. No product file,
+checkbox, admission gate, cap removal or review acceptance changes in this task.
 
 2026-10-28. **Proposed addendum and pure models for independent review; no product implementation.**
-**Revision 8 remains proposed, pending independent re-review.** The independent
+**Revision-8 proposal/review history:** the independent
 [revision-8 review](../../../evidence/2026-10-28/t9-growth-rev8-review-sol-high.md)
 returned REVISE. The independent
 [revision-8 re-review](../../../evidence/2026-10-28/t9-growth-rev8-rereview-sol-high.md)
@@ -165,13 +173,15 @@ source is unresolved in section 13). Capabilities are u64 bits:
 | 3 | metadata capabilities, noncached operations and transitive-query fence |
 | 4 | bounded dispatch, independent growth/reply progress and local rundown |
 | 5 | complete-intent abandonment/CREATE adoption fence |
-| 6 | modern schema-3 custody/recovery/shared accounting/downgrade guard |
+| 6 | modern custody/recovery/shared accounting/downgrade guard; revision-9 writes use schema 4 |
 | 7 | all supported MM/MDL/cache/EOF/allocation capacity crossings |
+| 8 | revision-9 ReferencedEvidenceV1 (10.7), strict v4 codecs and role-21 custody/accounting |
 
-RequiredCapabilities is exactly `0xff` for modern admission; Offered must contain
+RequiredCapabilities is exactly `0x1ff` for revision-9 modern admission (`0xff`
+was the revision-8 proposal); Offered must contain
 all required bits and no unknown bits. Success requires the driver and agent
 each meet every bit and all runtime readiness gates, trusted roots on this
-connection and the same ReadinessEpoch; the driver returns exactly `0xff`.
+connection and the same ReadinessEpoch; the driver returns exactly `0x1ff`.
 No subset success; Commit requires the explicit owner-selected 30,000,000 ticks,
 with identical driver/agent acceptance, never a default on missing input.
 No bound allocation. A provisional
@@ -980,7 +990,8 @@ Role numbers are fixed: 1 LedgerCurrent, 2 LedgerNew, 3 CompanionCurrent,
 9 InventoryNew, 10 MarkerCurrent, 11 MarkerNew, 12 LegacyNegative,
 13 LegacySecurity, 14 EpochCurrent, 15 EpochNew, 16 HistoryCandidate,
 17 AppendIntentCurrent, 18 AppendIntentNew, 19 CompactionIntentCurrent,
-20 CompactionIntentNew. Result is 1 registered or
+20 CompactionIntentNew; revision 9 adds 21 EvidencePack under capability bit 8
+with the exact 10.7 size/access/lifetime contract. Result is 1 registered or
 2 refused, with ChildIntentId zero on refusal. Current roles are read/query/
 exact-delete only, except Segment's admitted offset writes; only New roles
 receive bounded output/replace rights. Segment additionally receives bounded
@@ -2335,8 +2346,9 @@ is null or the strict object `{Version:1, CompletionBase64,
 PublicationNativeReceipt, Claim, Authorization}`. Claim is the exact 9.3 Drained
 claim snapshot; schema 3 adds required-null `DrainWitnessId` to CustodyClaim,
 nonempty only in Drained and equal to PrivateRundownWitnessId. Authorization is
-`{WitnessId, Entry, PublicationApproval}`: the complete validated **pre-promotion existing Entry**
-snapshot (Publishing for publication, Blocked/Copying for hand-back), with no
+`{WitnessId, EvidenceReferenceBase64}` in revision 9; the immutable 10.7 pack
+contains the complete validated **pre-promotion existing Entry** snapshot
+(Publishing for publication, Blocked/Copying for hand-back), with no
 CustodyTransferCompletions field, so it contains no recursive completion. It
 retains original Transfer/SID/process identity, destination binding, security,
 seed/read/export evidence and relevant policy/justification history. WitnessId
@@ -2353,8 +2365,10 @@ source journal RecordId/revision committing this completion, are already fixed.
 The budget receipt differs from these bytes only at offset 160. This avoids a
 self-hash or circular acceptance-revision dependency. Completion snapshots are
 immutable and retained verbatim when the containing manifest advances revision;
-no new per-promotion file or unbounded list. `CustodyTransfers.Completion` retains
-the full snapshot, not just its ID/hash, before any source record can be retired.
+no unbounded completion list. Under revision 9, `CustodyTransfers.Completion`
+retains Claim/native facts and the exact 10.7 evidence reference; the complete
+authorization/Entry/approval lives in its immutable charged pack, which must
+remain reachable before any source record can be retired.
 
 | ProofKind / existing journal boundary | Required completion authority |
 |---|---|
@@ -2431,8 +2445,10 @@ authority; it never authorizes publication/justification again after restart.
 All fields below are required, including explicit nulls; exact case, no unknown
 or duplicate properties at any depth, numeric strings/fractions/exponents,
 unknown enums or malformed UTF-8/UTF-16. Canonical writer order is the order below,
-compact UTF-8/default escaping, no BOM. Whole enclosing record depth <=16 and
-64/128 KiB limits still apply; there is no extra allowance for this snapshot.
+compact UTF-8/default escaping, no BOM. Whole JSON record depth <=16;
+revision-8 inline limits were 64/128 KiB. Revision 9 stores this complete semantic
+schema through 10.7's lossless evidence projection; only its metadata projection
+has the 64 KiB limit, never the complete findings list.
 
 `PublicationApproval = {Version:1, Binding, Operation, Inspection, PolicyCheck,
 Justified Boolean, Justification}` with exact nested schemas:
@@ -2525,9 +2541,9 @@ permission to ignore old records. Current enabled startup rejects non-JSON
 residue (`StagedSpaceBudget.cs:89`); accounting-disabled startup checks reservation
 entries (`MinifilterInterceptor.cs:1705`). Both must keep refusing this marker.
 
-Marker is exactly **128 bytes**: magic ASCII `SAFMT003`@0; u32 FormatVersion=3@8,
+Revision-9 marker is exactly **128 bytes**: magic ASCII `SAFMT004`@0; u32 FormatVersion=4@8,
 Size=128@12; InstallationId GUID@16; identities StageRoot@32,
-Reservations@56, JournalHot@80 (24 bytes each); u64 RequiredFeatures=0xff@104;
+Reservations@56, JournalHot@80 (24 bytes each); u64 RequiredFeatures=0x1ff@104;
 zero[16]@112. Identity/security verified through held capabilities. Store the
 same InstallationId and required format in every modern ledger, modern manifest
 and shared control record. First modern creation is forbidden before marker
@@ -2536,7 +2552,10 @@ creation is preserved and refuses modern startup; never normalized in place.
 
 ### 10.2 Typed completed history and bounded append intent (finding 4)
 
-Modern frames use a strict discriminated envelope, FormatVersion=2,
+The following retained revision-8 envelope describes the inline baseline;
+**new revision-9 writes use 10.7's FormatVersion=3/ResourceSchema=4 and fixed
+EntryReference**, with identical kind/chain authority. Baseline frames use
+a strict discriminated envelope, FormatVersion=2,
 ResourceSchema=3, InstallationId, RecordKind u32, RecordId GUID, TransferId GUID,
 positive RecordRevision i64, PreviousRecordId (required nullable GUID), Entry
 (required nullable), ResourceClosure (required nullable), OrdinaryDiscardDisposal
@@ -2939,33 +2958,34 @@ Nullable properties are present explicitly as null; null is not an empty object.
 GUID JSON strings use lowercase `D`; leaves use lowercase `N`; SHA256 is uppercase
 hex. u64 accepts 0..18446744073709551615, signed-positive revisions never wrap.
 Normalize only validated new values when writing, never repair hostile evidence.
-Schema-3 identity JSON uses the codec's exact unsigned `VolumeSerialNumber`,
+Schema-3/4 identity JSON uses the codec's exact unsigned `VolumeSerialNumber`,
 `FileIdHigh`, `FileIdLow` properties (wire identity remains low-before-high).
 Historical receipts validate exact saved bytes/correlation without a new clock.
 
 For **new** envelope writes use compact `Utf8JsonWriter`, default escaping
 (`JavaScriptEncoder.Default`), no BOM/indentation, the following property order:
 `FormatVersion, ResourceSchema, InstallationId, RecordKind, RecordId, TransferId,
-RecordRevision, PreviousRecordId, Entry, ResourceClosure, OrdinaryDiscardDisposal,
+RecordRevision, PreviousRecordId, EntryReference, ResourceClosure, CompletionState, OrdinaryDiscardDisposal,
 ResolutionDelta, LegacySource`. The first twelve properties retain 10.2's
 semantics; `LegacySource` is required-null on kinds 1–3 and required on the new
 migration-only kind 4 below. Readers accept property order variation but check
 exact schemas. Identity-bearing duplicate records/candidates compare their saved
 **exact canonical writer bytes**, not reserialized object equality. No changed
-bytes under one RecordId, even equivalent JSON. Nested Entry retains its existing
-strict journal schema, with 9.3.1's CustodyTransferCompletions extension only
-for modern Entries; legacy/kind-4 Entry grammar stays unchanged. ResourceClosure
-is complete strict schema 3, <=64 KiB,
-HistoryHandoff=null. No v2 passive record is relabelled schema 3. The reference
+bytes under one RecordId, even equivalent JSON. Revision 9's EntryReference
+resolves to 10.7's immutable complete Entry core; modern completions remain in
+the enclosing manifest. Legacy Entry bytes/grammar stay unchanged, including
+kind-4 migration provenance. ResourceClosure is complete strict schema 4,
+<=64 KiB, HistoryHandoff=null. No v2/v3 passive record is relabelled schema 4. The reference
 model isolates envelope byte costs and chain semantics; it is not that full codec.
 
 | Serialized item / measured UTF-8 bytes before native create | Bound / failure |
 |---|---|
 | OriginalRequest / ACK request / ACK reply | 1192 / 1272 / 72 decoded bytes; canonical Base64 **1592 / 1696 / 96** characters. Exact equality after round-trip, no whitespace or alternate pad bits. |
 | Modern ledger / append.intent / compaction.intent | Each <=**65536**, depth <=16, including every property, array, witness, creation/release claim, escape and .NET writer output. Four slots/claims, one companion transaction, one bounded latest replay, <=32 sources/targets; no per-growth list. Serialization exhaustion preserves prior state/charge and holds the transition. |
-| Envelope, candidate, frame payload, modern manifest | Each <=**131072** actual bytes; Entry<=131072, closure<=65536, wrapper W<=8192 and **E+S+W<=131072**. E/S are exact encoded nested values (null is four bytes), W is actual remainder, including receipt/delta/LegacySource and keys. At independent E/S/W maxima 204800 bytes, refuse handoff and keep ledger. No truncation/receipt omission. |
+| Envelope, candidate, frame payload, modern manifest | Each <=**131072** actual bytes; closure/completion state S<=65536, wrapper W<=8192 and **E+S+W<=131072**. Revision 9 E is the fixed 192-byte EntryReference encoded as canonical Base64 (or null), not an inline Entry; complete Entry<=131072 lives in 10.7 evidence. S is the one nonnull ResourceClosure or CompletionState value; W includes the null alternative, keys and exact receipt/delta/LegacySource controls. Revision-8 independent inline E/S/W maxima were 204800 and retained the ledger; the referenced format must pass actual full-shape controls before consumers. No truncation/receipt omission. |
 | Identity/slot/intent counters and leaves | Three full u64 identity words, positive i64 revision/generation/incarnation, checked arithmetic; candidate leaf exactly `<RecordId:N>.resource` (**41 ASCII bytes**), no separators, ADS, NUL or alternative case/spelling. Segment leaf remains eight uppercase hex digits plus `.pack`; segment numbers positive u32, no overflow when allocating successors. |
-| Public custody record / two fixed cells | 2048 bytes each / canonical Base64 2732 characters; completion has acceptance R=0, budget receipt positive R. Include each full Claim/Authorization/native-proof snapshot and required Entry/ledger cells in actual UTF-8 64/128 KiB checks; no omitted witnesses, truncation, unbounded history or larger envelope. Oversize/ambiguous proof stays charged. |
+| Public custody record / two fixed cells | 2048 bytes each / canonical Base64 2732 characters; completion has acceptance R=0, budget receipt positive R. Include both full Claim/native-proof snapshots and fixed 192-byte authorization references in actual UTF-8 64/128 KiB checks; complete authorization is immutable out-of-line evidence under 10.7, never omitted. Oversize/ambiguous proof stays charged. |
+| Revision-9 evidence reference / framed record / container | **192** bytes (Base64 **256** chars), chunk header **256**, record **131072**, payload **130816**, logical stream **18972672**, <=**146** chunks, whole exact object <=**19202048**; exact derivation/identity/creation/accounting in 10.7. |
 | Existing binary ABI | Header 64; request 1192; result 352/outer reply 376; negotiation 96/112; companion 192; marker/inventory 128; frame header 60; frontier header 128 in each A-byte slot; ShellSnapshot payload 9888. Existing sizes unchanged; 9.3.1 adds a new stored receipt, not a wire resize. |
 
 Measure serialized **bytes**, not .NET string.Length or an estimated field sum.
@@ -2977,12 +2997,15 @@ fits. Serialize/validate into bounded scratch first; a crossing writer stops at
 limit+1, retains original evidence and creates no candidate. This is a metadata
 handoff bound, not a modern content-size cap or new publication verdict.
 
-**Actual serializer limitation:** there is currently no product schema-3
-closure/envelope, candidate or migration serializer at HEAD `7c3ab3e5`.
+**Actual serializer limitation (historical baseline):** at HEAD `7c3ab3e5` no
+product schema-3 closure/envelope, candidate or migration serializer existed.
+At `ad5e1824` the passive typed preflight materialized the supported-shape overflow;
+10.7 selects proposed v4 evidence splitting. Complete accepting v4 codecs,
+transitions and actual maximal-shape acceptance remain OPEN before consumers.
 Existing `ResourceStateCodecV2.MaximumBytes=65536` and
 `StagedJournalFile.MaximumManifestBytes=131072` validate their own formats only.
 The independent model executes real writer boundaries/escaping, full ACK byte
-strings and 32-source/32-target control records. The prerequisite actual schema-3 serializer/transition proof remains **OPEN
+strings and 32-source/32-target control records. The prerequisite actual v4 serializer/transition proof remains **OPEN
 before coding increment 4** (8.6/12.1.3); the pure model does not defer or close
 it. As each new increment-4 record is implemented, before its first use its
 **actual production serializer+strict reader** must
@@ -3180,6 +3203,288 @@ Missing selected suffix, missing copied base/ACK/witness, duplicate changed lega
 TransferId or inconsistent hot/packed record holds. Candidate/copy/select/delete
 faults retain old+new/residue charge; this is not a rewrite/prune license.
 Controls R4-H04/H05, R5-S04 and N-U8-02/03 retain their source/native obligations.
+
+### 10.7 Revision 9: immutable out-of-line evidence, schema 4 (PROPOSED)
+
+**Precedence and progress.** The passive `ad5e1824` measurement used the actual
+complete typed ledger, default JSON escaping and whole depth 9/16. For 128 CPF
+findings sharing one 512-UTF-16-unit ZIP member name, approval/ledger sizes were
+**81,489/107,382 bytes (ASCII)** and **406,609/432,502 (non-ASCII)**. Both ledgers
+exceed 65,536; the latter approval even exceeds 131,072. Raising the ledger to
+128 KiB still fails the latter; raw UTF-8 escaping alone does not fix the ASCII
+case, repeated member names, a maximal source Entry or simultaneous completions.
+Select a lossless split, retaining complete inspection, fingerprint, justification,
+caller grants and native proof. No truncation, new finding-count/name restriction
+or evidence-free approval is selected. Supported ordinary shapes must fit by
+construction, subject to the unchanged real budget/free-space/deadline and
+authority checks; storage exhaustion still refuses privately.
+
+**Version boundary.** New ledger `Version=4`, modern envelope `FormatVersion=3,
+ResourceSchema=4`; its Entry field is replaced by required-null `EntryReference`,
+and required-null `CompletionState` follows ResourceClosure in writer order.
+Kinds/base/delta semantics and remaining envelope fields are unchanged. Source
+Entry snapshots inside evidence omit CustodyTransferCompletions (no recursion).
+Modern terminal manifests likewise keep two completion cells outside the Entry
+core, with the core represented by EntryReference. When ResourceClosure is null,
+CompletionState is null before any completion, or exactly
+`{CustodyTransferCompletions:[completion-or-null,completion-or-null]}` containing
+9.3.1's immutable source completions (acceptance R=0). When ResourceClosure is
+nonnull it retains the full two budget receipt/completion cells and CompletionState
+must be null, avoiding duplication or disagreement. The one nonnull state is
+S<=65536; keys/null alternative count in W<=8192. With reference E<=1538 and
+W<=8192, the selected E/S/W bound is **75,266 bytes**, below 131072, independent
+of finding/member evidence size. The actual typed maximum and whole depth still
+must be proved, rather than treating these caps as that proof. A resource-only base has
+EntryReference=null. Inline-v3 and referenced-v4 are never interchangeable.
+Schema-3 passive types/preflight at `ad5e1824` remain evidence of the stop, not an
+accepting v4 reader. Legacy/kind-4 migration source bytes stay unchanged; modern
+wrappers retain their exact legacy provenance. Existing live v1/v2 is untouched.
+
+At first referenced write, persist/verify the 128-byte marker with magic
+`SAFMT004`, FormatVersion=4, RequiredFeatures=**0x1ff**; prior 0xff bits retain
+their meanings, bit **0x100 = ReferencedEvidenceV1**. Modern negotiation requires
+and accepts exactly 0x1ff for this format; old/partial peers stay NotReady.
+Changing an existing v3 marker requires an identity-bound, charged replacement
+and complete inventory classification, never in-place rewriting or fallback.
+Both reader families refuse unknown versions/features or missing referenced
+objects, including surviving modern evidence with a missing/corrupt marker.
+The trusted-private-storage O2 boundary and sticky Unknown remain unchanged.
+
+**What moves.** Completion.Authorization becomes exactly
+`{WitnessId, EvidenceReferenceBase64}`. Kind 1 evidence contains the entire
+validated pre-promotion source Entry and 9.3.2 approval (null for hand-back).
+Claim, complete bound native facts, CompletionBase64 and both fixed completion
+cells remain in the ledger/journal; they bind the reference's witness/operation/
+K/D to the same completion. Kind 2 evidence contains a complete journal Entry
+core; its approval section/findings/name table are empty. The envelope/manifest
+holds only its fixed reference and the existing bounded completion cells.
+There is no embedded Entry in a ledger authorization, no approval in a receipt,
+and no recursive evidence reference in the saved Entry core. Validation loads
+the exact evidence and applies the original Entry/approval/grant checks before
+promotion, completion acceptance, archive selection or historical reconstruction.
+Missing evidence never means clean approval or a released charge.
+
+**Fixed reference, exactly 192 bytes (Base64 256 characters).** All integers
+little-endian, GUIDs use the existing stored Windows byte order; identities
+are three u64 words volume/low/high. Fields are all required; reserved bytes zero.
+
+| Offset | Exact bytes / check |
+|---|---|
+| 0, 8, 12 | ASCII `SAFEVR01`[8], u32 Version=1, u32 Size=192 |
+| 16, 32, 48, 64 | InstallationId, TransferId, OperationId, EvidenceRecordId GUIDs, all nonzero |
+| 80, 88 | positive i64 EvidenceGeneration; captured EvidenceObjectIdentity[24] |
+| 112, 120 | positive i64 exact file Length; SHA256[32] of **all file bytes**, including header, frames and padding |
+| 152, 156 | u32 Kind=1 Authorization / 2 EntryCore; zero u32 |
+| 160, 168, 176 | positive i64 AllocationGeneration, DestinationGeneration; AuthorizationWitnessId GUID (kind 2 uses its own immutable Entry snapshot witness) |
+
+The owning current record supplies the expected complete tuple above; lookup
+is not authority. Open only the recorded exact object under JournalHot, verify
+held identity/security/no reparse/single link, exact length, digest and internal
+tuple, then validate its full payload against the original claim/inspection/
+source Entry and original SID/session. Never substitute another object with
+identical bytes, a matching digest/name or a different generation. Hashes bind
+bytes; handles/identity and the persisted owner transition bind custody.
+Leaf is exactly `<EvidenceRecordId:N>.evidence` (**41 ASCII bytes**), used only
+to locate/diagnose the identity-bound object. Duplicate reference/reply is a
+no-op for the exact immutable tuple/bytes; changed same-ID evidence, an old
+generation applied to a new operation/slot or different caller refuses/Held.
+
+**Finite, lossless payload bounds from current producers.** 128 and 512 are
+regression shapes, not product maxima. StreamingContentScanner.MaximumCandidates
+is **16,384**, shared across ZIP names/members. ZipInspectionGuard bounds each
+raw UTF-8 name by u16 **65,535 bytes**, ArchiveInspectionBudget bounds aggregate
+metadata by **4,194,304 bytes**, charges at least `3*rawNameBytes+128` per entry,
+caps entries at **16,384**, and nesting at **3**. Its display escapes each control
+UTF-16 unit to six literal units and inserts `!/` between levels. Thus one full
+display is at most **1,179,634 UTF-16 units** (`3*65535*6+4`). NUL/control escapes
+are retained literally; no Unicode normalization/case folding. Strict UTF-8 and
+paired UTF-16 only; malformed text refuses before issue.
+
+Do not repeat that display in every finding. Intern all distinct nonnull member
+displays in ordinal UTF-16 order, then front-code them: each member stores u32
+longest-common-prefix units with its predecessor (0 for first), u32 suffix units,
+then that suffix in strict UTF-16LE (no BOM). Prefixes cannot split surrogate
+pairs; require canonical longest legal prefix and strictly increasing decoded
+names. Findings preserve original order/multiplicity using i32 member index
+(-1 for null), u32 category 0..4, u32 masked-snippet units, then strict UTF-16LE
+snippet, <=**32 units**. Existing numeric masks are <=16 units; all fixed secret
+labels plus `: ` and eight bullets and password labels fit 32; control all current
+labels in producer tests. No new unmasked data is introduced. Complete successful
+inspection has Reason=null (InspectionService's completed scan path); failed/
+incomplete inspections cannot become this approval. Their unchanged hand-back
+Entry retains failure diagnostics, not a fabricated successful approval.
+
+For the set of displayed member paths, the source member tree gives a trie with
+at most one escaped component per original entry and <=2 separator units per
+edge. Even allowing 16 extra units per sensitive-name replacement, the sum of
+front-coded suffix units is bounded by
+`6*floor(4194304/3) + 18*16384 = 8,683,518`; select the conservative bound
+**8,683,520 units**. Taking a subset of paths with findings or merging equal
+displays cannot increase the trie edge sum. Ordinal front coding emits at most
+that sum; a surrogate-safe prefix can add at most one unit per boundary, so
+**add 16,384 units** to the bound: **8,699,904 units** is the selected wire limit.
+This explicitly covers supplementary characters at front-code boundaries.
+The reader validates counts, individual lengths, prefix grammar and aggregate
+suffix units before allocation/advancing; the producer proof must independently
+verify this inequality against the actual ZIP/display pipeline, not merely
+accept a sender's declared lengths.
+
+The logical stream is exact concatenation: (1) complete canonical source Entry
+UTF-8 bytes <=**131,072** under its unchanged strict schema, (2) approval metadata
+UTF-8 <=**65,536**, depth <=16, using 9.3.2's exact DTO/default escaping with
+Inspection.Findings=[] only as a storage projection, (3) ordered finding records,
+(4) front-coded member records. Reconstruct all findings before applying 9.3.2;
+an empty metadata projection alone is never approval. All non-finding metadata
+has existing bounded operation/SID/fingerprint/identity fields, two bounded
+operation copies, at most two bindings and one consumed justification; complete
+maximal actual metadata must fit 65,536 (no extra Reason/error string or arbitrary
+extension field). This is a separate actual-codec acceptance proof, not a claim
+the old whole approval fits. Kind 2 has no metadata/findings/names. Header counts
+fix section boundaries; reject extra/truncated bytes and noncanonical layouts.
+
+| New evidence size | Exact selected limit / arithmetic |
+|---|---|
+| Finding/name count | Each <=16,384; a finding <=12+2*32=76 bytes, member overhead 8 bytes |
+| Aggregate logical payload | **18,972,672 bytes** = 131072+65536+16384*(76+8)+2*8699904 |
+| File header | A-byte aligned block; active **256 bytes**, zero remainder; A is the captured supported 4096..65536 alignment |
+| Chunk record | Exactly **131,072 bytes**: **256-byte** header + 1..**130,816** payload bytes + zero padding; all except last have full payload |
+| Chunks/file | Exactly ceil(LogicalBytes/130816), <=**146**; empty stream forbidden |
+| Whole evidence object | Exactly `A + ChunkCount*131072`, <=**19,202,048 bytes** (A=65536, 146 chunks); a file is a bounded container of records, not a larger ledger/frame/manifest |
+
+File header active bytes: `SAFEVP01`@0, u32 Version=1@8/Size=256@12,
+Installation/Transfer/Operation/Record GUIDs@16/32/48/64, generation i64@80,
+own identity[24]@88, Kind u32@112, EntryBytes/MetadataBytes/FindingCount/NameCount/
+ChunkCount u32@116/120/124/128/132, SuffixUnits u64@136, LogicalBytes u64@144,
+FileBytes u64@152, AllocationGeneration/DestinationGeneration i64@160/168,
+Witness GUID@176, zero[64]@192. Header and reference must agree; kind-2 zero
+fields and kind-1 hand-back null approval are explicit, not omitted fields.
+Chunk header: `SAFEVC01`@0, u32 Version=1@8/HeaderBytes=256@12, Record GUID@16,
+generation i64@32, u64 zero-based Index/Count/LogicalOffset@40/48/56,
+u32 PayloadBytes/Stride=131072@64/68, payload SHA256[32]@72,
+previous complete chunk SHA256[32]@104 (all zero for first), zero[120]@136.
+Validate every chunk/payload/hash/chain/padding/offset plus whole file hash;
+neither a valid last chunk nor a matching aggregate digest substitutes for grammar.
+Streaming uses one 128 KiB chunk and bounded metadata/previous-name state;
+bounded disk records do not establish parser-memory qualification by themselves.
+
+**Unchanged limits and ABI.** Ledgers/append.intent/compaction.intent remain
+**65,536**; modern manifest/envelope/candidate/archive payload remain **131,072**,
+whole depth 16, frame header 60, frontier 128-in-A, segment 4 MiB, wrapper W<=8192.
+Shared handoff that cannot fit combined fixed controls may still retain the
+ledger; ordinary evidence must not cause that overflow. Modern manifests pack
+EntryReference instead of Entry, so a maximal Entry is no longer nested inside
+another bounded Entry/ledger. Historical schema-3 inline specimens still refuse;
+do not reinterpret their bytes as a v4 record. O3 receipt stays **2048 bytes /
+2732 Base64 characters**: its AuthorizationWitnessId already binds the owning
+completion's 192-byte reference; no reference occupies reserved receipt bytes.
+At most two authorization references, one current EntryCore and one replacement
+are live per transfer; no per-growth evidence history. References encoded in
+JSON can cost <=**1538 bytes** each (256*6+quotes) under default escaping.
+Actual simultaneous fixed-control maximal-shape proof remains required.
+
+Metadata role **21 EvidencePack** is a proposed capability extension under
+ReferencedEvidenceV1, not accepted by existing role-1..20 validators. It allows
+one preclaimed exact GUID leaf under JournalHot, FILE_CREATE, bounded sequential
+aligned write/flush/EOF through capture/preparation, then irreversible read/query/
+identity-bound exact delete only. No overwrite, replace or second write after
+Prepared; no arbitrary file or public path. Child MaximumLogicalBytes/allowed
+EOF <=19202048 and the exact captured A/tuple are checked on both peers.
+EvidenceClaim.ReservedMax is a separate **physical** reservation, rounded/precharged
+under 8.4's U/preallocation/overshoot rules; it is not capped at logical file size.
+The existing 640-byte
+child request, all field offsets, header 64, request 1192, result 352/outer 376,
+negotiation 96/112, companion 192, marker/inventory 128 and ShellSnapshot 9888
+stay the same size; bit/role semantics require updated validators and independent
+review before use. Growth still cannot use metadata-only roles. Four total
+child credits remain: release/drain each completed pack child before admitting
+the next journal/ledger replacement; no simultaneous fifth child or pending pin.
+
+**Owner/order/accounting.** Journal/publication serialization owns evidence;
+budget serialization owns only its bounded reservation/identity/reference map.
+Ledger-v4 adds required `EvidenceClaims[4]`: each null or
+`{RecordId, Generation, Kind, OperationId, AuthorizationWitnessId,
+AllocationGeneration, DestinationGeneration, OwnerEpoch, Phase, Identity nullable,
+Length nullable, Sha256 nullable, ReservedMax, MeasuredAllocation nullable,
+DrainWitnessId nullable, ReleaseWitnessId nullable, ReleaseKind nullable, AccountingOwner,
+SharedOwnershipRevision nullable}`. GUIDs/identity/generations use the reference
+rules; positive checked revisions/bytes, exact allowed nullable fields by phase.
+Phase=1 ReservedNotIssued, 2 CreationMayHaveStarted, 3 Captured, 4 Prepared,
+5 Referenced, 6 Detached, 7 DeleteMayHaveIssued, 8 StorageReleased; these are
+evidence custody phases, separate from the public promotion claim's MayHaveIssued.
+Phases 3–7 require identity, phases 4–7 complete length/digest. Phase 8 uses
+9.3's identity-bound FinalStorageRelease/ExactAbsenceAfterDrain kinds 3/4 and
+both exact drain/release witnesses, or its narrowly proved NeverIssued/
+DefinitiveNonCreation kinds 1/2 with no fabricated identity. No evidence object
+uses public-custody-transfer kind 5. AccountingOwner=1 transfer or 2 shared; owner 2 requires
+the persisted exact selected-inventory transition revision. The same strict
+claim/identity and aggregate charge transition is mirrored in shared custody
+before a ledger can disappear. Phase 2 cannot reset to 1 on restart. Failed old
+current/replacement objects keep their position until exact release; no fifth
+object, per-retry list or forced deletion of unresolved residue is permitted.
+No budget→journal call or directory scan under the gate. Before create, fully
+preflight all dimensions/serialized fixed records and reserve the worst aligned
+physical growth (including allocation overshoot, candidate/header/padding and
+replacement overlap) in a persisted per-transfer evidence claim. This is an
+explicit additive metadata charge: `Charge = existing four-copy/content+metadata
+formula + E_phys`; E_phys counts each retained evidence identity once, or its
+ReservedMax while creation/identity/size is uncertain. It is not covered by
+content EOF or silently hidden in the 1 MiB allowance. Same SID/global/default
+budget/free-space limits apply. Increase charge before retaining an unexpectedly
+larger physical allocation or hold; never cap measured R_phys at logical bytes.
+
+Persist ReservedNotIssued→CreationMayHaveStarted before native create; capture
+identity before write. Write exact header/chunks with captured identity, flush
+F1, exact EOF, flush F2, prove immutability/drain, then persist Prepared with
+exact reference/digest and actual allocation. Persist the owning journal intent
+with that reference and full authorization relationship **before** promotion
+MayHaveIssued; close old issuers. Revalidate complete source/approval/grants and
+the current policy at the original operation as already required. Only then may
+native publication/authorized hand-back issue once. Its exact completion retains
+the same reference; journal completion precedes identity-bound budget R+1/O3
+acceptance and memory adoption. Lost replies/restart never repeat the public
+mutation or renew a consumed justification. Metadata for EntryCore snapshots is
+prepared before the manifest referencing it is committed. Old current core stays
+charged until replacement selection and exact release; no overwrite in place.
+
+On shared handoff, charge all selected history's reachable evidence to the shared
+physical allowance **before** dropping per-SID evidence/ledger charge, in one
+persisted transfer-of-accounting transition with exact reference set. Failure to
+admit shared physical debt retains the per-transfer ledger/evidence charge.
+Compaction copies fixed references and validates their reachable packs; it does
+not duplicate/erase approvals or change an identity because content hashes match.
+O3 removes the delivered content slot's charge, not the evidence's physical debt.
+
+| Crash/GC boundary | Recovery, without invented authority or refund |
+|---|---|
+| Claim persisted, no create / create reply lost | ReservedNotIssued can retire only after closed-issuer non-creation; MayHaveStarted keeps ReservedMax until exact captured identity or existing 9.3 release proof. No pathname adoption. |
+| Captured partial file or complete orphan before Prepared/reference commit | Retain charged exact object. No promotion; finish bookkeeping only from the exact claim/complete validated durable bytes, or identity-bound GC after closing/draining all owners. Unknown object/claim holds. |
+| Prepared or reference durable; file absent, substituted, corrupt, mismatched or generation changed | Held; no approval, promotion, O3 acceptance/refund, history selection or repair from another file/digest. Previously committed uncertain accounting faults admission conservatively; never replay a public mutation. |
+| Reference durable, before issue / MayHaveIssued before completion | Full proof revalidation before first issue; MayHaveIssued survives restart and allows reconciliation/bookkeeping/Held only. Current policy checks are not replaced by historical evidence. |
+| Completion/budget persist or reply lost; old completion replay after slot reuse | Existing 9.3.1/9.3.3 order and immutable claim-R/current-R rules. Exact completion/reference replay returns saved acceptance R once; changed tuple/bytes or application to a new generation refuses. |
+| Hot→shared/compaction selected, before old ledger deletion | Resolve reachable references from the durable selected inventory, hot/current candidates and unfinished claims. Count each physical identity once globally; durable owner transfer precedes any SID debit removal. |
+| GC after no roots / delete reply lost / restart before release adoption | GC owns a persisted exact identity/generation claim and irreversible admission closure; live readers/native operations must actually drain. Prove no reference from current/new ledgers/manifests, candidates, selected bases/deltas/legacy wrappers or pending append/compaction/creation claims under stable inventory revisions. Persist unlink intent before exact delete, then identity-bound final-storage-release transition before refund; lost reply stays charged until exact reconciliation. No age/count/digest/name-only deletion. |
+
+Selected historical authorization is a live GC root for as long as the design
+retains that historical witness. Packing or old policy age alone does not prune
+it. GC chiefly reclaims unreferenced failed/replaced candidates; referenced packs
+are not automatically garbage at O3 acceptance. A zero-reader persisted witness
+cannot override an actual reader, late operation or sticky Unknown.
+
+**Controls / order.** **Increment 4, R4-H06 [before-coding dependent consumers]:**
+independently review this format delta and prove the member-trie/front-code bound,
+all dimensions and exact byte layouts; pure controls exercise 128/512 ASCII and
+non-ASCII round trips, >512/supplementary/control names, binding/substitution/
+missing-object/replay mutants, issue/persist/crash ordering and charged GC.
+**R4-H06 [before-use passive codecs] / 12.1.4:** actual v4 complete maximal
+ledger/manifest/evidence serialization and strict readers, full simultaneous
+states, source-derived maxima, every limit+1 and zero native-issue counter on
+refusal, independent source acceptance. **[Before-first-boot]:** exact role-21,
+capability/marker, I/O ordering/physical accounting and rundown source review;
+existing build/static/import/matrix gates remain. **N-U8-04 [before-qualification]:**
+real partial/orphan/missing/substituted evidence, lost F1/F2/reference/completion/
+budget replies, repeated restart, held reader/late operation, shared-owner
+transfer, full disk, GC delete/reply loss and independent public mutation counts
+on the matched protected pair with restoration. No pure model closes these gates.
 
 ## 11. Kernel growth/MM feasibility and stop condition
 
@@ -3386,7 +3691,7 @@ unreviewed kernel loading. R3-M04P needs its own reviewed protected/native setup
 | Integration | Contract/fact required before implementation | Implemented source required before its first boot | Runtime/component evidence after implementation |
 |---|---|---|---|
 | T9 increment 3 | **Before-coding:** accepted U4/U5/outer-hook and corrected nominal-geometry contracts with 8.4 preallocation/R_phys and class-65/flags-3 delta; 8.6 opaque/passive prerequisites; 8.7.1 PrivateRoot/AncestorEdge and fixed held installation ancestry; 8.7.2 preserved Busy, both validators and four-total-child credit representation. Actor deferral recorded separately, no O1/O2 prerequisite. | **Implemented source review before load/boot:** both wrappers/tag-3/drain/CLEANUP/CLOSE; actual auth/anchors/security/repair, imports, Busy dispatch+adapter, concurrent pools/context pins and native lifetimes/accounting. Exact-role N-U4/N-U8 corrected strict mechanisms, selected class/flags/masks/pins and raise-before-fault source review, target **19045.2965 N-U4-06 before any boot-time reliance**, WDK/static/import and full agent matrix remain. **N-U5-01 executes after source review on an authorized real component host, before first protected-target boot/checkpoint.** | Builder results 2 remain 94/97, three strict failures, no completed delivery matrix. R3-M05/M06/M08 and M02/M03 raw runtime cases follow their implementations/review. Early R3-M04P is optional feedback after reviewed authorized setup, narrower than actor proof. R3-M01 held-old-epoch and R3-M04 full saturation/echo remain OPEN to 6; real reduction/archive/fence/growth assertions retain 4/5/6 ownership. Fake-send tests close no execution cell. Commit NotReady. |
-| T9 increment 4 | Residual 1 already complete in 5.4/10.2/10.4; U7 settled by O2. Proposed revision-8 U3 owner/crash contract (9.3) and U8 strict grammar/migration/candidate/tail/ACK/selection and serializer models (10.5/10.6); independent acceptance remains; O3 is decided and 9.3.1 selects the exact Kind=5 receipt. The actual serializer/codec prerequisites remain OPEN before dependent increment-4 coding (12.1.3). | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, **N-U8-02/03 actual selector/recovery/migration**, R3-M03 real reduction stress, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
+| T9 increment 4 | Residual 1 already complete in 5.4/10.2/10.4; U7 settled by O2. U3 owner/crash contract (9.3) and U8 grammar/migration/selector models (10.5/10.6); proposed revision-9 evidence split (10.7), source-derived bounds, additive evidence debt and v4 work list (12.1.4) require independent acceptance; O3 is decided and 9.3.1 selects the exact Kind=5 receipt. The actual v4 full-shape serializer/codec prerequisites remain OPEN before dependent increment-4 coding (12.1.4), after the measured v3 stop. | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, **N-U8-02/03 actual selector/recovery/migration**, R3-M03 real reduction stress, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
 | T9 increment 5 | Residual 2 separate eight shell credits; U1 boot/old-instance and U2 complete CREATE/cancellation audit; authenticated receipts, bounded snapshot/ACK eviction scheduling, deadline through later lifecycle calls, fence-specific U5 Busy. | Capture-to-callback/exposure ownership, success/non-adoption evidence, eviction credits and reconnect, deadline/failure vs separately owned cleanup; coherent lifetime/lock-order review. | R3-A01..05/R4-D01, R3-M04 **real fence/ACK/snapshot** progress, repeated durable-success-before-ACK interruption, pending-vs-shell saturation, exact same-name recovery and no failed-CREATE adoption. |
 | T9 increment 6 | Residual 3 pre-buffer-lock owned-I/O credits/MDL ownership; U6 real Major/Minor/IRQL/resource/completion inventory and actual byte/structure maxima; measured 32/256/64 bounds and implementation of decided O1 (3 s per I/O). | Full growth/replay/companion/MM/MDL/paging/pin/retirement integration, including user buffers and cancellation ownership, reviewed before boot. | R4-D02/MM01..03 and R3-M01/M04 **production growth/reply** plus R3-M03 saturated growth/reduction integration; routed actor evidence, many writers before FltLockUserBuffer/resource acquire, borrowed/created MDL release, deadline/teardown/retirement races and Verifier. |
 
@@ -3415,6 +3720,10 @@ and early native/protected execution obligations retained. It does not require l
 before the substrate is written, nor permit enabling Commit or dropping their final assertions.
 
 ### 12.1.3 Increment-4 before-coding audit (revision 8, proposed)
+
+The revision-7/8 assessments below are retained history. The later actual v3
+passive preflight at `ad5e1824` demonstrated the supported-shape fit stop;
+current proposed resolution/prerequisites are 10.7 and 12.1.4 (v4), still OPEN.
 
 Baseline citations here are **revision 7 at `7c3ab3e5`**, so later insertions do
 not change what was assessed. This is an adversarial contract audit, not an
@@ -3465,6 +3774,20 @@ is retained as failed (four passes/two failures): concurrent untracked passive
 codec work appeared between profile copies; its duplicate types/missing approval
 type are excluded only by using the starting committed snapshot, without changing
 that work. Neither run is the Windows matrix or a product qualification result.
+Revision-9 diagnostic follow-up (SDK **10.0.400**, same in-process runner):
+**50 added cases; 298 contract + 70 unchanged fit = 368 discovered/executed/passed
+per Debug/Release configuration; 736 final executions, zero failures/skips**.
+Fifteen binding/replay counterexamples each reject under the complete model
+and are accepted only by the explicit guard-removal mutant. Controls include
+the real finding/name counts in the 128/512 regression shape (pure DTO fixture,
+not a rerun of the product ZIP extractor), 16,384 findings, surrogate-safe
+front coding, strict chunk/hash/padding, missing evidence at three crash points,
+once-only completion replay and charged actual-reader/operation GC. Local
+feature Debug/Release Service/App/Tests compiles pass all six builds with warnings
+as errors on a committed agent snapshot plus the model edit. This proposal
+implements no v4 product codec and claims no actual v4 maximum-shape, Windows
+matrix or native qualification result; 12.1.4 remains OPEN.
+
 Actual serializer prerequisites,
 native storage/durability, source acceptance and protected-pair qualification
 remain separate; these counts close no checkbox. This revision permits no product source,
@@ -3474,27 +3797,27 @@ are proposals requiring independent review, not changes to shipped/passive ABIs.
 
 ### 12.1.4 Finding 1: ordered passive-codec work before increment-4 consumers
 
-**OPEN; this revision implements none of this product-code work.** Increment-3
-first boot, a pure model or a 2048-byte receipt layout cannot discharge it.
-Paths below are under `agente/SafeUpload.Agent.Service/Interception/` unless
-qualified; names marked proposed are files to create in that separate task.
-Follow this order, retaining shipped v1/v2 behavior and all current admission/
-review/Windows gates. No consumer, native mutation or readiness success precedes
-the applicable passive proof.
+**OPEN.** `ad5e1824` supplies passive v3 types, approval/receipt leaves and
+preflight; its actual supported-shape stop requires independent acceptance of
+**revision 9 / 10.7** before replacement codecs or dependent consumers. No product
+code is changed by this proposal. Paths below are under
+`agente/SafeUpload.Agent.Service/Interception/` unless qualified. New v4 names are
+proposed files; existing v3 files remain historical stop/negative controls.
 
 | Order / tag / files | Concrete deliverable and controls |
 |---|---|
-| 1 / **[before-coding dependent 4]** `ResourceStateV3.cs` (proposed types first); composed `ResourceStateCodecV3.cs` is step 3; read existing `ResourceStateV2.cs`/`ResourceStateCodecV2.cs` unchanged | Define complete schema 3 by extending the accepted v2 representation, never relabelling v2. Include InstallationId/InitialCapacity/RetirementWitnessId, every slot/incarnation/claim including DrainWitnessId, InitialResolution (all saved request/fence/query/ACK bytes), GrowthReplay HighWater/latest, IdentityCaptured companion transaction, HistoryHandoff, both CustodyTransfers cells with full completions, nested authorization Entries/explicit approval/native facts. Specify exact required-null/duplicate/unknown/enum/numeric/UTF-8/UTF-16/u64 and checked phase/debit/identity rules for the composed reader in step 3. Declare full typed shapes without an accepting partial reader or I/O/negotiation; type scaffolding closes no codec gate. |
-| 2 / **[before-coding dependent 4]** `PublicCustodyReceiptV3.cs`, `PublicationApprovalCodecV1.cs`, `ResourceStorageCodecV3.cs` (proposed); reuse `SafeUpload.Agent.Minifilter/ResourceWireV32.cs` and `ResourceControlWireV32.cs` | Exact Kind=5 2048-byte receipt/completion and explicit 9.3.2 DTO; fixed companion 192, marker/inventory 128, frame header 60 and frontier 128-in-A codecs. Validate canonical Base64 including 1192/160/1272/72/2112-byte source records, native order/length/reserved bytes, zero acceptance only on source completion. Paired existing C/C# passive ABI layout checks stay distinct; do not add a producer. `PublicCustodyReceiptV3Tests.cs`/`PublicationApprovalCodecV1Tests.cs` (proposed) cover **every occupied byte/length/reserved/role/kind mutation**, fingerprint JsonIgnore loss, full caller/generation/operation/native/justification binding and no cross-version interpretation. |
-| 3 / **[before-coding dependent 4]** `ResourceStateCodecV3.cs` and `StagedJournalEnvelopeV2Codec.cs` (proposed, composing step-2 leaf codecs); existing `StagedTransferJournal.cs` Entry shapes are source definitions, not authorization to edit their runtime paths yet | Complete strict ledger reader/serializer and phase/debit/identity validator from step 1, plus modern hot/closure envelope and Entry DTO with two CustodyTransferCompletions cells; complete source Entry snapshots omit their own completion field to prevent recursion. Preserve explicit fingerprint/inspection, consumed justification, claim/rundown and complete bound native receipt. Resource-only binding-null, TransferClosure and ACK delta nullability/base eligibility must round trip exactly. Add `ResourceStateV3Tests.cs` and `StagedJournalEnvelopeV2CodecTests.cs` (proposed): full valid shapes, v2 rejecting v3, original bytes/counters preserved, one-field phase/debit corruption, and duplicate/unknown properties at every depth, missing required-null fields and source-record cross-binding negatives. Legacy Entry/kind-4 reader unchanged. |
-| 4 / **[before-coding dependent 4]** `CompletedArchiveV3Codec.cs` and `CompletedArchiveSelectionV3.cs` (proposed); read `StagedTerminalArchive.cs`, `StagedSpaceUpgrade.cs` and 10.2–10.6 | Typed candidate, append.intent (including compaction owner/legacy tuple), compaction.intent/cursor, mixed legacy prefix and exact base/delta/ACK selection. Enforce four occupied child-credit schedule and <=32 source/target inventories in representation; no extra files/handles in a pure codec. `CompletedArchiveV3CodecTests.cs`/`CompletedArchiveSelectionV3Tests.cs` (proposed) compare actual codec bytes to independent frame/frontier/candidate model inputs, both parities, old+new inventory and all preserved witnesses; no modern tail truncation, numeric-range-only proof or automatic native recovery. |
-| 5 / **[before-coding dependent 4]** `ResourceTransitionsV3.cs` (proposed), consumed later by `StagedSpaceBudget.cs`/`StagedSpaceUpgrade.cs`/native store adapters | Pure expected-R/current-state→candidate-state transitions for reserve→MayHaveIssued→captured→drained, initial fence/success/ACK debt, growth/replay/companion, retirement/reduction, ordinary discard, Kind=5 acceptance/replay/reused slot, metadata-only/shared handoff. Immutable claim R and current budget R are separate; persist candidate before memory adoption; no journal/content/native calls. `ResourceTransitionsV3Tests.cs` (proposed) interrupt every persistence/adoption boundary, late completion/cancel, unrelated R advances, durable unknown issue, old slot/cookie/generation, forged/undrained witnesses and ambiguous write inputs. Prove no duplicate debit/refund or repeated public mutation decision. |
-| 6 / **[before-coding dependent 4]** the actual files/tests above, plus proposed `ResourceSerializationLimitsV3Tests.cs` | Serialize **complete combinations**, not synthetic strings/field sums: all four occupied slots/claims with maximum counters/u64 identities/SID/locators; both retained Kind=5 receipts and full completions simultaneously, each full authorization Entry, explicit approval/findings/member names/consumed justification, native facts/ACK fields; all pending replay/companion/initial-resolution/handoff shapes legal together. Also complete closure envelopes, resource-only/delta/legacy wrappers and 32-source/32-target controls with cursor. Measure actual compact default-escaped UTF-8 and full root depth, including duplicated nested snapshots. Exercise 65536/65537 and 131072/131073 byte boundaries, wrapper W=8192/+1, whole depth=16/17, max UTF-16 escapes/non-ASCII/surrogate rejects and all Base64 overhead. The review's otherwise valid **65536-byte Authorization Entry inside a 65536-byte ledger** must refuse the **whole** record before native creation/promotion, leaving source and debit intact. Native-issue spy/counter stays zero on rejection; never omit fingerprints/witnesses or increase limits to fit. |
-| 7 / **[before-coding dependent 4 acceptance]** coherent passive source/test set above | Re-run all actual strict-reader, transition and full maximal-shape controls in Debug/Release; inspect discovery/execution and limit+1 refusal before issue. Obtain independent acceptance before increment-4 consumers use these formats. If ordinary supported combinations cannot progress within current bounds, present the concrete failing full shape and reviewed format/splitting delta first; do not discover it only after successful public mutation or invent another envelope. Subsequent actual consumer source review, full Windows feature matrix, applicable kernel/static/import and native/protected rows remain separate and open. |
+| 1 / **[before-coding dependent 4]** proposed `ResourceStateV4.cs`, `EvidenceReferenceV1.cs`; read existing `ResourceStateV3.cs`, `ResourceStateV2.cs` unchanged | Review 10.7's source-derived caps/trie/surrogate proof and schema/marker/capability delta. Complete typed v4 ledger, <=4 evidence claims/references/current+replacement, additive E_phys ownership, two fixed O3 completion cells with reference-only Authorization. All previous initial/replay/companion/handoff/claim/drain/native fields remain. No partial accepting reader. |
+| 2 / **[before-coding dependent 4]** proposed `EvidencePackCodecV1.cs`, `EvidenceReferenceCodecV1.cs`, `PublicationApprovalMetadataCodecV1.cs`; existing `PublicationApprovalCodecV1.cs`, `PublicCustodyReceiptV3.cs`, `ResourceJsonV3.cs`; proposed `ResourceStorageCodecV4.cs` | Exact 192-byte reference, 256-byte evidence/chunk headers, 131072-byte chunk, 18972672 logical/19202048 container bound, strict source Entry/approval projection/finding/name reconstruction, kind-1 publication/hand-back and kind-2 EntryCore null rules. Preserve all 9.3.2 fields and producer correlation, including policy fingerprints, all findings/multiplicity, consumed justification and caller grants. Existing 2048-byte O3 leaf and other fixed ABI sizes stay unchanged. Tests mutate every length/count/offset/reserved/hash/chain/identity/generation/member index/prefix/surrogate and missing referenced object, including a matching whole digest with invalid grammar. |
+| 3 / **[before-coding dependent 4]** proposed `ResourceStateCodecV4.cs`, `StagedJournalEnvelopeV3Codec.cs`; source `StagedTransferJournal.cs`/Entry validator | Complete strict v4 state/phase/debit reader, journal/closure envelope with EntryReference and nonrecursive saved Entry core. Both full fixed completion cells/native facts/claims round trip. Validate reference→held exact object→all sections→original authority; missing/mismatched files Held even after completion/restart. Old readers reject new versions/features. InitialResolved/resource-only/ACK-delta null rules and modern migration-only kind-4 legacy bytes unchanged. No consumer/native calls yet. |
+| 4 / **[before-coding dependent 4]** proposed `CompletedArchiveV4Codec.cs`, `CompletedArchiveSelectionV4.cs`; read `StagedTerminalArchive.cs`, `StagedSpaceUpgrade.cs` | Actual candidate/frontier/append/compaction/migration selection preserves exact reference closure, full byte/witness semantics and both parities/fresh transaction guard. Mixed selected legacy/modern classification occurs before repair. Reachability includes hot/new/candidates/selected bases/deltas/unfinished intents; stable inventory revisions before GC. <=32 source/target controls, four total child credits, streaming one pack at a time. No age/digest/name-based pruning. |
+| 5 / **[before-coding dependent 4]** proposed `ResourceTransitionsV4.cs`, `EvidenceCustodyTransitionsV1.cs`; later consumers `StagedSpaceBudget.cs`, `StagedSpaceUpgrade.cs` and journal/native store | Pure expected-R→candidate proofs for evidence reserve/MayHaveCreated/capture/Prepared/reference/MayHaveIssued/completion/acceptance, old-slot replay, separate claim-R/current-R, live SID→shared evidence accounting before ledger deletion, stable-root detach/actual reader-operation drain/exact deletion/persisted final release. Crash at every barrier, missing object after acceptance, unrelated R, duplicate original completion, lost create/delete replies and substituted identity. No native/public mutation replay or premature physical refund. All earlier retirement/fence/ACK/growth/companion/discard proofs still required. |
+| 6 / **[before-coding dependent 4 acceptance]** extend actual `ResourceSerializationLimitsV3Tests.cs` with retained v3-stop controls and proposed v4 full-shape/limit tests; proposed `EvidencePackV1Tests.cs`, `ResourceStateV4Tests.cs`, `EvidenceCustodyTransitionsV1Tests.cs` | Reproduce the **real ZIP extractor** 128-CPF/512-unit ASCII and non-ASCII cases: v3 approval/ledger 81489/107382 and 406609/432502 bytes are retained measurements, not portable hardcoded path-dependent assertions. Capture full actual findings, source Entries and complete two-completion ledgers; v4 normalization must round trip all evidence and progress. Test actual producers' 16384/+1 findings, >512 and 1179634/+1 unit names, controls/supplementary characters and front-code aggregate 8699904/+1, max current secret/password/numeric masks and 32/+1 snippets. Serialize complete simultaneous four-slot/pending/replay/initial/handoff/two-completion/native-fact/evidence-claim ledger states and modern manifests with both completions, not reference-only surrogates. Exercise actual metadata/ledger 65536/65537, Entry/envelope/manifest/chunk 131072/131073, logical evidence 18972672/18972673, file bound 19202048/+1, payload 130816/+1, count 146/+1, wrapper W=8192/+1, whole depth 16/17, u64/canonical Base64/default escaping. Some dimension maxima cannot coexist: classify legal maximal combinations independently. Full valid boundary shapes must round trip; impossible declared counts/trailing bytes refuse. Instrument actual preflight→adapter boundary: all refusals leave native issue/create/promotion counter zero and retain evidence/charge. The original 65536-byte source Entry no longer overflows a ledger because only its fixed reference is nested; legacy inline specimen still refuses. |
+| 7 / **[before-coding dependent 4 acceptance]** coherent actual v4/passive source/test set, then existing delivery/review gates | Debug/Release complete discovery/execution and independent acceptance of supported-shape progress, strict readers, byte maxima and transitions before consumers. If any ordinary supported state still fails, stop with the concrete full shape and another reviewed format delta; do not raise constants, omit evidence or declare the surrogate model sufficient. Before first boot review role-21 and 0x100 capability/marker changes in both `SafeUpload.Agent.Minifilter/ResourceControlWireV32.cs` and `driver/SafeUpload.Minifilter/StageResourceWire.h`/`StageResourceMetadata.c`, exact I/O, accounting and rundown; no wire resize or pool-credit increase. Full Windows agent matrix, kernel/static/import/native/protected controls including N-U8-04 remain separate/open. |
 
-This ordering is an actionable implementation list, not a new source-freeze,
-review-disposition framework, product-code authorization in this task or a closed
-serializer gate. The design/models in findings 2–5 do not replace any item.
+R4-H06 owns this addition in increment 4; R4-H04/H05 and R5-S05 retain their
+previous strict-selector/migration/O3 obligations. Current source acceptance,
+component qualification and protected-pair qualification are separate results.
+The proposal/pure models close no serializer or implementation gate.
 
 ### 12.2 Carried qualification rows
 
@@ -3570,10 +3893,11 @@ harness availability or permission to run them in this documents-only task.
 | R5-S01 inventory | zero-allocation mutable copy, four slots/fifth refusal | reserve-before-create; preallocation/zero EOF/normalization failures | snapshot/hand-back race reduction, charged physical allocation independent of EOF |
 | R5-S02 storage release | stale completion/incarnation reuse, uncertain drain | multiple readers, deletion-pending section/operations | final-close adapter proven, no slot reuse/refund from one reader closing |
 | R5-S03 receipt | full tuple/measurement/revision conflict + three crash points | immutable proof persisted before totals | lost/duplicate/stale receipts, lower adopted C after lost growth, no double reduction |
-| R4-H04 strict archive contracts / **4** | **[before-coding acceptance]** GrowthArchiveContractModelTests: strict JSON/actual UTF-8 lengths, byte-frame/frontier mutants, independent observed segment/candidate bytes, selected-prefix hash/padding validation in both parities, exact candidate/phase/tail and base/delta selection; **[before-coding 4] OPEN** prerequisite schema-3 actual serializer max-shape/limit+1 proof; actual new envelope/intent codecs must pass matching vectors during implementation before any use | **[before-qualification]** N-U8-02 actual classifier before tail repair, two interrupted recoveries, independent append/rename counts | Retain R4-H01 native/protected crashes; no inferred durability from pure models |
+| R4-H04 strict archive contracts / **4** | **[before-coding acceptance]** GrowthArchiveContractModelTests: strict JSON/actual UTF-8 lengths, byte-frame/frontier mutants, independent observed segment/candidate bytes, selected-prefix hash/padding validation in both parities, exact candidate/phase/tail and base/delta selection; **[before-coding 4] OPEN** prerequisite v4 actual serializer max-shape/limit+1 proof after the measured v3 stop (10.7/12.1.4); actual new envelope/intent codecs must pass matching vectors during implementation before any use | **[before-qualification]** N-U8-02 actual classifier before tail repair, two interrupted recoveries, independent append/rename counts | Retain R4-H01 native/protected crashes; no inferred durability from pure models |
 | R4-H05 legacy migration / **4** | **[before-coding acceptance]** 10.6 capacity/selection/preservation models; **[before-coding 4]** reviewed kind-4/cursor/v1 contracts and pure models; actual codecs/selector checks follow implementation before use | **[before-qualification]** N-U8-03 copy/select/delete faults, missing selected suffix, oversized legacy wrapper and all witnesses retained | Repeated migration recovery, exact old+new inventory and no second mutation or refund |
 | R5-S04 role release / **4** | **[before-coding 4]** 9.3 claim/state/refcount contract, schema-size and pure controls for all roles; identity/incarnation/claim/undrained/persistence mutants; independent actual owner admission/closure/drain versus persisted zero witnesses | **[before-qualification]** each actual role's extra reader/duplicate, active operation, section where applicable, process death, preidentity and post-delete-before-persist faults | **[before-first-boot]** independent retirement/capture/paging/growth rundown review; R5-S01–03 and R3-X remain required |
-| R5-S05 public promotion / **4** | **[before-coding]** independently review decided-O3 9.3.1 exact 2048-byte Kind=5/source proof, 9.3.2 explicit fingerprint DTO and 9.3.3 durable MayHaveIssued/current-R/zero-completion replay and owner-drain models; prerequisite schema-3 serializer proof remains OPEN. **[before-use]** actual modern journal/budget codecs: every byte/length/kind/identity/generation/claim/correlation mutation, required two fixed cells, escaped/max-size controls and no v2 reinterpretation | **[before-first-boot]** coherent source review of bound native receipt retention, unbound live-to-durable completion, hand-back identity/export capture, drain, journal→budget and duplicate/reuse ownership; **[before-qualification]** actual native/protected lost reply, lost journal completion, restart before adoption, ambiguous persistence and duplicate/shared replay for all three proof kinds | Independent mutation counts and exact old/new totals: no repeated copy/rename/export, no delete-to-refund, no path/digest/absence-only refund, original grants/security/export policy unchanged, other slots/Unknown retained; R3-X/R4-H/R5-S existing gates remain |
+| R4-H06 referenced evidence / **4** | **[before-coding dependent consumers]** 10.7 proposed v4 format/capability/finite-bounds acceptance; pure exact-reference/record/hash/identity/generation/missing/replay/GC mutants. **[Before-use]** 12.1.4 actual complete supported/maximal ledger/manifest/evidence shapes and every limit+1, zero native issue on refusal | **[before-first-boot]** role-21, marker/0x100, exact I/O/ownership/rundown/accounting source review; **[before-qualification]** N-U8-04 actual crash, reachability, shared-owner transfer, held reader, identity-bound GC | No evidence omission, cap increase, pathname/digest release or replay; actual fit/strict-reader/source/native acceptance remains OPEN |
+| R5-S05 public promotion / **4** | **[before-coding]** independently review decided-O3 9.3.1 exact 2048-byte Kind=5/source proof, 9.3.2 explicit fingerprint DTO and 9.3.3 durable MayHaveIssued/current-R/zero-completion replay and owner-drain models; prerequisite v4 referenced-evidence serializer proof remains OPEN (10.7/12.1.4). **[before-use]** actual modern journal/budget codecs: every byte/length/kind/identity/generation/claim/correlation mutation, required two fixed cells, escaped/max-size controls and no v2 reinterpretation | **[before-first-boot]** coherent source review of bound native receipt retention, unbound live-to-durable completion, hand-back identity/export capture, drain, journal→budget and duplicate/reuse ownership; **[before-qualification]** actual native/protected lost reply, lost journal completion, restart before adoption, ambiguous persistence and duplicate/shared replay for all three proof kinds | Independent mutation counts and exact old/new totals: no repeated copy/rename/export, no delete-to-refund, no path/digest/absence-only refund, original grants/security/export policy unchanged, other slots/Unknown retained; R3-X/R4-H/R5-S existing gates remain |
 | R5-H01 history cost | maintained hot/shared delta conservation | reconstruction includes padding/failed residue and retained measured R_phys, never only nominal Q | growing retained history incl 10k; record queue/metadata callback/end-to-end time and reconstructed physical totals, unchanged resource gates |
 
 ## 13. Unresolved before implementation
@@ -3587,12 +3911,12 @@ authorized by listing a control.
 |---|---|
 | U1 BootDomain / old instance | Still open before 5: choose/verify OS boot identity and exclusion of old adopters; existing BootId use at StageStream.c:4369 is not the whole proof. No restart/GUID inference. |
 | U2 CREATE / shell ownership | Before 5: section 5.5 whole source audit, prompt final expiry vs separately owned cleanup, authenticated success/fence acceptance and exact eight retained-shell credits/snapshot/ACK eviction. Pure debt/shell model exists; current code clears old receipts (:4461/:4629) and does not implement this registry. |
-| U3 Release adapters | Proposed 9.3 supplies every role's owner, claims, crash/unknown witnesses and persisted release transition. O3 is decided; 9.3.1 explicitly selects Kind=5 with exact bytes, retained journal proof and once-only budget adoption. Before coding 4: review the proposed exact adapters and prove prerequisite schema-3 claim sizes; actual native adapters follow implementation/source review; before first boot review actual kernel retirement/capture/paging/growth rundown. R5-S04/S05 and existing R3-X/R5-S native/protected proof remain. |
+| U3 Release adapters | Proposed 9.3 supplies every role's owner, claims, crash/unknown witnesses and persisted release transition. O3 is decided; 9.3.1 explicitly selects Kind=5 with exact bytes, retained journal proof and once-only budget adoption. Before coding 4: review the proposed exact adapters and prove prerequisite v4 claim/reference sizes after the measured v3 fit stop; actual native adapters follow implementation/source review; before first boot review actual kernel retirement/capture/paging/growth rundown. R5-S04/S05 and existing R3-X/R5-S native/protected proof remain. |
 | U4 Metadata/native sequence | Accepted dormant architecture with this revision's 8.7.1 PrivateRoot/AncestorEdge, servicing-only ancestor exception, one fixed held ancestry, original UserMode handle proof and revoke/drain-before-ACL-repair. 8.7.2 selects four total child credits including pending intent. Actual capture/query/IRQL/imports, pre/post exclusions, native preallocation/query/F1/EOF/F2/**class-65/flags-3** relative rename/F3 and cancel/rundown remain implementation/source-review/native-mechanism facts before load/boot; partial registration stubs are not proof. Builder results 2 select the mechanism but leave three strict failures; corrected N-U4-01/-05/N-U8-01 and full matrix remain, plus target **19045.2965 N-U4-06 before any boot-time reliance**. Actual old-target Links=0/DeletePending=True/readability, all predecessor SHARE_DELETE handles/operation pins and source review must match; failed class-10 or class-65/flags-1 replacement is not unlink proof. Existing root/lifetime controls remain. No stronger power-loss or O2 guarantee. |
 | U5 Two-direction progress | Accepted 6.2/8.3 bounded intake/send/lifetime contracts are coding prerequisites; real execution is not a prerequisite to writing the substrate. Working dispatcher+adapter must preserve local/kernel Busy and validate both tag/role rules (8.7.2/R3-M08); actual FltLib Busy HRESULT conversion needs real N-U5-01/M08 verification before accepting that adapter. Implemented source review precedes any kernel load; N-U5-01 real gate independence follows review before first protected-target boot/checkpoint. R3-M04P is an early reviewed legacy-drain alternative. **Actor/echo deferred to 6 separately from pools**; full held-old-epoch/saturation/echo proof remains OPEN, plus 5's fence Busy and 6's production growth/teardown. Fake-send tests close no native/protected execution obligation; real 4/5/6 purpose classification remains. |
 | U6 Owned MM/buffers | Before 6: finish owned :10927→:5903/:5948 Major/Minor/IRQL/resource/MDL/completion audit, and pre-FltLockUserBuffer credits at :4824. Supply actual structures/worst-case page/PFN/cancel storage and validate numerical bounds; no pin-only or unowned :11044 proof. R4-MM routing/native evidence follows implemented review. |
 | U7 Trust scope | **Decided O2, 2026-10-28:** existing trusted-service/private-storage boundary; local SYSTEM/administrators trusted, their erasure/rollback outside M2. Surviving modern evidence plus missing/corrupt marker holds. Stronger anchoring is separately reviewed post-M2. No native/security/marker gate is discharged. |
-| U8 Fit/grammar | GrowthArchiveFitModelTests supplies **nominal** independent L/P/Q and A/U geometry, explicit measured/released custody, logical-EOF conservation mutant, combined-envelope and corrected overlap/controls. Base transfer **nominal** overlap fits halves in all 60 pairs (worst nominal ratio 640 KiB/1 MiB=62.5%); native fit requires qualified preallocation/within-Q observations. Unpreallocated chunked NTFS overshoot disproves a general Q ceiling; production sums retained R_phys, raises charge before Held, and cannot erase the peak through normalization. Preallocation/per-call accounting/pin proofs, corrected strict N-U8-01 and target N-U4-06 remain open. ACK scheduling and independent snapshot unknown/missing input models are stronger pure controls; they are not real sends or durable/native reconciliation. Full independent Entry+closure maxima **do not fit** and retain ledger. Proposed 10.5/10.6 and GrowthArchiveContractModelTests supply byte/serializer, typed candidate/tail/delta/prefix and migration models. Before coding 4 the prerequisite schema-3 actual serialization/strict-codec proof remains OPEN; new consumer codecs must match the models during implementation before use; N-U8-01 raw peak primitives are before-3-first-boot mechanism controls; N-U8-02/03 actual selector/migration/recovery wait for increment 4, then required target evidence. No arithmetic/builder discovery result is a universal allocation ceiling, native durability or target qualification. |
+| U8 Fit/grammar | GrowthArchiveFitModelTests supplies **nominal** independent L/P/Q and A/U geometry, explicit measured/released custody, logical-EOF conservation mutant, combined-envelope and corrected overlap/controls. Base transfer **nominal** overlap fits halves in all 60 pairs (worst nominal ratio 640 KiB/1 MiB=62.5%); native fit requires qualified preallocation/within-Q observations. Unpreallocated chunked NTFS overshoot disproves a general Q ceiling; production sums retained R_phys, raises charge before Held, and cannot erase the peak through normalization. Preallocation/per-call accounting/pin proofs, corrected strict N-U8-01 and target N-U4-06 remain open. ACK scheduling and independent snapshot unknown/missing input models are stronger pure controls; they are not real sends or durable/native reconciliation. Full independent Entry+closure maxima **do not fit** and retain ledger. Proposed 10.5/10.6 and GrowthArchiveContractModelTests supply byte/serializer, typed candidate/tail/delta/prefix and migration models. Revision 9 (10.7) proposes exact bounded out-of-line evidence after the measured v3 stop. Before coding 4 the prerequisite v4 actual serialization/strict-codec proof remains OPEN; new consumer codecs must match the models during implementation before use; N-U8-01 raw peak primitives are before-3-first-boot mechanism controls; N-U8-02/03 actual selector/migration/recovery wait for increment 4, then required target evidence. No arithmetic/builder discovery result is a universal allocation ceiling, native durability or target qualification. |
 
 ## 14. Owner decisions
 
@@ -3616,4 +3940,5 @@ never silently change support, failure policy, grants or cutover.
 | 1–5 | Historical proposal/review corrections in the linked reviews and concurrency design; retain their provenance. |
 | 6 | Installed roots/ancestry, immutable transaction pools and actor deferral; 8.7 review ACCEPT WITH CONDITIONS for dormant substrate. |
 | 7 | Measured preallocation, retained R_phys and class-65/flags-3 mechanism delta; source acceptance and native/target qualification remain separate. |
-| 8 | **Proposed, pending independent review:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2/O3; 9.3.1 adds exact Kind=5 public custody transfer and journal/budget crash controls. Re-review closes findings 2–5 at contract/model level; the additional frontier recovery correction rejects reuse of the selected frontier's transaction before issue/repair, with older/torn-slot negatives and positive selector/repeated-recovery controls. 12.1.4 orders separate OPEN finding-1 codec work. No product code, checkbox closure, Windows execution or admission/cutover change. |
+| 8 | **Historical proposal/review conditions retained:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2/O3; 9.3.1 adds exact Kind=5 public custody transfer and journal/budget crash controls. Re-review closes findings 2–5 at contract/model level; the additional frontier recovery correction rejects reuse of the selected frontier's transaction before issue/repair, with older/torn-slot negatives and positive selector/repeated-recovery controls. 12.1.4 orders separate OPEN finding-1 codec work. No product code, checkbox closure, Windows execution or admission/cutover change. |
+| 9 | **PROPOSED, pending independent review:** measured v3 supported-shape stop; 10.7 schema-4 reference/immutable evidence container, finite producer-derived lossless finding/member projection, exact 192-byte reference and 128 KiB chunks, additive E_phys and crash/GC/replay contracts; unchanged 64/128 KiB limits and 2048-byte O3 receipt. 12.1.4 orders actual v4 codecs/full-shape/limit+1/transition proof before consumers; new R4-H06/N-U8-04 and role-21/0x100 remain review/implementation/native gates. No product edit, checkbox closure, commit or readiness/cutover change. |
