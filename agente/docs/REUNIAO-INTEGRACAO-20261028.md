@@ -1,5 +1,7 @@
 # Preparação do teste com Thiago
 
+> Atualização após ensaio real: heartbeat, auditoria, offline e resposta perdida foram testados contra Java/MySQL reais. Consulte RESULTADO-JAVA-MYSQL-20261028.md e ROTEIRO-LUCAS-THIAGO-20261028.md para os resultados e o roteiro atual. Este guia inicial permanece como referência dos comandos do kit.
+
 Data: 28/10/2026. O agente está preparado para testar heartbeat, fila, envio e reenvio de auditoria. A integração completa ainda não está aceita. Na main Java d6605e4d, reconferida nesta preparação, a consulta de políticas continua comentada; credencial de dispositivo, provisão automática e consultas administrativas também conservam suas pendências. HTTP 200 não comprova persistência ou painel integrado.
 
 ## O que Lucas leva
