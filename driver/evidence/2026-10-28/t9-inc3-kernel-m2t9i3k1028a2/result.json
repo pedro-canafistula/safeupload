@@ -1,0 +1,60 @@
+{
+ "Label": "m2t9i3k1028a2",
+ "Gate": "PASS",
+ "SourceCommit": "60acb1a5ea1da6ce12b49687b12648f7c8a66138",
+ "Builder": "builder2",
+ "ProductQualification": false,
+ "VmBooted": false,
+ "Scope": "Static/build/import/signature gate of the PARTIAL increment-3 kernel half (dormant resource-port pairing, authenticated control dispatch, Commit NotReady). Not boot-ready; routing, registration maps, leases and accounting are not implemented.",
+ "PriorFailedAttempt": {
+  "Label": "m2t9i3k1028a1",
+  "SourceCommit": "88d7850b864f458adfcb13f596be19b97b32a458",
+  "Failure": "C28023 (thread routine lacked KSTART_ROUTINE pattern) and C6001 (ProbeForWrite on an _Out_ buffer) at StageResourceMetadata.c:174/:539, 2 errors per configuration; import gate FAIL only because no artifact existed",
+  "RawSha256": {
+   "exact-m2t9i3k1028a1-summary.txt": "1e57a2c5de3b9f3cd5f82eab530de2ac1be670e1aca7463c7048175b4283a994"
+  }
+ },
+ "Signature": {
+  "CertificateStoreLocation": "LocalMachine",
+  "Builder": "builder2",
+  "SignatureValid": true,
+  "SignExit": 0,
+  "ActualSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "OutputSHA256": "64E010D7CB4475545DBD25A6E35D62284EE1FE1A2B2327FAEFAA09E7E153AF35",
+  "SignatureStatus": "Valid",
+  "UTC": "2026-10-28T17:12:23.3059269Z",
+  "SigningCopySHA256Before": "733B9F4AEB8F93FDE7EB244AAACD882D7D5ADB11DE4D456514CD2F81C298E91A",
+  "UnsignedArtifactUnchanged": true,
+  "ExpectedSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "BuilderComputerName": "SU-BUILDER2",
+  "SignedSHA256": "64E010D7CB4475545DBD25A6E35D62284EE1FE1A2B2327FAEFAA09E7E153AF35",
+  "UnsignedSHA256": "733B9F4AEB8F93FDE7EB244AAACD882D7D5ADB11DE4D456514CD2F81C298E91A",
+  "BuilderHost": "192.168.122.211",
+  "ParityCheck": false
+ },
+ "SummaryRows": [
+  "LABEL=m2t9i3k1028a2",
+  "ARCHIVE_SHA256=4BEB315A548ABB47E8F53374AA394A29C2E0A8654E4E47E7B372884B25BF1A2F",
+  "SOURCE_COMMIT=60acb1a5ea1da6ce12b49687b12648f7c8a66138",
+  "BUILDER=SU-BUILDER2",
+  "BUILD_END_UTC=2026-10-28T17:12:23.3215537Z",
+  "KernelBuildProfiles=owned-feature,owned-feature-release",
+  "Builder=builder2",
+  "BuilderHost=192.168.122.211",
+  "BuilderComputerName=SU-BUILDER2",
+  "ParityCheck=False",
+  "driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=733B9F4AEB8F93FDE7EB244AAACD882D7D5ADB11DE4D456514CD2F81C298E91A",
+  "driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=8806461B608D0780CEEBA673250E7C388B54AA6DAF6EC540CF4DA22D973286CA",
+  "inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=EE8B51B9F2332A9F23DFDB359666616EA23B84B99E36196D72EB53062062FD4B",
+  "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=8852CF5919FF4B05C822CF77A9A1E9C21AFD23F677E8114B0AD5DBBB6938C274",
+  "sign : exit=0 unsigned_sha256=733B9F4AEB8F93FDE7EB244AAACD882D7D5ADB11DE4D456514CD2F81C298E91A signing_copy_sha256=733B9F4AEB8F93FDE7EB244AAACD882D7D5ADB11DE4D456514CD2F81C298E91A unsigned_unchanged=True store=LocalMachine output_sha256=64E010D7CB4475545DBD25A6E35D62284EE1FE1A2B2327FAEFAA09E7E153AF35 signed_sha256=64E010D7CB4475545DBD25A6E35D62284EE1FE1A2B2327FAEFAA09E7E153AF35 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38"
+ ],
+ "RawSha256": {
+  "exact-m2t9i3k1028a2-summary.txt": "4aa8b201421f6ef47d606912c6b7ab9b1c53efd5fd2b67574de4bebed623d3fa",
+  "exact-m2t9i3k1028a2-imports.txt": "3cbb50bf84fd3f919a3ba33b52aeb4bdf4c4b443e49bf321e5084af90e5bde30",
+  "exact-m2t9i3k1028a2-owned-feature-wdk.txt": "383829406873b73f278e51885539ba61f1865c5daab683f5b651e4c1158889f3",
+  "exact-m2t9i3k1028a2-owned-feature-release-wdk.txt": "874d3703bda7b728f4d178cee21f4df2e6a28f33f647f53729b5810b9b7b9ec9",
+  "exact-m2t9i3k1028a2-signature-verification.json": "2864d0a0cde115dd37de47f028cc7befe7b99731b3b15d7881687d98a1e50577",
+  "exact-m2t9i3k1028a2-artifact-hashes.txt": "eb0d159c1afdc1b3c972c56afdfa206417b02ba2d68451ad9dbcacf2a2afdc61"
+ }
+}
