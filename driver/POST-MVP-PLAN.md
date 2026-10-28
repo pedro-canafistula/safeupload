@@ -23,6 +23,8 @@ respective support and qualification gates are met and the owner approves cutove
 
 ## Owner decisions
 
+**2026-10-28 (T9 increment 3) — N-U5-01 component host.** Owner, in the session, chose the recommended option: N-U5-01 runs on a fresh disposable `win10-debug3` overlay with the reviewed dormant driver and the feature agent, and **no protected folder, actor or protection policy**, under runtime Verifier `0x13B`. It runs serially with both builders idle, the overlay is discarded, and restoration is checked separately. This is the design's "separately authorized native component host" (8.7.4). It is not the protected first boot and qualifies nothing. The protected first boot follows on another fresh overlay, after N-U4-06 and N-U5-01 pass. Builders are not component hosts. No gate, threshold or assertion changes.
+
 **2026-10-28 (M2 continuation) — focused timing diagnostic and persistent goal.** Owner: "Yes, and set a goal to finish M2 so that you don't stop."
 This approves the prepared 14-case Debug/user timing diagnostic from `afd972ef` after the recorded repeated-failure stop, and continuing towards the agreed M2 completion scope.
 The persistent goal is active. Keep the existing assertions, lab stop rules, scope deferrals, runtime gates and separate owner merge/cutover decisions; the goal does not waive them.
