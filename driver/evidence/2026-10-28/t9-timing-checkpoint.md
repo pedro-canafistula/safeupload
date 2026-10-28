@@ -1,6 +1,6 @@
 # T9 timing diagnostic continuation — 2026-10-28
 
-**14/14 focused Windows controls pass; full delivery gate remains separate.**
+**14/14 focused controls and the subsequent four-leg Windows delivery gate pass.**
 Owner authorized the prepared diagnostic and set the persistent M2 completion
 goal. Scope, thresholds, existing deferrals and runtime activation gates remain.
 No protected driver/agent pair was installed or qualified by this work.
@@ -49,3 +49,22 @@ started on builder2, source `afd972ef`, with product targets off and no broad
 FileIO trace. It must establish exact discovery/execution, both user/SYSTEM legs,
 both feature configurations, packages/hashes and zero warnings/errors before a
 delivery-gate result can be recorded. A focused green result cannot substitute.
+
+## Completed four-leg gate
+
+**m2t9totalsb1: ExactAgentMatrixGate=PASS**, source `afd972ef`, builder2.
+Feature Debug and Release each executed exactly **3,159 user + 25 SYSTEM**
+cases, matching discovery and required result IDs, zero failures/skips. All
+service/app/test builds and discovery steps have zero warnings/errors. Both
+SYSTEM jobs proved process/task cleanup. The complete result is 6,368 executions.
+[Structured gate receipt](t9-matrix-m2t9totalsb1/result.json) binds all four raw
+TRX files, source/archive, package validation and the retained root readout.
+
+Verified Release package SHA-256
+`E02380695BA4F1EF3F52FB4D3FCDE1A2FBC8A3D92BCBF03D1D342F5EAD522B3D`;
+service EXE `5F6D38BBF1E00D88517711F11C875FC4872E5B1CCB6870F41611CCD410E2CAA9`;
+tray EXE `3B1ED61D5FE0FCAFF5E1440D30C86979CEC7BC420344D75318295C68824934BC`.
+No installation or runtime qualification. This satisfies the maintained-totals
+review's Windows delivery condition, not the later passive wire/schema changes,
+growing reservations, shared metadata debt or M2 pair qualification. The prior
+failed receipts remain failed; their cause has not been established by this pass.

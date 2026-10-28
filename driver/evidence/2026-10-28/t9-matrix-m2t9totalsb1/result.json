@@ -1,0 +1,128 @@
+{
+  "Label": "m2t9totalsb1",
+  "Gate": "PASS",
+  "Provenance": {
+    "SourceCommit": "afd972efc73600cb247e76742a9842cf741445ff",
+    "ArchiveSHA256": "24b60f4485a0c5cab3962f4fe8a67acbcb982398a5f33740e1bd3819c38a4671",
+    "BuilderIdentity": {
+      "Builder": "builder2",
+      "BuilderHost": "192.168.122.211",
+      "BuilderComputerName": "SU-BUILDER2",
+      "ParityCheck": false
+    },
+    "Label": "m2t9totalsb1",
+    "Profiles": [
+      "feature-debug",
+      "feature-release"
+    ],
+    "TestLegs": 4,
+    "LabelKind": "gate",
+    "DiagnosticContinue": false,
+    "Notice": "gate candidate"
+  },
+  "RuntimeQualification": false,
+  "ServiceInstalled": false,
+  "Profiles": {
+    "feature-debug": {
+      "user": {
+        "Counters": {
+          "total": "3159",
+          "executed": "3159",
+          "passed": "3159",
+          "failed": "0",
+          "error": "0",
+          "timeout": "0",
+          "aborted": "0",
+          "inconclusive": "0",
+          "passedButRunAborted": "0",
+          "notRunnable": "0",
+          "notExecuted": "0",
+          "disconnected": "0",
+          "warning": "0",
+          "completed": "0",
+          "inProgress": "0",
+          "pending": "0"
+        },
+        "TrxSha256": "e00cb9b6ba2099d09c6b37a3e24c5fc877d18aedd58e684d302bdc741c414857"
+      },
+      "system": {
+        "Counters": {
+          "total": "25",
+          "executed": "25",
+          "passed": "25",
+          "failed": "0",
+          "error": "0",
+          "timeout": "0",
+          "aborted": "0",
+          "inconclusive": "0",
+          "passedButRunAborted": "0",
+          "notRunnable": "0",
+          "notExecuted": "0",
+          "disconnected": "0",
+          "warning": "0",
+          "completed": "0",
+          "inProgress": "0",
+          "pending": "0"
+        },
+        "TrxSha256": "8d5a71284905ef1e6e14d75d6de9db5ef6c6bc6ad1c03784bce0fe733ce9abcd"
+      },
+      "ExactDiscoveryAndRequiredCasesVerified": true
+    },
+    "feature-release": {
+      "user": {
+        "Counters": {
+          "total": "3159",
+          "executed": "3159",
+          "passed": "3159",
+          "failed": "0",
+          "error": "0",
+          "timeout": "0",
+          "aborted": "0",
+          "inconclusive": "0",
+          "passedButRunAborted": "0",
+          "notRunnable": "0",
+          "notExecuted": "0",
+          "disconnected": "0",
+          "warning": "0",
+          "completed": "0",
+          "inProgress": "0",
+          "pending": "0"
+        },
+        "TrxSha256": "1663100822a05538e7970415c25f00c4a481ba39782bfe6f8b28f5b84054b960"
+      },
+      "system": {
+        "Counters": {
+          "total": "25",
+          "executed": "25",
+          "passed": "25",
+          "failed": "0",
+          "error": "0",
+          "timeout": "0",
+          "aborted": "0",
+          "inconclusive": "0",
+          "passedButRunAborted": "0",
+          "notRunnable": "0",
+          "notExecuted": "0",
+          "disconnected": "0",
+          "warning": "0",
+          "completed": "0",
+          "inProgress": "0",
+          "pending": "0"
+        },
+        "TrxSha256": "dc0e315fde8cd300161cc425f2258a1e48e81f40dba8260a2e089b8f397ef152"
+      },
+      "ExactDiscoveryAndRequiredCasesVerified": true
+    }
+  },
+  "Packages": {
+    "feature": {
+      "path": "/home/victor/Work/safeupload-staging/output/exact-agent-matrix/m2t9totalsb1/out/feature-release-service-publish.zip",
+      "sha256": "E02380695BA4F1EF3F52FB4D3FCDE1A2FBC8A3D92BCBF03D1D342F5EAD522B3D",
+      "exe_sha256": "5F6D38BBF1E00D88517711F11C875FC4872E5B1CCB6870F41611CCD410E2CAA9",
+      "app_exe_sha256": "3B1ED61D5FE0FCAFF5E1440D30C86979CEC7BC420344D75318295C68824934BC",
+      "manifest_sha256": "9863A5D9364B4F4C2276C7951C8A3F8526CCBB2E7F25A33362981C4EE50C83C0",
+      "members": 11
+    }
+  },
+  "RawRootReadoutSha256": "878a4ed26bb25049e18914768150ce0ff7bf63378d60a0ae131984dd3caabf01"
+}
