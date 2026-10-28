@@ -27,12 +27,6 @@ public class UsuarioSo {
     @Column(name="admin")
     private int admin;
 
-    @Column(name = "visto_por_ultimo", columnDefinition = "TIMESTAMP")
-    private LocalDateTime vistoPorUltimo;
-
-    @Column(name="ativo")
-    private int ativo;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
         name="fk_id_host",
@@ -49,16 +43,12 @@ public class UsuarioSo {
         String usuarioSo,
         String dominio,
         int admin,
-        LocalDateTime vistoPorUltimo,
-        int ativo,
         Host fkIdHost
     ){
         this.sid = sid;
         this.usuarioSo = usuarioSo;
         this.dominio = dominio;
         this.admin = admin;
-        this.vistoPorUltimo = vistoPorUltimo;
-        this.ativo = ativo;
         this.fkIdHost = fkIdHost;
     }
 
@@ -82,20 +72,8 @@ public class UsuarioSo {
         return admin;
     }
 
-    public LocalDateTime getVistoPorUltimo(){
-        return vistoPorUltimo;
-    }
-
-    public int getAtivo(){
-        return ativo;
-    }
-
     public Host getFkIdHost(){
         return fkIdHost;
     }
 
-    public void executeHeartbeat(LocalDateTime vistoPorUltimo, int ativo) {
-        this.vistoPorUltimo = vistoPorUltimo;
-        this.ativo = ativo;
-    }
 }

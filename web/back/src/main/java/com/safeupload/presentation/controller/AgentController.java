@@ -3,7 +3,9 @@ package com.safeupload.presentation.controller;
 import com.safeupload.application.AgentService;
 import com.safeupload.application.dto.AgentContracts.*;
 import com.safeupload.application.dto.AuthContracts.ListEmpresaResponse;
+//import com.safeupload.domain.entity.app.Politica;
 import com.safeupload.infrastructure.repository.acesso.EmpresaRepository;
+//import com.safeupload.infrastructure.repository.app.PoliticaRepository;
 
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -14,17 +16,20 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 
 @RestController
-@RequestMapping("/agent/api")
+@RequestMapping("/agent")
 public class AgentController {
     private final AgentService service;
     private final EmpresaRepository empresaRepository;
+    //private final PoliticaRepository politicaRepository;
 
     public AgentController(
         AgentService service,
         EmpresaRepository empresaRepository
+        //PoliticaRepository politicaRepository
     ) {
         this.service = service; 
         this.empresaRepository = empresaRepository;
+        //this.politicaRepository = politicaRepository;
     }
 
     @PostMapping("/synchronize")
@@ -36,8 +41,8 @@ public class AgentController {
     }
 
     @PostMapping ("/heartbeat")
-    public ResponseEntity <HeartbeatResponse> heartbeat(@Valid @RequestBody HeartbeatRequest request){
-        HeartbeatResponse response = service.heartbeat(request);
+    public ResponseEntity <DefaultResponse> heartbeat(@Valid @RequestBody HeartbeatRequest request){
+        DefaultResponse response = service.heartbeat(request);
         return ResponseEntity
                 .status(HttpStatus.OK.value())
                 .body(response);
@@ -56,12 +61,16 @@ public class AgentController {
     }
 
     @PostMapping ("/tickets")
-    public ResponseEntity <TicketsResponse> tickets (@Valid @RequestBody TicketsRequest request){
-        TicketsResponse response = service.tickets(request);
+    public ResponseEntity <DefaultResponse> tickets (@Valid @RequestBody TicketsRequest request){
+        DefaultResponse response = service.tickets(request);
         return ResponseEntity
                 .status(HttpStatus.OK.value())
                 .body(response);
     }
 
-    
+    // @GetMapping ("/policies")
+    // public ResponseEntity <PolicyResponse> policy (@Valid @RequestBody PolicyRequest request){
+    //     List <Politica> politica = politicaRepository.findByFkIdHost_IdHost(request.id_host());
+    //     return ResponseEntity.ok(response);
+    // }
 }

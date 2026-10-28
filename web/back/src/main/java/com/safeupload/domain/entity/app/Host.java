@@ -1,5 +1,7 @@
 package com.safeupload.domain.entity.app;
 
+import java.time.LocalDateTime;
+
 import jakarta.persistence.*;
 
 @Entity 
@@ -37,6 +39,12 @@ public class Host {
     @Column (name="numero_serie")
     private String numeroSerie;
 
+    @Column(name = "visto_por_ultimo", columnDefinition = "TIMESTAMP")
+    private LocalDateTime vistoPorUltimo;
+
+    @Column(name="ativo")
+    private int ativo;
+
     protected Host(){}
 
     public Host (
@@ -48,7 +56,9 @@ public class Host {
         String fabricante,
         String modelo,
         String macAddress,
-        String numeroSerie
+        String numeroSerie,
+        LocalDateTime vistoPorUltimo,
+        int ativo
     ) {
         this.ip = ip;
         this.mascara = mascara;
@@ -59,6 +69,8 @@ public class Host {
         this.modelo = modelo;
         this.macAddress = macAddress;
         this.numeroSerie = numeroSerie;
+        this.vistoPorUltimo = vistoPorUltimo;
+        this.ativo = ativo;
     }
 
     public Integer getIdHost(){
@@ -99,5 +111,18 @@ public class Host {
 
     public String getNumeroSerie(){
         return numeroSerie;
+    }
+
+    public LocalDateTime getVistoPorUltimo(){
+        return vistoPorUltimo;
+    }
+
+    public int getAtivo(){
+        return ativo;
+    }
+
+    public void executeHeartbeat(LocalDateTime vistoPorUltimo, int ativo) {
+        this.vistoPorUltimo = vistoPorUltimo;
+        this.ativo = ativo;
     }
 }

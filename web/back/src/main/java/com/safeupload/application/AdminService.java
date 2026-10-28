@@ -40,9 +40,8 @@ public class AdminService {
     }
 
     public DefaultPostResponse setPolicy(SetPolicyRequest request){
-        enviarPolitica(request);
 
-        Regras regras = converterRegras(request.regras());
+        Regras regras = convertRules(request.regras());
 
         regras = regrasRepository.save(regras);
 
@@ -77,28 +76,8 @@ public class AdminService {
         );
     }
 
-    private void enviarPolitica(SetPolicyRequest request) {
 
-        if (request.destino() == null ||
-            request.destino().ip() == null ||
-            request.destino().ip().isBlank()) {
-            throw new DatabaseErrorException(
-                "O IP de destino é obrigatório para o envio."
-            );
-        }
-
-        String url = "http://"
-                + request.destino().ip()
-                + ":8426/receive/politica";
-
-        restClient.post()
-                .uri(url)
-                .body(request)
-                .retrieve()
-                .toBodilessEntity();
-    }
-
-    private Regras converterRegras(List<SetPolicyRequest.RegraRequest> regrasDTO) {
+    private Regras convertRules(List<SetPolicyRequest.RegraRequest> regrasDTO) {
 
         boolean cpf = false;
         boolean cnpj = false;

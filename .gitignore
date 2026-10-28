@@ -588,3 +588,5 @@ Windows-driver-samples/
 # Full raw history: tag mvp-history-2026-10-08.
 /driver/evidence/*
 !/driver/evidence/README.md
+
+/web/front/node_modules/*
