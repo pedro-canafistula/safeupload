@@ -1,0 +1,53 @@
+{
+ "Label": "m2t9i3k1028a8",
+ "Gate": "PASS",
+ "SourceCommit": "a2e5d428",
+ "Builder": "builder2",
+ "ProductQualification": false,
+ "VmBooted": false,
+ "Scope": "Static/build/import/signature gate of increment-3 kernel pass 4 (fixes for the independent pre-boot review: deferred CREATE key disposition, filesystem synchronization callback dispositions, RegisterRoot/CLEANUP handoff). Dormant: Commit NotReady, no actor. NOT boot-ready until the fresh independent re-review, N-U4-06 on target 19045.2965 and the real-port gate-independence control.",
+ "PriorReview": "t9-inc3-preboot-review-sol-high.md (REVISE on 8bd4d0f0)",
+ "Signature": {
+  "CertificateStoreLocation": "LocalMachine",
+  "Builder": "builder2",
+  "SignatureValid": true,
+  "SignExit": 0,
+  "ActualSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "OutputSHA256": "B30457EDE2A7EB06F9335F1D274EB222B7DC3AB410CB47F9A23EBB302A38E3CA",
+  "SignatureStatus": "Valid",
+  "UTC": "2026-10-28T19:54:40.9470319Z",
+  "SigningCopySHA256Before": "958EE583EFE28330CD03824B87478F9E6EFBEA6CED0F5E44AE6E71445C455E10",
+  "UnsignedArtifactUnchanged": true,
+  "ExpectedSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "BuilderComputerName": "SU-BUILDER2",
+  "SignedSHA256": "B30457EDE2A7EB06F9335F1D274EB222B7DC3AB410CB47F9A23EBB302A38E3CA",
+  "UnsignedSHA256": "958EE583EFE28330CD03824B87478F9E6EFBEA6CED0F5E44AE6E71445C455E10",
+  "BuilderHost": "192.168.122.211",
+  "ParityCheck": false
+ },
+ "SummaryRows": [
+  "LABEL=m2t9i3k1028a8",
+  "ARCHIVE_SHA256=FFD3395DA00B5BAEDC9A60E7E2E2C588455380C32BCB2EDFDFA90D084FDCA6EB",
+  "SOURCE_COMMIT=a2e5d4286cedcbf8f88394fcd6981a0036a648bc",
+  "BUILDER=SU-BUILDER2",
+  "BUILD_END_UTC=2026-10-28T19:54:40.9626587Z",
+  "KernelBuildProfiles=owned-feature,owned-feature-release",
+  "Builder=builder2",
+  "BuilderHost=192.168.122.211",
+  "BuilderComputerName=SU-BUILDER2",
+  "ParityCheck=False",
+  "driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=958EE583EFE28330CD03824B87478F9E6EFBEA6CED0F5E44AE6E71445C455E10",
+  "driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=B96063769412A822F997B2BE8CEAD07F548BF36482D44EDE25B6F63E42A2AD85",
+  "inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=BE070E5E30B8C3CA608FA410F7F0F579F25420D60A99639B6382C1FA96A9BBAB",
+  "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=673596A81CC5DC1A2F8C9EA84E5CBC41C0EE183F5ADEF7F93AC48E1FFF23CF96",
+  "sign : exit=0 unsigned_sha256=958EE583EFE28330CD03824B87478F9E6EFBEA6CED0F5E44AE6E71445C455E10 signing_copy_sha256=958EE583EFE28330CD03824B87478F9E6EFBEA6CED0F5E44AE6E71445C455E10 unsigned_unchanged=True store=LocalMachine output_sha256=B30457EDE2A7EB06F9335F1D274EB222B7DC3AB410CB47F9A23EBB302A38E3CA signed_sha256=B30457EDE2A7EB06F9335F1D274EB222B7DC3AB410CB47F9A23EBB302A38E3CA signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38"
+ ],
+ "RawSha256": {
+  "exact-m2t9i3k1028a8-summary.txt": "998866124012dd7453201a913e3ba1b72efaf6a13e2731726216048a308eef16",
+  "exact-m2t9i3k1028a8-imports.txt": "2b9e8233dbaad3d8b60bdd5124d7df7026c14e6af5a79a9dafbcbd6716e14f3c",
+  "exact-m2t9i3k1028a8-owned-feature-wdk.txt": "a7da2c7ed3e5748df6b3312a987dc19b5a6f62911edd66d7aeb9e809b84093d5",
+  "exact-m2t9i3k1028a8-owned-feature-release-wdk.txt": "3418ab228e47a5c72cf775877a573447cbf7ce7528210e94830caad2fb3cfb3e",
+  "exact-m2t9i3k1028a8-signature-verification.json": "f7a4917160bcbb238c22509d9a98387c13d326629e02e9e52a3c7a6dd2b02eb5",
+  "exact-m2t9i3k1028a8-artifact-hashes.txt": "fecce40adaac28ede6035ca3711ff04d9724995b6d8c364df33499d23382498b"
+ }
+}
