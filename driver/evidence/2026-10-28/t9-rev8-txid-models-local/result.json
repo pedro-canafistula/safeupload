@@ -1,0 +1,99 @@
+{
+  "DiagnosticOnly": true,
+  "StartHEAD": "1a3e35532b0e0e08dcdc617e242ae997d5ccce7d",
+  "EndHEAD": "1a3e35532b0e0e08dcdc617e242ae997d5ccce7d",
+  "Review": "driver/evidence/2026-10-28/t9-growth-rev8-rereview-sol-high.md",
+  "Finding": "Additional medium frontier recovery transaction reuse",
+  "Fix": "Reject plan.Transaction == expected.Transaction before issue, frontier repair or bookkeeping",
+  "SDK": "10.0.400",
+  "Runner": "Temporary in-process Fact/InlineData reflection runner with real xUnit assertions; not Windows matrix/native qualification",
+  "AdditionalCasesPerConfiguration": 9,
+  "ContractCasesPerConfiguration": 248,
+  "FitCasesPerConfiguration": 70,
+  "Counts": {
+    "debug": {
+      "discovered": 318,
+      "executed": 318,
+      "passed": 318,
+      "failed": 0,
+      "skipped": 0
+    },
+    "release": {
+      "discovered": 318,
+      "executed": 318,
+      "passed": 318,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "NormalModelExecutionsTotal": 636,
+  "GuardRemovalMutant": {
+    "RetainedPath": "/tmp/t9-rev8-frontier-mutant.glg53o4e",
+    "CompiledAt": "/tmp/t9-rev8-frontier.glg53o4e/mutant",
+    "Mutation": "Remove only the new transaction-distinctness guard",
+    "Counts": {
+      "discovered": 318,
+      "executed": 318,
+      "passed": 314,
+      "failed": 4,
+      "skipped": 0
+    },
+    "ExpectedFailures": [
+      "GrowthArchiveContractModelTests.Recovery_refuses_review_counterexample_reusing_selected_append_transaction()",
+      "GrowthArchiveContractModelTests.Recovery_with_older_or_torn_inactive_slot_requires_a_fresh_transaction(True,False,False)",
+      "GrowthArchiveContractModelTests.Recovery_with_older_or_torn_inactive_slot_requires_a_fresh_transaction(True,False,True)",
+      "GrowthArchiveContractModelTests.Recovery_with_older_or_torn_inactive_slot_requires_a_fresh_transaction(True,True,True)"
+    ],
+    "SourceSha256": "8039ec881a9c4d2ea1eddfb5675602003ee719ce4ee79880e5b80d88443c1c8a",
+    "ArtifactSha256": "0c395b55ae13d25374663d442976abe003901c989bade3194ca716f6b8d722ce",
+    "ResultSha256": "463a5e974d965c98d5e8c0d38ac0e7e064a58704bff888046e38e70738ff5261",
+    "LogSha256": "56c00d4dff193e7a6ab855853d16b99114bd482b66c2f86a960e05f2e77655d0"
+  },
+  "LocalCompile": {
+    "InitialLiveTreeAttempt": "FAIL: four passes, Release Service/Tests failed after concurrent untracked ResourceStateV3.cs appeared; CS0101 duplicate V2 types and CS0246 missing PublicationApprovalV1. Retained, no source alteration to remedy.",
+    "InitialFailedWork": "/tmp/safeupload-agent-compile.SM0sw0",
+    "FinalSnapshotAttempt": "PASS: all six feature Debug/Release Service/App/Tests builds, warnings-as-errors",
+    "SnapshotSource": "1a3e35532b0e0e08dcdc617e242ae997d5ccce7d + GrowthArchiveContractModelTests.cs edit only",
+    "SnapshotRetainedPath": "/tmp/t9-rev8-frontier-compile-input.glg53o4e",
+    "SnapshotCompiledAt": "/tmp/t9-rev8-frontier.glg53o4e/compile-input",
+    "SnapshotManifestSha256": "3fc56567fb59e3f0ce86ea11296539d2e4dab863214342d595a3c7e410fcdb47",
+    "BaseArchiveSha256": "29eaae52b0246608a9c52b88d265b6bf10256064e3dbc6e188aba0be941a33c8"
+  },
+  "SourceSha256": {
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md": "d75ce985a1e69d072c548665403f0590190c8d8818b35a5ec0af6324fceff359",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs": "8d07be89909795e7eaaa75fef594e68637ceb7abd7ec8fd4153f9c65bc3cce36",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveFitModelTests.cs": "bb369dd9bb6d7d7eca680839d0289c7f47546575c53b6a721d1cb7a7ab55fb57",
+    "driver/evidence/2026-10-28/t9-growth-rev8-rereview-sol-high.md": "f33f3deabc570aff062744f6f6c2bdbd38103f121c4689446e71c24ea01ff838",
+    "driver/scripts/Invoke-LocalAgentCompile.sh": "0d43b20e68b299bc120014a834ad6b530ad9a78a1fcbee5098efaaa67ed2fdfc"
+  },
+  "ArtifactSha256": {
+    "bin/Debug/net10.0/Models.dll": "1df1a7b0ead0b6f0d0be2595e5c360cf3e6e2ac08467e845bd8f78bd5b7cec1f",
+    "bin/Release/net10.0/Models.dll": "14f401da22c7de1b31dc1e966031328909897455a9f1a49d535cd357e88f8fac"
+  },
+  "RunnerSha256": {
+    "Models.csproj": "a0c3c44d27be4cdf359b73ec0ff1038c976dcc33a9abe135cdc0a8d038352bd4",
+    "Program.cs": "43d803242b59bcf9c267fb28e7f9aa7b1712b2eb06ae485b0e42b0ca8c5c6ae6"
+  },
+  "ResultSha256": {
+    "results/inprocess-debug.json": "fb3839835c200c1a9074863cfbaebd1f65dfba56a36aea3dba5f57785b3f093e",
+    "results/inprocess-release.json": "fb3839835c200c1a9074863cfbaebd1f65dfba56a36aea3dba5f57785b3f093e",
+    "debug.log": "ac799c0088e1f54470a763e5508519059b4b60570e4cf45fd8fcde7a15f79e8e",
+    "release.log": "16ba3d961d0f99e72df9bdf439d28834a98bcaf2d8f0ebe96b95cf97c9f93b44",
+    "local-compile.log": "ec8bd91cba9f34d2f89975234c6f6ea43487cc36bc6c768effb6d86a18035a21",
+    "local-compile-snapshot.log": "b239b4bc04ec9381265846d6ca26c4b5ce85cbff49f56bd489278df6ece97f33",
+    "doc-links-final.log": "81180df7ca30ec4887c55a8670cc28e176304f9169e95400909916637fae6d76",
+    "final.diff": "865bcb2e5235167f190cedba19a916be409ee38c8ab84580e6705c0f883f5994",
+    "final-status.txt": "c37ff4d63203b9cb1adfbece78a5426d2e7ed23639c64d88e91e31db4ef975a7"
+  },
+  "DocLinks": "DocLinks=PASS; broken=298; new=0; baseline=298",
+  "DiffCheck": "PASS",
+  "CheckboxesUnchanged": true,
+  "ChangedTrackedFiles": [
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs",
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md"
+  ],
+  "ProductSourceEdited": false,
+  "CommitMade": false,
+  "Finding1": "Remains OPEN: separate actual passive serializers/strict readers/transition proofs, no implementation in this task",
+  "IndependentAcceptance": "Pending for this additional correction; no readiness or qualification gate closed"
+}

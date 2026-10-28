@@ -981,6 +981,49 @@ public sealed class GrowthArchiveContractModelTests
             (target, old, [.. prior, .. candidate], candidate, plan);
     }
 
+    [Fact]
+    public void Recovery_refuses_review_counterexample_reusing_selected_append_transaction()
+    {
+        var x = RecoveryScenario(2);
+        byte[] initial = Slot(4096, 1, 8192, Guid.Empty);
+        AppendPlan reused = x.Plan with { Transaction = Segment };
+        Assert.Equal(Segment, ReadSlot(x.Slot1, 4096, 1).Transaction);
+        Assert.Equal("Hold", Recover(initial, x.Slot1, x.Frames, reused, x.Candidate));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public void Recovery_with_older_or_torn_inactive_slot_requires_a_fresh_transaction(
+        bool reuseTransaction, bool tornInactive, bool completeTail)
+    {
+        var x = RecoveryScenario(2);
+        byte[] inactive = Slot(4096, 1, 8192, Guid.Empty);
+        if (tornInactive) inactive[96] ^= 1;
+        AppendPlan plan = x.Plan with { Transaction = reuseTransaction ? Segment : Transaction };
+        int oldBytes = plan.ExpectedEnd - 8192;
+        byte[] observed = completeTail ? x.Frames : x.Frames[..oldBytes];
+        string expected = reuseTransaction || (tornInactive && !completeTail) ? "Hold" :
+            completeTail ? "FrontierOnly" : "IssueOnce";
+        Assert.Equal(expected, Recover(inactive, x.Slot1, observed, plan, x.Candidate));
+        if (expected == "Hold") return;
+
+        // Interrupt/repeat before frontier persistence, then prove the resulting
+        // sequence-3 frontier is accepted by the independent normal selector.
+        Assert.Equal(expected, Recover(inactive, x.Slot1, observed, plan, x.Candidate));
+        Assert.Equal("FrontierOnly", Recover(inactive, x.Slot1, x.Frames, plan, x.Candidate));
+        byte[] repaired = Slot(4096, plan.TargetSequence, plan.TargetEnd, plan.Transaction);
+        Assert.Equal(new Frontier(plan.TargetSequence, plan.TargetEnd, plan.Transaction), SelectSlots(repaired, x.Slot1));
+        for (int attempt = 0; attempt < 2; attempt++)
+            Assert.Equal("BookkeepingOnly", Recover(repaired, x.Slot1, x.Frames, plan, x.Candidate));
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -1176,6 +1219,7 @@ public sealed class GrowthArchiveContractModelTests
             int expectedIndex = (int)((plan.ExpectedSequence - 1) % 2), targetIndex = 1 - expectedIndex;
             Frontier expected = ReadSlot(slots[expectedIndex], 4096, expectedIndex);
             Need(expected.Sequence == plan.ExpectedSequence && expected.End == plan.ExpectedEnd);
+            Need(plan.Transaction != expected.Transaction); // Before issue, repair or bookkeeping, including torn inactive slots.
             _ = ReadFrame(candidate, 4096, RecordId); // A zero candidate is never completion evidence.
             Need(plan.TargetEnd == checked(expected.End + candidate.Length) && plan.TargetEnd <= SegmentLimit);
             byte[] other = slots[targetIndex];

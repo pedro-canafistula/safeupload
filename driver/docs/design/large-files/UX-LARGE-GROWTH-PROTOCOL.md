@@ -3,8 +3,12 @@
 2026-10-28. **Proposed addendum and pure models for independent review; no product implementation.**
 **Revision 8 remains proposed, pending independent re-review.** The independent
 [revision-8 review](../../../evidence/2026-10-28/t9-growth-rev8-review-sol-high.md)
-returned REVISE. This follow-up changes findings 2–5 in the proposal/pure models;
-finding 1's actual serializer prerequisite remains OPEN with the ordered work
+returned REVISE. The independent
+[revision-8 re-review](../../../evidence/2026-10-28/t9-growth-rev8-rereview-sol-high.md)
+closed findings 2–5 at the contract/model level and returned REVISE for an
+additional recovery-model defect. This follow-up adds the fresh-transaction
+guard and its counterexample/positive controls; independent acceptance remains
+pending. Finding 1's actual serializer prerequisite remains OPEN with the ordered work
 list in 12.1.4. No review-acceptance or implementation gate is self-closed. It adds the increment-4
 before-coding audit (12.1.3), release ownership (9.3), strict archive/serializer
 contracts (10.5), and legacy migration (10.6), with product-independent models.
@@ -3010,6 +3014,20 @@ the higher sequence selects. Same-sequence forks/gaps/parity failures hold.
 Any invalid nonzero inactive slot requires the exact append intent; never merely
 pick the older valid slot. With one old valid slot + intent, expected sequence/end
 must match; with target selected + intent, the other valid slot must match expected.
+Before IssueOnce, FrontierOnly or BookkeepingOnly, require the plan's nonzero
+TransactionId to differ from the expected frontier's TransactionId (the selected
+frontier before this append). Equality returns Hold without issuing bytes or
+repairing either slot, even with a valid
+older inactive slot or a torn inactive slot and an otherwise exact frame/candidate.
+Otherwise recovery could persist a next-sequence frontier that normal slot
+selection rejects for reusing the previous append's transaction. **Increment 4,
+[before-coding model/selector acceptance], R4-H04:** the exact sequence-2/end-12288
+selected frontier with transaction Segment, initial inactive sequence-1/end-8192/
+zero-transaction slot and plan.Transaction=Segment must Hold. Controls vary older
+valid/torn inactive slots and absent/complete tails; fresh-transaction positives
+must select the repaired frontier and survive repeated interrupted recovery.
+**[Before-qualification], N-U8-02:** actual selector/recovery must match these
+vectors without another append or accounting release on refusal.
 EOF is aligned, >=selected end, <=4 MiB; no silent EOF normalization of an unknown
 tail. Preallocated AllocationSize beyond EOF is retained R_phys, not a frame.
 
@@ -3433,6 +3451,20 @@ in-process xUnit diagnostic runner): **41 additional review cases** (finding 2:
 zero failures/skips**. Final local feature Service/App/Tests compile passes all
 six builds with warnings treated as errors. These are pure DTO/state/byte models,
 not finding 1's actual schema-3 serializers, native custody or pair qualification.
+
+Additional recovery finding follow-up at base `1a3e3553` (same SDK/runner):
+**9 added cases; 248 contract + 70 unchanged fit = 318 discovered/executed/passed
+per Debug/Release configuration; 636 executions, zero failures/skips**. Removing
+only the fresh-transaction guard in a temporary mutant reproduces the exact
+review counterexample and three related issue/repair errors: **4 expected failed
+assertions out of 318 executed**. Fresh-transaction positives select the repaired
+sequence-3 frontier and repeat recovery without issuing again. All six local
+feature Service/App/Tests builds pass with warnings treated as errors on a
+temporary snapshot of that base plus the model edit. The first live-tree compile
+is retained as failed (four passes/two failures): concurrent untracked passive
+codec work appeared between profile copies; its duplicate types/missing approval
+type are excluded only by using the starting committed snapshot, without changing
+that work. Neither run is the Windows matrix or a product qualification result.
 Actual serializer prerequisites,
 native storage/durability, source acceptance and protected-pair qualification
 remain separate; these counts close no checkbox. This revision permits no product source,
@@ -3584,4 +3616,4 @@ never silently change support, failure policy, grants or cutover.
 | 1–5 | Historical proposal/review corrections in the linked reviews and concurrency design; retain their provenance. |
 | 6 | Installed roots/ancestry, immutable transaction pools and actor deferral; 8.7 review ACCEPT WITH CONDITIONS for dormant substrate. |
 | 7 | Measured preallocation, retained R_phys and class-65/flags-3 mechanism delta; source acceptance and native/target qualification remain separate. |
-| 8 | **Proposed, pending independent review:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2/O3; 9.3.1 adds exact Kind=5 public custody transfer and journal/budget crash controls. Review follow-up fixes 2–5: explicit durable fingerprint, durable issue/owner-drain models and independent selected-frame recovery; 12.1.4 orders separate finding-1 codec work. No product code, checkbox closure, Windows execution or admission/cutover change. |
+| 8 | **Proposed, pending independent review:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2/O3; 9.3.1 adds exact Kind=5 public custody transfer and journal/budget crash controls. Re-review closes findings 2–5 at contract/model level; the additional frontier recovery correction rejects reuse of the selected frontier's transaction before issue/repair, with older/torn-slot negatives and positive selector/repeated-recovery controls. 12.1.4 orders separate OPEN finding-1 codec work. No product code, checkbox closure, Windows execution or admission/cutover change. |
