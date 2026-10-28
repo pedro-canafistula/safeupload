@@ -5,15 +5,46 @@
  *
  * Lock / lifetime order (this module adds no filesystem resource):
  *   Communication transition guard -> MetadataLock (DISPATCH spin lock).
- *   MetadataLock protects publication, admission and active request IDs.
+ *   MetadataLock protects publication, admission, root keys, transactions,
+ *   child credits, embedded completion owners and bounded refusal telemetry.
  *   Acquire group rundown under MetadataLock; release the lock before token
  *   queries, allocation, lower I/O, port close, object dereference or a wait.
  *   No edge from MetadataLock to communication, policy, epoch, namespace,
  *   upper-stream or service work. Registration never waits for map space.
  *   The PASSIVE reaper alone waits for group rundown and releases native
  *   references. Callback-source removal precedes final module destruction.
- *   No object maps or completion contexts are admitted in this partial cut:
- *   the required installed-root authority has not been specified.
+ *   Each PendingOpen RESERVES one of its transaction's four child credits;
+ *   at most one is unclaimed. Opening/Active/retiring and post owners retain
+ *   that same credit. No pool borrowing and no fifth lower CREATE owner.
+ *   Root capture uses a nonwaiting busy latch, not a lock across native I/O.
+ *   Group rundown pins every control and forwarded metadata completion.
+ *   Root keys remain nonowning until pre-CLOSE removes them, even on revoke;
+ *   the PASSIVE owner releases original references/anchors outside the lock.
+ *   Instance teardown/final destruction explicitly forget keys (no future
+ *   CLOSE is promised), then drain completions before releasing group storage.
+ *
+ * Security predicates (8.7 review condition 1):
+ *   Four private roots: SY/BA owner, protected
+ *   non-null DACL; simple allow/deny ACEs only; no effective OR inheritable
+ *   mutation allow to anyone except SY/BA (not TI or the service SID).
+ *   Windows ancestors (volume root/ProgramData): SY/BA/TrustedInstaller owner;
+ *   only those principals may receive effective DELETE/DELETE_CHILD,
+ *   WRITE_DAC/WRITE_OWNER, write-EA/write-attributes. Creating OTHER names is
+ *   allowed. Inheritable directory ACEs are checked against the next captured
+ *   directory: a protected child blocks inheritance; otherwise destructive
+ *   inherited grants refuse. CREATOR_OWNER inheritance is evaluated as the
+ *   already validated trusted child owner. Object/callback/unknown ACE forms,
+ *   unknown flags and unknown generic/mask bits refuse, including deny ACEs.
+ *   TI is explicitly allowed ONLY on Windows ancestors, never private roots.
+ *   SafeUpload installation parent uses the ancestor rights predicate but
+ *   restricts owner/security authority to SY/BA; protection is not required
+ *   there. Both protected staging/journal children are checked separately.
+ *   This conservative predicate does not repair ACLs or model deny cancellation.
+ *
+ * Native child CREATE/data/query/flush/EOF/rename remain unsupported. A matched
+ * CREATE claims and consumes its intent, then fails NotReady before lower I/O.
+ * No child becomes Active. Tag-3 completions currently own root CLEANUP only;
+ * there is no forwarded CREATE or child CREATE post owner in this pass.
  *
  * These product controls remain provisional. Commit cannot grant anything.
  * No diagnostic control number or test authority is introduced here.
@@ -133,11 +164,17 @@ typedef struct _SU_METADATA_OUTPUT_PLAN {
     UINT32 IoAlignment, AllocationUnit;
 } SU_METADATA_OUTPUT_PLAN;
 
+typedef struct _SU_METADATA_DISPATCH {
+    BOOLEAN Handled;
+    UINT64 Cookie, RootId, ChildId;
+    UINT32 Role;
+} SU_METADATA_DISPATCH;
+
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadMetadataInitialize(VOID);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadMetadataDestroy(VOID);
-_IRQL_requires_(PASSIVE_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
 VOID SafeUploadMetadataRevoke(_In_opt_ PVOID MainCookie);
 _IRQL_requires_(PASSIVE_LEVEL)
 BOOLEAN SafeUploadMetadataGroupDraining(VOID);
@@ -147,6 +184,20 @@ NTSTATUS SafeUploadMetadataPair(_In_ PFLT_PORT ClientPort,
     _Outptr_result_maybenull_ PVOID *Cookie);
 _IRQL_requires_(PASSIVE_LEVEL)
 VOID SafeUploadMetadataDisconnect(_In_opt_ PVOID Cookie);
+_IRQL_requires_(PASSIVE_LEVEL)
+VOID SafeUploadMetadataInstanceTeardown(_In_ PFLT_INSTANCE Instance);
+_IRQL_requires_max_(APC_LEVEL)
+FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _Outptr_result_maybenull_ PVOID *Context,
+    _Out_ SU_METADATA_DISPATCH *Dispatch);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+BOOLEAN SafeUploadMetadataIsContext(_In_opt_ PVOID Context);
+_IRQL_requires_max_(DISPATCH_LEVEL)
+FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ PCFLT_RELATED_OBJECTS Objects, _In_ PVOID Context, _In_ FLT_POST_OPERATION_FLAGS Flags);
+_IRQL_requires_max_(APC_LEVEL)
+VOID SafeUploadMetadataNoteRefusal(_In_ const SU_METADATA_DISPATCH *Dispatch,
+    _In_ UCHAR MajorFunction, _In_ NTSTATUS Status);
 _IRQL_requires_(PASSIVE_LEVEL)
 NTSTATUS SafeUploadMetadataControl(_In_opt_ PVOID Cookie, _In_ BOOLEAN ResourceChannel,
     _In_reads_bytes_opt_(InputBytes) PVOID Input, _In_ ULONG InputBytes,

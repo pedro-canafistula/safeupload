@@ -7,6 +7,7 @@
 #include "StagePublic.h"
 #include "StageNativeRecords.h"
 #include "StageBoundPublicationInternal.h"
+#include "StageResourceMetadata.h"
 #include <ntstrsafe.h>
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
@@ -11294,9 +11295,17 @@ static FLT_PREOP_CALLBACK_STATUS StageNamespacePostStatus(_In_ UCHAR MajorFuncti
 #endif
 
 static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
-    PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext)
+    PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext, SU_METADATA_DISPATCH *MetadataDispatch)
 {
     STAGE_ADMISSION_TOKEN_SLOT slot;
+    RtlZeroMemory(MetadataDispatch, sizeof(*MetadataDispatch));
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    if (StageInitialized && SafeUploadData.Filter != NULL) {
+        FLT_PREOP_CALLBACK_STATUS metadataResult = SafeUploadMetadataPre(Data, Objects,
+            CompletionContext, MetadataDispatch);
+        if (MetadataDispatch->Handled) return metadataResult;
+    }
+#endif
     *CompletionContext = NULL;
     RtlZeroMemory(&slot, sizeof(slot));
     slot.Owner = StageAdmissionTokenDispatch;
@@ -11404,6 +11413,8 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext)
 {
     FLT_PREOP_CALLBACK_STATUS result;
+    SU_METADATA_DISPATCH metadataDispatch;
+    RtlZeroMemory(&metadataDispatch, sizeof(metadataDispatch));
 
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     /* FltStartFiltering may present callbacks before it returns. A CREATE
@@ -11422,13 +11433,17 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadStageDispatch(PFLT_CALLBACK_DATA Data,
         Data->IoStatus.Information = 0;
         result = FLT_PREOP_COMPLETE;
     } else {
-        result = StageDispatchEpoch(Data, Objects, CompletionContext);
+        result = StageDispatchEpoch(Data, Objects, CompletionContext, &metadataDispatch);
     }
 #else
-    result = StageDispatchEpoch(Data, Objects, CompletionContext);
+    result = StageDispatchEpoch(Data, Objects, CompletionContext, &metadataDispatch);
 #endif
 
-    if (result == FLT_PREOP_COMPLETE) SafeUploadDenyNote(Data, Objects, Data->IoStatus.Status, FALSE);
+    if (result == FLT_PREOP_COMPLETE) {
+        if (metadataDispatch.Handled)
+            SafeUploadMetadataNoteRefusal(&metadataDispatch, Data->Iopb->MajorFunction, Data->IoStatus.Status);
+        else SafeUploadDenyNote(Data, Objects, Data->IoStatus.Status, FALSE);
+    }
     return result;
 }
 
@@ -11545,6 +11560,8 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadStagePostOperation(PFLT_CALLBACK_DATA Data,
      * 3 network, optionally | SAFEUPLOAD_POSTCREATE_OVERRIDE), whose low bits collide with
      * the token tags (run c01g: bugcheck 0x3B dereferencing token (1 & ~1) == NULL). */
     BOOLEAN systemAddress = (ULONG_PTR)CompletionContext >= (ULONG_PTR)MmSystemRangeStart;
+    if (SafeUploadMetadataIsContext(CompletionContext))
+        return SafeUploadMetadataPost(Data, Objects, CompletionContext, Flags);
     /* Draining can run at DISPATCH_LEVEL: do not inspect CREATE security
      * context or other paged preoperation input merely to classify loss. */
     if (FlagOn(Flags, FLTFL_POST_OPERATION_DRAINING) &&

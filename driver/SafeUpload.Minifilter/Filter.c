@@ -26,6 +26,7 @@ Environment:
 #include "StageBoundPublicationInternal.h"
 #include "StageNativeRecords.h"
 #include "StagePublic.h"
+#include "StageResourceMetadata.h"
 
 //
 //  Single instance of the global driver state.
@@ -763,6 +764,7 @@ static VOID SafeUploadInstanceTeardownStart(_In_ PCFLT_RELATED_OBJECTS FltObject
     PAGED_CODE();
     /* Publish retirement before the ledger/context is torn down. The receipt
      * remains unstable until InstanceTeardownComplete after outstanding I/O. */
+    SafeUploadMetadataInstanceTeardown(FltObjects->Instance);
     SafeUploadStageAttachInstanceTeardownStart(FltObjects->Instance);
     SafeUploadStageNativeInstanceTeardownStart(FltObjects->Instance, Reason);
     SafeUploadBoundPublicationInstanceTeardown(FltObjects->Instance, Reason);
