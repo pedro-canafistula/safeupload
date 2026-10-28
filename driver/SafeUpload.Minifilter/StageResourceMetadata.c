@@ -8,6 +8,83 @@
 #define SU_METADATA_SD_BYTES 65536UL
 #define SU_METADATA_CONTEXT_SIGNATURE 0x334d5553UL
 
+/* First decisive refusal only. Node 0..6 identifies the fixed ancestry,
+ * node 7 a child, node 8 its held replacement target, MAXULONG unresolved. For a security edge, low byte
+ * is the parent node and upper bytes are (child node + 1): this distinguishes
+ * SafeUpload -> staging from SafeUpload -> staging-journal. Role is RootRole
+ * for RegisterRoot/root I/O, child Role for child controls/I/O, otherwise 0.
+ * A call owns its record; an embedded completion transfers it with Deferred.
+ * Under M these helpers only copy bounded scalar fields. Print is PASSIVE,
+ * outside M, once at the outer return/release; no paths/pointers are printed.
+ */
+#define SU_METADATA_UNKNOWN_NODE MAXULONG
+#define SU_METADATA_CHILD_NODE SU_METADATA_NODES
+#define SU_METADATA_TARGET_NODE (SU_METADATA_NODES + 1UL)
+#define SU_METADATA_EDGE_NODE(Parent, Child) ((Parent) | (((Child) + 1UL) << 8))
+typedef struct _SU_METADATA_DIAGNOSTIC {
+    ULONG Line;
+    NTSTATUS Status;
+    ULONG Node, Role;
+} SU_METADATA_DIAGNOSTIC;
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID MetadataDiagnosticReset(_Out_ SU_METADATA_DIAGNOSTIC *Diagnostic, _In_ ULONG Node, _In_ ULONG Role)
+{
+    Diagnostic->Line = 0; Diagnostic->Status = STATUS_SUCCESS;
+    Diagnostic->Node = Node; Diagnostic->Role = Role;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static VOID MetadataDiagnosticNode(_Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic, _In_ ULONG Node)
+{
+    if (Diagnostic != NULL && Diagnostic->Line == 0) Diagnostic->Node = Node;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static NTSTATUS MetadataDiagnosticStatus(_Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic,
+    _In_ NTSTATUS Status, _In_ ULONG Line)
+{
+    if (Status != STATUS_SUCCESS && Diagnostic != NULL && Diagnostic->Line == 0) {
+        Diagnostic->Line = Line; Diagnostic->Status = Status;
+    }
+    return Status;
+}
+
+_IRQL_requires_max_(DISPATCH_LEVEL)
+static BOOLEAN MetadataDiagnosticBoolean(_Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic,
+    _In_ BOOLEAN Value, _In_ NTSTATUS Status, _In_ ULONG Line)
+{
+    if (!Value) (VOID)MetadataDiagnosticStatus(Diagnostic, Status, Line);
+    return Value;
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static VOID MetadataDiagnosticPrint(_In_z_ PCSTR Control, _In_ const SU_METADATA_DIAGNOSTIC *Diagnostic)
+{
+    if (Diagnostic->Line != 0)
+        (VOID)DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SafeUpload: metadata %s refused status=0x%08X line=%u node=%u role=%u\n",
+            Control, (unsigned int)Diagnostic->Status, (unsigned int)Diagnostic->Line,
+            (unsigned int)Diagnostic->Node, (unsigned int)Diagnostic->Role);
+}
+
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS MetadataDiagnosticControlReturn(_Inout_ SU_METADATA_DIAGNOSTIC *Diagnostic,
+    _In_ ULONG Opcode, _In_ NTSTATUS Status, _In_ BOOLEAN Refused, _In_ ULONG Line)
+{
+    if ((Opcode == SU_RESOURCE_REGISTER_ROOT || Opcode == SU_RESOURCE_REGISTER_CHILD) &&
+        (Refused || !NT_SUCCESS(Status))) {
+        (VOID)MetadataDiagnosticStatus(Diagnostic, Status == STATUS_SUCCESS ? STATUS_ACCESS_DENIED : Status, Line);
+        MetadataDiagnosticPrint(Opcode == SU_RESOURCE_REGISTER_ROOT ? "RegisterRoot" : "RegisterChildIntent", Diagnostic);
+    }
+    return Status;
+}
+
+#define METADATA_STATUS(Status) MetadataDiagnosticStatus(Diagnostic, (Status), __LINE__)
+#define METADATA_BOOLEAN(Value, Status) MetadataDiagnosticBoolean(Diagnostic, (Value), (Status), __LINE__)
+/* Keep constant-false exits visible to SAL null/output-flow analysis. */
+#define METADATA_FALSE(Status) ((VOID)MetadataDiagnosticStatus(Diagnostic, (Status), __LINE__), FALSE)
+
 typedef struct _SU_METADATA_NODE {
     HANDLE Handle;
     PFILE_OBJECT Object;
@@ -30,6 +107,7 @@ typedef struct DECLSPEC_ALIGN(16) _SU_METADATA_COMPLETION {
     NTSTATUS NativeStatus;
     ULONG_PTR NativeInformation;
     BOOLEAN Deferred, NativeValidation;
+    SU_METADATA_DIAGNOSTIC Diagnostic;
     ULONG RenameBytes;
     WCHAR RenameLeaf[256];
     UCHAR Operation;
@@ -146,7 +224,7 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static VOID MetadataServiceChildren(_Inout_ SU_METADATA_GROUP *Group);
 _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
-    _Out_ PULONG Alignment, _Out_ PULONG Unit);
+    _Out_ PULONG Alignment, _Out_ PULONG Unit, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic);
 
 typedef struct _SU_METADATA_REFUSAL_RECORD {
     UINT64 Sequence, Cookie, RootId, ChildId;
@@ -614,7 +692,7 @@ static BOOLEAN MetadataTrustedSid(_In_ PSID Sid, _In_ BOOLEAN WindowsAncestor)
 _IRQL_requires_(PASSIVE_LEVEL)
 _Success_(return != FALSE)
 static BOOLEAN MetadataSecurityParts(_In_ PSECURITY_DESCRIPTOR Security,
-    _Outptr_ PSID *Owner, _Outptr_ PACL *Dacl, _Out_ PBOOLEAN Protected)
+    _Outptr_ PSID *Owner, _Outptr_ PACL *Dacl, _Out_ PBOOLEAN Protected, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     BOOLEAN defaulted, present;
     PISECURITY_DESCRIPTOR_RELATIVE relative = Security;
@@ -624,10 +702,10 @@ static BOOLEAN MetadataSecurityParts(_In_ PSECURITY_DESCRIPTOR Security,
     if (!NT_SUCCESS(RtlGetOwnerSecurityDescriptor(Security, Owner, &defaulted)) ||
         *Owner == NULL || !RtlValidSid(*Owner) ||
         !NT_SUCCESS(RtlGetDaclSecurityDescriptor(Security, &present, Dacl, &defaulted)) ||
-        !present || *Dacl == NULL) return FALSE;
+        !present || *Dacl == NULL) return METADATA_FALSE(STATUS_INVALID_SECURITY_DESCR);
     *Protected = BooleanFlagOn(relative->Control, SE_DACL_PROTECTED);
-    return relative->Revision == SECURITY_DESCRIPTOR_REVISION &&
-        FlagOn(relative->Control, SE_SELF_RELATIVE);
+    return METADATA_BOOLEAN(relative->Revision == SECURITY_DESCRIPTOR_REVISION &&
+        FlagOn(relative->Control, SE_SELF_RELATIVE), STATUS_INVALID_SECURITY_DESCR);
 }
 
 /* No deny-cancellation inference: an unsafe allow refuses even if another ACE
@@ -635,7 +713,7 @@ static BOOLEAN MetadataSecurityParts(_In_ PSECURITY_DESCRIPTOR Security,
 _IRQL_requires_(PASSIVE_LEVEL)
 static BOOLEAN MetadataSecurityPredicate(_In_ const SU_METADATA_NODE *Node,
     _In_ BOOLEAN WindowsAncestor, _In_ BOOLEAN InstallationParent,
-    _In_opt_ const SU_METADATA_NODE *Child)
+    _In_opt_ const SU_METADATA_NODE *Child, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     PSID owner, childOwner = NULL;
     PACL dacl, childDacl;
@@ -652,11 +730,11 @@ static BOOLEAN MetadataSecurityPredicate(_In_ const SU_METADATA_NODE *Node,
      * reach an unprotected child keep the wider set below. */
     const ACCESS_MASK ancestorAuthority = DELETE | FILE_DELETE_CHILD | WRITE_DAC | WRITE_OWNER;
     GENERIC_MAPPING mapping = {FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_GENERIC_EXECUTE, FILE_ALL_ACCESS};
-    if (!MetadataSecurityParts(Node->Security, &owner, &dacl, &protectedDacl) ||
+    if (!MetadataSecurityParts(Node->Security, &owner, &dacl, &protectedDacl, Diagnostic) ||
         !MetadataTrustedSid(owner, WindowsAncestor && !InstallationParent) ||
-        (!WindowsAncestor && !protectedDacl)) return FALSE;
-    if (Child != NULL && !MetadataSecurityParts(Child->Security, &childOwner, &childDacl, &childProtected))
-        return FALSE;
+        (!WindowsAncestor && !protectedDacl)) return METADATA_FALSE(STATUS_ACCESS_DENIED);
+    if (Child != NULL && !MetadataSecurityParts(Child->Security, &childOwner, &childDacl, &childProtected, Diagnostic))
+        return METADATA_FALSE(STATUS_ACCESS_DENIED);
     for (i = 0; i < dacl->AceCount; ++i) {
         PVOID ace = NULL;
         PACCESS_ALLOWED_ACE allow;
@@ -664,34 +742,34 @@ static BOOLEAN MetadataSecurityPredicate(_In_ const SU_METADATA_NODE *Node,
         PSID sid;
         ACCESS_MASK mask;
         BOOLEAN trusted;
-        if (!NT_SUCCESS(RtlGetAce(dacl, i, &ace)) || ace == NULL) return FALSE;
+        if (!NT_SUCCESS(RtlGetAce(dacl, i, &ace)) || ace == NULL) return METADATA_FALSE(STATUS_ACCESS_DENIED);
         header = ace;
         if ((header->AceType != ACCESS_ALLOWED_ACE_TYPE && header->AceType != ACCESS_DENIED_ACE_TYPE) ||
             (header->AceFlags & ~(OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | NO_PROPAGATE_INHERIT_ACE |
                 INHERIT_ONLY_ACE | INHERITED_ACE)) != 0 ||
-            header->AceSize < FIELD_OFFSET(ACCESS_ALLOWED_ACE, SidStart) + 8) return FALSE;
+            header->AceSize < FIELD_OFFSET(ACCESS_ALLOWED_ACE, SidStart) + 8) return METADATA_FALSE(STATUS_ACCESS_DENIED);
         allow = ace;
         sid = (PSID)&allow->SidStart;
         if (((PISID)sid)->SubAuthorityCount > SID_MAX_SUB_AUTHORITIES ||
             FIELD_OFFSET(ACCESS_ALLOWED_ACE, SidStart) + 8UL +
                 4UL * ((PISID)sid)->SubAuthorityCount != header->AceSize || !RtlValidSid(sid))
-            return FALSE;
+            return METADATA_FALSE(STATUS_ACCESS_DENIED);
         mask = allow->Mask;
         RtlMapGenericMask(&mask, &mapping);
-        if ((mask & ~FILE_ALL_ACCESS) != 0) return FALSE;
+        if ((mask & ~FILE_ALL_ACCESS) != 0) return METADATA_FALSE(STATUS_ACCESS_DENIED);
         if (header->AceType == ACCESS_DENIED_ACE_TYPE) continue;
         trusted = MetadataTrustedSid(sid, WindowsAncestor && !InstallationParent);
         if (!WindowsAncestor) {
-            if (!trusted && (mask & mutations) != 0) return FALSE;
+            if (!trusted && (mask & mutations) != 0) return METADATA_FALSE(STATUS_ACCESS_DENIED);
         } else {
             if (!trusted && !FlagOn(header->AceFlags, INHERIT_ONLY_ACE) && (mask & ancestorAuthority) != 0)
-                return FALSE;
+                return METADATA_FALSE(STATUS_ACCESS_DENIED);
             if (!trusted && Child != NULL && !childProtected &&
                 FlagOn(header->AceFlags, CONTAINER_INHERIT_ACE) && (mask & destructive) != 0) {
                 /* CREATOR_OWNER substitutes the already trusted next owner;
                  * it is not accepted as an effective ACE on this ancestor. */
                 if (!RtlEqualSid(sid, SeExports->SeCreatorOwnerSid) || childOwner == NULL ||
-                    !MetadataTrustedSid(childOwner, TRUE)) return FALSE;
+                    !MetadataTrustedSid(childOwner, TRUE)) return METADATA_FALSE(STATUS_ACCESS_DENIED);
             }
         }
     }
@@ -700,7 +778,7 @@ static BOOLEAN MetadataSecurityPredicate(_In_ const SU_METADATA_NODE *Node,
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS MetadataQueryDirectory(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Object,
-    _Out_ SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity)
+    _Out_ SAFEUPLOAD_STAGE_IDENTITY_V19 *Identity, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     FILE_ID_INFORMATION id;
     FILE_STANDARD_INFORMATION standard;
@@ -711,39 +789,39 @@ static NTSTATUS MetadataQueryDirectory(_In_ PFLT_INSTANCE Instance, _In_ PFILE_O
     RtlZeroMemory(&standard, sizeof(standard));
     RtlZeroMemory(&tag, sizeof(tag));
     status = FltQueryInformationFile(Instance, Object, &standard, sizeof(standard), FileStandardInformation, &bytes);
-    if (!NT_SUCCESS(status)) return status;
-    if (bytes != sizeof(standard) || !standard.Directory || standard.DeletePending) return STATUS_NOT_A_DIRECTORY;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    if (bytes != sizeof(standard) || !standard.Directory || standard.DeletePending) return METADATA_STATUS(STATUS_NOT_A_DIRECTORY);
     status = FltQueryInformationFile(Instance, Object, &tag, sizeof(tag), FileAttributeTagInformation, &bytes);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     /* ReparseTag is undefined unless the attribute is set; the attribute decides. */
     if (bytes != sizeof(tag) || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT))
-        return STATUS_REPARSE_POINT_ENCOUNTERED;
+        return METADATA_STATUS(STATUS_REPARSE_POINT_ENCOUNTERED);
     status = FltQueryInformationFile(Instance, Object, &id, sizeof(id), FileIdInformation, &bytes);
-    if (!NT_SUCCESS(status)) return status;
-    if (bytes != sizeof(id)) return STATUS_INFO_LENGTH_MISMATCH;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    if (bytes != sizeof(id)) return METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
     Identity->VolumeSerialNumber = id.VolumeSerialNumber;
     Identity->FileId = id.FileId;
-    return MetadataZero(Identity, sizeof(*Identity)) ? STATUS_INVALID_PARAMETER : STATUS_SUCCESS;
+    return METADATA_STATUS(MetadataZero(Identity, sizeof(*Identity)) ? STATUS_INVALID_PARAMETER : STATUS_SUCCESS);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS MetadataCaptureSecurity(_In_ PFLT_INSTANCE Instance, _Inout_ SU_METADATA_NODE *Node)
+static NTSTATUS MetadataCaptureSecurity(_In_ PFLT_INSTANCE Instance, _Inout_ SU_METADATA_NODE *Node, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     ULONG needed = 0;
     NTSTATUS status;
     SECURITY_INFORMATION information = OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
     status = FltQuerySecurityObject(Instance, Node->Object, information, NULL, 0, &needed);
     if (status != STATUS_BUFFER_TOO_SMALL && status != STATUS_BUFFER_OVERFLOW)
-        return NT_SUCCESS(status) ? STATUS_INVALID_SECURITY_DESCR : status;
+        return METADATA_STATUS(NT_SUCCESS(status) ? STATUS_INVALID_SECURITY_DESCR : status);
     if (needed < sizeof(SECURITY_DESCRIPTOR_RELATIVE) || needed > SU_METADATA_SD_BYTES)
-        return STATUS_INVALID_SECURITY_DESCR;
+        return METADATA_STATUS(STATUS_INVALID_SECURITY_DESCR);
     Node->Security = ExAllocatePool2(POOL_FLAG_PAGED, needed, SU_METADATA_TAG);
-    if (Node->Security == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    if (Node->Security == NULL) return METADATA_STATUS(STATUS_INSUFFICIENT_RESOURCES);
     Node->SecurityBytes = needed;
     status = FltQuerySecurityObject(Instance, Node->Object, information, Node->Security, needed, &needed);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     if (!RtlValidRelativeSecurityDescriptor(Node->Security, Node->SecurityBytes, information))
-        return STATUS_INVALID_SECURITY_DESCR;
+        return METADATA_STATUS(STATUS_INVALID_SECURITY_DESCR);
     return STATUS_SUCCESS;
 }
 
@@ -763,7 +841,7 @@ static NTSTATUS MetadataReadLink(_In_ PCUNICODE_STRING Name, _Inout_ PUNICODE_ST
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS MetadataCheckProgramData(_Inout_ SU_METADATA_CAPTURE *Capture)
+static NTSTATUS MetadataCheckProgramData(_Inout_ SU_METADATA_CAPTURE *Capture, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     UNICODE_STRING keyName, valueName, value, literal, expanded;
     OBJECT_ATTRIBUTES attributes;
@@ -775,26 +853,26 @@ static NTSTATUS MetadataCheckProgramData(_Inout_ SU_METADATA_CAPTURE *Capture)
     RtlInitUnicodeString(&valueName, L"ProgramData");
     InitializeObjectAttributes(&attributes, &keyName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
     status = ZwOpenKey(&key, KEY_QUERY_VALUE, &attributes);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     status = ZwQueryValueKey(key, &valueName, KeyValuePartialInformation, data, sizeof(Capture->Scratch), &returned);
     ZwClose(key);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     if (returned < (ULONG)FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data) ||
         (data->Type != REG_SZ && data->Type != REG_EXPAND_SZ) || data->DataLength < 2 ||
         data->DataLength > 512 * sizeof(WCHAR) || (data->DataLength & 1) != 0 ||
-        data->DataLength > returned - (ULONG)FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data)) return STATUS_INVALID_PARAMETER;
+        data->DataLength > returned - (ULONG)FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data)) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     value.Buffer = (PWCHAR)data->Data;
     value.MaximumLength = (USHORT)data->DataLength;
     value.Length = (USHORT)(value.MaximumLength - (USHORT)sizeof(WCHAR));
-    if (value.Buffer[value.Length / sizeof(WCHAR)] != 0) return STATUS_INVALID_PARAMETER;
+    if (value.Buffer[value.Length / sizeof(WCHAR)] != 0) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     RtlInitUnicodeString(&literal, L"C:\\ProgramData");
     RtlInitUnicodeString(&expanded, L"%SystemDrive%\\ProgramData");
-    return RtlEqualUnicodeString(&value, &literal, TRUE) || RtlEqualUnicodeString(&value, &expanded, TRUE) ?
-        STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
+    return METADATA_STATUS(RtlEqualUnicodeString(&value, &literal, TRUE) || RtlEqualUnicodeString(&value, &expanded, TRUE) ?
+        STATUS_SUCCESS : STATUS_NOT_SUPPORTED);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture)
+static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     UNICODE_STRING device, system, name, actualVolume, systemDevice, resolved;
     UNICODE_STRING driveLink = RTL_CONSTANT_STRING(L"\\GLOBAL??\\C:");
@@ -813,10 +891,11 @@ static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture
     system.Buffer = Capture->SystemBuffer;
     system.Length = 0;
     system.MaximumLength = sizeof(Capture->SystemBuffer);
+    MetadataDiagnosticNode(Diagnostic, 0);
     status = MetadataReadLink(&driveLink, &device);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     status = MetadataReadLink(&systemLink, &system);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     /* Windows 10 names \SystemRoot as \Device\BootDevice\Windows, and
      * \Device\BootDevice is itself a link to the volume (measured on 19045,
      * N-U5-01 nu501c4), so a literal prefix never matched. Resolve exactly one
@@ -825,7 +904,7 @@ static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture
     for (slash = 1; slash < system.Length / sizeof(WCHAR); ++slash)
         if (system.Buffer[slash] == L'\\' && ++slashes == 2) break;
     if (slashes != 2 || system.Buffer[0] != L'\\' || (USHORT)((slash + 1) * sizeof(WCHAR)) >= system.Length)
-        return STATUS_NOT_SUPPORTED;
+        return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     systemDevice.Buffer = system.Buffer;
     systemDevice.Length = systemDevice.MaximumLength = (USHORT)(slash * sizeof(WCHAR));
     resolved.Buffer = (PWCHAR)Capture->Scratch;
@@ -833,33 +912,36 @@ static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture
     resolved.MaximumLength = 1024;
     status = MetadataReadLink(&systemDevice, &resolved);
     if (status == STATUS_OBJECT_TYPE_MISMATCH) resolved = systemDevice; /* already a device object */
-    else if (!NT_SUCCESS(status)) return status;
-    if (!RtlEqualUnicodeString(&resolved, &device, TRUE)) return STATUS_NOT_SUPPORTED;
-    status = MetadataCheckProgramData(Capture);
-    if (!NT_SUCCESS(status)) return status;
+    else if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    if (!RtlEqualUnicodeString(&resolved, &device, TRUE)) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
+    MetadataDiagnosticNode(Diagnostic, 1);
+    status = MetadataCheckProgramData(Capture, Diagnostic);
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    MetadataDiagnosticNode(Diagnostic, 0);
     status = FltGetVolumeFromName(SafeUploadData.Filter, &device, &Capture->Volume);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     actualVolume.Buffer = (PWCHAR)Capture->Scratch;
     actualVolume.Length = 0;
     actualVolume.MaximumLength = 1024;
     status = FltGetVolumeName(Capture->Volume, &actualVolume, NULL);
-    if (!NT_SUCCESS(status)) return status;
-    if (!RtlEqualUnicodeString(&actualVolume, &device, TRUE)) return STATUS_NOT_SUPPORTED;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    if (!RtlEqualUnicodeString(&actualVolume, &device, TRUE)) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     status = FltGetVolumeInstanceFromName(SafeUploadData.Filter, Capture->Volume, NULL, &Capture->Instance);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     status = FltGetInstanceContext(Capture->Instance, (PFLT_CONTEXT *)&context);
-    if (!NT_SUCCESS(status)) return status;
-    status = context->VolumeKind == SafeUploadVolumeFixed ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    status = METADATA_STATUS(context->VolumeKind == SafeUploadVolumeFixed ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED);
     FltReleaseContext(context);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     status = FltGetFileSystemType(Capture->Instance, &type);
-    if (!NT_SUCCESS(status)) return status;
-    if (type != FLT_FSTYPE_NTFS) return STATUS_NOT_SUPPORTED;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    if (type != FLT_FSTYPE_NTFS) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     device.Buffer[device.Length / sizeof(WCHAR)] = L'\\';
     device.Length = (USHORT)(device.Length + (USHORT)sizeof(WCHAR));
     device.MaximumLength = sizeof(Capture->DeviceBuffer);
     for (i = 0; i < SU_METADATA_NODES; ++i) {
         SU_METADATA_NODE *node = &Capture->Nodes[i];
+        MetadataDiagnosticNode(Diagnostic, i);
         if (i == 0) name = device;
         else RtlInitUnicodeString(&name, MetadataNodeNames[i]);
         InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
@@ -870,37 +952,39 @@ static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture
             FILE_OPEN, FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT |
             FILE_COMPLETE_IF_OPLOCKED, NULL, 0, IO_STOP_ON_SYMLINK, NULL);
         if (status == STATUS_STOPPED_ON_SYMLINK && io.Information != 0) ExFreePool((PVOID)io.Information);
-        if (status != STATUS_SUCCESS) return NT_SUCCESS(status) ? STATUS_NOT_SUPPORTED : status;
-        if (io.Information != FILE_OPENED) return STATUS_INVALID_PARAMETER;
-        status = MetadataQueryDirectory(Capture->Instance, node->Object, &node->Identity);
-        if (!NT_SUCCESS(status)) return status;
+        if (status != STATUS_SUCCESS) return METADATA_STATUS(NT_SUCCESS(status) ? STATUS_NOT_SUPPORTED : status);
+        if (io.Information != FILE_OPENED) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
+        status = MetadataQueryDirectory(Capture->Instance, node->Object, &node->Identity, Diagnostic);
+        if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
         if (i != 0 && node->Identity.VolumeSerialNumber != Capture->Nodes[0].Identity.VolumeSerialNumber)
-            return STATUS_NOT_SAME_DEVICE;
-        status = MetadataCaptureSecurity(Capture->Instance, node);
-        if (!NT_SUCCESS(status)) return status;
+            return METADATA_STATUS(STATUS_NOT_SAME_DEVICE);
+        status = MetadataCaptureSecurity(Capture->Instance, node, Diagnostic);
+        if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     }
-    if (!MetadataSecurityPredicate(&Capture->Nodes[0], TRUE, FALSE, &Capture->Nodes[1]) ||
-        !MetadataSecurityPredicate(&Capture->Nodes[1], TRUE, FALSE, &Capture->Nodes[2]) ||
-        !MetadataSecurityPredicate(&Capture->Nodes[2], TRUE, TRUE, &Capture->Nodes[3]) ||
-        !MetadataSecurityPredicate(&Capture->Nodes[2], TRUE, TRUE, &Capture->Nodes[5])) return STATUS_ACCESS_DENIED;
-    for (i = 3; i < SU_METADATA_NODES; ++i)
-        if (!MetadataSecurityPredicate(&Capture->Nodes[i], FALSE, FALSE, NULL)) return STATUS_ACCESS_DENIED;
-    return MetadataCaptureAlignment(Capture->Instance, Capture->Volume,
-        &Capture->IoAlignment, &Capture->AllocationUnit);
+    if (!(MetadataDiagnosticNode(Diagnostic, SU_METADATA_EDGE_NODE(0, 1)), MetadataSecurityPredicate(&Capture->Nodes[0], TRUE, FALSE, &Capture->Nodes[1], Diagnostic)) ||
+        !(MetadataDiagnosticNode(Diagnostic, SU_METADATA_EDGE_NODE(1, 2)), MetadataSecurityPredicate(&Capture->Nodes[1], TRUE, FALSE, &Capture->Nodes[2], Diagnostic)) ||
+        !(MetadataDiagnosticNode(Diagnostic, SU_METADATA_EDGE_NODE(2, 3)), MetadataSecurityPredicate(&Capture->Nodes[2], TRUE, TRUE, &Capture->Nodes[3], Diagnostic)) ||
+        !(MetadataDiagnosticNode(Diagnostic, SU_METADATA_EDGE_NODE(2, 5)), MetadataSecurityPredicate(&Capture->Nodes[2], TRUE, TRUE, &Capture->Nodes[5], Diagnostic))) return METADATA_STATUS(STATUS_ACCESS_DENIED);
+    for (i = 3; i < SU_METADATA_NODES; ++i) {
+        MetadataDiagnosticNode(Diagnostic, i);
+        if (!MetadataSecurityPredicate(&Capture->Nodes[i], FALSE, FALSE, NULL, Diagnostic)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
+    }
+    return METADATA_STATUS(MetadataCaptureAlignment(Capture->Instance, Capture->Volume,
+        &Capture->IoAlignment, &Capture->AllocationUnit, Diagnostic));
 }
 
-static BOOLEAN MetadataRootShape(_In_ const SU_RESOURCE_ROOT_REQUEST *Request)
+static BOOLEAN MetadataRootShape(_In_ const SU_RESOURCE_ROOT_REQUEST *Request, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
-    return Request->RootRole >= 1 && Request->RootRole <= 4 && Request->Flags == 0 && Request->Handle != 0 &&
+    return METADATA_BOOLEAN(Request->RootRole >= 1 && Request->RootRole <= 4 && Request->Flags == 0 && Request->Handle != 0 &&
         (UINT64)(ULONG_PTR)Request->Handle == Request->Handle && Request->SecurityContractVersion == 1 &&
         MetadataZero(Request->Reserved, sizeof(Request->Reserved)) &&
         !MetadataZero(&Request->Identity, sizeof(Request->Identity)) &&
-        ((Request->RootRole == 1 || Request->RootRole == 3) == (Request->ParentRootId == 0));
+        ((Request->RootRole == 1 || Request->RootRole == 3) == (Request->ParentRootId == 0)), STATUS_INVALID_PARAMETER);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
-    _In_ const SU_RESOURCE_ROOT_REQUEST *Request, _Out_ SU_RESOURCE_ROOT_REPLY *Reply)
+static __declspec(noinline) NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
+    _In_ const SU_RESOURCE_ROOT_REQUEST *Request, _Out_ SU_RESOURCE_ROOT_REPLY *Reply, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     SU_METADATA_CAPTURE *capture = NULL;
     SU_METADATA_NODE *node;
@@ -912,100 +996,103 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
     BOOLEAN captureNeeded, publish = FALSE, revoke = FALSE;
     NTSTATUS status = STATUS_INVALID_PARAMETER;
     KIRQL irql;
+    if (Diagnostic != NULL && Diagnostic->Line == 0) Diagnostic->Role = Request->RootRole;
     Reply->Result = 2;
-    if (!MetadataRootShape(Request)) return status;
+    if (!MetadataRootShape(Request, Diagnostic)) return METADATA_STATUS(status);
     index = Request->RootRole - 1;
+    MetadataDiagnosticNode(Diagnostic, MetadataRoleNodes[index]);
     KeAcquireSpinLock(&MetadataLock, &irql);
-    if (Group->Revoked || !Group->Paired) status = STATUS_ACCESS_DENIED;
-    else if (Group->RootBusy) status = STATUS_DEVICE_BUSY;
+    if (Group->Revoked || !Group->Paired) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
+    else if (Group->RootBusy) status = METADATA_STATUS(STATUS_DEVICE_BUSY);
     else if ((index == 1 && (Group->Roots[0].Id == 0 || Group->Roots[0].Id != Request->ParentRootId ||
                          Group->Roots[0].Key == NULL || Group->Roots[0].Cleaned)) ||
              (index == 3 && (Group->Roots[2].Id == 0 || Group->Roots[2].Id != Request->ParentRootId ||
                          Group->Roots[2].Key == NULL || Group->Roots[2].Cleaned)))
-        status = STATUS_INVALID_PARAMETER;
+        status = METADATA_STATUS(STATUS_INVALID_PARAMETER);
     else { Group->RootBusy = TRUE; status = STATUS_SUCCESS; }
     captureNeeded = Group->Instance == NULL;
     KeReleaseSpinLock(&MetadataLock, irql);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     status = ObReferenceObjectByHandle((HANDLE)(ULONG_PTR)Request->Handle,
         READ_CONTROL | SYNCHRONIZE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
         *IoFileObjectType, UserMode, (PVOID *)&original, NULL);
-    if (!NT_SUCCESS(status)) goto Exit;
+    if (!NT_SUCCESS(status)) { (VOID)METADATA_STATUS(status); goto Exit; }
     /* Atomically duplicate the proven ORIGINAL handle before installing a
      * provisional key. Opening its pointer could resurrect an already-cleaned
      * object. The source handle may have been closed/reused since UserMode
      * proof, so compare the duplicated object before trusting the bridge. */
     status = ZwDuplicateObject(ZwCurrentProcess(), (HANDLE)(ULONG_PTR)Request->Handle,
         ZwCurrentProcess(), &bridge, 0, OBJ_KERNEL_HANDLE, DUPLICATE_SAME_ACCESS);
-    if (status != STATUS_SUCCESS) goto Exit;
+    if (status != STATUS_SUCCESS) { (VOID)METADATA_STATUS(status); goto Exit; }
     status = ObReferenceObjectByHandle(bridge, 0, *IoFileObjectType, KernelMode, (PVOID *)&bridgeObject, NULL);
-    if (status != STATUS_SUCCESS) goto Exit;
-    if (bridgeObject != original) { status = STATUS_INVALID_HANDLE; goto Exit; }
+    if (status != STATUS_SUCCESS) { (VOID)METADATA_STATUS(status); goto Exit; }
+    if (bridgeObject != original) { status = METADATA_STATUS(STATUS_INVALID_HANDLE); goto Exit; }
     ObDereferenceObject(bridgeObject); bridgeObject = NULL;
     if (!FlagOn(original->Flags, FO_HANDLE_CREATED) || FlagOn(original->Flags, FO_CLEANUP_COMPLETE)) {
-        status = STATUS_INVALID_HANDLE;
+        status = METADATA_STATUS(STATUS_INVALID_HANDLE);
         goto Exit;
     }
     KeAcquireSpinLock(&MetadataLock, &irql);
-    if (Group->Revoked) status = STATUS_ACCESS_DENIED;
+    if (Group->Revoked) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
     else {
         NT_ASSERT(Group->CaptureKey == NULL);
         Group->CaptureKey = original;
         Group->CaptureCleaned = FALSE;
     }
     KeReleaseSpinLock(&MetadataLock, irql);
-    if (status != STATUS_SUCCESS) goto Exit;
+    if (status != STATUS_SUCCESS) { (VOID)METADATA_STATUS(status); goto Exit; }
     /* Any last-handle CLEANUP can now see the non-authorizing capture key.
      * It cannot be missed between an unlocked flag check and promotion. */
     ZwClose(bridge); bridge = NULL;
     /* Publication copies the bounded node/instance fields under M. Keep
      * their backing resident; descriptor contents are still PASSIVE-only. */
     capture = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*capture), SU_METADATA_TAG);
-    if (capture == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    if (capture == NULL) { status = METADATA_STATUS(STATUS_INSUFFICIENT_RESOURCES); goto Exit; }
     if (captureNeeded) {
-        status = MetadataCaptureInstallation(capture);
+        status = MetadataCaptureInstallation(capture, Diagnostic);
         if (status != STATUS_SUCCESS) {
-            if (NT_SUCCESS(status)) status = STATUS_DEVICE_NOT_READY;
+            if (NT_SUCCESS(status)) status = METADATA_STATUS(STATUS_DEVICE_NOT_READY);
             goto Exit;
         }
     }
+    MetadataDiagnosticNode(Diagnostic, MetadataRoleNodes[index]);
     node = captureNeeded ? &capture->Nodes[MetadataRoleNodes[index]] : &Group->Nodes[MetadataRoleNodes[index]];
     status = FltGetVolumeFromFileObject(SafeUploadData.Filter, original, &volume);
-    if (!NT_SUCCESS(status)) goto Exit;
+    if (!NT_SUCCESS(status)) { (VOID)METADATA_STATUS(status); goto Exit; }
     if (volume != (captureNeeded ? capture->Volume : Group->Volume)) {
-        status = STATUS_NOT_SAME_DEVICE;
+        status = METADATA_STATUS(STATUS_NOT_SAME_DEVICE);
         revoke = TRUE;
         goto Exit;
     }
-    status = MetadataQueryDirectory(captureNeeded ? capture->Instance : Group->Instance, original, &identity);
-    if (!NT_SUCCESS(status)) goto Exit;
+    status = MetadataQueryDirectory(captureNeeded ? capture->Instance : Group->Instance, original, &identity, Diagnostic);
+    if (!NT_SUCCESS(status)) { (VOID)METADATA_STATUS(status); goto Exit; }
     if (!RtlEqualMemory(&identity, &Request->Identity, sizeof(identity)) ||
         !RtlEqualMemory(&identity, &node->Identity, sizeof(identity))) {
-        status = STATUS_INVALID_PARAMETER;
+        status = METADATA_STATUS(STATUS_INVALID_PARAMETER);
         revoke = TRUE;
         goto Exit;
     }
     status = FltQuerySecurityObject(captureNeeded ? capture->Instance : Group->Instance, original,
         OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, capture->Scratch, node->SecurityBytes, &bytes);
-    if (!NT_SUCCESS(status)) goto Exit;
+    if (!NT_SUCCESS(status)) { (VOID)METADATA_STATUS(status); goto Exit; }
     if (bytes != node->SecurityBytes || !RtlEqualMemory(capture->Scratch, node->Security, node->SecurityBytes)) {
-        status = STATUS_INVALID_SECURITY_DESCR;
+        status = METADATA_STATUS(STATUS_INVALID_SECURITY_DESCR);
         revoke = TRUE;
         goto Exit;
     }
     /* Recheck original subject after the bounded native capture, outside the
      * map lock. The final publication latch checks live revocation again. */
     if (!MetadataAuthenticate(Group) || FlagOn(original->Flags, FO_CLEANUP_COMPLETE)) {
-        status = STATUS_ACCESS_DENIED;
+        status = METADATA_STATUS(STATUS_ACCESS_DENIED);
         goto Exit;
     }
     KeAcquireSpinLock(&MetadataLock, &irql);
     if (Group->Revoked || Group->CaptureKey != original || Group->CaptureCleaned ||
-        FlagOn(original->Flags, FO_CLEANUP_COMPLETE)) status = STATUS_ACCESS_DENIED;
+        FlagOn(original->Flags, FO_CLEANUP_COMPLETE)) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
     else if (Group->Roots[index].Id != 0) {
-        if (Group->Roots[index].Key != original || Group->Roots[index].Cleaned) status = STATUS_INVALID_PARAMETER;
+        if (Group->Roots[index].Key != original || Group->Roots[index].Cleaned) status = METADATA_STATUS(STATUS_INVALID_PARAMETER);
         else { Reply->RootId = Group->Roots[index].Id; publish = TRUE; }
-    } else if (Group->NextRootId == (UINT64)MAXLONGLONG) status = STATUS_TOO_MANY_CONTEXT_IDS;
+    } else if (Group->NextRootId == (UINT64)MAXLONGLONG) status = METADATA_STATUS(STATUS_TOO_MANY_CONTEXT_IDS);
     else {
         if (captureNeeded) {
             RtlCopyMemory(Group->Nodes, capture->Nodes, sizeof(Group->Nodes));
@@ -1046,11 +1133,11 @@ Exit:
     KeReleaseSpinLock(&MetadataLock, irql);
     if (revoke) SafeUploadMetadataRevoke(Group->MainCookie);
     KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
-    return status;
+    return METADATA_STATUS(status);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS MetadataChildShape(_In_ const SU_RESOURCE_CHILD_REQUEST *Request)
+static NTSTATUS MetadataChildShape(_In_ const SU_RESOURCE_CHILD_REQUEST *Request, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     ULONG i;
     UINT64 maximum;
@@ -1062,16 +1149,16 @@ static NTSTATUS MetadataChildShape(_In_ const SU_RESOURCE_CHILD_REQUEST *Request
         !MetadataZero(Request->Reserved, sizeof(Request->Reserved)) ||
         (Request->CreateDisposition != FILE_OPEN && Request->CreateDisposition != FILE_CREATE) ||
         (MetadataZero(&Request->ExpectedIdentity, sizeof(Request->ExpectedIdentity)) !=
-         (Request->CreateDisposition == FILE_CREATE))) return STATUS_INVALID_PARAMETER;
+         (Request->CreateDisposition == FILE_CREATE))) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     for (i = 0; i < Request->LeafBytes / sizeof(WCHAR); ++i) {
         WCHAR c = Request->Leaf[i];
         if (c == 0 || c == L'\\' || c == L'/' || c == L':' || c == L'*' || c == L'?')
-            return STATUS_INVALID_PARAMETER;
+            return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     }
     if ((Request->LeafBytes == 2 && Request->Leaf[0] == L'.') ||
         (Request->LeafBytes == 4 && Request->Leaf[0] == L'.' && Request->Leaf[1] == L'.') ||
         !MetadataZero((const UCHAR *)Request->Leaf + Request->LeafBytes,
-            sizeof(Request->Leaf) - Request->LeafBytes)) return STATUS_INVALID_PARAMETER;
+            sizeof(Request->Leaf) - Request->LeafBytes)) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     output = Request->Role == SuLedgerNew || Request->Role == SuCompanionNew ||
         Request->Role == SuManifestNew || Request->Role == SuSegment ||
         Request->Role == SuInventoryNew || Request->Role == SuMarkerNew ||
@@ -1083,16 +1170,16 @@ static NTSTATUS MetadataChildShape(_In_ const SU_RESOURCE_CHILD_REQUEST *Request
     /* LegacyNegative has no serialized noncommitment-proof input in this
      * exchange. Its role alone cannot grant delete. */
     if ((Request->AccessMask & ~allowed) != 0 || Request->AccessMask == 0 ||
-        (Request->CreateDisposition == FILE_CREATE && !output)) return STATUS_ACCESS_DENIED;
+        (Request->CreateDisposition == FILE_CREATE && !output)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
     /* Reopening a candidate is recovery/read custody, not evidence that an
      * existing immutable commit may be rewritten. Only its creating handle
      * receives the bounded pre-F2 output phase. */
     if (Request->Role == SuHistoryCandidate && Request->CreateDisposition == FILE_OPEN &&
-        (Request->AccessMask & FILE_WRITE_DATA) != 0) return STATUS_ACCESS_DENIED;
+        (Request->AccessMask & FILE_WRITE_DATA) != 0) return METADATA_STATUS(STATUS_ACCESS_DENIED);
     if (!MetadataZero(&Request->ReplaceTargetIdentity, sizeof(Request->ReplaceTargetIdentity)) &&
         (!output || Request->Role == SuSegment || Request->Role == SuHistoryCandidate ||
          (Request->AccessMask & (DELETE | FILE_WRITE_DATA)) != (DELETE | FILE_WRITE_DATA)))
-        return STATUS_INVALID_PARAMETER;
+        return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     switch (Request->Role) {
     case SuCompanionCurrent: case SuCompanionNew: maximum = 192; break;
     case SuManifestCurrent: case SuManifestNew: case SuHistoryCandidate: maximum = 128 * 1024; break;
@@ -1110,34 +1197,34 @@ static NTSTATUS MetadataChildShape(_In_ const SU_RESOURCE_CHILD_REQUEST *Request
         break;
     default: maximum = 64 * 1024; break;
     }
-    if (Request->MaximumLogicalBytes > maximum) return STATUS_INVALID_PARAMETER;
+    if (Request->MaximumLogicalBytes > maximum) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     return STATUS_SUCCESS;
 }
 
-static BOOLEAN MetadataRoleRoot(_In_ ULONG Role, _In_ ULONG RootRole)
+static BOOLEAN MetadataRoleRoot(_In_ ULONG Role, _In_ ULONG RootRole, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     switch (Role) {
-    case SuLedgerCurrent: case SuLedgerNew: return RootRole == 2;
-    case SuCompanionCurrent: case SuCompanionNew: return RootRole == 1;
+    case SuLedgerCurrent: case SuLedgerNew: return METADATA_BOOLEAN(RootRole == 2, STATUS_INVALID_PARAMETER);
+    case SuCompanionCurrent: case SuCompanionNew: return METADATA_BOOLEAN(RootRole == 1, STATUS_INVALID_PARAMETER);
     case SuManifestCurrent: case SuManifestNew: case SuLegacySecurity:
-    case SuEpochCurrent: case SuEpochNew: case SuHistoryCandidate: return RootRole == 3;
-    case SuMarkerCurrent: case SuMarkerNew: return RootRole == 2;
-    case SuLegacyNegative: return RootRole == 1 || RootRole == 2;
-    default: return RootRole == 4;
+    case SuEpochCurrent: case SuEpochNew: case SuHistoryCandidate: return METADATA_BOOLEAN(RootRole == 3, STATUS_INVALID_PARAMETER);
+    case SuMarkerCurrent: case SuMarkerNew: return METADATA_BOOLEAN(RootRole == 2, STATUS_INVALID_PARAMETER);
+    case SuLegacyNegative: return METADATA_BOOLEAN(RootRole == 1 || RootRole == 2, STATUS_INVALID_PARAMETER);
+    default: return METADATA_BOOLEAN(RootRole == 4, STATUS_INVALID_PARAMETER);
     }
 }
 
-static BOOLEAN MetadataHex(_In_reads_(Chars) const WCHAR *Text, _In_ ULONG Chars)
+static BOOLEAN MetadataHex(_In_reads_(Chars) const WCHAR *Text, _In_ ULONG Chars, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     ULONG i;
     for (i = 0; i < Chars; ++i)
         if (!((Text[i] >= L'0' && Text[i] <= L'9') || (Text[i] >= L'a' && Text[i] <= L'f') ||
-            (Text[i] >= L'A' && Text[i] <= L'F'))) return FALSE;
-    return Chars != 0;
+            (Text[i] >= L'A' && Text[i] <= L'F'))) return METADATA_FALSE(STATUS_INVALID_PARAMETER);
+    return METADATA_BOOLEAN(Chars != 0, STATUS_INVALID_PARAMETER);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static BOOLEAN MetadataLeafRole(_In_ const SU_RESOURCE_CHILD_REQUEST *Request)
+static BOOLEAN MetadataLeafRole(_In_ const SU_RESOURCE_CHILD_REQUEST *Request, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     PCWSTR fixed = NULL, suffix = NULL;
     UNICODE_STRING leaf, expected;
@@ -1154,7 +1241,7 @@ static BOOLEAN MetadataLeafRole(_In_ const SU_RESOURCE_CHILD_REQUEST *Request)
         else {
             RtlInitUnicodeString(&tail, L".tmp");
             if (chars <= 37 || !RtlSuffixUnicodeString(&tail, &leaf, TRUE) ||
-                Request->Leaf[chars - 37] != L'.' || !MetadataHex(Request->Leaf + chars - 36, 32)) return FALSE;
+                Request->Leaf[chars - 37] != L'.' || !MetadataHex(Request->Leaf + chars - 36, 32, Diagnostic)) return METADATA_FALSE(STATUS_INVALID_PARAMETER);
             baseChars -= 37;
         }
         leaf.Length = leaf.MaximumLength = (USHORT)(baseChars * sizeof(WCHAR));
@@ -1171,21 +1258,21 @@ static BOOLEAN MetadataLeafRole(_In_ const SU_RESOURCE_CHILD_REQUEST *Request)
     case SuHistoryCandidate: suffix = L".resource"; break;
     case SuCompanionCurrent: case SuCompanionNew:
         RtlInitUnicodeString(&expected, L".space");
-        return baseChars > 38 && MetadataHex(Request->Leaf, 32) && Request->Leaf[32] == L'.' &&
-            RtlSuffixUnicodeString(&expected, &leaf, TRUE);
+        return METADATA_BOOLEAN(baseChars > 38 && MetadataHex(Request->Leaf, 32, Diagnostic) && Request->Leaf[32] == L'.' &&
+            RtlSuffixUnicodeString(&expected, &leaf, TRUE), STATUS_INVALID_PARAMETER);
     case SuSegment:
         RtlInitUnicodeString(&expected, L".pack");
-        return (baseChars == 13 || baseChars == 37) && MetadataHex(Request->Leaf, baseChars - 5) &&
-            RtlSuffixUnicodeString(&expected, &leaf, TRUE);
-    default: return FALSE;
+        return METADATA_BOOLEAN((baseChars == 13 || baseChars == 37) && MetadataHex(Request->Leaf, baseChars - 5, Diagnostic) &&
+            RtlSuffixUnicodeString(&expected, &leaf, TRUE), STATUS_INVALID_PARAMETER);
+    default: return METADATA_FALSE(STATUS_INVALID_PARAMETER);
     }
     if (fixed != NULL) {
         RtlInitUnicodeString(&expected, fixed);
-        return RtlEqualUnicodeString(&leaf, &expected, TRUE);
+        return METADATA_BOOLEAN(RtlEqualUnicodeString(&leaf, &expected, TRUE), STATUS_INVALID_PARAMETER);
     }
     RtlInitUnicodeString(&expected, suffix);
-    return baseChars == 32 + expected.Length / sizeof(WCHAR) && MetadataHex(Request->Leaf, 32) &&
-        RtlSuffixUnicodeString(&expected, &leaf, TRUE);
+    return METADATA_BOOLEAN(baseChars == 32 + expected.Length / sizeof(WCHAR) && MetadataHex(Request->Leaf, 32, Diagnostic) &&
+        RtlSuffixUnicodeString(&expected, &leaf, TRUE), STATUS_INVALID_PARAMETER);
 }
 
 /* M held. Slot retirement is legal only after all contexts/target pins and
@@ -1214,26 +1301,29 @@ static VOID MetadataRemoveChildLocked(_Inout_ SU_METADATA_GROUP *Group, _In_ ULO
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS MetadataFoldLeaf(_In_reads_bytes_(Bytes) const WCHAR *Leaf, _In_ USHORT Bytes,
-    _Out_writes_bytes_(512) WCHAR *Folded)
+    _Out_writes_bytes_(512) WCHAR *Folded, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     UNICODE_STRING source, destination;
+    NTSTATUS status;
     source.Buffer = (PWCHAR)Leaf;
     source.Length = source.MaximumLength = Bytes;
     destination.Buffer = Folded;
     destination.Length = 0;
     destination.MaximumLength = 512;
     RtlZeroMemory(Folded, 512);
-    return RtlUpcaseUnicodeString(&destination, &source, FALSE);
+    status = RtlUpcaseUnicodeString(&destination, &source, FALSE);
+    if (!NT_SUCCESS(status)) (VOID)METADATA_STATUS(status);
+    return status;
 }
 
 static BOOLEAN MetadataTransactionClass(_In_ const GUID *Id, _In_ ULONG Role,
-    _Out_ GUID *Masked, _Out_ PBOOLEAN Growth)
+    _Out_ GUID *Masked, _Out_ PBOOLEAN Growth, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     *Masked = *Id;
     *Growth = BooleanFlagOn(((const UCHAR *)Id)[15], 0x80);
     ((PUCHAR)Masked)[15] &= 0x7f;
-    return !MetadataZero(Masked, sizeof(*Masked)) && Role >= SuLedgerCurrent &&
-        Role <= SuCompactionIntentNew && (!*Growth || Role <= SuCompanionNew);
+    return METADATA_BOOLEAN(!MetadataZero(Masked, sizeof(*Masked)) && Role >= SuLedgerCurrent &&
+        Role <= SuCompactionIntentNew && (!*Growth || Role <= SuCompanionNew), STATUS_INVALID_PARAMETER);
 }
 
 static ULONG MetadataCurrentRole(_In_ ULONG Role)
@@ -1252,8 +1342,8 @@ static ULONG MetadataCurrentRole(_In_ ULONG Role)
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
-    _In_ const SU_RESOURCE_CHILD_REQUEST *Request, _Out_ SU_RESOURCE_CHILD_REPLY *Reply)
+static __declspec(noinline) NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
+    _In_ const SU_RESOURCE_CHILD_REQUEST *Request, _Out_ SU_RESOURCE_CHILD_REPLY *Reply, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     GUID masked, other;
     ULONG i, root = SU_METADATA_ROOTS, transaction = SU_METADATA_TRANSACTIONS;
@@ -1264,22 +1354,25 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
     WCHAR folded[256];
     NTSTATUS status;
     KIRQL irql;
+    if (Diagnostic != NULL && Diagnostic->Line == 0) Diagnostic->Role = Request->Role;
+    MetadataDiagnosticNode(Diagnostic, SU_METADATA_CHILD_NODE);
     Reply->Result = 2;
-    status = MetadataChildShape(Request);
-    if (!NT_SUCCESS(status)) return status;
-    if (!MetadataTransactionClass(&Request->TransactionId, Request->Role, &masked, &growth) ||
-        !MetadataLeafRole(Request)) return STATUS_INVALID_PARAMETER;
+    status = MetadataChildShape(Request, Diagnostic);
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    if (!MetadataTransactionClass(&Request->TransactionId, Request->Role, &masked, &growth, Diagnostic) ||
+        !MetadataLeafRole(Request, Diagnostic)) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
     status = SafeUploadMetadataPlanOutput(1, Request->MaximumLogicalBytes, Request->MaximumLogicalBytes,
         Group->IoAlignment, Group->AllocationUnit, &plan);
-    if (!NT_SUCCESS(status)) return status;
-    status = MetadataFoldLeaf(Request->Leaf, (USHORT)Request->LeafBytes, folded);
-    if (!NT_SUCCESS(status)) return status;
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
+    status = MetadataFoldLeaf(Request->Leaf, (USHORT)Request->LeafBytes, folded, Diagnostic);
+    if (!NT_SUCCESS(status)) return METADATA_STATUS(status);
     KeAcquireSpinLock(&MetadataLock, &irql);
-    if (Group->Revoked || Group->AccountingHeld) { status = STATUS_ACCESS_DENIED; goto Unlock; }
+    if (Group->Revoked || Group->AccountingHeld) { status = METADATA_STATUS(STATUS_ACCESS_DENIED); goto Unlock; }
     for (i = 0; i < SU_METADATA_ROOTS; ++i)
         if (Group->Roots[i].Id == Request->RootId && Group->Roots[i].Key != NULL && !Group->Roots[i].Cleaned) { root = i; break; }
-    if (root == SU_METADATA_ROOTS || !MetadataRoleRoot(Request->Role, root + 1)) {
-        status = STATUS_INVALID_PARAMETER; goto Unlock;
+    if (root < SU_METADATA_ROOTS) MetadataDiagnosticNode(Diagnostic, MetadataRoleNodes[root]);
+    if (root == SU_METADATA_ROOTS || !MetadataRoleRoot(Request->Role, root + 1, Diagnostic)) {
+        status = METADATA_STATUS(STATUS_INVALID_PARAMETER); goto Unlock;
     }
     first = growth ? 0 : 8;
     end = first + 8;
@@ -1289,7 +1382,7 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
         ((PUCHAR)&other)[15] &= 0x7f;
         if (!RtlEqualMemory(&masked, &other, sizeof(masked))) continue;
         if (!RtlEqualMemory(&Request->TransactionId, &Group->Transactions[i].Id, sizeof(GUID))) {
-            status = STATUS_INVALID_PARAMETER; goto Unlock;
+            status = METADATA_STATUS(STATUS_INVALID_PARAMETER); goto Unlock;
         }
         transaction = i;
     }
@@ -1301,8 +1394,8 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
             held->LiveLeafBytes != Request->LeafBytes || !RtlEqualMemory(held->FoldedLeaf, folded, Request->LeafBytes)) continue;
         if (RtlEqualMemory(&held->Request, Request, sizeof(*Request))) {
             Reply->Result = 1; Reply->ChildIntentId = held->Id; status = STATUS_SUCCESS;
-        } else status = RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) ?
-            STATUS_INVALID_PARAMETER : STATUS_DEVICE_BUSY;
+        } else status = METADATA_STATUS(RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) ?
+            STATUS_INVALID_PARAMETER : STATUS_DEVICE_BUSY);
         goto Unlock;
     }
     /* Exclusive store claim spans pending/active/retiring objects. One exact
@@ -1316,7 +1409,7 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
             held->Request.Role == MetadataCurrentRole(Request->Role) &&
             RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) &&
             RtlEqualMemory(&held->Identity, &Request->ReplaceTargetIdentity, sizeof(held->Identity))) {
-            if (held->TargetPins != 0) { status = STATUS_DEVICE_BUSY; goto Unlock; }
+            if (held->TargetPins != 0) { status = METADATA_STATUS(STATUS_DEVICE_BUSY); goto Unlock; }
             replacement = i + 1;
             continue;
         }
@@ -1330,18 +1423,18 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
             (!MetadataZero(&held->Request.ReplaceTargetIdentity, sizeof(held->Request.ReplaceTargetIdentity)) &&
              RtlEqualMemory(&held->Request.ReplaceTargetIdentity, &Request->ExpectedIdentity,
                  sizeof(Request->ExpectedIdentity)))) {
-            status = RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) ?
-                STATUS_INVALID_PARAMETER : STATUS_DEVICE_BUSY;
+            status = METADATA_STATUS(RtlEqualMemory(&held->Request.TransactionId, &Request->TransactionId, sizeof(GUID)) ?
+                STATUS_INVALID_PARAMETER : STATUS_DEVICE_BUSY);
             goto Unlock;
         }
     }
     if (!MetadataZero(&Request->ReplaceTargetIdentity, sizeof(Request->ReplaceTargetIdentity)) && replacement == 0) {
-        status = STATUS_INVALID_PARAMETER; goto Unlock;
+        status = METADATA_STATUS(STATUS_INVALID_PARAMETER); goto Unlock;
     }
     if (transaction == SU_METADATA_TRANSACTIONS) {
         for (i = first; i < end; ++i)
             if (Group->Transactions[i].Children == 0) { transaction = i; break; }
-        if (transaction == SU_METADATA_TRANSACTIONS) { status = STATUS_DEVICE_BUSY; goto Unlock; }
+        if (transaction == SU_METADATA_TRANSACTIONS) { status = METADATA_STATUS(STATUS_DEVICE_BUSY); goto Unlock; }
     }
     first = transaction * SU_METADATA_CHILDREN_PER_TRANSACTION;
     end = first + SU_METADATA_CHILDREN_PER_TRANSACTION;
@@ -1352,14 +1445,14 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
             RtlEqualMemory(child->Request.Leaf, Request->Leaf, Request->LeafBytes)) {
             if (child->State == SuMetadataPendingOpen && RtlEqualMemory(&child->Request, Request, sizeof(*Request))) {
                 Reply->Result = 1; Reply->ChildIntentId = child->Id; status = STATUS_SUCCESS;
-            } else status = STATUS_INVALID_PARAMETER;
+            } else status = METADATA_STATUS(STATUS_INVALID_PARAMETER);
             goto Unlock;
         }
     }
     if (Group->Transactions[transaction].Pending || childIndex == SU_METADATA_CHILDREN) {
-        status = STATUS_DEVICE_BUSY; goto Unlock;
+        status = METADATA_STATUS(STATUS_DEVICE_BUSY); goto Unlock;
     }
-    if (Group->NextChildId == (UINT64)MAXLONGLONG) { status = STATUS_TOO_MANY_CONTEXT_IDS; goto Unlock; }
+    if (Group->NextChildId == (UINT64)MAXLONGLONG) { status = METADATA_STATUS(STATUS_TOO_MANY_CONTEXT_IDS); goto Unlock; }
     Group->Transactions[transaction].Id = Request->TransactionId;
     ++Group->Transactions[transaction].Children;
     Group->Transactions[transaction].Pending = TRUE;
@@ -1380,7 +1473,7 @@ static NTSTATUS MetadataRegisterChild(_In_ SU_METADATA_GROUP *Group,
     status = STATUS_SUCCESS;
 Unlock:
     KeReleaseSpinLock(&MetadataLock, irql);
-    return status;
+    return METADATA_STATUS(status);
 }
 
 /* Per-invocation scratch and a nonqueued metadata class. This routine has no
@@ -1389,6 +1482,8 @@ _Use_decl_annotations_
 NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID Input,
     ULONG InputBytes, PVOID Output, ULONG OutputBytes, PULONG Returned)
 {
+    SU_METADATA_DIAGNOSTIC refusal;
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &refusal;
     SU_METADATA_CONTROL_BUFFER *buffer;
     SU_RESOURCE_CONTROL_HEADER header;
     SU_METADATA_GROUP *group = NULL;
@@ -1396,29 +1491,33 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
     BOOLEAN revoke = FALSE, bootstrap = FALSE;
     GUID masked;
     BOOLEAN growth;
+    BOOLEAN refused = FALSE;
+    ULONG diagnosticOpcode = 0;
     NTSTATUS status = STATUS_INVALID_PARAMETER;
     KIRQL irql;
 
+    MetadataDiagnosticReset(Diagnostic, SU_METADATA_UNKNOWN_NODE, 0);
     *Returned = 0;
     if (Cookie == NULL || Input == NULL || Output == NULL || InputBytes < sizeof(header))
-        return STATUS_INVALID_BUFFER_SIZE;
+        return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, STATUS_INVALID_BUFFER_SIZE, refused, __LINE__);
     __try {
         ProbeForRead(Input, sizeof(header), __alignof(SU_RESOURCE_CONTROL_HEADER));
         RtlCopyMemory(&header, Input, sizeof(header));
-    } __except (EXCEPTION_EXECUTE_HANDLER) { return GetExceptionCode(); }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, GetExceptionCode(), refused, __LINE__); }
+    diagnosticOpcode = header.Opcode;
     if (header.Version != SAFEUPLOAD_PROTOCOL_VERSION || header.StructSize != InputBytes ||
         header.Command != SAFEUPLOAD_CONTROL_RESOURCE || header.Reserved != 0 ||
         header.ResourceVersion != SAFEUPLOAD_RESOURCE_VERSION || header.ControlRequestId == 0 ||
-        header.Flags != 0 || header.PayloadBytes != InputBytes - sizeof(header)) return STATUS_INVALID_PARAMETER;
-    if (ResourceChannel != (header.Opcode != SU_RESOURCE_NEGOTIATE)) return STATUS_INVALID_DEVICE_REQUEST;
+        header.Flags != 0 || header.PayloadBytes != InputBytes - sizeof(header)) return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, STATUS_INVALID_PARAMETER, refused, __LINE__);
+    if (ResourceChannel != (header.Opcode != SU_RESOURCE_NEGOTIATE)) return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, STATUS_INVALID_DEVICE_REQUEST, refused, __LINE__);
     if (header.Opcode >= SU_RESOURCE_FENCE) {
         group = MetadataPin(Cookie);
-        if (group == NULL) return STATUS_ACCESS_DENIED;
+        if (group == NULL) return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, STATUS_ACCESS_DENIED, refused, __LINE__);
         status = MetadataAuthenticate(group) && header.ConnectionCookie == (UINT64)(ULONG_PTR)Cookie &&
             RtlEqualMemory(&header.DriverInstance, &group->DriverInstance, sizeof(GUID)) ?
             STATUS_NOT_SUPPORTED : STATUS_ACCESS_DENIED;
         ExReleaseRundownProtection(&group->Rundown);
-        return status;
+        return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, status, refused, __LINE__);
     }
     switch (header.Opcode) {
     case SU_RESOURCE_NEGOTIATE: payload = sizeof(SU_RESOURCE_NEGOTIATE_REQUEST);
@@ -1429,10 +1528,10 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
         replyBytes = sizeof(SU_RESOURCE_ROOT_REPLY); break;
     case SU_RESOURCE_REGISTER_CHILD: payload = sizeof(SU_RESOURCE_CHILD_REQUEST);
         replyBytes = sizeof(SU_RESOURCE_CHILD_REPLY); break;
-    default: return STATUS_NOT_SUPPORTED;
+    default: return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, STATUS_NOT_SUPPORTED, refused, __LINE__);
     }
     if (header.PayloadBytes != payload || OutputBytes != sizeof(header) + replyBytes)
-        return STATUS_INVALID_BUFFER_SIZE;
+        return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, STATUS_INVALID_BUFFER_SIZE, refused, __LINE__);
     if (header.Opcode == SU_RESOURCE_NEGOTIATE) {
         KeAcquireSpinLock(&MetadataLock, &irql);
         if (!MetadataClosing && !MetadataBootstrap) {
@@ -1440,15 +1539,15 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
             bootstrap = TRUE;
         }
         KeReleaseSpinLock(&MetadataLock, irql);
-        if (!bootstrap) return STATUS_DEVICE_BUSY;
-        if (!MetadataOriginalToken(NULL)) { status = STATUS_ACCESS_DENIED; goto Exit; }
+        if (!bootstrap) return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, STATUS_DEVICE_BUSY, refused, __LINE__);
+        if (!MetadataOriginalToken(NULL)) { status = METADATA_STATUS(STATUS_ACCESS_DENIED); goto Exit; }
     }
     if (header.Opcode != SU_RESOURCE_NEGOTIATE || header.ConnectionCookie != 0) {
         group = MetadataPin(Cookie);
-        if (group == NULL) { status = STATUS_ACCESS_DENIED; goto Exit; }
+        if (group == NULL) { status = METADATA_STATUS(STATUS_ACCESS_DENIED); goto Exit; }
         if (header.ConnectionCookie != (UINT64)(ULONG_PTR)Cookie ||
             !RtlEqualMemory(&header.DriverInstance, &group->DriverInstance, sizeof(GUID))) {
-            status = STATUS_ACCESS_DENIED;
+            status = METADATA_STATUS(STATUS_ACCESS_DENIED);
             goto Exit;
         }
         KeAcquireSpinLock(&MetadataLock, &irql);
@@ -1473,21 +1572,21 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
             }
         }
         KeReleaseSpinLock(&MetadataLock, irql);
-        if (slot == SU_METADATA_CONTROLS + 2) { status = STATUS_DEVICE_BUSY; goto Exit; }
-        if (!MetadataAuthenticate(group)) { status = STATUS_ACCESS_DENIED; goto Exit; }
+        if (slot == SU_METADATA_CONTROLS + 2) { status = METADATA_STATUS(STATUS_DEVICE_BUSY); goto Exit; }
+        if (!MetadataAuthenticate(group)) { status = METADATA_STATUS(STATUS_ACCESS_DENIED); goto Exit; }
     } else if (!MetadataZero(&header.DriverInstance, sizeof(GUID))) {
-        status = STATUS_INVALID_PARAMETER;
+        status = METADATA_STATUS(STATUS_INVALID_PARAMETER);
         goto Exit;
     }
     buffer = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*buffer), SU_METADATA_TAG);
-    if (buffer == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
+    if (buffer == NULL) { status = METADATA_STATUS(STATUS_INSUFFICIENT_RESOURCES); goto Exit; }
     __try {
         ProbeForRead(Input, InputBytes, __alignof(SU_RESOURCE_CONTROL_HEADER));
 #pragma warning(suppress: 6001) /* ProbeForWrite never reads the buffer; same idiom as Communication.c */
         ProbeForWrite(Output, OutputBytes, __alignof(SU_RESOURCE_CONTROL_HEADER));
         RtlCopyMemory(buffer, Input, InputBytes);
         if (!RtlEqualMemory(&buffer->Header, &header, sizeof(header))) {
-            status = STATUS_INVALID_PARAMETER;
+            status = METADATA_STATUS(STATUS_INVALID_PARAMETER);
             __leave;
         }
         buffer->ReplyHeader = header;
@@ -1495,16 +1594,16 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
         buffer->ReplyHeader.StructSize = (ULONG)sizeof(header) + replyBytes;
         switch (header.Opcode) {
         case SU_RESOURCE_NEGOTIATE:
-            if (!MetadataNegotiateShape(&buffer->Request.Negotiate)) { status = STATUS_INVALID_PARAMETER; break; }
+            if (!MetadataNegotiateShape(&buffer->Request.Negotiate)) { status = METADATA_STATUS(STATUS_INVALID_PARAMETER); break; }
             if (buffer->Request.Negotiate.Phase == 1) {
-                if (header.ConnectionCookie != 0) { status = STATUS_INVALID_PARAMETER; break; }
+                if (header.ConnectionCookie != 0) { status = METADATA_STATUS(STATUS_INVALID_PARAMETER); break; }
                 status = MetadataProbe(Cookie, &buffer->Request.Negotiate, &buffer->ReplyHeader.DriverInstance);
                 if (!NT_SUCCESS(status)) break;
                 buffer->ReplyHeader.ConnectionCookie = (UINT64)(ULONG_PTR)Cookie;
             } else {
                 if (group == NULL || !RtlEqualMemory(&group->Probe, &buffer->Request.Negotiate,
                     FIELD_OFFSET(SU_RESOURCE_NEGOTIATE_REQUEST, ReadinessEpoch))) {
-                    status = STATUS_INVALID_PARAMETER;
+                    status = METADATA_STATUS(STATUS_INVALID_PARAMETER);
                     break;
                 }
                 status = STATUS_SUCCESS;
@@ -1518,36 +1617,40 @@ NTSTATUS SafeUploadMetadataControl(PVOID Cookie, BOOLEAN ResourceChannel, PVOID 
             break;
         case SU_RESOURCE_REVOKE:
             if (buffer->Request.Revoke.Reserved != 0 || buffer->Request.Revoke.ReasonOrResult < 1 ||
-                buffer->Request.Revoke.ReasonOrResult > 3) { status = STATUS_INVALID_PARAMETER; break; }
+                buffer->Request.Revoke.ReasonOrResult > 3) { status = METADATA_STATUS(STATUS_INVALID_PARAMETER); break; }
             buffer->Reply.Revoke.ReasonOrResult = 1;
             revoke = TRUE;
             status = STATUS_SUCCESS;
             break;
         case SU_RESOURCE_REGISTER_ROOT:
-            if (group == NULL) { status = STATUS_ACCESS_DENIED; break; }
-            if (!MetadataRootShape(&buffer->Request.Root)) { status = STATUS_INVALID_PARAMETER; break; }
-            status = MetadataRegisterRoot(group, &buffer->Request.Root, &buffer->Reply.Root);
+            if (group == NULL) { status = METADATA_STATUS(STATUS_ACCESS_DENIED); break; }
+            Diagnostic->Role = buffer->Request.Root.RootRole;
+            if (!MetadataRootShape(&buffer->Request.Root, Diagnostic)) { status = METADATA_STATUS(STATUS_INVALID_PARAMETER); break; }
+            status = MetadataRegisterRoot(group, &buffer->Request.Root, &buffer->Reply.Root, Diagnostic);
+            refused = buffer->Reply.Root.Result == 2;
             /* Malformed wire was rejected above. Well-formed native authority
              * refusals are typed; exhaustion remains native Busy, with no ID. */
             if (status != STATUS_DEVICE_BUSY && !NT_SUCCESS(status)) status = STATUS_SUCCESS;
             break;
         case SU_RESOURCE_REGISTER_CHILD:
-            if (group == NULL) { status = STATUS_ACCESS_DENIED; break; }
-            status = MetadataChildShape(&buffer->Request.Child);
+            if (group == NULL) { status = METADATA_STATUS(STATUS_ACCESS_DENIED); break; }
+            Diagnostic->Role = buffer->Request.Child.Role;
+            status = MetadataChildShape(&buffer->Request.Child, Diagnostic);
             if (status == STATUS_INVALID_PARAMETER ||
-                !MetadataTransactionClass(&buffer->Request.Child.TransactionId, buffer->Request.Child.Role, &masked, &growth) ||
-                !MetadataLeafRole(&buffer->Request.Child)) { status = STATUS_INVALID_PARAMETER; break; }
-            status = MetadataRegisterChild(group, &buffer->Request.Child, &buffer->Reply.Child);
+                !MetadataTransactionClass(&buffer->Request.Child.TransactionId, buffer->Request.Child.Role, &masked, &growth, Diagnostic) ||
+                !MetadataLeafRole(&buffer->Request.Child, Diagnostic)) { status = METADATA_STATUS(STATUS_INVALID_PARAMETER); break; }
+            status = MetadataRegisterChild(group, &buffer->Request.Child, &buffer->Reply.Child, Diagnostic);
+            refused = buffer->Reply.Child.Result == 2;
             if (status != STATUS_DEVICE_BUSY && !NT_SUCCESS(status)) status = STATUS_SUCCESS;
             break;
-        default: status = STATUS_NOT_SUPPORTED; break;
+        default: status = METADATA_STATUS(STATUS_NOT_SUPPORTED); break;
         }
         if (NT_SUCCESS(status)) {
             RtlCopyMemory(Output, &buffer->ReplyHeader, sizeof(header));
             RtlCopyMemory((PUCHAR)Output + sizeof(header), &buffer->Reply, replyBytes);
             *Returned = (ULONG)sizeof(header) + replyBytes;
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) { status = GetExceptionCode(); }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { status = METADATA_STATUS(GetExceptionCode()); }
     ExFreePoolWithTag(buffer, SU_METADATA_TAG);
 Exit:
     if (group != NULL) {
@@ -1566,7 +1669,7 @@ Exit:
         MetadataBootstrap = FALSE;
         KeReleaseSpinLock(&MetadataLock, irql);
     }
-    return status;
+    return MetadataDiagnosticControlReturn(Diagnostic, diagnosticOpcode, status, refused, __LINE__);
 }
 
 _Use_decl_annotations_
@@ -1629,17 +1732,17 @@ VOID SafeUploadMetadataInstanceTeardown(PFLT_INSTANCE Instance)
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static __declspec(noinline) NTSTATUS MetadataCheckName(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index, _In_ PFILE_OBJECT Object);
+static __declspec(noinline) NTSTATUS MetadataCheckName(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index, _In_ PFILE_OBJECT Object, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic);
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static __declspec(noinline) NTSTATUS MetadataSameVolume(_In_ SU_METADATA_GROUP *Group, _In_ PFILE_OBJECT Object)
+static __declspec(noinline) NTSTATUS MetadataSameVolume(_In_ SU_METADATA_GROUP *Group, _In_ PFILE_OBJECT Object, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     PFLT_VOLUME volume = NULL;
     NTSTATUS status = FltGetVolumeFromFileObject(SafeUploadData.Filter, Object, &volume);
-    if (status != STATUS_SUCCESS) return status;
-    status = volume == Group->Volume ? STATUS_SUCCESS : STATUS_NOT_SAME_DEVICE;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
+    status = METADATA_STATUS(volume == Group->Volume ? STATUS_SUCCESS : STATUS_NOT_SAME_DEVICE);
     FltObjectDereference(volume);
-    return status;
+    return METADATA_STATUS(status);
 }
 
 typedef struct _SU_METADATA_MEASUREMENT {
@@ -1657,7 +1760,7 @@ static BOOLEAN MetadataPowerOfTwo(_In_ ULONG Value)
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
-    _Out_ PULONG Alignment, _Out_ PULONG Unit)
+    _Out_ PULONG Alignment, _Out_ PULONG Unit, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     FILE_FS_SECTOR_SIZE_INFORMATION sector;
     FILE_FS_SIZE_INFORMATION size;
@@ -1666,38 +1769,39 @@ static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE
     ULONG returned = 0, a = 4096;
     UINT64 unit;
     NTSTATUS status;
+    MetadataDiagnosticNode(Diagnostic, 0);
     *Alignment = *Unit = 0;
     RtlZeroMemory(&sector, sizeof(sector));
     RtlZeroMemory(&size, sizeof(size));
     RtlZeroMemory(&properties, sizeof(properties));
     RtlZeroMemory(&io, sizeof(io));
     status = FltQueryVolumeInformation(Instance, &io, &sector, sizeof(sector), FileFsSectorSizeInformation);
-    if (status != STATUS_SUCCESS) return status;
-    if (io.Information != sizeof(sector)) return STATUS_INFO_LENGTH_MISMATCH;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
+    if (io.Information != sizeof(sector)) return METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
     status = FltQueryVolumeInformation(Instance, &io, &size, sizeof(size), FileFsSizeInformation);
-    if (status != STATUS_SUCCESS) return status;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     if (io.Information != sizeof(size) || size.BytesPerSector != sector.LogicalBytesPerSector ||
         size.TotalAllocationUnits.QuadPart <= 0 || size.AvailableAllocationUnits.QuadPart < 0 ||
         size.AvailableAllocationUnits.QuadPart > size.TotalAllocationUnits.QuadPart)
-        return STATUS_INFO_LENGTH_MISMATCH;
+        return METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
     /* FileAlignmentInformation is answered by the I/O manager from device
      * state, not by NTFS, so it is not sent below the filter. The volume
      * properties carry the same AlignmentRequirement; a fixed-size buffer
      * normally returns STATUS_BUFFER_OVERFLOW with the fixed fields valid. */
     status = FltGetVolumeProperties(Volume, &properties, sizeof(properties), &returned);
-    if (status != STATUS_SUCCESS && status != STATUS_BUFFER_OVERFLOW) return status;
-    if (properties.AlignmentRequirement >= 65536) return STATUS_NOT_SUPPORTED;
+    if (status != STATUS_SUCCESS && status != STATUS_BUFFER_OVERFLOW) return METADATA_STATUS(status);
+    if (properties.AlignmentRequirement >= 65536) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     if (!MetadataPowerOfTwo(sector.LogicalBytesPerSector) ||
         !MetadataPowerOfTwo(sector.PhysicalBytesPerSectorForAtomicity) ||
         !MetadataPowerOfTwo(sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity) ||
-        !MetadataPowerOfTwo(properties.AlignmentRequirement + 1)) return STATUS_NOT_SUPPORTED;
+        !MetadataPowerOfTwo(properties.AlignmentRequirement + 1)) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     if (sector.LogicalBytesPerSector > a) a = sector.LogicalBytesPerSector;
     if (sector.PhysicalBytesPerSectorForAtomicity > a) a = sector.PhysicalBytesPerSectorForAtomicity;
     if (sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity > a)
         a = sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity;
     if (properties.AlignmentRequirement + 1 > a) a = properties.AlignmentRequirement + 1;
     unit = (UINT64)size.SectorsPerAllocationUnit * size.BytesPerSector;
-    if (a > 65536 || unit > 65536 || !MetadataPowerOfTwo((ULONG)unit)) return STATUS_NOT_SUPPORTED;
+    if (a > 65536 || unit > 65536 || !MetadataPowerOfTwo((ULONG)unit)) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     *Alignment = a;
     *Unit = (ULONG)unit;
     return STATUS_SUCCESS;
@@ -1705,7 +1809,7 @@ static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataInspectChild(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index,
-    _In_ PFILE_OBJECT Object, _In_ BOOLEAN Opening, _Out_ SU_METADATA_MEASUREMENT *Measurement)
+    _In_ PFILE_OBJECT Object, _In_ BOOLEAN Opening, _Out_ SU_METADATA_MEASUREMENT *Measurement, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     FILE_ID_INFORMATION id;
     FILE_STANDARD_INFORMATION standard;
@@ -1718,91 +1822,94 @@ static __declspec(noinline) NTSTATUS MetadataInspectChild(_In_ SU_METADATA_GROUP
     RtlZeroMemory(&id, sizeof(id));
     RtlZeroMemory(&standard, sizeof(standard));
     RtlZeroMemory(&tag, sizeof(tag));
-    status = MetadataSameVolume(Group, Object);
-    if (status != STATUS_SUCCESS) return status;
+    status = MetadataSameVolume(Group, Object, Diagnostic);
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     status = FltQueryInformationFile(Group->Instance, Object, &id, sizeof(id), FileIdInformation, &bytes);
-    if (status != STATUS_SUCCESS) return status;
-    if (bytes != sizeof(id)) return STATUS_INFO_LENGTH_MISMATCH;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
+    if (bytes != sizeof(id)) return METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
     Measurement->Identity.VolumeSerialNumber = id.VolumeSerialNumber;
     Measurement->Identity.FileId = id.FileId;
     status = FltQueryInformationFile(Group->Instance, Object, &standard, sizeof(standard), FileStandardInformation, &bytes);
-    if (status != STATUS_SUCCESS) return status;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     if (bytes != sizeof(standard) || standard.Directory || standard.EndOfFile.QuadPart < 0 ||
-        standard.AllocationSize.QuadPart < 0) return STATUS_FILE_INVALID;
+        standard.AllocationSize.QuadPart < 0) return METADATA_STATUS(STATUS_FILE_INVALID);
     Measurement->Observed = TRUE;
     Measurement->Eof = (UINT64)standard.EndOfFile.QuadPart;
     Measurement->Allocation = (UINT64)standard.AllocationSize.QuadPart;
     Measurement->Links = standard.NumberOfLinks;
     Measurement->DeletePending = standard.DeletePending;
     status = FltQueryInformationFile(Group->Instance, Object, &tag, sizeof(tag), FileAttributeTagInformation, &bytes);
-    if (status != STATUS_SUCCESS) return status;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     /* ReparseTag is undefined unless the attribute is set; the attribute decides. */
     if (bytes != sizeof(tag) || FlagOn(tag.FileAttributes,
         FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_SPARSE_FILE |
         FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED))
-        return STATUS_FILE_INVALID;
+        return METADATA_STATUS(STATUS_FILE_INVALID);
     /* The original relative leaf excludes ADS. Requerying identity below this
      * instance supplies object authority; no name normalization is performed. */
     if (Opening) {
         if (!FlagOn(Object->Flags, FO_NO_INTERMEDIATE_BUFFERING) || !FlagOn(Object->Flags, FO_SYNCHRONOUS_IO) ||
             ((Group->Children[Index].Request.AccessMask & FILE_WRITE_DATA) != 0 && !FlagOn(Object->Flags, FO_WRITE_THROUGH)))
-            return STATUS_INVALID_DEVICE_STATE;
-        status = MetadataCheckName(Group, Index, Object);
-        if (status != STATUS_SUCCESS) return status;
-        if (standard.NumberOfLinks != 1 || standard.DeletePending) return STATUS_FILE_INVALID;
+            return METADATA_STATUS(STATUS_INVALID_DEVICE_STATE);
+        status = MetadataCheckName(Group, Index, Object, Diagnostic);
+        if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
+        if (standard.NumberOfLinks != 1 || standard.DeletePending) return METADATA_STATUS(STATUS_FILE_INVALID);
         if (Group->Children[Index].Request.CreateDisposition == FILE_OPEN &&
             !RtlEqualMemory(&Measurement->Identity, &Group->Children[Index].Request.ExpectedIdentity, sizeof(id)))
-            return STATUS_FILE_INVALID;
+            return METADATA_STATUS(STATUS_FILE_INVALID);
     } else {
-        if (!RtlEqualMemory(&Measurement->Identity, &Group->Children[Index].Identity, sizeof(id))) return STATUS_FILE_INVALID;
+        if (!RtlEqualMemory(&Measurement->Identity, &Group->Children[Index].Identity, sizeof(id))) return METADATA_STATUS(STATUS_FILE_INVALID);
         if (standard.NumberOfLinks != 1 && !(Group->Children[Index].Unlinked &&
-            standard.NumberOfLinks == 0 && standard.DeletePending)) return STATUS_FILE_INVALID;
+            standard.NumberOfLinks == 0 && standard.DeletePending)) return METADATA_STATUS(STATUS_FILE_INVALID);
         if (standard.DeletePending && !Group->Children[Index].Unlinked && !Group->Children[Index].Deleted)
-            return STATUS_FILE_INVALID;
+            return METADATA_STATUS(STATUS_FILE_INVALID);
     }
     if (Measurement->Identity.VolumeSerialNumber != Group->Nodes[0].Identity.VolumeSerialNumber)
-        return STATUS_NOT_SAME_DEVICE;
+        return METADATA_STATUS(STATUS_NOT_SAME_DEVICE);
     security.Object = Object;
-    status = MetadataCaptureSecurity(Group->Instance, &security);
-    if (status == STATUS_SUCCESS && !MetadataSecurityPredicate(&security, FALSE, FALSE, NULL)) status = STATUS_ACCESS_DENIED;
+    status = MetadataCaptureSecurity(Group->Instance, &security, Diagnostic);
+    if (status == STATUS_SUCCESS && !MetadataSecurityPredicate(&security, FALSE, FALSE, NULL, Diagnostic)) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
     if (status == STATUS_SUCCESS && !Opening && (security.SecurityBytes != Group->Children[Index].SecurityBytes ||
         !RtlEqualMemory(security.Security, Group->Children[Index].Security, security.SecurityBytes)))
-        status = STATUS_INVALID_SECURITY_DESCR;
+        status = METADATA_STATUS(STATUS_INVALID_SECURITY_DESCR);
     if (status == STATUS_SUCCESS && Opening) {
         Measurement->Security = security.Security;
         Measurement->SecurityBytes = security.SecurityBytes;
         security.Security = NULL;
     }
     if (security.Security != NULL) ExFreePoolWithTag(security.Security, SU_METADATA_TAG);
-    return status;
+    return METADATA_STATUS(status);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static __declspec(noinline) NTSTATUS MetadataCheckAnchors(_In_ SU_METADATA_GROUP *Group)
+static __declspec(noinline) NTSTATUS MetadataCheckAnchors(_In_ SU_METADATA_GROUP *Group, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     SU_METADATA_NODE security;
     SAFEUPLOAD_STAGE_IDENTITY_V19 id;
     ULONG i;
+    ULONG savedNode = Diagnostic == NULL ? SU_METADATA_UNKNOWN_NODE : Diagnostic->Node;
     NTSTATUS status;
     for (i = 0; i < SU_METADATA_NODES; ++i) {
-        status = MetadataQueryDirectory(Group->Instance, Group->Nodes[i].Object, &id);
-        if (status != STATUS_SUCCESS || !RtlEqualMemory(&id, &Group->Nodes[i].Identity, sizeof(id))) return STATUS_FILE_INVALID;
+        MetadataDiagnosticNode(Diagnostic, i);
+        status = MetadataQueryDirectory(Group->Instance, Group->Nodes[i].Object, &id, Diagnostic);
+        if (status != STATUS_SUCCESS || !RtlEqualMemory(&id, &Group->Nodes[i].Identity, sizeof(id))) return METADATA_STATUS(STATUS_FILE_INVALID);
         RtlZeroMemory(&security, sizeof(security));
         security.Object = Group->Nodes[i].Object;
-        status = MetadataCaptureSecurity(Group->Instance, &security);
+        status = MetadataCaptureSecurity(Group->Instance, &security, Diagnostic);
         if (status == STATUS_SUCCESS && (security.SecurityBytes != Group->Nodes[i].SecurityBytes ||
             !RtlEqualMemory(security.Security, Group->Nodes[i].Security, security.SecurityBytes)))
-            status = STATUS_INVALID_SECURITY_DESCR;
+            status = METADATA_STATUS(STATUS_INVALID_SECURITY_DESCR);
         if (security.Security != NULL) ExFreePoolWithTag(security.Security, SU_METADATA_TAG);
-        if (status != STATUS_SUCCESS) return status;
+        if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     }
+    MetadataDiagnosticNode(Diagnostic, savedNode);
     return STATUS_SUCCESS;
 }
 
 /* M held. Statistics never confer charge authority or authorize a refund.
  * The agent must precharge Q derived from MaximumLogicalBytes BEFORE CREATE. */
 static NTSTATUS MetadataAccountLocked(_Inout_ SU_METADATA_GROUP *Group, _Inout_ SU_METADATA_CHILD *Child,
-    _In_ const SU_METADATA_MEASUREMENT *Measurement)
+    _In_ const SU_METADATA_MEASUREMENT *Measurement, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     UINT64 retained, delta;
     if (Measurement->Allocation > (UINT64)MAXLONGLONG - (Group->AllocationUnit - 1)) {
@@ -1813,7 +1920,7 @@ static NTSTATUS MetadataAccountLocked(_Inout_ SU_METADATA_GROUP *Group, _Inout_ 
         Group->ObservedPeak = (UINT64)MAXLONGLONG;
         Group->AccountingHeld = TRUE;
         if (Group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++Group->UnknownOutcomes;
-        return STATUS_INTEGER_OVERFLOW;
+        return METADATA_STATUS(STATUS_INTEGER_OVERFLOW);
     }
     retained = (Measurement->Allocation + Group->AllocationUnit - 1) & ~((UINT64)Group->AllocationUnit - 1);
     if (retained < Child->Nominal) retained = Child->Nominal;
@@ -1829,8 +1936,8 @@ static NTSTATUS MetadataAccountLocked(_Inout_ SU_METADATA_GROUP *Group, _Inout_ 
     if (Group->LiveRetained > Group->ObservedPeak) Group->ObservedPeak = Group->LiveRetained;
     Child->EndOfFile = Measurement->Eof;
     Child->Allocation = Measurement->Allocation;
-    return Group->AccountingHeld ? STATUS_INTEGER_OVERFLOW :
-        (Measurement->Allocation > Child->Nominal || Measurement->Eof > Child->PaddedExtent) ? STATUS_DISK_FULL : STATUS_SUCCESS;
+    return METADATA_STATUS(Group->AccountingHeld ? STATUS_INTEGER_OVERFLOW :
+        (Measurement->Allocation > Child->Nominal || Measurement->Eof > Child->PaddedExtent) ? STATUS_DISK_FULL : STATUS_SUCCESS);
 }
 
 /* M held. The context consumes an existing reserved child credit. */
@@ -1845,6 +1952,8 @@ static VOID MetadataStartContextLocked(_Inout_ SU_METADATA_GROUP *Group, _Inout_
     Context->Object = Object;
     Context->Operation = Operation;
     Context->Incarnation = Child == SU_METADATA_CHILDREN ? Group->Roots[Root].Id : Group->Children[Child].Id;
+    MetadataDiagnosticReset(&Context->Diagnostic, Child == SU_METADATA_CHILDREN ? MetadataRoleNodes[Root] : SU_METADATA_CHILD_NODE,
+        Child == SU_METADATA_CHILDREN ? Root + 1 : Group->Children[Child].Request.Role);
     Context->InUse = TRUE;
     if (Child != SU_METADATA_CHILDREN) ++Group->Children[Child].Pins;
     ++Group->PostOwners;
@@ -1855,6 +1964,8 @@ static VOID MetadataReleaseIo(_Inout_ SU_METADATA_COMPLETION *Context)
 {
     SU_METADATA_GROUP *group = Context->Group;
     KIRQL irql;
+    MetadataDiagnosticPrint(Context->Operation == IRP_MJ_CREATE ? "ChildCreate" :
+        Context->ChildIndex == SU_METADATA_CHILDREN ? "RootIo" : "ChildIo", &Context->Diagnostic);
     /* Keep both record pins until releases finish, including reentrant CLOSE. */
     if (Context->TargetHandle != NULL) ZwClose(Context->TargetHandle);
     if (Context->TargetReference != NULL) ObDereferenceObject(Context->TargetReference);
@@ -1929,7 +2040,7 @@ static VOID MetadataServiceChildren(_Inout_ SU_METADATA_GROUP *Group)
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataCreateShape(_In_ PFLT_CALLBACK_DATA Data, _In_ PCFLT_RELATED_OBJECTS Objects,
-    _In_ const SU_METADATA_CHILD *Child)
+    _In_ const SU_METADATA_CHILD *Child, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     ULONG options = Data->Iopb->Parameters.Create.Options & 0xffffffUL;
     ULONG required = FILE_NO_INTERMEDIATE_BUFFERING | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
@@ -1939,13 +2050,13 @@ static __declspec(noinline) NTSTATUS MetadataCreateShape(_In_ PFLT_CALLBACK_DATA
         Data->Iopb->OperationFlags != 0 || Data->Iopb->Parameters.Create.SecurityContext == NULL ||
         Data->Iopb->Parameters.Create.EaLength != 0 || Data->Iopb->Parameters.Create.AllocationSize.QuadPart != 0 ||
         (Data->Iopb->Parameters.Create.Options >> 24) != Child->Request.CreateDisposition ||
-        (options & required) != required || (options & ~allowed) != 0) return STATUS_ACCESS_DENIED;
+        (options & required) != required || (options & ~allowed) != 0) return METADATA_STATUS(STATUS_ACCESS_DENIED);
     access = Data->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
     if (access != Child->Request.AccessMask ||
-        ((access & FILE_WRITE_DATA) != 0 && (options & FILE_WRITE_THROUGH) == 0)) return STATUS_ACCESS_DENIED;
+        ((access & FILE_WRITE_DATA) != 0 && (options & FILE_WRITE_THROUGH) == 0)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
     if ((Data->Iopb->Parameters.Create.ShareAccess & ~(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) != 0 ||
         (Child->Request.CreateDisposition == FILE_OPEN && Data->Iopb->Parameters.Create.ShareAccess !=
-            (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE))) return STATUS_SHARING_VIOLATION;
+            (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE))) return METADATA_STATUS(STATUS_SHARING_VIOLATION);
     return STATUS_SUCCESS;
 }
 
@@ -1955,17 +2066,20 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataHoldTarget(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index,
     _Inout_ SU_METADATA_COMPLETION *Context, _In_ BOOLEAN Unlinked)
 {
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &Context->Diagnostic;
     SU_METADATA_CHILD *child = &Group->Children[Index], *target;
     NTSTATUS status;
     KIRQL irql;
-    if (child->ReplacementIndex == 0) return STATUS_FILE_INVALID;
+    ULONG savedNode = Diagnostic == NULL ? SU_METADATA_CHILD_NODE : Diagnostic->Node;
+    MetadataDiagnosticNode(Diagnostic, SU_METADATA_TARGET_NODE);
+    if (child->ReplacementIndex == 0) return METADATA_STATUS(STATUS_FILE_INVALID);
     KeAcquireSpinLock(&MetadataLock, &irql);
     target = &Group->Children[child->ReplacementIndex - 1];
     if (Group->Revoked || target->Id != child->ReplacementId || target->State != SuMetadataActive ||
         target->Cleaned || target->Key == NULL || target->Unlinked != Unlinked ||
-        target->ShareAccess != (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) status = STATUS_ACCESS_DENIED;
+        target->ShareAccess != (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
     else if (target->Io.InUse || target->Pins != 0 || !FlagOn(target->Key->Flags, FO_HANDLE_CREATED))
-        status = STATUS_DEVICE_BUSY;
+        status = METADATA_STATUS(STATUS_DEVICE_BUSY);
     else {
         ++target->Pins;
         Context->TargetIndex = child->ReplacementIndex;
@@ -1977,22 +2091,24 @@ static __declspec(noinline) NTSTATUS MetadataHoldTarget(_In_ SU_METADATA_GROUP *
         status = STATUS_SUCCESS;
     }
     KeReleaseSpinLock(&MetadataLock, irql);
-    if (status != STATUS_SUCCESS) return status;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     /* A zero-access handle adds lifetime only, never caller authority. */
     status = ObOpenObjectByPointer(Context->TargetReference, OBJ_KERNEL_HANDLE, NULL, 0,
         *IoFileObjectType, KernelMode, &Context->TargetHandle);
-    if (status != STATUS_SUCCESS) return status;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     KeAcquireSpinLock(&MetadataLock, &irql);
     if (Group->Revoked || target->Cleaned || target->Key != Context->TargetReference || target->Id != Context->TargetId)
-        status = STATUS_ACCESS_DENIED;
+        status = METADATA_STATUS(STATUS_ACCESS_DENIED);
     KeReleaseSpinLock(&MetadataLock, irql);
-    return status;
+    MetadataDiagnosticNode(Diagnostic, savedNode);
+    return METADATA_STATUS(status);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataRenamePre(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index,
     _Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data)
 {
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &Context->Diagnostic;
     SU_METADATA_CHILD *child = &Group->Children[Index], *target;
     PFILE_RENAME_INFORMATION rename = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
     PFILE_OBJECT parent = NULL;
@@ -2004,50 +2120,52 @@ static __declspec(noinline) NTSTATUS MetadataRenamePre(_In_ SU_METADATA_GROUP *G
     NTSTATUS status;
     KIRQL irql;
     if (rename == NULL || bytes < header || bytes > header + 510 || child->ReplacementIndex == 0 ||
-        child->Renamed || !child->F2 || MetadataCurrentRole(child->Request.Role) == 0) return STATUS_ACCESS_DENIED;
+        child->Renamed || !child->F2 || MetadataCurrentRole(child->Request.Role) == 0) return METADATA_STATUS(STATUS_ACCESS_DENIED);
     if (rename->Flags != (FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS) ||
         rename->RootDirectory == NULL || rename->FileNameLength == 0 || rename->FileNameLength != bytes - header)
-        return STATUS_ACCESS_DENIED;
+        return METADATA_STATUS(STATUS_ACCESS_DENIED);
     Context->RenameBytes = rename->FileNameLength;
     RtlCopyMemory(Context->RenameLeaf, rename->FileName, Context->RenameBytes);
     rootHandle = rename->RootDirectory;
     Context->NativeValidation = TRUE;
     status = ObReferenceObjectByHandle(rootHandle, 0, *IoFileObjectType, UserMode, (PVOID *)&parent, NULL);
-    if (status != STATUS_SUCCESS) return status;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     if (Data->Iopb->Parameters.SetFileInformation.ParentOfTarget != NULL) {
-        status = MetadataQueryDirectory(Group->Instance, Data->Iopb->Parameters.SetFileInformation.ParentOfTarget, &parentId);
+        status = MetadataQueryDirectory(Group->Instance, Data->Iopb->Parameters.SetFileInformation.ParentOfTarget, &parentId, Diagnostic);
         if (status != STATUS_SUCCESS || !RtlEqualMemory(&parentId,
             &Group->Nodes[MetadataRoleNodes[Context->RootIndex]].Identity, sizeof(parentId))) {
             ObDereferenceObject(parent);
-            return STATUS_FILE_INVALID;
+            return METADATA_STATUS(STATUS_FILE_INVALID);
         }
     }
     KeAcquireSpinLock(&MetadataLock, &irql);
     target = &Group->Children[child->ReplacementIndex - 1];
     if (Group->Revoked || parent != Group->Roots[Context->RootIndex].Key || target->Id != child->ReplacementId ||
         Context->RenameBytes != target->LiveLeafBytes ||
-        !RtlEqualMemory(Context->RenameLeaf, target->Request.Leaf, target->LiveLeafBytes)) status = STATUS_ACCESS_DENIED;
+        !RtlEqualMemory(Context->RenameLeaf, target->Request.Leaf, target->LiveLeafBytes)) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
     else status = STATUS_SUCCESS;
     KeReleaseSpinLock(&MetadataLock, irql);
     ObDereferenceObject(parent);
-    if (status != STATUS_SUCCESS) return status;
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
     status = MetadataHoldTarget(Group, Index, Context, FALSE);
-    if (status != STATUS_SUCCESS) return status;
-    status = MetadataCheckName(Group, Context->TargetIndex - 1, Context->TargetReference);
-    if (status != STATUS_SUCCESS) return status;
-    status = MetadataInspectChild(Group, Context->TargetIndex - 1, Context->TargetReference, FALSE, &measurement);
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
+    MetadataDiagnosticNode(Diagnostic, SU_METADATA_TARGET_NODE);
+    status = MetadataCheckName(Group, Context->TargetIndex - 1, Context->TargetReference, Diagnostic);
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
+    status = MetadataInspectChild(Group, Context->TargetIndex - 1, Context->TargetReference, FALSE, &measurement, Diagnostic);
     KeAcquireSpinLock(&MetadataLock, &irql);
     if (measurement.Observed) {
-        NTSTATUS account = MetadataAccountLocked(Group, target, &measurement);
+        NTSTATUS account = MetadataAccountLocked(Group, target, &measurement, Diagnostic);
         if (status == STATUS_SUCCESS) status = account;
     } else {
         target->Uncertain = TRUE;
         if (Group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++Group->UnknownOutcomes;
     }
     if (Group->Revoked || target->Cleaned || target->Key != Context->TargetReference ||
-        target->Id != Context->TargetId) status = STATUS_ACCESS_DENIED;
+        target->Id != Context->TargetId) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
     KeReleaseSpinLock(&MetadataLock, irql);
-    return status;
+    MetadataDiagnosticNode(Diagnostic, SU_METADATA_CHILD_NODE);
+    return METADATA_STATUS(status);
 }
 
 /* Captures all mutable pre-input before lower dispatch; completion never reads
@@ -2057,6 +2175,7 @@ static __declspec(noinline) NTSTATUS MetadataOperationPre(_In_ SU_METADATA_GROUP
     _Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects)
 {
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &Context->Diagnostic;
     SU_METADATA_CHILD *child = &Group->Children[Index];
     ULONG major = Data->Iopb->MajorFunction, length;
     PVOID buffer;
@@ -2065,29 +2184,29 @@ static __declspec(noinline) NTSTATUS MetadataOperationPre(_In_ SU_METADATA_GROUP
     NTSTATUS status;
     BOOLEAN mutation = FALSE;
     if (!FLT_IS_IRP_OPERATION(Data) || Data->Iopb->MinorFunction != 0 || Objects->Transaction != NULL ||
-        FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO)) return STATUS_ACCESS_DENIED;
+        FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
     switch (major) {
     case IRP_MJ_READ: case IRP_MJ_WRITE:
-        if (!FlagOn(Data->Iopb->IrpFlags, IRP_NOCACHE)) return STATUS_ACCESS_DENIED;
+        if (!FlagOn(Data->Iopb->IrpFlags, IRP_NOCACHE)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
         if (major == IRP_MJ_WRITE) {
             if ((child->Request.AccessMask & FILE_WRITE_DATA) == 0 || child->Renamed || child->Frozen || child->Deleted)
-                return STATUS_ACCESS_DENIED;
+                return METADATA_STATUS(STATUS_ACCESS_DENIED);
             length = Data->Iopb->Parameters.Write.Length; offset = Data->Iopb->Parameters.Write.ByteOffset;
             buffer = Data->Iopb->Parameters.Write.WriteBuffer;
-            if (Data->Iopb->Parameters.Write.MdlAddress != NULL) return STATUS_NOT_SUPPORTED;
+            if (Data->Iopb->Parameters.Write.MdlAddress != NULL) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
             mutation = TRUE;
         } else {
-            if ((child->Request.AccessMask & FILE_READ_DATA) == 0) return STATUS_ACCESS_DENIED;
+            if ((child->Request.AccessMask & FILE_READ_DATA) == 0) return METADATA_STATUS(STATUS_ACCESS_DENIED);
             length = Data->Iopb->Parameters.Read.Length; offset = Data->Iopb->Parameters.Read.ByteOffset;
             buffer = Data->Iopb->Parameters.Read.ReadBuffer;
-            if (Data->Iopb->Parameters.Read.MdlAddress != NULL) return STATUS_NOT_SUPPORTED;
+            if (Data->Iopb->Parameters.Read.MdlAddress != NULL) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
         }
         if (offset.QuadPart < 0 || (UINT64)offset.QuadPart > child->PaddedExtent ||
             length > child->PaddedExtent - (UINT64)offset.QuadPart ||
             (((UINT64)offset.QuadPart | length | (UINT64)(ULONG_PTR)buffer) & (Group->IoAlignment - 1)) != 0 ||
-            (length != 0 && buffer == NULL)) return STATUS_INVALID_PARAMETER;
+            (length != 0 && buffer == NULL)) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
         end = (UINT64)offset.QuadPart + length;
-        if (mutation && end > child->Preallocated) return STATUS_DEVICE_NOT_READY;
+        if (mutation && end > child->Preallocated) return METADATA_STATUS(STATUS_DEVICE_NOT_READY);
         Context->Length = length;
         Context->Value = end;
         break;
@@ -2098,70 +2217,70 @@ static __declspec(noinline) NTSTATUS MetadataOperationPre(_In_ SU_METADATA_GROUP
         case FileIdInformation: Context->Length = sizeof(FILE_ID_INFORMATION); break;
         case FileStandardInformation: Context->Length = sizeof(FILE_STANDARD_INFORMATION); break;
         case FileAttributeTagInformation: Context->Length = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION); break;
-        default: return STATUS_NOT_SUPPORTED;
+        default: return METADATA_STATUS(STATUS_NOT_SUPPORTED);
         }
-        if (length < Context->Length || length > SU_METADATA_SD_BYTES) return STATUS_INVALID_BUFFER_SIZE;
+        if (length < Context->Length || length > SU_METADATA_SD_BYTES) return METADATA_STATUS(STATUS_INVALID_BUFFER_SIZE);
         break;
     case IRP_MJ_QUERY_SECURITY:
         if ((child->Request.AccessMask & READ_CONTROL) == 0 ||
             Data->Iopb->Parameters.QuerySecurity.SecurityInformation == 0 ||
             (Data->Iopb->Parameters.QuerySecurity.SecurityInformation &
                 ~(OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) != 0 ||
-            Data->Iopb->Parameters.QuerySecurity.Length > SU_METADATA_SD_BYTES) return STATUS_ACCESS_DENIED;
+            Data->Iopb->Parameters.QuerySecurity.Length > SU_METADATA_SD_BYTES) return METADATA_STATUS(STATUS_ACCESS_DENIED);
         Context->Length = Data->Iopb->Parameters.QuerySecurity.Length;
         break;
     case IRP_MJ_FLUSH_BUFFERS:
         if ((child->Request.AccessMask & FILE_WRITE_DATA) == 0 || child->Deleted ||
-            ((child->Renamed || child->Frozen) && !child->NeedF3)) return STATUS_ACCESS_DENIED;
+            ((child->Renamed || child->Frozen) && !child->NeedF3)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
         mutation = TRUE;
         if (child->NeedF3) {
             Context->NativeValidation = TRUE;
-            if (child->ReplacementIndex == 0) return STATUS_FILE_INVALID;
+            if (child->ReplacementIndex == 0) return METADATA_STATUS(STATUS_FILE_INVALID);
             status = MetadataHoldTarget(Group, Index, Context, TRUE);
-            if (status != STATUS_SUCCESS) return status;
+            if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
         }
         break;
     case IRP_MJ_SET_INFORMATION:
         Context->InformationClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
         buffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
         length = Data->Iopb->Parameters.SetFileInformation.Length;
-        if (buffer == NULL || child->Deleted) return STATUS_ACCESS_DENIED;
+        if (buffer == NULL || child->Deleted) return METADATA_STATUS(STATUS_ACCESS_DENIED);
         switch (Context->InformationClass) {
         case FileEndOfFileInformation: case FileAllocationInformation:
             if ((child->Request.AccessMask & FILE_WRITE_DATA) == 0 || child->Renamed || child->Frozen ||
-                length != sizeof(FILE_END_OF_FILE_INFORMATION)) return STATUS_ACCESS_DENIED;
+                length != sizeof(FILE_END_OF_FILE_INFORMATION)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
             RtlCopyMemory(&offset, buffer, sizeof(offset)); /* both native classes carry one LARGE_INTEGER */
-            if (offset.QuadPart < 0 || (UINT64)offset.QuadPart > child->PaddedExtent) return STATUS_INVALID_PARAMETER;
+            if (offset.QuadPart < 0 || (UINT64)offset.QuadPart > child->PaddedExtent) return METADATA_STATUS(STATUS_INVALID_PARAMETER);
             Context->Value = (UINT64)offset.QuadPart;
             if (Context->InformationClass == FileEndOfFileInformation) {
                 if (!child->F1 || Context->Value > child->Preallocated || Context->Value > child->Request.MaximumLogicalBytes ||
                     (child->Request.Role == SuSegment && (Context->Value < child->EndOfFile ||
-                     (Context->Value & (Group->IoAlignment - 1)) != 0))) return STATUS_ACCESS_DENIED;
+                     (Context->Value & (Group->IoAlignment - 1)) != 0))) return METADATA_STATUS(STATUS_ACCESS_DENIED);
             } else {
                 if (Context->Value < child->EndOfFile || (Context->Value & (Group->IoAlignment - 1)) != 0 ||
                     (child->Request.Role == SuSegment && (Context->Value < child->Preallocated ||
                     ((Context->Value + Group->AllocationUnit - 1) & ~((UINT64)Group->AllocationUnit - 1)) < child->Allocation)))
-                    return STATUS_ACCESS_DENIED;
+                    return METADATA_STATUS(STATUS_ACCESS_DENIED);
             }
             break;
         case FileRenameInformationEx:
-            if ((child->Request.AccessMask & DELETE) == 0) return STATUS_ACCESS_DENIED;
+            if ((child->Request.AccessMask & DELETE) == 0) return METADATA_STATUS(STATUS_ACCESS_DENIED);
             status = MetadataRenamePre(Group, Index, Context, Data);
-            if (status != STATUS_SUCCESS) return status;
+            if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
             break;
         case FileDispositionInformation:
             if ((child->Request.AccessMask & DELETE) == 0 || (child->Renamed ? MetadataCurrentRole(child->Request.Role) : child->Request.Role) == SuMarkerCurrent ||
                 child->Request.Role == SuLegacySecurity || child->Request.Role == SuLegacyNegative ||
                 child->Request.Role == SuSegment || child->TargetPins != 0 || child->Unlinked || length != sizeof(FILE_DISPOSITION_INFORMATION) ||
-                !((PFILE_DISPOSITION_INFORMATION)buffer)->DeleteFile) return STATUS_ACCESS_DENIED;
+                !((PFILE_DISPOSITION_INFORMATION)buffer)->DeleteFile) return METADATA_STATUS(STATUS_ACCESS_DENIED);
             break;
-        default: return STATUS_NOT_SUPPORTED;
+        default: return METADATA_STATUS(STATUS_NOT_SUPPORTED);
         }
         mutation = TRUE;
         break;
-    default: return STATUS_NOT_SUPPORTED;
+    default: return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     }
-    if (mutation) { Context->NativeValidation = TRUE; return MetadataCheckAnchors(Group); }
+    if (mutation) { Context->NativeValidation = TRUE; return METADATA_STATUS(MetadataCheckAnchors(Group, Diagnostic)); }
     return STATUS_SUCCESS;
 }
 
@@ -2169,10 +2288,11 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataRootIoPre(_Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects)
 {
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &Context->Diagnostic;
     ULONG length;
     if (!FLT_IS_IRP_OPERATION(Data) || Objects->Transaction != NULL ||
         (Data->Iopb->MajorFunction != IRP_MJ_DIRECTORY_CONTROL && Data->Iopb->MinorFunction != 0) ||
-        FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO)) return STATUS_ACCESS_DENIED;
+        FlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO)) return METADATA_STATUS(STATUS_ACCESS_DENIED);
     switch (Data->Iopb->MajorFunction) {
     case IRP_MJ_QUERY_VOLUME_INFORMATION:
         Context->InformationClass = Data->Iopb->Parameters.QueryVolumeInformation.FsInformationClass;
@@ -2181,9 +2301,9 @@ static __declspec(noinline) NTSTATUS MetadataRootIoPre(_Inout_ SU_METADATA_COMPL
         case FileFsSizeInformation: Context->Length = sizeof(FILE_FS_SIZE_INFORMATION); break;
         case FileFsFullSizeInformation: Context->Length = sizeof(FILE_FS_FULL_SIZE_INFORMATION); break;
         case FileFsSectorSizeInformation: Context->Length = sizeof(FILE_FS_SECTOR_SIZE_INFORMATION); break;
-        default: return STATUS_NOT_SUPPORTED;
+        default: return METADATA_STATUS(STATUS_NOT_SUPPORTED);
         }
-        return length >= Context->Length && length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE;
+        return METADATA_STATUS(length >= Context->Length && length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE);
     case IRP_MJ_QUERY_INFORMATION:
         Context->InformationClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
         length = Data->Iopb->Parameters.QueryFileInformation.Length;
@@ -2191,45 +2311,46 @@ static __declspec(noinline) NTSTATUS MetadataRootIoPre(_Inout_ SU_METADATA_COMPL
         case FileIdInformation: Context->Length = sizeof(FILE_ID_INFORMATION); break;
         case FileStandardInformation: Context->Length = sizeof(FILE_STANDARD_INFORMATION); break;
         case FileAttributeTagInformation: Context->Length = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION); break;
-        default: return STATUS_NOT_SUPPORTED;
+        default: return METADATA_STATUS(STATUS_NOT_SUPPORTED);
         }
-        return length >= Context->Length && length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE;
+        return METADATA_STATUS(length >= Context->Length && length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE);
     case IRP_MJ_QUERY_SECURITY:
         Context->Length = Data->Iopb->Parameters.QuerySecurity.Length;
-        return Context->Length <= SU_METADATA_SD_BYTES && Data->Iopb->Parameters.QuerySecurity.SecurityInformation != 0 &&
+        return METADATA_STATUS(Context->Length <= SU_METADATA_SD_BYTES && Data->Iopb->Parameters.QuerySecurity.SecurityInformation != 0 &&
             (Data->Iopb->Parameters.QuerySecurity.SecurityInformation &
              ~(OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION)) == 0 ?
-             STATUS_SUCCESS : STATUS_ACCESS_DENIED;
+             STATUS_SUCCESS : STATUS_ACCESS_DENIED);
     case IRP_MJ_DIRECTORY_CONTROL:
-        if (Data->Iopb->MinorFunction != IRP_MN_QUERY_DIRECTORY) return STATUS_NOT_SUPPORTED;
+        if (Data->Iopb->MinorFunction != IRP_MN_QUERY_DIRECTORY) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
         Context->Length = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.Length;
         Context->InformationClass = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileInformationClass;
         if (Context->InformationClass != FileDirectoryInformation && Context->InformationClass != FileFullDirectoryInformation &&
             Context->InformationClass != FileIdBothDirectoryInformation && Context->InformationClass != FileIdFullDirectoryInformation &&
-            Context->InformationClass != FileNamesInformation) return STATUS_NOT_SUPPORTED;
-        return Context->Length != 0 && Context->Length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE;
-    default: return STATUS_NOT_SUPPORTED;
+            Context->InformationClass != FileNamesInformation) return METADATA_STATUS(STATUS_NOT_SUPPORTED);
+        return METADATA_STATUS(Context->Length != 0 && Context->Length <= SU_METADATA_SD_BYTES ? STATUS_SUCCESS : STATUS_INVALID_BUFFER_SIZE);
+    default: return METADATA_STATUS(STATUS_NOT_SUPPORTED);
     }
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataRootIoPost(_In_ SU_METADATA_COMPLETION *Context)
 {
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &Context->Diagnostic;
     ULONG alignment, unit;
     NTSTATUS status;
     if (Context->NativeStatus != STATUS_SUCCESS) return STATUS_SUCCESS; /* native read-only failure is preserved */
     if (Context->NativeInformation > Context->Length ||
         ((Context->Operation == IRP_MJ_QUERY_INFORMATION || Context->Operation == IRP_MJ_QUERY_VOLUME_INFORMATION) &&
-         Context->NativeInformation != Context->Length)) return STATUS_INFO_LENGTH_MISMATCH;
+         Context->NativeInformation != Context->Length)) return METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
     if (Context->Operation != IRP_MJ_QUERY_VOLUME_INFORMATION) return STATUS_SUCCESS;
-    status = MetadataCaptureAlignment(Context->Group->Instance, Context->Group->Volume, &alignment, &unit);
-    if (status != STATUS_SUCCESS) return status;
-    return alignment == Context->Group->IoAlignment && unit == Context->Group->AllocationUnit ?
-        STATUS_SUCCESS : STATUS_FILE_INVALID;
+    status = MetadataCaptureAlignment(Context->Group->Instance, Context->Group->Volume, &alignment, &unit, Diagnostic);
+    if (status != STATUS_SUCCESS) return METADATA_STATUS(status);
+    return METADATA_STATUS(alignment == Context->Group->IoAlignment && unit == Context->Group->AllocationUnit ?
+        STATUS_SUCCESS : STATUS_FILE_INVALID);
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static __declspec(noinline) NTSTATUS MetadataCheckName(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index, _In_ PFILE_OBJECT Object)
+static __declspec(noinline) NTSTATUS MetadataCheckName(_In_ SU_METADATA_GROUP *Group, _In_ ULONG Index, _In_ PFILE_OBJECT Object, _Inout_opt_ SU_METADATA_DIAGNOSTIC *Diagnostic)
 {
     static const PCWSTR roots[SU_METADATA_ROOTS] = {
         L"\\ProgramData\\SafeUpload\\staging", L"\\ProgramData\\SafeUpload\\staging\\.space-reservations",
@@ -2242,34 +2363,34 @@ static __declspec(noinline) NTSTATUS MetadataCheckName(_In_ SU_METADATA_GROUP *G
     NTSTATUS status;
     for (i = 0; i < SU_METADATA_ROOTS; ++i)
         if (Group->Roots[i].Id == Group->Children[Index].Request.RootId) { root = i; break; }
-    if (root == SU_METADATA_ROOTS) return STATUS_FILE_INVALID;
+    if (root == SU_METADATA_ROOTS) return METADATA_STATUS(STATUS_FILE_INVALID);
     name = ExAllocatePool2(POOL_FLAG_PAGED, capacity, SU_METADATA_TAG);
-    if (name == NULL) return STATUS_INSUFFICIENT_RESOURCES;
+    if (name == NULL) return METADATA_STATUS(STATUS_INSUFFICIENT_RESOURCES);
     status = FltQueryInformationFile(Group->Instance, Object, name, capacity, FileNameInformation, &bytes);
     if (status == STATUS_SUCCESS) {
         if (bytes < (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName) || name->FileNameLength > 1024 ||
             (name->FileNameLength & 1) != 0 || name->FileNameLength > bytes - (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName))
-            status = STATUS_INFO_LENGTH_MISMATCH;
+            status = METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
         else {
             RtlInitUnicodeString(&prefix, roots[root]);
             actual.Buffer = name->FileName;
             actual.Length = actual.MaximumLength = prefix.Length;
             if (name->FileNameLength != (ULONG)prefix.Length + sizeof(WCHAR) + Group->Children[Index].LiveLeafBytes ||
                 !RtlEqualUnicodeString(&prefix, &actual, TRUE) ||
-                name->FileName[prefix.Length / sizeof(WCHAR)] != L'\\') status = STATUS_FILE_INVALID;
+                name->FileName[prefix.Length / sizeof(WCHAR)] != L'\\') status = METADATA_STATUS(STATUS_FILE_INVALID);
             else {
                 leaf.Buffer = name->FileName + prefix.Length / sizeof(WCHAR) + 1;
                 leaf.Length = leaf.MaximumLength = (USHORT)Group->Children[Index].LiveLeafBytes;
                 expected.Buffer = Group->Children[Index].FoldedLeaf;
                 expected.Length = expected.MaximumLength = leaf.Length;
-                if (!RtlEqualUnicodeString(&leaf, &expected, TRUE)) status = STATUS_FILE_INVALID;
+                if (!RtlEqualUnicodeString(&leaf, &expected, TRUE)) status = METADATA_STATUS(STATUS_FILE_INVALID);
             }
             for (i = 0; i < name->FileNameLength / sizeof(WCHAR); ++i)
-                if (name->FileName[i] == L':') { status = STATUS_ACCESS_DENIED; break; }
+                if (name->FileName[i] == L':') { status = METADATA_STATUS(STATUS_ACCESS_DENIED); break; }
         }
     }
     ExFreePoolWithTag(name, SU_METADATA_TAG);
-    return status;
+    return METADATA_STATUS(status);
 }
 
 /* Address membership precedes every dereference. Contexts remain resident and
@@ -2313,6 +2434,17 @@ static FLT_PREOP_CALLBACK_STATUS MetadataRefuse(_Inout_ PFLT_CALLBACK_DATA Data,
     return FLT_PREOP_COMPLETE;
 }
 
+_IRQL_requires_max_(APC_LEVEL)
+static FLT_PREOP_CALLBACK_STATUS MetadataDiagnosticPreReturn(_Inout_ PFLT_CALLBACK_DATA Data,
+    _In_ NTSTATUS Status, _Inout_ SU_METADATA_DIAGNOSTIC *Diagnostic, _In_ ULONG Line)
+{
+    (VOID)MetadataDiagnosticStatus(Diagnostic, Status, Line);
+    /* No new deferral/admission owner for a context-free high-IRQL refusal. */
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL) MetadataDiagnosticPrint(Data->Iopb->MajorFunction == IRP_MJ_CREATE ? "ChildCreate" : "MetadataPre", Diagnostic);
+    return MetadataRefuse(Data, Status);
+}
+
+
 /* FsFilter lifecycle callbacks are not ordinary service I/O. Lower NTFS owns
  * its synchronization: neither subject/IRQL admission nor a metadata context
  * may obstruct release, modified-writer/CC work or SyncTypeOther. Only new
@@ -2343,6 +2475,8 @@ _Use_decl_annotations_
 FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     PVOID *Context, SU_METADATA_DISPATCH *Dispatch)
 {
+    SU_METADATA_DIAGNOSTIC refusal;
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &refusal;
     SU_METADATA_GROUP *group;
     SU_METADATA_COMPLETION *completion = NULL;
     SU_METADATA_CHILD *entry;
@@ -2356,6 +2490,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
     FLT_PREOP_CALLBACK_STATUS callbackResult;
     NTSTATUS status = STATUS_ACCESS_DENIED;
     KIRQL irql;
+    MetadataDiagnosticReset(Diagnostic, SU_METADATA_UNKNOWN_NODE, 0);
     RtlZeroMemory(Dispatch, sizeof(*Dispatch));
     *Context = NULL;
     if (InterlockedCompareExchange(&MetadataInitialized, 0, 0) == 0 || Objects->FileObject == NULL)
@@ -2389,6 +2524,8 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
         Dispatch->ChildId = group->Children[child].Id;
         Dispatch->Role = group->Children[child].Request.Role;
     }
+    Diagnostic->Node = child == SU_METADATA_CHILDREN ? (capturing ? SU_METADATA_UNKNOWN_NODE : MetadataRoleNodes[root]) : SU_METADATA_CHILD_NODE;
+    Diagnostic->Role = child == SU_METADATA_CHILDREN ? (capturing ? 0 : root + 1) : group->Children[child].Request.Role;
     live = !capturing && !group->Revoked && Objects->Instance == group->Instance &&
         (child != SU_METADATA_CHILDREN || !group->Roots[root].Cleaned);
     if (major == IRP_MJ_CLOSE) {
@@ -2418,6 +2555,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
         } else { group->Children[child].Cleaned = TRUE; completion = &group->Children[child].Cleanup; }
         if (!completion->InUse) {
             MetadataStartContextLocked(group, completion, root, child, object, major);
+            Diagnostic = &completion->Diagnostic;
             *Context = (PVOID)((ULONG_PTR)completion | 3);
             KeReleaseSpinLock(&MetadataLock, irql);
             return FLT_PREOP_SUCCESS_WITH_CALLBACK;
@@ -2437,25 +2575,25 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
     }
     if (capturing) {
         ExReleaseRundownProtection(&group->Rundown);
-        return MetadataRefuse(Data, STATUS_DEVICE_NOT_READY);
+        return MetadataDiagnosticPreReturn(Data, STATUS_DEVICE_NOT_READY, Diagnostic, __LINE__);
     }
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || !live) {
         ExReleaseRundownProtection(&group->Rundown);
-        return MetadataRefuse(Data, STATUS_DEVICE_NOT_READY);
+        return MetadataDiagnosticPreReturn(Data, STATUS_DEVICE_NOT_READY, Diagnostic, __LINE__);
     }
     subject = PsGetCurrentProcess() == group->Process && FltGetRequestorProcess(Data) == group->Process &&
         MetadataAuthenticate(group);
     if (!subject) {
         ExReleaseRundownProtection(&group->Rundown);
-        return MetadataRefuse(Data, STATUS_ACCESS_DENIED);
+        return MetadataDiagnosticPreReturn(Data, STATUS_ACCESS_DENIED, Diagnostic, __LINE__);
     }
     if (major == IRP_MJ_CREATE && object->FileName.Buffer != NULL && object->FileName.Length != 0 &&
         object->FileName.Length <= 510 && (object->FileName.Length & 1) == 0) {
         bytes = object->FileName.Length;
-        status = MetadataFoldLeaf(object->FileName.Buffer, bytes, folded);
+        status = MetadataFoldLeaf(object->FileName.Buffer, bytes, folded, Diagnostic);
     }
     KeAcquireSpinLock(&MetadataLock, &irql);
-    if (group->Revoked || (group->Roots[root].Cleaned && child == SU_METADATA_CHILDREN)) status = STATUS_DEVICE_NOT_READY;
+    if (group->Revoked || (group->Roots[root].Cleaned && child == SU_METADATA_CHILDREN)) status = METADATA_STATUS(STATUS_DEVICE_NOT_READY);
     else if (major == IRP_MJ_CREATE) {
         if (status == STATUS_SUCCESS) {
             for (i = 0; i < SU_METADATA_CHILDREN; ++i)
@@ -2463,54 +2601,57 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
                     group->Children[i].Request.LeafBytes == bytes && RtlEqualMemory(group->Children[i].FoldedLeaf, folded, bytes))
                     { child = i; break; }
         }
-        if (child == SU_METADATA_CHILDREN) status = STATUS_ACCESS_DENIED;
+        if (child == SU_METADATA_CHILDREN) status = METADATA_STATUS(STATUS_ACCESS_DENIED);
         else {
             entry = &group->Children[child];
             entry->State = SuMetadataOpening; entry->Key = object;
             group->Transactions[child / SU_METADATA_CHILDREN_PER_TRANSACTION].Pending = FALSE;
             completion = &entry->Io;
             MetadataStartContextLocked(group, completion, root, child, object, major);
+            Diagnostic = &completion->Diagnostic;
             Dispatch->ChildId = entry->Id; Dispatch->Role = entry->Request.Role;
             RtlZeroMemory(&measured, sizeof(measured));
-            status = MetadataAccountLocked(group, entry, &measured); /* precharge before native CREATE */
+            status = MetadataAccountLocked(group, entry, &measured, Diagnostic); /* precharge before native CREATE */
         }
     } else if (child != SU_METADATA_CHILDREN) {
         entry = &group->Children[child];
-        if (entry->State != SuMetadataActive || entry->Cleaned || entry->Uncertain) status = STATUS_DEVICE_NOT_READY;
-        else if (entry->Io.InUse || entry->Pins != 0) status = STATUS_DEVICE_BUSY;
+        if (entry->State != SuMetadataActive || entry->Cleaned || entry->Uncertain) status = METADATA_STATUS(STATUS_DEVICE_NOT_READY);
+        else if (entry->Io.InUse || entry->Pins != 0) status = METADATA_STATUS(STATUS_DEVICE_BUSY);
         else {
             completion = &entry->Io;
             MetadataStartContextLocked(group, completion, root, child, object, major);
+            Diagnostic = &completion->Diagnostic;
             status = STATUS_SUCCESS;
         }
-    } else if (group->Roots[root].Io.InUse) status = STATUS_DEVICE_BUSY;
+    } else if (group->Roots[root].Io.InUse) status = METADATA_STATUS(STATUS_DEVICE_BUSY);
     else {
         completion = &group->Roots[root].Io;
         MetadataStartContextLocked(group, completion, root, SU_METADATA_CHILDREN, object, major);
+        Diagnostic = &completion->Diagnostic;
         status = STATUS_SUCCESS;
     }
     KeReleaseSpinLock(&MetadataLock, irql);
     if (completion == NULL) {
         ExReleaseRundownProtection(&group->Rundown);
-        return MetadataRefuse(Data, status);
+        return MetadataDiagnosticPreReturn(Data, status, Diagnostic, __LINE__);
     }
     /* The reservation and callback-owned original object precede this extra
      * reference. Worker retirement cannot reuse the slot while it is pinned. */
     ObReferenceObject(object);
     completion->Reference = object;
     if (status == STATUS_SUCCESS && major == IRP_MJ_CREATE) {
-        status = MetadataCreateShape(Data, Objects, &group->Children[child]);
+        status = MetadataCreateShape(Data, Objects, &group->Children[child], Diagnostic);
         if (status == STATUS_SUCCESS) {
-            status = MetadataCheckAnchors(group);
+            status = MetadataCheckAnchors(group, Diagnostic);
             if (status != STATUS_SUCCESS) fault = TRUE;
         }
     } else if (status == STATUS_SUCCESS && child == SU_METADATA_CHILDREN) {
         status = MetadataRootIoPre(completion, Data, Objects);
     } else if (status == STATUS_SUCCESS) {
-        status = MetadataInspectChild(group, child, object, FALSE, &measured);
+        status = MetadataInspectChild(group, child, object, FALSE, &measured, Diagnostic);
         KeAcquireSpinLock(&MetadataLock, &irql);
         if (measured.Observed) {
-            NTSTATUS account = MetadataAccountLocked(group, &group->Children[child], &measured);
+            NTSTATUS account = MetadataAccountLocked(group, &group->Children[child], &measured, Diagnostic);
             if (status == STATUS_SUCCESS) status = account;
         } else {
             group->Children[child].Uncertain = TRUE;
@@ -2525,7 +2666,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
     }
     KeAcquireSpinLock(&MetadataLock, &irql);
     if (group->Revoked || (child != SU_METADATA_CHILDREN &&
-        (group->Children[child].Cleaned || group->Children[child].Key != object))) status = STATUS_DEVICE_NOT_READY;
+        (group->Children[child].Cleaned || group->Children[child].Key != object))) status = METADATA_STATUS(STATUS_DEVICE_NOT_READY);
     if (status != STATUS_SUCCESS && major == IRP_MJ_CREATE) {
         group->Children[child].Key = NULL; group->Children[child].Closed = TRUE;
         group->Children[child].State = SuMetadataRevoked;
@@ -2546,15 +2687,22 @@ _IRQL_requires_(PASSIVE_LEVEL)
 static __declspec(noinline) NTSTATUS MetadataPostNative(_Inout_ SU_METADATA_COMPLETION *Context, _In_ PFLT_CALLBACK_DATA Data,
     _In_ PCFLT_RELATED_OBJECTS Objects)
 {
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &Context->Diagnostic;
     SU_METADATA_GROUP *group = Context->Group;
     SU_METADATA_CHILD *child = &group->Children[Context->ChildIndex];
     SU_METADATA_MEASUREMENT measured;
     NTSTATUS status;
     BOOLEAN opening = Context->Operation == IRP_MJ_CREATE;
     KIRQL irql;
-    if (Objects->Instance != group->Instance || Objects->FileObject != Context->Object) return STATUS_FILE_INVALID;
+    /* Preserve the first native failure unless this exact read/security
+     * probe status is explicitly tolerated by the existing settlement. */
+    if (Context->NativeStatus != STATUS_SUCCESS &&
+        !(Context->Operation == IRP_MJ_READ && Context->NativeStatus == STATUS_END_OF_FILE) &&
+        !(Context->Operation == IRP_MJ_QUERY_SECURITY && (Context->NativeStatus == STATUS_BUFFER_TOO_SMALL ||
+          Context->NativeStatus == STATUS_BUFFER_OVERFLOW))) (VOID)METADATA_STATUS(Context->NativeStatus);
+    if (Objects->Instance != group->Instance || Objects->FileObject != Context->Object) return METADATA_STATUS(STATUS_FILE_INVALID);
     if (opening && (Context->NativeStatus != STATUS_SUCCESS || Context->NativeInformation !=
-        (child->Request.CreateDisposition == FILE_CREATE ? FILE_CREATED : FILE_OPENED))) return STATUS_FILE_INVALID;
+        (child->Request.CreateDisposition == FILE_CREATE ? FILE_CREATED : FILE_OPENED))) return METADATA_STATUS(STATUS_FILE_INVALID);
     /* Native successful mutation is recorded BEFORE observations/bookkeeping.
      * No observation failure changes it into permission to repeat the call. */
     KeAcquireSpinLock(&MetadataLock, &irql);
@@ -2568,18 +2716,18 @@ static __declspec(noinline) NTSTATUS MetadataPostNative(_Inout_ SU_METADATA_COMP
         } else if (Context->InformationClass == FileDispositionInformation) child->Deleted = TRUE;
     }
     KeReleaseSpinLock(&MetadataLock, irql);
-    status = MetadataInspectChild(group, Context->ChildIndex, Objects->FileObject, opening, &measured);
+    status = MetadataInspectChild(group, Context->ChildIndex, Objects->FileObject, opening, &measured, Diagnostic);
     KeAcquireSpinLock(&MetadataLock, &irql);
     if (measured.Observed) {
-        NTSTATUS account = MetadataAccountLocked(group, child, &measured);
+        NTSTATUS account = MetadataAccountLocked(group, child, &measured, Diagnostic);
         if (status == STATUS_SUCCESS) status = account;
     } else {
         child->Uncertain = TRUE;
         if (group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++group->UnknownOutcomes;
     }
-    if (group->Revoked || child->Key != Context->Object || child->Cleaned) status = STATUS_DEVICE_NOT_READY;
+    if (group->Revoked || child->Key != Context->Object || child->Cleaned) status = METADATA_STATUS(STATUS_DEVICE_NOT_READY);
     if (status == STATUS_SUCCESS && opening) {
-        if (measured.Eof > child->Request.MaximumLogicalBytes) status = STATUS_FILE_INVALID;
+        if (measured.Eof > child->Request.MaximumLogicalBytes) status = METADATA_STATUS(STATUS_FILE_INVALID);
         else {
             child->Identity = measured.Identity;
             child->Security = measured.Security; measured.Security = NULL;
@@ -2588,16 +2736,16 @@ static __declspec(noinline) NTSTATUS MetadataPostNative(_Inout_ SU_METADATA_COMP
         }
     } else if (status == STATUS_SUCCESS && Context->NativeStatus == STATUS_SUCCESS) {
         if ((Context->Operation == IRP_MJ_WRITE || Context->Operation == IRP_MJ_READ) &&
-            Context->NativeInformation > Context->Length) status = STATUS_INFO_LENGTH_MISMATCH;
+            Context->NativeInformation > Context->Length) status = METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
         if (Context->Operation == IRP_MJ_WRITE && Context->NativeInformation != Context->Length)
-            status = STATUS_UNEXPECTED_IO_ERROR;
+            status = METADATA_STATUS(STATUS_UNEXPECTED_IO_ERROR);
         if (Context->Operation == IRP_MJ_QUERY_INFORMATION && Context->NativeInformation != Context->Length)
-            status = STATUS_INFO_LENGTH_MISMATCH;
+            status = METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
         if (Context->Operation == IRP_MJ_QUERY_SECURITY && Context->NativeInformation > Context->Length)
-            status = STATUS_INFO_LENGTH_MISMATCH;
+            status = METADATA_STATUS(STATUS_INFO_LENGTH_MISMATCH);
         if (Context->Operation == IRP_MJ_WRITE) { child->F1 = FALSE; child->F2 = FALSE; child->EofSet = FALSE; }
         if (Context->Operation == IRP_MJ_FLUSH_BUFFERS) {
-            if (child->EofSet && child->EndOfFile != child->LogicalEof) status = STATUS_FILE_INVALID;
+            if (child->EofSet && child->EndOfFile != child->LogicalEof) status = METADATA_STATUS(STATUS_FILE_INVALID);
             child->F1 = TRUE;
             if (child->EofSet) child->F2 = TRUE;
             if (child->NeedF3) child->NeedF3 = FALSE;
@@ -2605,11 +2753,11 @@ static __declspec(noinline) NTSTATUS MetadataPostNative(_Inout_ SU_METADATA_COMP
         }
         if (Context->Operation == IRP_MJ_SET_INFORMATION) {
             if (Context->InformationClass == FileAllocationInformation) {
-                if (child->Allocation < Context->Value) status = STATUS_DISK_FULL;
+                if (child->Allocation < Context->Value) status = METADATA_STATUS(STATUS_DISK_FULL);
                 else child->Preallocated = Context->Value;
                 child->F2 = FALSE;
             } else if (Context->InformationClass == FileEndOfFileInformation) {
-                if (child->EndOfFile != Context->Value) status = STATUS_FILE_INVALID;
+                if (child->EndOfFile != Context->Value) status = METADATA_STATUS(STATUS_FILE_INVALID);
                 child->LogicalEof = Context->Value;
                 child->EofSet = TRUE; child->F2 = FALSE;
             }
@@ -2621,37 +2769,39 @@ static __declspec(noinline) NTSTATUS MetadataPostNative(_Inout_ SU_METADATA_COMP
         NTSTATUS targetStatus;
         BOOLEAN replaced = Context->Operation == IRP_MJ_FLUSH_BUFFERS || Context->NativeStatus == STATUS_SUCCESS;
         if (Context->Operation == IRP_MJ_SET_INFORMATION && Context->NativeStatus == STATUS_SUCCESS) {
-            NTSTATUS nameStatus = MetadataCheckName(group, Context->ChildIndex, Objects->FileObject);
+            NTSTATUS nameStatus = MetadataCheckName(group, Context->ChildIndex, Objects->FileObject, Diagnostic);
             if (status == STATUS_SUCCESS) status = nameStatus;
         }
         /* Even a failed rename may leave uncertain target custody. Observe
          * both exact objects before dropping the exclusion handle. F3 holds
          * the predecessor again and verifies the measured unlink separately. */
-        targetStatus = MetadataInspectChild(group, Context->TargetIndex - 1, Context->TargetReference, FALSE, &measured);
+        MetadataDiagnosticNode(Diagnostic, SU_METADATA_TARGET_NODE);
+        targetStatus = MetadataInspectChild(group, Context->TargetIndex - 1, Context->TargetReference, FALSE, &measured, Diagnostic);
         KeAcquireSpinLock(&MetadataLock, &irql);
         if (measured.Observed) {
-            NTSTATUS account = MetadataAccountLocked(group, &group->Children[Context->TargetIndex - 1], &measured);
+            NTSTATUS account = MetadataAccountLocked(group, &group->Children[Context->TargetIndex - 1], &measured, Diagnostic);
             if (targetStatus == STATUS_SUCCESS) targetStatus = account;
         } else {
             group->Children[Context->TargetIndex - 1].Uncertain = TRUE;
             if (group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++group->UnknownOutcomes;
         }
-        if (replaced && (measured.Links != 0 || !measured.DeletePending)) targetStatus = STATUS_FILE_INVALID;
+        if (replaced && (measured.Links != 0 || !measured.DeletePending)) targetStatus = METADATA_STATUS(STATUS_FILE_INVALID);
         if (group->Children[Context->TargetIndex - 1].Cleaned ||
-            group->Children[Context->TargetIndex - 1].Key != Context->TargetReference) targetStatus = STATUS_FILE_INVALID;
+            group->Children[Context->TargetIndex - 1].Key != Context->TargetReference) targetStatus = METADATA_STATUS(STATUS_FILE_INVALID);
         KeReleaseSpinLock(&MetadataLock, irql);
         if (status == STATUS_SUCCESS) status = targetStatus;
-        if (status == STATUS_SUCCESS) status = MetadataCheckAnchors(group);
+        MetadataDiagnosticNode(Diagnostic, SU_METADATA_CHILD_NODE);
+        if (status == STATUS_SUCCESS) status = MetadataCheckAnchors(group, Diagnostic);
     }
     if (status == STATUS_SUCCESS && Context->NativeStatus == STATUS_SUCCESS &&
-        Context->Operation == IRP_MJ_FLUSH_BUFFERS) status = MetadataCheckAnchors(group);
+        Context->Operation == IRP_MJ_FLUSH_BUFFERS) status = MetadataCheckAnchors(group, Diagnostic);
     /* Native errors retain measured peaks, then hold; never retry a mutation. */
     if (Context->NativeStatus != STATUS_SUCCESS && status == STATUS_SUCCESS &&
         !(Context->Operation == IRP_MJ_READ && Context->NativeStatus == STATUS_END_OF_FILE) &&
         !(Context->Operation == IRP_MJ_QUERY_SECURITY && (Context->NativeStatus == STATUS_BUFFER_TOO_SMALL ||
           Context->NativeStatus == STATUS_BUFFER_OVERFLOW))) status = Context->NativeStatus;
     UNREFERENCED_PARAMETER(Data);
-    return status;
+    return METADATA_STATUS(status);
 }
 
 _Use_decl_annotations_
@@ -2664,6 +2814,7 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT
     BOOLEAN draining = BooleanFlagOn(Flags, FLTFL_POST_OPERATION_DRAINING), revoke = FALSE;
     NTSTATUS status = STATUS_SUCCESS;
     KIRQL irql;
+    SU_METADATA_DIAGNOSTIC *Diagnostic = &c->Diagnostic;
     if (c->Operation == IRP_MJ_CLEANUP) {
         KeAcquireSpinLock(&MetadataLock, &irql);
         if (child != NULL) {
@@ -2681,6 +2832,7 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT
     c->NativeStatus = draining ? STATUS_PENDING : Data->IoStatus.Status;
     c->NativeInformation = draining ? 0 : Data->IoStatus.Information;
     if (draining || KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        (VOID)METADATA_STATUS(STATUS_DEVICE_NOT_READY);
         KeAcquireSpinLock(&MetadataLock, &irql);
         if (child != NULL) {
             child->State = SuMetadataRevoked; child->Uncertain = TRUE;
@@ -2700,6 +2852,7 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT
         return FLT_POSTOP_FINISHED_PROCESSING; /* PASSIVE owner releases refs/pins */
     }
     if (c->Operation == IRP_MJ_CREATE && !NT_SUCCESS(c->NativeStatus)) {
+        (VOID)METADATA_STATUS(c->NativeStatus);
         KeAcquireSpinLock(&MetadataLock, &irql);
         /* A CREATE completion always owns a child; guard anyway so a logic defect cannot dereference NULL. */
         if (child != NULL) { child->Key = NULL; child->Closed = TRUE; child->State = SuMetadataRevoked; }
@@ -2710,6 +2863,7 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT
     if (child != NULL) status = MetadataPostNative(c, Data, Objects);
     else status = MetadataRootIoPost(c);
     if (status != STATUS_SUCCESS) {
+        (VOID)METADATA_STATUS(status);
         KeAcquireSpinLock(&MetadataLock, &irql);
         if (child != NULL) { child->Uncertain = TRUE; child->State = SuMetadataRevoked; }
         KeReleaseSpinLock(&MetadataLock, irql);
