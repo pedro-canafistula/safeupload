@@ -32,3 +32,19 @@ With class 65/flags 3 over a held SHARE_DELETE predecessor: rename status 0, `Su
 | N-U4-01 | line 109 `Assert.Throws<IOException>` on opening a junction as a child: production throws `MetadataNativeException` status `0xC00000BA` (STATUS_FILE_IS_A_DIRECTORY), a correct typed refusal | test expectation (assert the typed exception and status) |
 | N-U4-05 | class-10 replace over a held target: `0xC0000022` | adopt class 65/flags 3 + SHARE_DELETE predecessor (one-line selection + test expectation `Links==0 && DeletePending`) |
 | N-U8-01 | line 284/286: same class-10 replacement; also asserts `DeletePending==False` for the unlinked predecessor | same adoption; expect `Links==0, DeletePending==True` |
+
+## Run 3 — `m2t9fdiag1028a3` (source `3acb631e`, same builder): the unpreallocated pattern is nondeterministic
+
+**97 executed, 94 passed, 3 failed.** The three strict gates (N-U4-01, N-U4-05, N-U8-01) and all 32 replacement rows **pass**; the replacement table above reproduced exactly.
+The 3 failures are re-baselined allocation regression rows that asserted the *exact* overshoots seen in run 2 for the unpreallocated chunked mechanism. Same inputs, different outcome:
+
+| unpreallocated Chunked (strict quantum?, L) | Q | peak in run 2 | peak in run 3 |
+|---|---|---|---|
+| (no, 8192) | 8192 | 8192 | **16384** (over) |
+| (no, 65537) | 69632 | **131072** (over) | 69632 |
+| (no, 131072) | 131072 | **196608** (over) | 131072 |
+| (yes, 131072) | 131072 | 196608 (over) | 196608 (over) |
+| all other rows | = Q | = Q | = Q |
+
+All 36 single-write and preallocated rows stayed within Q in both runs. **Reading:** transient over-allocation during sequential extension is a property of the NTFS allocator state at the moment, not of the visible parameters; it cannot be modelled or bounded, which is exactly why production preallocates P (or writes P in one call) and charges `max(Q, observed)`.
+The exact-overshoot expectations were the wrong assertion (derived from one run); the deterministic invariant to assert for the unpreallocated pattern is: observed peak ≥ Q is allowed, the disposition is Held iff observed > Q, and the retained charge is ≥ the observed value. Preallocated and single-write rows keep their exact `≤ Q` assertions.

@@ -185,11 +185,13 @@ public sealed class StagedMetadataStoreTests
         Assert.Equal(MetadataStoreDisposition.Committed, store.Execute(tx).Disposition);
         Assert.Equal(new[] { ("Allocation", 0L, 8192L), ("Write", 0L, 4096L), ("Write", 4096L, 4096L) }, native.ExtentCalls);
         AssertSafeExtentSequence(native.ExtentCalls, 8192);
+        Assert.Throws<Xunit.Sdk.TrueException>(() => AssertSafeExtentSequence(native.ExtentCalls.Where(c => c.Operation != "Allocation"), 8192));
         native.ExtentCalls.Clear();
         var extension = BoundedOutputPlan.Create(MetadataRoleV32.Segment, plan.Object, 12288, 4096, 4096);
         Assert.Equal(MetadataStoreDisposition.Committed, store.Append(tx, extension, 8192, new byte[4096], 1, new byte[4096]).Disposition);
         Assert.Equal(new[] { ("Allocation", 0L, 12288L), ("Write", 8192L, 4096L), ("Write", 4096L, 4096L) }, native.ExtentCalls);
         AssertSafeExtentSequence(native.ExtentCalls, 12288);
+        Assert.Throws<Xunit.Sdk.TrueException>(() => AssertSafeExtentSequence(native.ExtentCalls.Where(c => c.Operation != "Allocation"), 12288));
         // A single full-extent write is a measured alternative. Successive
         // unpreallocated extension is the conservation-negative control.
         AssertSafeExtentSequence([("Write", 0, 8192)], 8192);

@@ -1,0 +1,70 @@
+{
+ "Label": "m2t9i3k1028a5",
+ "Gate": "PASS",
+ "SourceCommit": "3acb631e",
+ "Builder": "builder2",
+ "ProductQualification": false,
+ "VmBooted": false,
+ "Scope": "Static/build/import/signature gate of increment-3 kernel pass 2 (RegisterRoot, RegisterChildIntent, transaction pools, outer StageDispatchEpoch routing, bounded lifetime). Dormant: Commit always NotReady, child native I/O refused, diagnostic actor absent. NOT boot-ready: no pre-boot lifetime/lock-order review, no native builder controls on the kernel path, no Verifier.",
+ "PriorFailedAttempts": [
+  {
+   "Label": "m2t9i3k1028a3",
+   "SourceCommit": "9dced31c",
+   "Failure": "C4018 signed/unsigned mismatch at StageResourceMetadata.c:696 (2 errors per configuration)",
+   "RawSha256": {
+    "exact-m2t9i3k1028a3-summary.txt": "603f8ceeb09503cf4ae3044a6610a59cddfa808fbaa273de2431571f372be996"
+   }
+  },
+  {
+   "Label": "m2t9i3k1028a4",
+   "SourceCommit": "3bf01d04",
+   "Failure": "C6262 stack usage 1,136 bytes in SafeUploadMetadataPre at :1432 (1 error per configuration)",
+   "RawSha256": {
+    "exact-m2t9i3k1028a4-summary.txt": "3b2071a4f47b8b75c4a1bc09d89f299f09a5c6f5a02b61331e6ed86d653a3bbc"
+   }
+  }
+ ],
+ "Signature": {
+  "CertificateStoreLocation": "LocalMachine",
+  "Builder": "builder2",
+  "SignatureValid": true,
+  "SignExit": 0,
+  "ActualSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "OutputSHA256": "AF07A831B61A85F9A4BE4F58AB327BF484D3EE6BDB6A52FA63051BB98C6FC503",
+  "SignatureStatus": "Valid",
+  "UTC": "2026-10-28T18:24:05.3066166Z",
+  "SigningCopySHA256Before": "36B23BC3C197968AFD7E7BF968B487AC0C2588C7FDDED154597BC9796C9968A7",
+  "UnsignedArtifactUnchanged": true,
+  "ExpectedSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "BuilderComputerName": "SU-BUILDER2",
+  "SignedSHA256": "AF07A831B61A85F9A4BE4F58AB327BF484D3EE6BDB6A52FA63051BB98C6FC503",
+  "UnsignedSHA256": "36B23BC3C197968AFD7E7BF968B487AC0C2588C7FDDED154597BC9796C9968A7",
+  "BuilderHost": "192.168.122.211",
+  "ParityCheck": false
+ },
+ "SummaryRows": [
+  "LABEL=m2t9i3k1028a5",
+  "ARCHIVE_SHA256=DA603F5F4309816BAED05895AD073B1A9B4DBA057207C4B4A40B9FEA5BC4B2C0",
+  "SOURCE_COMMIT=3acb631e2fe7a0400f9fe572b55eee1f7646f8a9",
+  "BUILDER=SU-BUILDER2",
+  "BUILD_END_UTC=2026-10-28T18:24:05.3378767Z",
+  "KernelBuildProfiles=owned-feature,owned-feature-release",
+  "Builder=builder2",
+  "BuilderHost=192.168.122.211",
+  "BuilderComputerName=SU-BUILDER2",
+  "ParityCheck=False",
+  "driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=36B23BC3C197968AFD7E7BF968B487AC0C2588C7FDDED154597BC9796C9968A7",
+  "driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=A301FD244071B744CC28C1F7366126C117F936ACDA8AD662802D1C520DA398FC",
+  "inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=DDC0863C7D865DF333A70B87256FB29B453427E622785D173A9FE568A4CDDDE0",
+  "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=08B14F1BB4A5A81D09FDC3F8BAC9EBBD6E6A3B4C8603176094D4163E0CA07525",
+  "sign : exit=0 unsigned_sha256=36B23BC3C197968AFD7E7BF968B487AC0C2588C7FDDED154597BC9796C9968A7 signing_copy_sha256=36B23BC3C197968AFD7E7BF968B487AC0C2588C7FDDED154597BC9796C9968A7 unsigned_unchanged=True store=LocalMachine output_sha256=AF07A831B61A85F9A4BE4F58AB327BF484D3EE6BDB6A52FA63051BB98C6FC503 signed_sha256=AF07A831B61A85F9A4BE4F58AB327BF484D3EE6BDB6A52FA63051BB98C6FC503 signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38"
+ ],
+ "RawSha256": {
+  "exact-m2t9i3k1028a5-summary.txt": "58271e74f582d89de9876120cb36bce746f54dc5d6d34a70c36786dc35d82010",
+  "exact-m2t9i3k1028a5-imports.txt": "e47668ed9cc6b40e6c42542e5a80586816cf33ab30470e1cfb3d41ba184935ff",
+  "exact-m2t9i3k1028a5-owned-feature-wdk.txt": "387d74b1cf46ba8595b47508e46ba98aeaa794bd0bfb8f91893fc46f1fed0766",
+  "exact-m2t9i3k1028a5-owned-feature-release-wdk.txt": "b043bd861a44ffb7e7002aa402fbe383adfc753ab2a6a141751bb882609442a6",
+  "exact-m2t9i3k1028a5-signature-verification.json": "0e5504993d459f50af226b72a6860d7d47f81b0f7e879e8897d740b4af291668",
+  "exact-m2t9i3k1028a5-artifact-hashes.txt": "5d1e25f2e5f0e705dcc38d96f6803803f6db795135f5b0acada59ffd1536a219"
+ }
+}

@@ -7,11 +7,17 @@ using Xunit.Abstractions;
 namespace SafeUpload.Agent.Tests;
 
 // Builder OS mechanism regression evidence, not target qualification. Assert
-// the measured peaks, including deliberately over-allocating negative paths.
+// per-run measured accounting, including potentially over-allocating paths.
 // Held here never satisfies the strict N-U8-01 Committed baseline.
 [Trait("Category", "NativeWindows")]
 public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper output)
 {
+    // m2t9fdiag1028a2 and m2t9fdiag1028a3 (t9-inc3-native-results-2.md,
+    // Run 3) show identical Chunked inputs both within Q and over Q. Exact
+    // overshoots/write counts were artifacts of one allocator state, not a
+    // contract. Assert each run's own receipts; this preserves the accounting
+    // invariant rather than weakening a deterministic bound. The other 36
+    // rows stayed within Q in both runs and retain that positive requirement.
     public static IEnumerable<object[]> AllocationVectors()
     {
         foreach (string mechanism in new[] { "Chunked", "Single", "PreallocatedChunked", "PreallocatedSingle" })
@@ -20,16 +26,25 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
             yield return [mechanism, stricterQuantum, length];
     }
 
-    internal static (long Peak, int Writes) ExpectedAllocation(string mechanism, bool stricterQuantum, int logical)
+    internal static bool RequiresBoundedPeak(string mechanism) => mechanism != "Chunked";
+    internal sealed record AllocationReceipt(string Step, long EndOfFile, long AllocationSize,
+        long RetainedCharge, MetadataStoreDisposition Disposition);
+
+    internal static void AssertReceiptInvariant(IReadOnlyList<AllocationReceipt> receipts, long observedPeak,
+        long q, long unit, long finalWriteSize)
     {
-        long alignment = stricterQuantum ? 65536 : 4096;
-        long padded = BoundedOutputPlan.Round(logical, alignment);
-        if (mechanism == "Chunked")
+        Assert.True(observedPeak >= Math.Min(q, finalWriteSize));
+        Assert.Equal(observedPeak, receipts.Max(r => r.AllocationSize));
+        Assert.Contains(receipts, r => r.AllocationSize == observedPeak);
+        long runningPeak = 0;
+        foreach (var receipt in receipts)
         {
-            if (!stricterQuantum && logical == 65537) return (131072, 17);
-            if (logical == 131072) return (196608, stricterQuantum ? 2 : 27);
+            runningPeak = Math.Max(runningPeak, receipt.AllocationSize);
+            long retained = Math.Max(q, BoundedOutputPlan.Round(runningPeak, unit));
+            Assert.Equal(retained, receipt.RetainedCharge);
+            Assert.True(receipt.RetainedCharge >= receipt.AllocationSize);
+            Assert.Equal(runningPeak > q ? MetadataStoreDisposition.Held : MetadataStoreDisposition.Committed, receipt.Disposition);
         }
-        return (padded, checked((int)(mechanism.EndsWith("Single", StringComparison.Ordinal) ? 1 : padded / alignment)));
     }
 
     private sealed class HeldFile(SafeFileHandle file, IDisposable pin) : IDisposable
@@ -55,7 +70,8 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
         var initial = native.Query(file); fixture.Accounting.Bind(plan.Object, initial.Identity);
         using var lifetime = new HeldFile(file, fixture.Accounting.Pin(initial.Identity));
         bool exceeded = false;
-        var expected = ExpectedAllocation(mechanism, stricterQuantum, logical);
+        var receipts = new List<AllocationReceipt>();
+        bool boundedPeak = RequiresBoundedPeak(mechanism);
         long maximumObserved = 0;
         int writes = 0;
         output.WriteLine($"DiscoveryOnly=true MechanismEvidence=BuilderOSOnly OS={Environment.OSVersion} Mechanism={mechanism} " +
@@ -74,24 +90,26 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
             maximumObserved = Math.Max(maximumObserved, measured.AllocationSize);
             try { fixture.Accounting.Observe(plan.Object, measured.Identity, measured.AllocationSize, measured.Links); }
             catch (MetadataPhysicalOverrunException) { exceeded = true; }
-            output.WriteLine($"Step={step} Class={(step.Contains("Allocation", StringComparison.Ordinal) ? "FileAllocationInformation(19)" : step == "EOF" ? "FileEndOfFileInformation(20)" : "NativeIO")} " +
+            var receipt = new AllocationReceipt(step, measured.EndOfFile, measured.AllocationSize,
+                fixture.Accounting.Charge(plan.Object), exceeded ? MetadataStoreDisposition.Held : MetadataStoreDisposition.Committed);
+            receipts.Add(receipt);
+            output.WriteLine($"Step={receipt.Step} Class={(step.Contains("Allocation", StringComparison.Ordinal) ? "FileAllocationInformation(19)" : step == "EOF" ? "FileEndOfFileInformation(20)" : "NativeIO")} " +
                 $"NTSTATUS=0x{result.Status:X8} Information={result.Information} WriteIndex={writes} Offset={offset} Length={length} " +
-                $"L={logical} P={plan.PaddedExtent} Q={plan.PeakAllocation} Identity={measured.Identity} EOF={measured.EndOfFile} " +
-                $"AllocationSize={measured.AllocationSize} Links={measured.Links} DeletePending={measured.DeletePending} " +
-                $"RetainedCharge={fixture.Accounting.Charge(plan.Object)} ExpectedProductHold={exceeded}");
+                $"L={logical} P={plan.PaddedExtent} Q={plan.PeakAllocation} Identity={measured.Identity} EOF={receipt.EndOfFile} " +
+                $"AllocationSize={receipt.AllocationSize} Links={measured.Links} DeletePending={measured.DeletePending} " +
+                $"RetainedCharge={receipt.RetainedCharge} Disposition={receipt.Disposition} ExpectedProductHold={exceeded}");
             Assert.True(fixture.Accounting.Charge(plan.Object) >= measured.AllocationSize);
             Assert.Equal(initial.Identity, measured.Identity);
             Assert.Equal(1u, measured.Links); Assert.False(measured.DeletePending);
             if (step == "Create") Assert.Equal(0, measured.AllocationSize);
-            else if (step is "F1-BeforeEOFNormalization" or "EOF" or "F2") Assert.Equal(expected.Peak, measured.AllocationSize);
-            else if (step != "Write" || mechanism != "Chunked") Assert.Equal(plan.PeakAllocation, measured.AllocationSize);
+            else if (boundedPeak) Assert.Equal(plan.PeakAllocation, measured.AllocationSize);
             result.Require(); return measured;
         }
 
         Capture("Create", created);
         if (mechanism.StartsWith("Preallocated", StringComparison.Ordinal))
             Capture("AllocationBeforeWrite", native.Allocation(file, plan.PaddedExtent), length: plan.PaddedExtent);
-        long written = 0;
+        long written = 0, finalWriteSize = 0;
         if (!exceeded)
         {
             bool single = mechanism.EndsWith("Single", StringComparison.Ordinal);
@@ -101,12 +119,15 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
             {
                 var result = native.WriteAligned(file, written, block, alignment);
                 writes++;
-                Capture("Write", result, written, block.Length);
+                finalWriteSize = Capture("Write", result, written, block.Length).EndOfFile;
                 Assert.Equal((ulong)block.Length, result.Information);
                 written += block.Length;
                 if (exceeded) break; // No further data writes after the physical bound failed.
             }
         }
+        Assert.InRange(writes, 1, checked((int)(mechanism.EndsWith("Single", StringComparison.Ordinal) ? 1 : plan.PaddedExtent / alignment)));
+        Assert.Equal(written, finalWriteSize);
+        if (!exceeded) Assert.Equal(plan.PaddedExtent, written);
         Capture("F1-BeforeEOFNormalization", native.Flush(file));
         // This remains an isolated, held diagnostic object if the write stopped.
         // Normalize only already-written bytes; never extend an incomplete probe.
@@ -117,15 +138,16 @@ public sealed class StagedMetadataStoreAllocationNativeTests(ITestOutputHelper o
         // Its success/lower allocation is never used to erase a witnessed peak.
         Capture("AllocationAfterEOF", native.Allocation(file, plan.PaddedExtent), length: plan.PaddedExtent);
         Capture("FlushAfterAllocation", native.Flush(file));
-        Assert.Equal(expected.Peak, maximumObserved); Assert.Equal(expected.Writes, writes);
-        Assert.Equal(expected.Peak > plan.PeakAllocation, exceeded);
+        if (boundedPeak) Assert.InRange(maximumObserved, 0, plan.PeakAllocation);
+        AssertReceiptInvariant(receipts, maximumObserved, plan.PeakAllocation, native.AllocationUnit, finalWriteSize);
+        Assert.Equal(maximumObserved > plan.PeakAllocation, exceeded);
         long retained = Math.Max(plan.PeakAllocation, BoundedOutputPlan.Round(maximumObserved, native.AllocationUnit));
         Assert.Equal(retained, fixture.Accounting.Charge(plan.Object));
         Assert.Equal(retained, fixture.Accounting.Totals.Shared);
         if (exceeded)
             Assert.Throws<IOException>(() => fixture.Accounting.TryReserve(fixture.Plan(128), MetadataPhysicalClass.HotJournal));
         output.WriteLine($"DiscoveryOnly=true EmpiricalPeak={maximumObserved} RetainedCharge={retained} Writes={writes} " +
-            $"ExpectedProductDisposition={(exceeded ? "Held" : "NoPhysicalOverrunObserved")} " +
+            $"ExpectedProductDisposition={receipts[^1].Disposition} " +
             "NoUniversalUpperBoundInferred=true NoArchiveOrGrowthAuthority=true");
     }
 }
