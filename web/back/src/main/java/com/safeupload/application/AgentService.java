@@ -57,7 +57,9 @@ public class AgentService {
             request.host().fabricante(),
             request.host().modelo(),
             request.host().mac_address(),
-            request.host().numero_serie()
+            request.host().numero_serie(),
+            LocalDateTime.now(clock),
+            1
         );
 
         host = hostRepository.save(host);
@@ -67,8 +69,6 @@ public class AgentService {
             request.usuarioSo().usuario_so(),
             request.usuarioSo().dominio(),
             request.usuarioSo().admin(),
-            LocalDateTime.now(clock),
-            1, 
             host
         );
 
@@ -78,20 +78,20 @@ public class AgentService {
     }
 
     @Transactional
-    public HeartbeatResponse heartbeat(HeartbeatRequest request){
+    public DefaultResponse heartbeat(HeartbeatRequest request){
 
-        UsuarioSo usuarioSo = usuarioSoRepository.findById(request.id_usuario_so())
+        Host host = hostRepository.findById(request.id_host())
                                 .orElseThrow(() -> 
                                     new EntityNotFoundException("Usuário do sistema operacional não encontrado na base de dados.")
                                 );
 
-        usuarioSo.executeHeartbeat(LocalDateTime.now(clock), 1);
+        host.executeHeartbeat(LocalDateTime.now(clock), 1);
 
-        return new HeartbeatResponse(HttpStatus.OK, "Heartbeat contabilizado"); 
+        return new DefaultResponse(HttpStatus.OK, "Heartbeat contabilizado"); 
     }
 
     @Transactional
-    public TicketsResponse tickets (TicketsRequest request){
+    public DefaultResponse tickets (TicketsRequest request){
         UsuarioSo usuarioSo = usuarioSoRepository.findById(request.fk_id_usuario_so())
                                 .orElseThrow(() -> 
                                     new EntityNotFoundException("Usuário do sistema operacional não encontrado na base de dados.")
@@ -107,7 +107,7 @@ public class AgentService {
 
         solicitacao = solicitacaoRepository.save(solicitacao);
 
-        return new TicketsResponse(HttpStatus.OK, "Solicitação criada com sucesso.");
+        return new DefaultResponse(HttpStatus.OK, "Solicitação criada com sucesso.");
     }
     
 
