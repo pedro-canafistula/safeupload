@@ -118,6 +118,20 @@ finish() {
     local rc=$?; trap - EXIT
     # Best effort crash artifacts even on first failure; never convert failure
     # to PASS because transport succeeded. Do not restart a crashed guest.
+    # Kernel refusals are typed without a reason on the wire; the driver prints
+    # one ERROR-level DbgPrint line per refusal. On a failure after the component
+    # was prepared, take a live memory dump of the still-running guest before the
+    # overlay is discarded (read later with cdb !dbgprint on a builder).
+    if [ "$rc" -ne 0 ] && [ -n "$active" ] && [ "$active" = "$label" ] &&
+        tr -d '\r' < "$ev/prepare.txt" 2>/dev/null | grep -qx 'Nu501ComponentPrepared=True' &&
+        [ "$($V domstate "$dom" 2>/dev/null)" = running ]; then
+        elf="/var/tmp/nu501-$label.elf"
+        if timeout 900 $V qemu-monitor-command "$dom" --hmp "dump-guest-memory $elf" > "$ev/live-dump.txt" 2>&1 && [ -s "$elf" ]; then
+            timeout 900 /var/tmp/safeupload-qemu-tools/build/contrib/elf2dmp/elf2dmp "$elf" "$ev/guest-live.dmp" >> "$ev/live-dump.txt" 2>&1 || true
+            rm -f "$elf" 2>/dev/null || true
+        fi
+        ls -la "$ev/guest-live.dmp" >> "$ev/live-dump.txt" 2>&1 || true
+    fi
     if [ -n "$active" ]; then
         $V domstate "$dom" --reason > "$ev/final-domstate.txt" 2>&1 || true
         $V screenshot "$dom" "$ev/final-screen.png" >/dev/null 2>&1 || true
