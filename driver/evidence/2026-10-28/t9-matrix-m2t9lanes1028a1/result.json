@@ -1,0 +1,121 @@
+{
+ "Label": "m2t9lanes1028a1",
+ "Gate": "PASS",
+ "Provenance": {
+  "SourceCommit": "272a33d14084c68018b7bcdb69a6915deb76d3bd",
+  "ArchiveSHA256": "D6576509C9D28BAA81FD9C740221EBF34B977F970739F4D8FB887DF85BA09B22",
+  "BuilderIdentity": {
+   "Builder": "builder2",
+   "BuilderHost": "192.168.122.211",
+   "BuilderComputerName": "SU-BUILDER2",
+   "ParityCheck": false
+  },
+  "Profiles": [
+   "feature-debug",
+   "feature-release"
+  ],
+  "TestLegs": 4
+ },
+ "RuntimeQualification": false,
+ "ServiceInstalled": false,
+ "Profiles": {
+  "feature-debug": {
+   "user": {
+    "Counters": {
+     "total": "3278",
+     "executed": "3278",
+     "passed": "3278",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "f2677d231c6bf3010397803444e5cfaf6f3f76aecbeac195351f1cf74442b537"
+   },
+   "system": {
+    "Counters": {
+     "total": "25",
+     "executed": "25",
+     "passed": "25",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "ec3441a4153f07be7ff6f407ab71b5a2caed899da1601c61195638e54978dee6"
+   },
+   "ExactDiscoveryAndRequiredCasesVerified": true
+  },
+  "feature-release": {
+   "user": {
+    "Counters": {
+     "total": "3278",
+     "executed": "3278",
+     "passed": "3278",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "d45e09b74ddfdbee752721b7ac42b50b7433a079e859263b907e51b50cdc9389"
+   },
+   "system": {
+    "Counters": {
+     "total": "25",
+     "executed": "25",
+     "passed": "25",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "c34d55d760d3f20a59cc99f6a9b899d9c50d7c098848a4b511f43d69d5c630a6"
+   },
+   "ExactDiscoveryAndRequiredCasesVerified": true
+  }
+ },
+ "Packages": {
+  "feature-release": {
+   "package_manifest_sha256": "AD274B0337FDD6C8B26C77C199A8AE4D89D7A9BAF9B576281AC3B2FA29F6C88D",
+   "package_sha256": "940C80485378C7B8886AE5F2720AC3F45E8C52F5A0E19EA1341F3B31DA0E0F30",
+   "exe_sha256": "79C9F5DD515424E225144CADE3759D2C290C588BF30A721ED31C78E4B30A3A7E",
+   "app_exe_sha256": "9C69946DD0D56CC131CFA3782BED3D267E892B037AB29201A50EBBB786B29855"
+  }
+ }
+}
