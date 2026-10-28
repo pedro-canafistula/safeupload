@@ -4,7 +4,7 @@
 **Revision 8 is proposed, pending independent review.** It adds the increment-4
 before-coding audit (12.1.3), release ownership (9.3), strict archive/serializer
 contracts (10.5), and legacy migration (10.6), with product-independent models.
-O1/O2 reflect the owner decisions of 2026-10-28; no checkbox or execution gate
+O1/O2/O3 reflect the owner decisions of 2026-10-28; no checkbox or execution gate
 is closed by this revision. Revision 7 applied the first measured Windows mechanisms from
 [native results 2](../../../evidence/2026-10-28/t9-inc3-native-results-2.md),
 retaining the [first failures/correction](../../../evidence/2026-10-28/t9-inc3-native-findings.md).
@@ -2180,7 +2180,7 @@ a memory lease. These are integration anchors, not already-complete adapters.
 side file or unbounded list: required-null `CustodyClaim` with exact properties
 `{ClaimId GUID, OwnerEpoch GUID, Slot u32, Incarnation i64, ClaimRevision i64,
 Kind u32, State u32, Identity (nullable identity[24]), RetirementWitnessId
-(nullable GUID)}`. Kind=1 CreateCopy, 2 FreezeMeasure, 3 Dispose, 4 Promote;
+(nullable GUID), DrainWitnessId (nullable GUID; 9.3.1)}`. Kind=1 CreateCopy, 2 FreezeMeasure, 3 Dispose, 4 Promote;
 State=1 Prepared, 2 MayHaveIssued, 3 NativeComplete, 4 Drained. IDs nonempty,
 slot 0..3, incarnation/revision positive; owner epoch identifies the actual
 service lifetime, never a reusable PID. Identity is null only before capture;
@@ -2210,8 +2210,8 @@ keeps ReservedMax; it cannot manufacture that measurement transition.
 |---|---|
 | Original Stage / kernel stream retirement plus agent cleanup claim | Kernel upper FILE_OBJECT/handles, writable sections/cache, paging rundown, growth workers/waiters/adoption and backing mutation handles; agent publisher stage read, seed/copy source and disposal handles. Stage-write retirement proves only kernel mutation drain and immutable measurements. Storage release additionally requires exact stage disposal, zero remaining agent/native owners and final-close/absence proof; retain original StageRelease across reuse. No agent claim can clear kernel Unknown. |
 | Snapshot / `StagedInspectionSnapshot` lifetime owner | Copy writer, primary read stream, every parser `ReadLease` duplicate and active read/copy/hash operation. Await actual parser reader disposal, including a parser ignoring cancellation. After final delete-on-close handle closes, establish final storage release for the captured object; otherwise remain ImmutableReleasePending at measured allocation. Never use EndSnapshot or name absence alone. |
-| PublicationTemporary / publisher's exact output transaction | Output writer, metadata/security application, publication permit/driver operation pins, verification and retry handles. Failed uncommitted output: close mutation/operation owners then exact delete with final release proof. Known successful promotion: persist NativeComplete with existing publication receipt and exact output/destination generation, finish bookkeeping once; **no physical-release receipt**. Until O3 is selected retain the slot/charge; never delete the public object for budget cleanup. |
-| Handback / copier's exact output transaction | Original temporary handle, duplicated output stream, verifier/reopen handles and every `VerifiedHandbackLease`. Failure: exact private temporary disposal after drain. Successful no-replace rename plus authorized export: NativeComplete and existing journal result once; retained public file is not absent/deleted. O3 controls any accounting transfer. Existing seed read/export policy and caller SID/owner/DACL/SACL/label checks still apply. |
+| PublicationTemporary / publisher's exact output transaction | Output writer, metadata/security application, publication permit/driver operation pins, verification and retry handles. Failed uncommitted output: close mutation/operation owners then exact delete with final release proof. Known successful promotion: persist NativeComplete with existing publication receipt and exact output/destination generation, finish bookkeeping once; **no physical-release receipt**. Decided O3 permits only 9.3.1's persisted Kind=5 identity-bound accounting transfer; until it commits retain FullDebitHeld; never delete the public object for budget cleanup. |
+| Handback / copier's exact output transaction | Original temporary handle, duplicated output stream, verifier/reopen handles and every `VerifiedHandbackLease`. Failure: exact private temporary disposal after drain. Successful no-replace rename plus authorized export: NativeComplete and existing journal result once; retained public file is not absent/deleted. Decided O3 uses 9.3.1's exact Kind=5 receipt for accounting transfer; unreceipted/uncertain delivery retains FullDebitHeld. Existing seed read/export policy and caller SID/owner/DACL/SACL/label checks still apply. |
 | Any deletion-pending object in one of these roles | The role/slot/incarnation survives unlink. Every owner above remains included; never relabel it as a free fifth slot. Unknown extra handle/section/native outcome retains the conservative charge and diagnostic. |
 
 **Release commit:** after the role's proof, journal serialization (where needed)
@@ -2221,13 +2221,12 @@ witness, same K/slot/incarnation/claim revision, StageRelease if applicable,
 new inventory and derived debit in one budget transition **before** memory
 adoption/reuse. Ordinary Discarded additionally follows 9.2's manifest-first
 receipt; restart joins that receipt to the exact budget claim. A known successful
-mutation is never issued twice. No schema-3 kind for public custody transfer is
-selected here; O3 must settle its accounting meaning before its codec/consumer.
-A promoted slot remains occupied/charged and cannot enter MetadataOnly merely
-because its private name disappeared. If user activity can change it after
-promotion, retain FullDebitHeld; do not claim a bounded immutable allocation or
-silently delete/alter that public file. This exposes an O3 integration stop,
-not a supported indefinitely bounded public-file accounting mechanism.
+mutation is never issued twice. Decided O3 and 9.3.1 select schema-3 Kind=5
+for exact persisted public custody transfer; existing non-creation/storage-release kinds 1–4 retain
+their existing meaning. A missing private name, path or digest alone releases
+nothing. Valid receipt-based transfer ends the promoted slot's staging custody;
+other retained slots and uncertainty remain charged. No public file is deleted
+or altered for budget cleanup.
 
 | Crash / uncertainty | Recovery and retained charge |
 |---|---|
@@ -2237,7 +2236,7 @@ not a supported indefinitely bounded public-file accounting mechanism.
 | Freeze/retirement receipt lost | Retain preceding/full debit; recover exact retained receipt or repeat only a safe query/drain proof, never infer it from EOF or a hash. |
 | Exact delete native success, release persistence lost | Preserve charge, complete from exact claim plus all-owner drain/final-release witness; do not issue another successful delete against the name. If witness cannot be recovered, hold until a valid lifetime boundary, including reboot where required. |
 | Release durable, memory totals/reuse not done | Reconstruct the same transition once. Duplicate completion is no-op; stale incarnation/claim refuses. |
-| Public rename succeeded, reply/journal completion lost | Existing exact-object publication/export recovery finishes bookkeeping; no second copy/rename/public mutation. Retain charge until O3's approved transfer or actual release proof. |
+| Public rename succeeded, reply/journal completion lost | Existing exact-object publication/export recovery finishes bookkeeping; no second copy/rename/public mutation. Retain FullDebitHeld until 9.3.1's persisted exact Kind=5 transition; completed public mutation is never repeated. |
 | Metadata current/new/predecessor/candidate/segment unlinked | `StagedMetadataStore.Transaction` owns output/predecessor handles, accounting pins and active operation; journal/archive owns candidate/segment readers. Persist exact MetadataStorageTransition only after all drain. Class-65 unlink/selection/F2/normalization alone refunds nothing. Store Dispose only closes owners; it cannot persist a refund. After ledger deletion, shared append/compaction evidence owns these transitions. |
 
 On restart reconstruct every unresolved claim before admission. OS-verified
@@ -2251,6 +2250,172 @@ objects retain their existing permissions/proofs. Current/new ledgers, manifests
 companions and intents retain each exact predecessor/replacement until persisted
 identity-bound release. Role/native/source coverage
 is required by R5-S04/S05; pure release models prove only the transition rules.
+
+### 9.3.1 Decided O3: exact public custody-transfer receipt
+
+**Owner, 2026-10-28, `POST-MVP-PLAN.md` / `33666481`: release on an exact
+persisted receipt.** Successful publication or completed authorized hand-back
+transfers staging accounting responsibility to the delivered object. Failed,
+uncertain or unreceipted promotion retains FullDebitHeld. This follows existing
+completed-save retirement (R3.3a / `StagedSpaceBudget.RetireCompletedMetadata`);
+it supplies no new publication, deletion, export or caller grant. Actual volume
+free-space checks still include the public file's bytes. Subsequent legitimate
+user changes/deletion do not revoke a proved historical accounting transfer.
+
+**Select schema-3 release Kind=5 PublicCustodyTransferred**, without renumbering
+v2 kinds 1–4 or archive RecordKinds 1–4. Slot state remains Released=7, charge
+extent=0; this is transfer of staging responsibility, **not physical deletion**.
+Only PublicationTemporary/Handback roles may use it. Stage and Snapshot still
+require their existing exact storage-release proofs; StageRelease can never be
+Kind=5. Slot release adds required-null `CustodyTransferReceiptId` (nonempty only
+for Kind=5). Schema 3 adds **two fixed** `CustodyTransfers` cells, publication at
+index 0, hand-back at index 1: null or `{ReceiptBase64, Completion}`. Retain them
+through slot reuse and shared closure, independent of the current slot contents.
+The existing terminal publication / Verified hand-back flow supplies one
+successful completion of each kind per K; exact retry reuses its IDs. These
+cells add no copy quota: an unexpected independently authorized second delivery
+cannot overwrite the retained proof or obtain a second refund. Keep its exact
+pending custody charged and stop that accounting path for a reviewed bounded
+replay extension rather than silently changing product semantics or adding cells.
+All prior slot/incarnation checks remain; v2 codec/legacy writers are unchanged.
+
+**Exact receipt bytes:** 2048 bytes, little endian/pack 4, no optional tail;
+Base64 is canonical **2732 characters**. Identity[24] uses the wire order
+volume serial, file-ID low, file-ID high, all u64; both ID halves cannot be zero.
+GUIDs use native existing layout. All reserved/unused carrier bytes are zero.
+
+| Offset | Type / meaning |
+|---|---|
+| 0, 8, 12 | ASCII `SAFCST03`[8], u32 Version=3, u32 Size=2048 |
+| 16, 32, 48, 64 | GUID ReceiptId, InstallationId, DriverInstance, TransferId; nonempty |
+| 80, 88, 96 | positive i64 immutable AllocationGeneration, positive i64 current-at-promotion DestinationGeneration, original StageIdentity[24] (complete K) |
+| 120, 124, 128 | u32 Slot=0..3, u32 Role=3 PublicationTemporary / 4 Handback, positive i64 Incarnation |
+| 136, 152, 160 | GUID ClaimId, positive i64 ClaimRevision, positive i64 AcceptedBudgetRevision (the R committing Kind=5) |
+| 168 | DeliveredObjectIdentity[24], exactly the captured output slot identity; rename preserves this identity |
+| 192, 216, 240 | DeliveredVolumeRootIdentity[24], DeliveredParentIdentity[24], nonempty captured MountManagerVolumeId GUID |
+| 256, 260 | u32 delivered CaseSensitive=0/1, u32 TransferKind=1 publication / 2 authorized hand-back; matches Role |
+| 264, 280, 288 | GUID JournalProofRecordId, positive i64 JournalProofRecordRevision, u32 ProofKind=1 bound publication / 2 unbound publication / 3 hand-back; kinds 1/2 require TransferKind=1, kind 3 requires 2 |
+| 292, 296, 300 | u32 delivered LeafBytes (2..510, even), u32 original RequestorSidBytes (2..368, even), reserved u32=0 |
+| 304, 320 | GUID successful native PromotionOperationId; ExpectedPublicPredecessorIdentity[24] or all zero when absent |
+| 344, 348, 352, 368 | u32 Flags (only bit 0 ExpectedPublicPredecessorPresent), reserved u32=0, GUID OwnerEpoch of the native completion owner, GUID AuthorizationWitnessId |
+| 384 | WCHAR[256] delivered canonical leaf; length excludes terminator, remainder zero |
+| 896 | WCHAR[184] original requester SID; length-delimited, no embedded NUL, remainder zero |
+| 1264, 1288, 1312 | OriginalDestinationVolumeRootIdentity[24], OriginalDestinationParentIdentity[24], captured OriginalMountManagerVolumeId GUID |
+| 1328, 1332, 1336 | u32 original CaseSensitive=0/1, u32 original LeafBytes (2..510, even), WCHAR[256] original canonical leaf, remainder zero |
+| 1848, 1864 | GUID PrivateRundownWitnessId, reserved zero[184] |
+
+The original destination is the exact anchored current-at-promotion destination
+of K/D; a hand-back's delivered destination is its independently captured,
+authorized user directory. Publication requires original=delivered destination.
+Compare full volume/parent identities, mount GUID and case-mode/leaf using the
+existing Windows leaf comparator; never substitute a folded managed hash or a
+path. Each parent/root/output identity shares its own volume serial. Hand-back
+may have a different delivered volume from the original; source stage identity
+still matches the original allocation binding. The SID is the original requester's
+checked token/journal SID, never SYSTEM merely because SYSTEM copied the file.
+Reject unknown bits, invalid UTF-16/SID/leaf grammar, ADS/reparse/alias ambiguity,
+wrong IDs/generation/claim/role/incarnation and malformed/overlong carriers.
+Predecessor flag/identity must agree; hand-back has no predecessor (no-replace).
+IDs for authorization/rundown locate the retained exact claim/proof below, not
+free-standing assertions. Private mutation/verification/native operation owners
+from 9.3 must actually drain before their witness is accepted. A future normal
+public read lease does not recreate private staging custody.
+
+**Which journal proves completion (and its present limitation):** modern Entry
+adds required `CustodyTransferCompletions[2]`, the same two fixed positions. Each
+is null or the strict object `{Version:1, CompletionBase64,
+PublicationNativeReceipt, Claim, Authorization}`. Claim is the exact 9.3 Drained
+claim snapshot; schema 3 adds required-null `DrainWitnessId` to CustodyClaim,
+nonempty only in Drained and equal to PrivateRundownWitnessId. Authorization is
+`{WitnessId, Entry, PublicationApproval}`: the complete validated **pre-promotion existing Entry**
+snapshot (Publishing for publication, Blocked/Copying for hand-back), with no
+CustodyTransferCompletions field, so it contains no recursive completion. It
+retains original Transfer/SID/process identity, destination binding, security,
+seed/read/export evidence and relevant policy/justification history. WitnessId
+matches AuthorizationWitnessId; validate existing authorization checks against
+that exact snapshot, never a Boolean or a SYSTEM handle grant. PublicationApproval
+is required-null for hand-back; publication requires the complete existing
+publisher `{Operation, Inspection, Justified}` values (FileOperation,
+InspectionResult, Boolean) from the successful policy/justification check, also
+held by unbound ConfirmedPublication. The bound producer must carry the same
+publisher values and existing current-policy revalidation through its native
+permit path. Persist only from that checked successful operation; Entry
+Approved/Released alone does not reconstruct an inspection/authorization.
+Claim/Authorization are retained with the completion even after slot reuse or
+source compaction. CompletionBase64 is the exact receipt layout above
+with **AcceptedBudgetRevision=0 only here**; all other fields, including the
+source journal RecordId/revision committing this completion, are already fixed.
+The budget receipt differs from these bytes only at offset 160. This avoids a
+self-hash or circular acceptance-revision dependency. Completion snapshots are
+immutable and retained verbatim when the containing manifest advances revision;
+no new per-promotion file or unbounded list. `CustodyTransfers.Completion` retains
+the full snapshot, not just its ID/hash, before any source record can be retired.
+
+| ProofKind / existing journal boundary | Required completion authority |
+|---|---|
+| 1 Bound publication | `StagedPublicationNativeReceipt` in `StagedDestinationHead.PublicationNativeReceipts`, accepted by `RecordBoundPublicationNativeResultAsync`, plus its matching `StagedPublicationAttempt`, Published projection/`LastMutationResult` and `CompleteBoundPublicationAsync` Released transition. Validate full v26 facts, authenticated driver/boot/connection/revision, exact create/rename operation IDs/nonces, stage K/D, temporary=delivered identity, destination, successful flush/rename and terminal callback ownership. A Boolean Succeeded/HeadPublished or Released alone cannot replace them. In the **same modern Released journal transition**, save CompletionBase64 and a complete immutable copy of the native receipt. `PublicationNativeReceipt` contains exactly its existing DriverInstanceId, ConnectionEpoch, Revision, OsBootSequence, FactsBase64, AcknowledgedRevision and AcknowledgedConnectionEpoch; FactsBase64 is canonical 2816 characters / 2112 bytes. The saved facts include linked create/rename requests; they must match the saved claim/authorization. Source ACK/retirement may prune head facts only after this complete journal snapshot is durable (or an identical complete budget snapshot exists), preserving existing ACK/rundown gates. |
+| 2 Unbound publication | Existing live `StagedTransferPublisher.ConfirmedPublication` contains the exact native-success PublishedObject and original Publishing intent; `CompleteConfirmedPublicationAsync` validates that intent and persists Released. Its existing persisted Released Entry does **not** retain PublishedObject. The modern completion must therefore copy the live captured output identity, exact anchored destination, operation/claim and authorization/rundown witness into CompletionBase64 **atomically with Released**. PublicationNativeReceipt=null. No in-memory dictionary entry, notification or old Released record is sufficient after restart. If the native-success owner was lost before this completion persisted and no other exact qualified native proof survives, hold FullDebitHeld; never reconstruct success from matching name/digest or issue another rename. Shipped unbound v1 behavior is unchanged. |
+| 3 Authorized hand-back | `BeginHandbackAttemptAsync`/`RequireSeedExportAsync` and `CompleteHandbackAsync`'s Verified transition, after the copier's no-replace operation and exact held-file verification. Existing HandbackPath/HandbackLength/Verified fields omit output identity. Persist the identity-bearing CompletionBase64 in the **same modern Verified journal transition**, after the same captured output/parent handles prove identity, original SID, read/export authorization, Windows grants/security and closed operation claim. PublicationNativeReceipt=null; record the hand-back operation/claim issued before rename and retained authorization/rundown witnesses. CopyVerifiedAsync returning a path, a digest match or Verified alone cannot create this proof. Recovery of Copying may verify the exact previously captured output identity and full saved destination/claim/authorization through existing hand-back recovery; it must close old issuers, prove the authorized completed delivery and persist this completion before any budget release. If that proof is unavailable, stay held without another completed copy/rename. |
+
+AuthorizationWitnessId binds the original caller's existing publication permit/
+policy-bound inspection or approved justification (kinds 1/2), or the existing
+seed read/export checks and bound requesting user (kind 3), at that operation.
+Its retained claim/source journal must resolve that witness to the complete
+existing authorization evidence; missing policy/grants/export authority holds.
+This historical evidence changes accounting only; it is no permit to replay
+publication/export or approve a later policy/version. PrivateRundownWitnessId
+resolves to the same slot/claim/OwnerEpoch's completed 9.3 drain. Subsequent
+historical replay validates these saved proofs, not a new digest/current name.
+
+**Persist/adopt:** journal→budget order remains. Persist the completion and
+journal terminal state first, with the exact ClaimId/ClaimRevision. Under budget
+serialization first check retained cells for this ReceiptId/kind/K. An exact
+completion replay (source acceptance word zero, otherwise identical saved bytes)
+returns its saved acceptance R before touching a possibly reused slot. Changed
+same-ID bytes or another ID for the already-completed claim refuses/holds. For
+a first acceptance revalidate current K/current D, SID, slot/incarnation/identity and the
+exclusive promotion claim. Receipt D/original destination must equal that
+claim's captured successful journal completion. A later exact journal→budget
+namespace transition may have advanced current D: retain/revalidate that link,
+never roll D back or apply the receipt to a new object/slot. Without the link,
+hold; an already-accepted receipt remains historical proof. An unrelated R
+change requires recomputation against the new current R, never an old full-record snapshot. Assign current R+1 as
+AcceptedBudgetRevision. Persist **one** transition containing Kind=5 release,
+retained receipt+completion, updated inventory/claim, all remaining hold reasons
+and the checked derived ChargeBytes; only then adopt memory/SID/global totals
+or reuse the slot. No content/journal/public I/O under budget gate, no budget→
+journal call, no disk release inferred from name absence. A failed/ambiguous
+write keeps conservative charge/admission hold until exact durable selection.
+
+Only this output slot's staging extent becomes zero. Other stage/snapshot/copy/
+predecessor/residue custody remains charged under the unchanged full-debit or
+`4*max(charged extents)+metadata` formula; the total need not fall when another
+slot has the same maximum. Clear only this promotion's FullDebitHeld reason
+after recomputing from all remaining persisted claims/pending states. If a preexisting FullDebitHeld=true
+cannot be attributed and proved resolved, retain it; receipt presence alone
+cannot clear it. Other uncertainty and sticky Unknown survive. MetadataOnly
+still requires every slot resolved, no pending creation/replacement, and all original retirement/
+initial-resolution/history gates. Shared handoff retains both receipts and their
+complete completion proofs; metadata shared charge precedes ledger deletion.
+This is the modern counterpart of R3.3a, not a bypass of it or of 5.4 eligibility.
+
+| Crash point | Exact recovery / charge |
+|---|---|
+| Native success, reply lost | FullDebitHeld until exact source facts/live success owner or qualified identity-bound hand-back recovery establishes and persists completion. Retry query/bookkeeping, never the completed public mutation. No exact proof means held. |
+| Native success, journal completion write/reply lost | Select/validate exact current/new modern journal record and embedded completion. If completion is durable, finish budget bookkeeping; if absent, recover only from retained exact source proof. Uncertain journal outcome holds; terminal flag/name/hash alone grants nothing. |
+| Completion durable, budget transition absent or rejected | Retain old charge; revalidate the same saved completion/claim and persist R+1 once. Native copies/renames remain unchanged. |
+| Budget receipt durable, restart before memory adoption or completion reply | Reconstruct Kind=5/derived debit from durable receipt and complete proof, adopt once. Never re-inflate from later public edits or subtract twice. |
+| Duplicate completion, including after slot reuse/shared packing | Exact retained ReceiptId+bytes and old slot/incarnation/claim is no-op returning saved acceptance R; a changed duplicate, new ReceiptId for the same successful kind/K or completion aimed at a reused slot holds/refuses without changing debit. |
+
+The fixed Kind=5 bytes/representation are now **selected by this revision-8
+proposal**, reflecting decided O3. Remaining engineering gates are exact modern
+journal/budget serializers and complete bound/unbound/hand-back identity/drain
+adapters, retained authorization evidence, full byte/size/strict-reader controls
+including complete source Entry, inspection/authorization and claim snapshots
+(not surrogate sizes), and independent review before dependent implementation/
+first boot as applicable. The actual schema-3 serializer prerequisite remains
+open; O3 itself is decided. R5-S05 below owns the pure/source/native/protected proof in **4**;
+no readiness, threshold, cap, ABI or cutover gate is closed here.
 
 ## 10. Shared completed history and persistent downgrade marker
 
@@ -2692,7 +2857,9 @@ migration-only kind 4 below. Readers accept property order variation but check
 exact schemas. Identity-bearing duplicate records/candidates compare their saved
 **exact canonical writer bytes**, not reserialized object equality. No changed
 bytes under one RecordId, even equivalent JSON. Nested Entry retains its existing
-strict journal schema; ResourceClosure is complete strict schema 3, <=64 KiB,
+strict journal schema, with 9.3.1's CustodyTransferCompletions extension only
+for modern Entries; legacy/kind-4 Entry grammar stays unchanged. ResourceClosure
+is complete strict schema 3, <=64 KiB,
 HistoryHandoff=null. No v2 passive record is relabelled schema 3. The reference
 model isolates envelope byte costs and chain semantics; it is not that full codec.
 
@@ -2702,7 +2869,8 @@ model isolates envelope byte costs and chain semantics; it is not that full code
 | Modern ledger / append.intent / compaction.intent | Each <=**65536**, depth <=16, including every property, array, witness, creation/release claim, escape and .NET writer output. Four slots/claims, one companion transaction, one bounded latest replay, <=32 sources/targets; no per-growth list. Serialization exhaustion preserves prior state/charge and holds the transition. |
 | Envelope, candidate, frame payload, modern manifest | Each <=**131072** actual bytes; Entry<=131072, closure<=65536, wrapper W<=8192 and **E+S+W<=131072**. E/S are exact encoded nested values (null is four bytes), W is actual remainder, including receipt/delta/LegacySource and keys. At independent E/S/W maxima 204800 bytes, refuse handoff and keep ledger. No truncation/receipt omission. |
 | Identity/slot/intent counters and leaves | Three full u64 identity words, positive i64 revision/generation/incarnation, checked arithmetic; candidate leaf exactly `<RecordId:N>.resource` (**41 ASCII bytes**), no separators, ADS, NUL or alternative case/spelling. Segment leaf remains eight uppercase hex digits plus `.pack`; segment numbers positive u32, no overflow when allocating successors. |
-| Binary ABI | Header 64; request 1192; result 352/outer reply 376; negotiation 96/112; companion 192; marker/inventory 128; frame header 60; frontier header 128 in each A-byte slot; ShellSnapshot payload 9888. No size changes in revision 8. |
+| Public custody record / two fixed cells | 2048 bytes each / canonical Base64 2732 characters; completion has acceptance R=0, budget receipt positive R. Include each full Claim/Authorization/native-proof snapshot and required Entry/ledger cells in actual UTF-8 64/128 KiB checks; no omitted witnesses, truncation, unbounded history or larger envelope. Oversize/ambiguous proof stays charged. |
+| Existing binary ABI | Header 64; request 1192; result 352/outer reply 376; negotiation 96/112; companion 192; marker/inventory 128; frame header 60; frontier header 128 in each A-byte slot; ShellSnapshot payload 9888. Existing sizes unchanged; 9.3.1 adds a new stored receipt, not a wire resize. |
 
 Measure serialized **bytes**, not .NET string.Length or an estimated field sum.
 For example a 512-character string of U+0001 takes 3072 bytes of escaped payload
@@ -3100,7 +3268,7 @@ unreviewed kernel loading. R3-M04P needs its own reviewed protected/native setup
 | Integration | Contract/fact required before implementation | Implemented source required before its first boot | Runtime/component evidence after implementation |
 |---|---|---|---|
 | T9 increment 3 | **Before-coding:** accepted U4/U5/outer-hook and corrected nominal-geometry contracts with 8.4 preallocation/R_phys and class-65/flags-3 delta; 8.6 opaque/passive prerequisites; 8.7.1 PrivateRoot/AncestorEdge and fixed held installation ancestry; 8.7.2 preserved Busy, both validators and four-total-child credit representation. Actor deferral recorded separately, no O1/O2 prerequisite. | **Implemented source review before load/boot:** both wrappers/tag-3/drain/CLEANUP/CLOSE; actual auth/anchors/security/repair, imports, Busy dispatch+adapter, concurrent pools/context pins and native lifetimes/accounting. Exact-role N-U4/N-U8 corrected strict mechanisms, selected class/flags/masks/pins and raise-before-fault source review, target **19045.2965 N-U4-06 before any boot-time reliance**, WDK/static/import and full agent matrix remain. **N-U5-01 executes after source review on an authorized real component host, before first protected-target boot/checkpoint.** | Builder results 2 remain 94/97, three strict failures, no completed delivery matrix. R3-M05/M06/M08 and M02/M03 raw runtime cases follow their implementations/review. Early R3-M04P is optional feedback after reviewed authorized setup, narrower than actor proof. R3-M01 held-old-epoch and R3-M04 full saturation/echo remain OPEN to 6; real reduction/archive/fence/growth assertions retain 4/5/6 ownership. Fake-send tests close no execution cell. Commit NotReady. |
-| T9 increment 4 | Residual 1 already complete in 5.4/10.2/10.4; U7 settled by O2. Proposed revision-8 U3 owner/crash contract (9.3) and U8 strict grammar/migration/candidate/tail/ACK/selection and serializer models (10.5/10.6); independent acceptance and O3 promotion accounting choice remain. The actual serializer/codec prerequisites remain OPEN before dependent increment-4 coding (12.1.3). | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, **N-U8-02/03 actual selector/recovery/migration**, R3-M03 real reduction stress, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
+| T9 increment 4 | Residual 1 already complete in 5.4/10.2/10.4; U7 settled by O2. Proposed revision-8 U3 owner/crash contract (9.3) and U8 strict grammar/migration/candidate/tail/ACK/selection and serializer models (10.5/10.6); independent acceptance remains; O3 is decided and 9.3.1 selects the exact Kind=5 receipt. The actual serializer/codec prerequisites remain OPEN before dependent increment-4 coding (12.1.3). | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, **N-U8-02/03 actual selector/recovery/migration**, R3-M03 real reduction stress, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
 | T9 increment 5 | Residual 2 separate eight shell credits; U1 boot/old-instance and U2 complete CREATE/cancellation audit; authenticated receipts, bounded snapshot/ACK eviction scheduling, deadline through later lifecycle calls, fence-specific U5 Busy. | Capture-to-callback/exposure ownership, success/non-adoption evidence, eviction credits and reconnect, deadline/failure vs separately owned cleanup; coherent lifetime/lock-order review. | R3-A01..05/R4-D01, R3-M04 **real fence/ACK/snapshot** progress, repeated durable-success-before-ACK interruption, pending-vs-shell saturation, exact same-name recovery and no failed-CREATE adoption. |
 | T9 increment 6 | Residual 3 pre-buffer-lock owned-I/O credits/MDL ownership; U6 real Major/Minor/IRQL/resource/completion inventory and actual byte/structure maxima; measured 32/256/64 bounds and implementation of decided O1 (3 s per I/O). | Full growth/replay/companion/MM/MDL/paging/pin/retirement integration, including user buffers and cancellation ownership, reviewed before boot. | R4-D02/MM01..03 and R3-M01/M04 **production growth/reply** plus R3-M03 saturated growth/reduction integration; routed actor evidence, many writers before FltLockUserBuffer/resource acquire, borrowed/created MDL release, deadline/teardown/retirement races and Verifier. |
 
@@ -3137,18 +3305,27 @@ acceptance report; no checkbox is closed.
 | Prerequisite / revision-7 evidence | Assessment / revision-8 delta / proof order |
 |---|---|
 | Residual 1 successful-handoff eligibility: 5.4 **lines 574–597**, 10.2 **2194–2197**, 10.4 **2553**; third review explicitly calls this closed in text | **Complete contract already.** No replacement eligibility wording added. Keep R3-A05/R4-H01 delayed success query, immediate close/disposal and crash, ledger retained until durable InitialResolved. Implement archive side in **4**, actual authenticated query/shell producer in **5**; [before-first-boot] coherent source review; [before-qualification] native/protected race proof. A model does not close those execution cells. |
-| U3 every-role release: 9.1 **2055–2090**, 9.2 **2114–2141**; accepted v2 slot/release codec | **Incomplete:** general drain/max rules but no exhaustive native owner set, per-slot issue/completion claim, crash reconstruction or public-promotion accounting distinction. **9.3** supplies private-role and metadata owner/recovery contracts; **O3 remains a product choice** for successful public promotion. **4 [before-coding]** accepted claim/release contracts and schema-3 codec bounds; actual adapters follow with source review; **4 [before-first-boot]** retirement/capture/paging/growth rundown review; **4 [before-qualification]** R5-S04/S05, R3-X/R5-S and native exact final release. Sticky Unknown and uncertain identity remain held. |
+| U3 every-role release: 9.1 **2055–2090**, 9.2 **2114–2141**; accepted v2 slot/release codec | **Incomplete:** general drain/max rules but no exhaustive native owner set, per-slot issue/completion claim, crash reconstruction or public-promotion accounting distinction. **9.3** supplies private-role and metadata owner/recovery contracts; **O3 is decided**: 9.3.1 supplies the exact public custody-transfer receipt, journal sources and crash contract. **4 [before-coding]** accepted claim/release contracts and schema-3 codec bounds; actual adapters follow with source review; **4 [before-first-boot]** retirement/capture/paging/growth rundown review; **4 [before-qualification]** R5-S04/S05, R3-X/R5-S and native exact final release. Sticky Unknown and uncertain identity remain held. |
 | U7 owner scope: 10.4 **2556**, 13 **2892**, 14 **2900** | Revision 7 correctly identifies the trust choice but leaves it open. **Complete by owner O2, 2026-10-28**, independently of a model/native result. Sections 8.7.1/10.4/13/14 now say the selected M2 boundary; stronger anchoring stays post-M2. R4-H02/H03 still required; no review or execution gate changed. |
 | U8 grammar/candidate/tail/ACK: 10.2 **2184–2298**, 10.3 **2404–2493** | Core byte layouts, append intent, typed bases/delta and conservative tail recovery already specified. **Incomplete for strict field/encoding boundaries, slot parity/gap/fork selection, candidate identity/phase matching and executable negative cases.** **10.5** supplies these and actual writer byte models; **4 [before-coding acceptance]** independent review of proposal/models; **4 [before-coding]** prerequisite schema-3 codecs/serializer-limit proof; implemented selector differential controls follow before boot; **4 [before-qualification]** N-U8-02/R4-H01/H04 target crash proof. ACK live transport/producer remains **5**, not moved into 4. |
 | U8 migration/selection: 10.3 **2495–2541**, 13 **2893** | Compaction range/phase/charge contract exists; no implementable legacy representation/import or preservation model. **10.6** adds migration-only kind 4, bounded source/candidate mapping, mixed read-only legacy suffix and exact inventory replacement/recovery; 10.5 requires semantic byte/witness equivalence before range selection. **4 [before-coding]** reviewed migration/strict-codec contracts and pure copy/selection comparisons; actual copy/selector verification follows implementation; **4 [before-qualification]** N-U8-03/R4-H05, full physical old+new/residue and exact-release evidence. |
 | U8 actual serializer limits: 10.2.1 **2309–2324**, 13 **2893** | Arithmetic explicitly admits independent maxima do not fit; it is **not** proof of actual serialization bounds. **10.5** fixes byte limits, writer/escaping/base64/depth and refusal-before-create; pure models measure real .NET output, not character counts. **Actual new product serializers do not yet exist.** Their complete prerequisite schema-3 max-shape/limit+1 proof remains **OPEN [before-coding 4]**, not moved to first use or qualification. This documents an unmet prerequisite rather than declaring increment 4 ready. Existing v2/Entry limits cannot close it. |
 
-Local diagnostic execution (SDK **10.0.400**, Linux, feature Debug/Release):
+Initial revision-8 diagnostic execution (`fdb8c903`, SDK **10.0.400**, Linux,
+feature Debug/Release; retained historical result):
 **117 new contract cases + 70 unchanged fit cases = 187 discovered/executed/passed
 per configuration; 374 executions total, zero failures/skips in the final runs**.
 VSTest's local socket was denied by the sandbox; a temporary in-process reflection
 runner expanded all xUnit Fact/InlineData rows and invoked the same real xUnit
-assertions. It is not a Windows matrix runner. Actual serializer prerequisites,
+assertions. It is not a Windows matrix runner.
+
+O3 follow-up at base `33666481` (same SDK and in-process xUnit runner):
+**81 added O3 cases + 117 prior contract cases + 70 unchanged fit cases = 268
+discovered/executed/passed per Debug/Release configuration; 536 executions,
+zero failures/skips in the final runs**. Feature Debug/Release Service/App/Tests
+compile passes all six builds with warnings treated as errors. These are local
+diagnostic results; independent review and actual source/native controls remain.
+Actual serializer prerequisites,
 native storage/durability, source acceptance and protected-pair qualification
 remain separate; these counts close no checkbox. This revision permits no product source,
 network, builder/VM or commit work. All modern readiness/capability/admission and
@@ -3232,7 +3409,7 @@ harness availability or permission to run them in this documents-only task.
 | R4-H04 strict archive contracts / **4** | **[before-coding acceptance]** GrowthArchiveContractModelTests: strict JSON/actual UTF-8 lengths, byte-frame/frontier mutants, exact candidate/phase/tail and base/delta selection; **[before-coding 4] OPEN** prerequisite schema-3 actual serializer max-shape/limit+1 proof; actual new envelope/intent codecs must pass matching vectors during implementation before any use | **[before-qualification]** N-U8-02 actual classifier before tail repair, two interrupted recoveries, independent append/rename counts | Retain R4-H01 native/protected crashes; no inferred durability from pure models |
 | R4-H05 legacy migration / **4** | **[before-coding acceptance]** 10.6 capacity/selection/preservation models; **[before-coding 4]** reviewed kind-4/cursor/v1 contracts and pure models; actual codecs/selector checks follow implementation before use | **[before-qualification]** N-U8-03 copy/select/delete faults, missing selected suffix, oversized legacy wrapper and all witnesses retained | Repeated migration recovery, exact old+new inventory and no second mutation or refund |
 | R5-S04 role release / **4** | **[before-coding 4]** 9.3 claim/state/refcount contract, schema-size and pure controls for all roles; identity/incarnation/claim/undrained/persistence mutants | **[before-qualification]** each actual role's extra reader/duplicate, active operation, section where applicable, process death, preidentity and post-delete-before-persist faults | **[before-first-boot]** independent retirement/capture/paging/growth rundown review; R5-S01–03 and R3-X remain required |
-| R5-S05 public promotion / **4** | **[before-coding promotion release]** owner O3 then independently reviewed typed accounting contract/codec; until then no release from rename | **[before-qualification]** successful/uncertain publication and authorized hand-back, lost reply and private owners still active | No repeated public mutation/export, no delete-to-refund, exact original grants/security, retained charge on uncertainty |
+| R5-S05 public promotion / **4** | **[before-coding]** independently review decided-O3 9.3.1 exact 2048-byte Kind=5/source-proof/transition model and mutants; prerequisite schema-3 serializer proof remains OPEN. **[before-use]** actual modern journal/budget codecs: every byte/length/kind/identity/generation/claim/correlation mutation, required two fixed cells, escaped/max-size controls and no v2 reinterpretation | **[before-first-boot]** coherent source review of bound native receipt retention, unbound live-to-durable completion, hand-back identity/export capture, drain, journal→budget and duplicate/reuse ownership; **[before-qualification]** actual native/protected lost reply, lost journal completion, restart before adoption, ambiguous persistence and duplicate/shared replay for all three proof kinds | Independent mutation counts and exact old/new totals: no repeated copy/rename/export, no delete-to-refund, no path/digest/absence-only refund, original grants/security/export policy unchanged, other slots/Unknown retained; R3-X/R4-H/R5-S existing gates remain |
 | R5-H01 history cost | maintained hot/shared delta conservation | reconstruction includes padding/failed residue and retained measured R_phys, never only nominal Q | growing retained history incl 10k; record queue/metadata callback/end-to-end time and reconstructed physical totals, unchanged resource gates |
 
 ## 13. Unresolved before implementation
@@ -3246,22 +3423,22 @@ authorized by listing a control.
 |---|---|
 | U1 BootDomain / old instance | Still open before 5: choose/verify OS boot identity and exclusion of old adopters; existing BootId use at StageStream.c:4369 is not the whole proof. No restart/GUID inference. |
 | U2 CREATE / shell ownership | Before 5: section 5.5 whole source audit, prompt final expiry vs separately owned cleanup, authenticated success/fence acceptance and exact eight retained-shell credits/snapshot/ACK eviction. Pure debt/shell model exists; current code clears old receipts (:4461/:4629) and does not implement this registry. |
-| U3 Release adapters | Proposed 9.3 supplies every role's owner, claims, crash/unknown witnesses and persisted release transition. O3 public promotion accounting remains an owner choice; no release kind is silently added. Before coding 4: review the proposed exact adapters and prove prerequisite schema-3 claim sizes; actual native adapters follow implementation/source review; before first boot review actual kernel retirement/capture/paging/growth rundown. R5-S04/S05 and existing R3-X/R5-S native/protected proof remain. |
+| U3 Release adapters | Proposed 9.3 supplies every role's owner, claims, crash/unknown witnesses and persisted release transition. O3 is decided; 9.3.1 explicitly selects Kind=5 with exact bytes, retained journal proof and once-only budget adoption. Before coding 4: review the proposed exact adapters and prove prerequisite schema-3 claim sizes; actual native adapters follow implementation/source review; before first boot review actual kernel retirement/capture/paging/growth rundown. R5-S04/S05 and existing R3-X/R5-S native/protected proof remain. |
 | U4 Metadata/native sequence | Accepted dormant architecture with this revision's 8.7.1 PrivateRoot/AncestorEdge, servicing-only ancestor exception, one fixed held ancestry, original UserMode handle proof and revoke/drain-before-ACL-repair. 8.7.2 selects four total child credits including pending intent. Actual capture/query/IRQL/imports, pre/post exclusions, native preallocation/query/F1/EOF/F2/**class-65/flags-3** relative rename/F3 and cancel/rundown remain implementation/source-review/native-mechanism facts before load/boot; partial registration stubs are not proof. Builder results 2 select the mechanism but leave three strict failures; corrected N-U4-01/-05/N-U8-01 and full matrix remain, plus target **19045.2965 N-U4-06 before any boot-time reliance**. Actual old-target Links=0/DeletePending=True/readability, all predecessor SHARE_DELETE handles/operation pins and source review must match; failed class-10 or class-65/flags-1 replacement is not unlink proof. Existing root/lifetime controls remain. No stronger power-loss or O2 guarantee. |
 | U5 Two-direction progress | Accepted 6.2/8.3 bounded intake/send/lifetime contracts are coding prerequisites; real execution is not a prerequisite to writing the substrate. Working dispatcher+adapter must preserve local/kernel Busy and validate both tag/role rules (8.7.2/R3-M08); actual FltLib Busy HRESULT conversion needs real N-U5-01/M08 verification before accepting that adapter. Implemented source review precedes any kernel load; N-U5-01 real gate independence follows review before first protected-target boot/checkpoint. R3-M04P is an early reviewed legacy-drain alternative. **Actor/echo deferred to 6 separately from pools**; full held-old-epoch/saturation/echo proof remains OPEN, plus 5's fence Busy and 6's production growth/teardown. Fake-send tests close no native/protected execution obligation; real 4/5/6 purpose classification remains. |
 | U6 Owned MM/buffers | Before 6: finish owned :10927→:5903/:5948 Major/Minor/IRQL/resource/MDL/completion audit, and pre-FltLockUserBuffer credits at :4824. Supply actual structures/worst-case page/PFN/cancel storage and validate numerical bounds; no pin-only or unowned :11044 proof. R4-MM routing/native evidence follows implemented review. |
 | U7 Trust scope | **Decided O2, 2026-10-28:** existing trusted-service/private-storage boundary; local SYSTEM/administrators trusted, their erasure/rollback outside M2. Surviving modern evidence plus missing/corrupt marker holds. Stronger anchoring is separately reviewed post-M2. No native/security/marker gate is discharged. |
 | U8 Fit/grammar | GrowthArchiveFitModelTests supplies **nominal** independent L/P/Q and A/U geometry, explicit measured/released custody, logical-EOF conservation mutant, combined-envelope and corrected overlap/controls. Base transfer **nominal** overlap fits halves in all 60 pairs (worst nominal ratio 640 KiB/1 MiB=62.5%); native fit requires qualified preallocation/within-Q observations. Unpreallocated chunked NTFS overshoot disproves a general Q ceiling; production sums retained R_phys, raises charge before Held, and cannot erase the peak through normalization. Preallocation/per-call accounting/pin proofs, corrected strict N-U8-01 and target N-U4-06 remain open. ACK scheduling and independent snapshot unknown/missing input models are stronger pure controls; they are not real sends or durable/native reconciliation. Full independent Entry+closure maxima **do not fit** and retain ledger. Proposed 10.5/10.6 and GrowthArchiveContractModelTests supply byte/serializer, typed candidate/tail/delta/prefix and migration models. Before coding 4 the prerequisite schema-3 actual serialization/strict-codec proof remains OPEN; new consumer codecs must match the models during implementation before use; N-U8-01 raw peak primitives are before-3-first-boot mechanism controls; N-U8-02/03 actual selector/migration/recovery wait for increment 4, then required target evidence. No arithmetic/builder discovery result is a universal allocation ceiling, native durability or target qualification. |
 
-## 14. Owner decisions and remaining question
+## 14. Owner decisions
 
 | Decision | Status / user-visible consequence |
 |---|---|
 | O1 Per-application-I/O growth wait | **Decided 2026-10-28:** 3 s from first crossing through sufficient adoption/reacquisition/recomputation, never per RPC. Joined extent/append cannot renew it. Expiry permanently fails that save privately; several I/Os in a long save may each pause. Allocation/seed remains 120 s. |
 | O2 Erasure/rollback boundary | **Decided 2026-10-28:** M2 keeps trusted-service/private-storage scope; local SYSTEM/administrators are trusted and their erasure/rollback is outside M2. Surviving modern evidence with missing/corrupt marker holds. Stronger external anchoring requires separately reviewed post-M2 architecture. |
-| O3 Accounting after successful public promotion | **Open before implementing promotion release in 4.** Recommend a separately typed, persisted exact-object custody-transfer receipt for a successfully published/authorized hand-back file, after the existing publication/export transaction is proved complete and all private mutation/operation owners drain. This transfers staging-budget responsibility; it must never masquerade as physical deletion or authorize another publication/export. Actual volume free-space admission still sees the retained public bytes. Alternative: retain its slot/charge until actual storage-release proof. With retention, completed user files can consume the staging budget indefinitely and eventually block new saves; the recommendation permits normal continued saving while failed/uncertain promotion stays fully charged. Neither option changes caller grants or permits unreadable seed export. O3 is not settled by O2, which concerns trust in private storage. |
+| O3 Accounting after successful public promotion | **Decided 2026-10-28, `33666481`: release on an exact persisted receipt.** Successful publication/completed authorized hand-back transfers staging responsibility to the exact delivered object via 9.3.1 Kind=5. Failed, uncertain or unreceipted promotion retains FullDebitHeld. This matches R3.3a/RetireCompletedMetadata; actual disk free space still includes public bytes. No product decision remains open here. |
 
-No renewed budget-default, file-size-cap or O1/O2 question is raised. Pending
+No renewed budget-default, file-size-cap or O1/O2/O3 question is raised. Pending
 lane/capability bounds remain engineering proposals requiring review. The 8.7.3
 actor/echo remains deferred to 6 with its existing selection/review gates.
 If native evidence makes a specified cleanup, metadata or MM contract impossible,
@@ -3275,4 +3452,4 @@ never silently change support, failure policy, grants or cutover.
 | 1–5 | Historical proposal/review corrections in the linked reviews and concurrency design; retain their provenance. |
 | 6 | Installed roots/ancestry, immutable transaction pools and actor deferral; 8.7 review ACCEPT WITH CONDITIONS for dormant substrate. |
 | 7 | Measured preallocation, retained R_phys and class-65/flags-3 mechanism delta; source acceptance and native/target qualification remain separate. |
-| 8 | **Proposed, pending independent review:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2 and exposes O3. No product code, checkbox closure, Windows execution or admission/cutover change. |
+| 8 | **Proposed, pending independent review:** 12.1.3 audit; 9.3 role/claim/release crashes; 10.5 strict codecs/frontiers/candidate/ACK/selection models and real serializer byte limits; 10.6 legacy migration. Records decided O1/O2/O3; 9.3.1 adds exact Kind=5 public custody transfer and journal/budget crash controls. No product code, checkbox closure, Windows execution or admission/cutover change. |

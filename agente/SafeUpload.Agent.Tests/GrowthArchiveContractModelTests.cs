@@ -568,7 +568,7 @@ public sealed class GrowthArchiveContractModelTests
     [InlineData("operation")]
     [InlineData("persistence")]
     [InlineData("promoted")]
-    public void Release_mutants_retain_charge_and_slot(string mutation)
+    public void Physical_release_mutants_retain_charge_and_slot(string mutation)
     {
         var current = new ReleaseClaim(Segment, 3, 9, 0, 0, 0, true, false);
         ReleaseClaim proof = mutation switch
@@ -584,6 +584,230 @@ public sealed class GrowthArchiveContractModelTests
         };
         Assert.False(CanRelease(current, proof));
         Assert.True(CanRelease(current, current));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Public_custody_receipt_has_exact_layout_and_survives_unsigned_identity_bits(int proofKind)
+    {
+        byte[] completion = PublicCompletion(proofKind);
+        ValidatePublicEncoding(completion, completion: true);
+        Assert.Equal(2048, completion.Length);
+        Assert.Equal(2732, Convert.ToBase64String(completion).Length);
+        Assert.Equal(ulong.MaxValue, BinaryPrimitives.ReadUInt64LittleEndian(completion.AsSpan(168)));
+        var model = new PublicTransferModel(proofKind);
+        model.NativeSuccess(); model.CompleteJournal(); model.PersistBudget(); model.Adopt();
+        Assert.Equal(17408, model.Charge); // Stage remains: 4*4096 + metadata 1024.
+        Assert.Throws<InvalidDataException>(model.NativeSuccess);
+        Assert.Equal(1, model.Copies); Assert.Equal(1, model.Renames);
+        ValidatePublicEncoding(model.Receipt!, completion: false);
+    }
+
+    [Fact]
+    public void Public_transfer_maximum_leaf_and_canonical_SID_fit_exact_binary_carriers()
+    {
+        byte[] b = PublicCompletion(1);
+        string sid = "S-1-281474976710655" + string.Concat(Enumerable.Repeat("-4294967295", 15));
+        Assert.Equal(184, sid.Length);
+        Carrier(b, 292, 384, new string('a', 255));
+        Carrier(b, 1332, 1336, new string('a', 255));
+        Carrier(b, 296, 896, sid);
+        ValidatePublicEncoding(b, completion: true);
+        Assert.Equal(2732, Convert.ToBase64String(b).Length);
+    }
+
+    [Theory]
+    [InlineData(16)] // receipt ID
+    [InlineData(32)] // installation
+    [InlineData(48)] // driver
+    [InlineData(64)] // transfer
+    [InlineData(80)] // allocation generation
+    [InlineData(88)] // destination generation
+    [InlineData(96)] // original stage identity
+    [InlineData(120)] // slot
+    [InlineData(124)] // role
+    [InlineData(128)] // incarnation
+    [InlineData(136)] // claim ID
+    [InlineData(152)] // claim revision
+    [InlineData(160)] // acceptance revision must be current R+1
+    [InlineData(168)] // delivered identity serial
+    [InlineData(176)] // delivered identity low
+    [InlineData(184)] // delivered identity high
+    [InlineData(192)] // delivered volume root
+    [InlineData(216)] // delivered parent
+    [InlineData(240)] // mount GUID
+    [InlineData(256)] // case mode
+    [InlineData(260)] // transfer kind
+    [InlineData(264)] // proof record ID
+    [InlineData(280)] // proof record revision
+    [InlineData(288)] // proof kind
+    [InlineData(304)] // native operation ID
+    [InlineData(352)] // owner epoch
+    [InlineData(368)] // authorization witness
+    [InlineData(384)] // delivered leaf
+    [InlineData(896)] // original SID
+    [InlineData(1264)] // original destination root
+    [InlineData(1288)] // original destination parent
+    [InlineData(1312)] // original mount
+    [InlineData(1328)] // original case mode
+    [InlineData(1336)] // original leaf
+    [InlineData(1848)] // drain witness
+    public void Public_transfer_binding_mutants_cannot_release_a_different_custody_claim(int offset)
+    {
+        var model = new PublicTransferModel(1);
+        model.NativeSuccess(); model.CompleteJournal();
+        byte[] forged = model.ExpectedReceipt(); forged[offset] ^= 1;
+        Assert.Throws<InvalidDataException>(() => model.PersistBudget(forged));
+        Assert.Equal(66560, model.Charge);
+        Assert.Null(model.Receipt);
+    }
+
+    [Theory]
+    [InlineData("size")]
+    [InlineData("version")]
+    [InlineData("magic")]
+    [InlineData("reserved")]
+    [InlineData("flags")]
+    [InlineData("carrier-padding")]
+    [InlineData("odd-leaf")]
+    [InlineData("bad-utf16")]
+    [InlineData("short")]
+    [InlineData("extra")]
+    [InlineData("zero-acceptance")]
+    [InlineData("stage-role")]
+    [InlineData("predecessor-without-flag")]
+    public void Public_transfer_encoding_mutants_fail_strict_decoding(string mutation)
+    {
+        byte[] receipt = PublicCompletion(1);
+        BinaryPrimitives.WriteInt64LittleEndian(receipt.AsSpan(160), 10);
+        switch (mutation)
+        {
+            case "size": receipt[12] ^= 1; break;
+            case "version": receipt[8] = 2; break;
+            case "magic": receipt[0] ^= 1; break;
+            case "reserved": receipt[1864] = 1; break;
+            case "flags": receipt[344] = 2; break;
+            case "carrier-padding": receipt[894] = 1; break;
+            case "odd-leaf": receipt[292] |= 1; break;
+            case "bad-utf16": receipt[384] = 0; receipt[385] = 0xd8; break;
+            case "short": receipt = receipt[..^1]; break;
+            case "extra": receipt = [.. receipt, 0]; break;
+            case "zero-acceptance": receipt.AsSpan(160, 8).Clear(); break;
+            case "stage-role": receipt[124] = 1; break;
+            case "predecessor-without-flag": receipt[320] = 1; break;
+        }
+        Assert.ThrowsAny<Exception>(() => ValidatePublicEncoding(receipt, completion: false));
+    }
+
+    [Theory]
+    [InlineData(1, "reply-lost")]
+    [InlineData(2, "reply-lost")]
+    [InlineData(3, "reply-lost")]
+    [InlineData(1, "journal-reply-lost")]
+    [InlineData(2, "journal-reply-lost")]
+    [InlineData(3, "journal-reply-lost")]
+    [InlineData(1, "before-budget")]
+    [InlineData(2, "before-budget")]
+    [InlineData(3, "before-budget")]
+    [InlineData(1, "before-adoption")]
+    [InlineData(2, "before-adoption")]
+    [InlineData(3, "before-adoption")]
+    [InlineData(1, "duplicate")]
+    [InlineData(2, "duplicate")]
+    [InlineData(3, "duplicate")]
+    public void Public_transfer_crash_recovery_only_finishes_unperformed_bookkeeping(int kind, string crash)
+    {
+        var model = new PublicTransferModel(kind);
+        model.NativeSuccess();
+        if (crash != "reply-lost") model.CompleteJournal();
+        if (crash is "before-adoption" or "duplicate") model.PersistBudget();
+        if (crash == "duplicate") model.Adopt();
+        model = model.Restart();
+        if (crash == "reply-lost" && kind != 1)
+        {
+            // No surviving exact result: name/digest/old Verified cannot replace it.
+            Assert.Throws<InvalidDataException>(model.CompleteJournal);
+            Assert.Throws<InvalidDataException>(() => model.PersistBudget());
+            Assert.Equal(66560, model.Charge);
+        }
+        else
+        {
+            model.CompleteJournal(); model.PersistBudget(); model.Adopt();
+            model.PersistBudget(); model.Adopt();
+            Assert.Equal(17408, model.Charge);
+            Assert.Equal(1, model.BudgetCommits);
+        }
+        Assert.Equal(1, model.Copies); Assert.Equal(1, model.Renames);
+    }
+
+    [Theory]
+    [InlineData("path-only")]
+    [InlineData("digest-only")]
+    [InlineData("private-name-missing")]
+    [InlineData("failed")]
+    [InlineData("uncertain")]
+    [InlineData("authority")]
+    [InlineData("drain")]
+    [InlineData("native-facts")]
+    [InlineData("ambiguous-persistence")]
+    public void Public_transfer_failure_mutants_retain_FullDebitHeld(string mutation)
+    {
+        var model = new PublicTransferModel(1);
+        if (mutation is not ("path-only" or "digest-only" or "private-name-missing" or "failed" or "uncertain"))
+        { model.NativeSuccess(); model.CompleteJournal(); }
+        model.Authority = mutation != "authority";
+        model.Drained = mutation != "drain";
+        model.ExactNativeFacts = mutation != "native-facts";
+        model.AmbiguousPersistence = mutation == "ambiguous-persistence";
+        Assert.Throws<InvalidDataException>(() => model.PersistBudget());
+        Assert.True(model.FullDebitHeld);
+        Assert.Equal(66560, model.Charge);
+        Assert.Null(model.Receipt);
+    }
+
+    [Fact]
+    public void Public_receipt_replay_after_slot_reuse_cannot_refund_the_new_incarnation()
+    {
+        var model = new PublicTransferModel(1);
+        model.NativeSuccess(); model.CompleteJournal(); model.PersistBudget(); model.Adopt();
+        byte[] oldReceipt = model.Receipt!.ToArray();
+        model.ReuseSlot();
+        int before = model.Charge;
+        model.PersistBudget(oldReceipt); model.Adopt();
+        Assert.Equal(before, model.Charge);
+        Assert.Equal(1, model.BudgetCommits);
+        byte[] alias = oldReceipt.ToArray(); alias[16] ^= 1;
+        Assert.Throws<InvalidDataException>(() => model.PersistBudget(alias));
+        Assert.Equal(before, model.Charge);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Public_old_receipt_after_restart_preserves_new_slot_inventory(int kind)
+    {
+        var model = new PublicTransferModel(kind);
+        model.NativeSuccess(); model.CompleteJournal(); model.PersistBudget(); model.Adopt(); model.ReuseSlot();
+        byte[] receipt = model.Receipt!.ToArray();
+        model = model.Restart();
+        model.PersistBudget(receipt); model.Adopt();
+        Assert.Equal(33792, model.Charge);
+        Assert.Equal(1, model.BudgetCommits);
+    }
+
+    [Fact]
+    public void Public_transfer_does_not_clear_unrelated_hold_or_claim_physical_release()
+    {
+        var model = new PublicTransferModel(3) { OtherHold = true };
+        model.NativeSuccess(); model.CompleteJournal(); model.PersistBudget(); model.Adopt();
+        Assert.NotNull(model.Receipt);
+        Assert.True(model.FullDebitHeld);
+        Assert.Equal(66560, model.Charge);
+        Assert.False(CanRelease(new ReleaseClaim(Segment, 3, 9, 0, 0, 0, true, true),
+            new ReleaseClaim(Segment, 3, 9, 0, 0, 0, true, true)));
     }
 
     private static byte[] Decode64(string value, int length)
@@ -875,6 +1099,127 @@ public sealed class GrowthArchiveContractModelTests
             { _selected = _selected, _released = _released, NativeCopies = NativeCopies };
             foreach (var row in _target) restored._target.Add(row.Key, row.Value);
             return restored;
+        }
+    }
+    private static byte[] PublicCompletion(int kind)
+    {
+        byte[] b = new byte[2048]; "SAFCST03"u8.CopyTo(b);
+        Put32(b, 8, 3); Put32(b, 12, 2048);
+        foreach (int offset in new[] { 16, 32, 48, 64, 136, 240, 264, 304, 352, 368, 1312, 1848 })
+            RecordId.TryWriteBytes(b.AsSpan(offset, 16));
+        foreach (int offset in new[] { 80, 88, 128, 152, 280 }) Put64(b, offset, 9);
+        foreach (int offset in new[] { 96, 168, 192, 216, 1264, 1288 })
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(b.AsSpan(offset), ulong.MaxValue);
+            BinaryPrimitives.WriteUInt64LittleEndian(b.AsSpan(offset + 8), (ulong)offset);
+            BinaryPrimitives.WriteUInt64LittleEndian(b.AsSpan(offset + 16), ulong.MaxValue - (ulong)offset);
+        }
+        // Publication delivers to the original destination; hand-back captures another parent.
+        b.AsSpan(192, 24).CopyTo(b.AsSpan(1264, 24));
+        if (kind != 3) b.AsSpan(216, 24).CopyTo(b.AsSpan(1288, 24));
+        Put32(b, 120, 2); Put32(b, 124, kind == 3 ? 4 : 3);
+        Put32(b, 260, kind == 3 ? 2 : 1); Put32(b, 288, kind);
+        Carrier(b, 292, 384, "saved.txt"); Carrier(b, 296, 896, "S-1-5-21-100-200-300-1001");
+        Carrier(b, 1332, 1336, "saved.txt");
+        return b;
+    }
+    private static void Put32(byte[] b, int offset, int value) => BinaryPrimitives.WriteInt32LittleEndian(b.AsSpan(offset), value);
+    private static void Put64(byte[] b, int offset, long value) => BinaryPrimitives.WriteInt64LittleEndian(b.AsSpan(offset), value);
+    private static void Carrier(byte[] b, int lengthOffset, int carrierOffset, string value)
+    {
+        byte[] encoded = Encoding.Unicode.GetBytes(value);
+        Put32(b, lengthOffset, encoded.Length); encoded.CopyTo(b.AsSpan(carrierOffset));
+    }
+    private static string ReadCarrier(byte[] b, int lengthOffset, int offset, int capacity, int maximum)
+    {
+        int length = BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(lengthOffset));
+        Need(length >= 2 && length <= maximum && length % 2 == 0);
+        Need(b.AsSpan(offset + length, capacity - length).IndexOfAnyExcept((byte)0) < 0);
+        string value = new UnicodeEncoding(false, false, true).GetString(b, offset, length);
+        Need(!value.Contains('\0')); return value;
+    }
+    private static void ValidatePublicEncoding(byte[] b, bool completion)
+    {
+        Need(b.Length == 2048 && b.AsSpan(0, 8).SequenceEqual("SAFCST03"u8));
+        Need(BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(8)) == 3 && BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(12)) == 2048);
+        foreach (int offset in new[] { 16, 32, 48, 64, 136, 240, 264, 304, 352, 368, 1312, 1848 }) Need(new Guid(b.AsSpan(offset, 16)) != Guid.Empty);
+        foreach (int offset in new[] { 80, 88, 128, 152, 280 }) Need(BinaryPrimitives.ReadInt64LittleEndian(b.AsSpan(offset)) > 0);
+        long revision = BinaryPrimitives.ReadInt64LittleEndian(b.AsSpan(160)); Need(completion ? revision == 0 : revision > 0);
+        foreach (int offset in new[] { 96, 168, 192, 216, 1264, 1288 })
+            Need((BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(offset + 8)) | BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(offset + 16))) != 0);
+        uint slot = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(120)), role = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(124));
+        uint kind = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(260)), proof = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(288));
+        Need(slot < 4 && (role == 3 && kind == 1 && proof is 1 or 2 || role == 4 && kind == 2 && proof == 3));
+        Need(BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(256)) <= 1 && BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(1328)) <= 1);
+        uint flags = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(344)); Need(flags <= 1 && (kind != 2 || flags == 0));
+        bool predecessor = b.AsSpan(320, 24).IndexOfAnyExcept((byte)0) >= 0;
+        Need(predecessor == (flags == 1));
+        if (predecessor) Need((BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(328)) | BinaryPrimitives.ReadUInt64LittleEndian(b.AsSpan(336))) != 0 && b.AsSpan(320, 8).SequenceEqual(b.AsSpan(168, 8)));
+        Need(b.AsSpan(300, 4).IndexOfAnyExcept((byte)0) < 0 && b.AsSpan(348, 4).IndexOfAnyExcept((byte)0) < 0 && b.AsSpan(1864).IndexOfAnyExcept((byte)0) < 0);
+        string leaf = ReadCarrier(b, 292, 384, 512, 510), original = ReadCarrier(b, 1332, 1336, 512, 510);
+        foreach (string value in new[] { leaf, original }) Need(value is not ("." or "..") && !value.EndsWith('.') && !value.EndsWith(' ') && !value.Any(c => c < 32 || "<>:\"/\\|?*".Contains(c)));
+        string sid = ReadCarrier(b, 296, 896, 368, 368);
+        string[] words = sid.Split('-');
+        Need(words.Length is >= 3 and <= 18 && words[0] == "S" && words[1] == "1");
+        Need(ulong.TryParse(words[2], out ulong authority) && authority <= 281474976710655 && authority.ToString(System.Globalization.CultureInfo.InvariantCulture) == words[2]);
+        foreach (string word in words.Skip(3)) Need(uint.TryParse(word, out uint value) && value.ToString(System.Globalization.CultureInfo.InvariantCulture) == word);
+        Need(b.AsSpan(168, 8).SequenceEqual(b.AsSpan(192, 8)) && b.AsSpan(192, 8).SequenceEqual(b.AsSpan(216, 8)) &&
+            b.AsSpan(96, 8).SequenceEqual(b.AsSpan(1264, 8)) && b.AsSpan(1264, 8).SequenceEqual(b.AsSpan(1288, 8)));
+        if (kind == 1) Need(b.AsSpan(192, 64).SequenceEqual(b.AsSpan(1264, 64)) &&
+            b.AsSpan(256, 4).SequenceEqual(b.AsSpan(1328, 4)) && leaf == original);
+    }
+    private sealed class PublicTransferModel(int kind)
+    {
+        private readonly byte[] _binding = PublicCompletion(kind);
+        private bool _liveSuccess, _boundFacts, _journal, _applied, _reused;
+        public byte[]? Receipt { get; private set; }
+        public bool Authority = true, Drained = true, ExactNativeFacts = true, AmbiguousPersistence, OtherHold;
+        public int Copies { get; private set; }
+        public int Renames { get; private set; }
+        public int BudgetCommits { get; private set; }
+        public int Charge { get; private set; } = 66560; // 4*C + metadata, C=16384.
+        public bool FullDebitHeld => !_applied || OtherHold;
+        public void NativeSuccess()
+        {
+            Need(!_liveSuccess && !_journal && Receipt is null);
+            Copies++; Renames++; _liveSuccess = true; _boundFacts = kind == 1;
+        }
+        public void CompleteJournal()
+        { if (_journal) return; Need(_liveSuccess || _boundFacts && ExactNativeFacts); _journal = true; }
+        public byte[] ExpectedReceipt() { byte[] b = _binding.ToArray(); Put64(b, 160, 10); return b; }
+        public void PersistBudget(byte[]? bytes = null)
+        {
+            bytes ??= ExpectedReceipt();
+            if (Receipt is not null) { Need(Receipt.AsSpan().SequenceEqual(bytes)); return; }
+            Need(_journal && Authority && Drained && ExactNativeFacts && !AmbiguousPersistence && !_reused);
+            ValidatePublicEncoding(bytes, completion: false);
+            Need(BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(160)) == 10);
+            byte[] normalized = bytes.ToArray(); Put64(normalized, 160, 0);
+            Need(normalized.AsSpan().SequenceEqual(_binding));
+            Receipt = bytes.ToArray(); BudgetCommits++;
+        }
+        public void Adopt()
+        {
+            Need(Receipt is not null);
+            if (_applied) return;
+            _applied = true; Charge = OtherHold ? 66560 : 17408;
+        }
+        public void ReuseSlot() { Need(_applied); _reused = true; Charge = 33792; }
+        public PublicTransferModel Restart()
+        {
+            var next = new PublicTransferModel(kind)
+            {
+                _boundFacts = _boundFacts, _journal = _journal, Receipt = Receipt?.ToArray(), _reused = _reused,
+                Authority = Authority, Drained = Drained, ExactNativeFacts = ExactNativeFacts, OtherHold = OtherHold,
+                Copies = Copies, Renames = Renames, BudgetCommits = BudgetCommits
+            };
+            if (next.Receipt is not null)
+            {
+                next.Adopt();
+                // Current durable inventory can be newer than the saved receipt.
+                if (next._reused && !next.OtherHold) next.Charge = 33792;
+            }
+            return next;
         }
     }
     private sealed record ReleaseClaim(Guid Identity, long Incarnation, long Revision, int Readers, int Sections,

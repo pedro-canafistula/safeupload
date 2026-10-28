@@ -1,0 +1,38 @@
+{
+  "DiagnosticOnly": true,
+  "StartHEAD": "33666481",
+  "EndHEAD": "4ba9fe2468eab0072492875d17bac35fefe5a58d",
+  "SDK": "10.0.400",
+  "Runner": "In-process reflection expanding xUnit Facts/InlineData, real xUnit assertions; no VSTest/socket or Windows-matrix result",
+  "Counts": {
+    "debug": {
+      "discovered": 268,
+      "executed": 268,
+      "passed": 268,
+      "failed": 0,
+      "skipped": 0
+    },
+    "release": {
+      "discovered": 268,
+      "executed": 268,
+      "passed": 268,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "AddedO3CasesPerConfiguration": 81,
+  "PriorContractCasesPerConfiguration": 117,
+  "FitCasesPerConfiguration": 70,
+  "LocalCompile": "feature Debug/Release x Service/App/Tests PASS, warnings as errors",
+  "IndependentReview": "Pending",
+  "Remaining": "Actual schema-3 strict serializers/maxima and source proof/identity/authorization/rundown adapters; source/native/protected controls",
+  "SourceSha256": {
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md": "f27d686edb00a650923e8c7b8ae14b93f657c1a4d3367c8c644b5786608544b6",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs": "cf1a953e97c8568209df35133394b928428fcf0c9f67d1c51f4aa87cd64114eb"
+  },
+  "ArtifactSha256": {
+    "bin/Debug/net10.0/Models.dll": "c4fd330858a3a1659849041fbe6f3db84d1ea7808f2d4a3dde593ec3770af651",
+    "bin/Release/net10.0/Models.dll": "c4200d7c8a52bf11279186eb7bfd9e2f0278f1e6ee2a9290c7afb80f4c1f5e68"
+  },
+  "ConcurrentHEADAdvance": "External harness/evidence/status commits; no agent/kernel source delta from start HEAD"
+}
