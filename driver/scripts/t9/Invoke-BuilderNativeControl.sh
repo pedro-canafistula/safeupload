@@ -42,7 +42,8 @@ if (-not ([Security.Principal.WindowsPrincipal]\$identity).IsInRole([Security.Pr
 New-Item -ItemType Directory -Path '$guest' | Out-Null
 'FreshAdminPreflight=True'
 PS
-grep -qx 'FreshAdminPreflight=True' "$ev/preflight.txt" || stop 'missing builder preflight receipt'
+# remote_ps.py returns raw CRLF text (and CLIXML progress); compare lines without the carriage return.
+tr -d '\r' < "$ev/preflight.txt" | grep -qx 'FreshAdminPreflight=True' || stop 'missing builder preflight receipt'
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
 timeout 300 scp "${opts[@]}" "$ev/control.ps1" "$user@$host:$guest/control.ps1" > "$ev/copy.txt" 2>&1 || stop 'control upload failed'
 cat > "$ev/run.ps1" <<PS
