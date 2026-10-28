@@ -5,8 +5,11 @@ namespace SafeUpload.Agent.Service.Interception;
 
 internal readonly record struct MetadataObjectKey(Guid Transaction, ulong Incarnation);
 internal enum MetadataPhysicalClass { HotJournal, HotOther, Shared }
+internal enum MetadataObjectLinkState { Linked, UnlinkedHeld, UnlinkedDrained, Released }
+internal sealed class MetadataPhysicalOverrunException(long admitted, long observed, long retained)
+    : IOException($"Native allocation {observed} exceeds admitted charge {admitted}; retained charge is {retained}.");
 internal enum MetadataStoreDisposition { Committed, RecoverableBookkeeping, Held }
-internal enum MetadataStoreStep { Create, Write, F1, EndOfFile, F2, Replace, F3, Append, Slot, Delete, Verify }
+internal enum MetadataStoreStep { Create, Allocation, Write, F1, EndOfFile, F2, Replace, Predecessor, F3, Append, Slot, Delete, Verify }
 
 internal sealed record BoundedOutputPlan
 {
@@ -77,11 +80,13 @@ internal static class MetadataStoreRoles
 }
 
 // This inventory is reconstructed by a later durable consumer, never by a
-// foreground directory walk. Native failures leave the original peak charged.
+// foreground directory walk. Q is a nominal precharge, not a proven NTFS upper
+// bound. Native overruns raise the retained debit before faulting admission.
 internal sealed class StagedMetadataStoreAccounting(long journalLimit, long otherLimit, long sharedLimit, int maximumObjects)
 {
     private sealed record Held(BoundedOutputPlan Plan, MetadataPhysicalClass Class, long Charge,
-        StagedStageIdentity? Identity, ulong Revision, bool Released = false, MetadataStorageTransition? Applied = null);
+        StagedStageIdentity? Identity, ulong Revision, bool Released = false, MetadataStorageTransition? Applied = null,
+        int Handles = 0, MetadataObjectLinkState LinkState = MetadataObjectLinkState.Linked);
     private readonly object _gate = new();
     private readonly Dictionary<MetadataObjectKey, Held> _objects = new();
     private readonly Dictionary<StagedStageIdentity, MetadataObjectKey> _byIdentity = new();
@@ -141,13 +146,65 @@ internal sealed class StagedMetadataStoreAccounting(long journalLimit, long othe
         }
     }
     internal long Charge(MetadataObjectKey key) { lock (_gate) return _objects[key].Charge; }
-    internal void Observe(MetadataObjectKey key, StagedStageIdentity identity, long allocation)
+    internal MetadataObjectLinkState LinkState(StagedStageIdentity identity)
+    { lock (_gate) return _objects[_byIdentity[identity]].LinkState; }
+    internal int Handles(StagedStageIdentity identity)
+    { lock (_gate) return _objects[_byIdentity[identity]].Handles; }
+    internal long Charge(StagedStageIdentity identity)
+    { lock (_gate) return _objects[_byIdentity[identity]].Charge; }
+    internal IDisposable Pin(StagedStageIdentity identity)
+    {
+        lock (_gate)
+        {
+            var key = _byIdentity[identity]; var held = _objects[key];
+            if (held.Released) throw new IOException("Cannot pin released metadata storage.");
+            _objects[key] = held with { Handles = checked(held.Handles + 1),
+                LinkState = held.LinkState == MetadataObjectLinkState.UnlinkedDrained ? MetadataObjectLinkState.UnlinkedHeld : held.LinkState };
+            return new HandlePin(this, key);
+        }
+    }
+    private sealed class HandlePin(StagedMetadataStoreAccounting owner, MetadataObjectKey key) : IDisposable
+    {
+        private StagedMetadataStoreAccounting? _owner = owner;
+        public void Dispose()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null);
+            if (owner is null) return;
+            lock (owner._gate)
+            {
+                var held = owner._objects[key];
+                int handles = checked(held.Handles - 1);
+                owner._objects[key] = held with { Handles = handles,
+                    LinkState = handles == 0 && held.LinkState == MetadataObjectLinkState.UnlinkedHeld ? MetadataObjectLinkState.UnlinkedDrained : held.LinkState };
+                // Final local close is not itself an exact storage-release receipt.
+            }
+        }
+    }
+    internal void Observe(StagedStageIdentity identity, long allocation, uint links)
+    {
+        lock (_gate) Observe(_byIdentity[identity], identity, allocation, links);
+    }
+    internal void Observe(MetadataObjectKey key, StagedStageIdentity identity, long allocation, uint links = 1)
     {
         lock (_gate)
         {
             var held = _objects[key];
-            if (held.Released || held.Identity != identity || allocation < 0 || allocation > held.Charge)
-            { _faulted = true; throw new IOException("Native allocation exceeds the admitted physical bound or changed identity."); }
+            if (held.Released || held.Identity != identity || allocation < 0 || links > 1)
+            { _faulted = true; throw new IOException("Native metadata identity, type or allocation is uncertain."); }
+            long rounded = allocation > long.MaxValue - (held.Plan.AllocationUnit - 1) ? long.MaxValue :
+                BoundedOutputPlan.Round(allocation, held.Plan.AllocationUnit);
+            long retained = Math.Max(held.Charge, rounded), delta = retained - held.Charge;
+            // Saturation is a held/error state, never permission to admit more.
+            // Preserve the exact observed allocation and a debit at least as large.
+            long total = _totals[(int)held.Class] > long.MaxValue - delta ? long.MaxValue : _totals[(int)held.Class] + delta;
+            _objects[key] = held with { Charge = retained, LinkState = links == 0 ?
+                (held.Handles == 0 ? MetadataObjectLinkState.UnlinkedDrained : MetadataObjectLinkState.UnlinkedHeld) : held.LinkState };
+            _totals[(int)held.Class] = total;
+            if (allocation > held.Charge)
+            {
+                _faulted = true;
+                throw new MetadataPhysicalOverrunException(held.Charge, allocation, retained);
+            }
         }
     }
 
@@ -159,14 +216,15 @@ internal sealed class StagedMetadataStoreAccounting(long journalLimit, long othe
         {
             var held = _objects[transition.Object];
             if (held.Applied == transition) return; // Replay finishes bookkeeping without a second delta.
-            if (held.Released || transition.Allocation < 0 || transition.StorageReleased && transition.Allocation != 0 ||
+            if (held.Handles != 0 || held.Released || transition.Allocation < 0 || transition.StorageReleased && transition.Allocation != 0 ||
                 !transition.Persisted || held.Identity != transition.Identity || transition.Revision <= held.Revision ||
                 !transition.OperationsDrained || (!transition.StorageReleased && !transition.F2MeasuredClosed))
                 throw new IOException("No exact persisted storage transition.");
+            if (transition.Allocation > held.Charge)
+                Observe(transition.Object, transition.Identity, transition.Allocation, held.LinkState == MetadataObjectLinkState.Linked ? 1u : 0u);
             long retained = transition.StorageReleased ? 0 : BoundedOutputPlan.Round(transition.Allocation, held.Plan.AllocationUnit);
-            if (retained > held.Charge) { _faulted = true; throw new IOException("Measured allocation exceeds admission."); }
             _totals[(int)held.Class] = checked(_totals[(int)held.Class] - held.Charge + retained);
-            _objects[transition.Object] = held with { Charge = retained, Revision = transition.Revision, Released = transition.StorageReleased, Applied = transition };
+            _objects[transition.Object] = held with { Charge = retained, Revision = transition.Revision, Released = transition.StorageReleased, LinkState = transition.StorageReleased ? MetadataObjectLinkState.Released : held.LinkState, Applied = transition };
         }
     }
 }

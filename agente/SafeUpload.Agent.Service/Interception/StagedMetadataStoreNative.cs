@@ -10,13 +10,28 @@ using SafeUpload.Agent.Minifilter;
 
 namespace SafeUpload.Agent.Service.Interception;
 
+internal enum MetadataReplacementMechanism { Classic, Extended, ExtendedPosix }
+internal readonly record struct MetadataRenameOperation(int InformationClass, uint Flags);
+
 // Synchronous, noncached, handle-relative transport. No path fallback, schema,
 // policy or journal calls. Bootstrap supplies an already trusted held anchor.
 internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
 {
     internal const uint AnchorAccess = 0x120081, AnchorShare = 3, ChildShare = 7;
     internal const uint OutputOptions = 0x0020006A; // NO_BUFFERING | WRITE_THROUGH | SYNC_NONALERT | OPEN_REPARSE_POINT
-    internal const int RenameInformationClass = 10; // FileRenameInformation, NOT Ex (65).
+    // Adoption changes this one selection, after native evidence/design review.
+    // Discovery explicitly supplies a mechanism; production remains class 10.
+    internal const MetadataReplacementMechanism SelectedReplacement = MetadataReplacementMechanism.Classic;
+    internal static int RenameInformationClass => RenameOperationFor(true).InformationClass;
+    internal static MetadataRenameOperation ReplacementOperation(MetadataReplacementMechanism mechanism) => mechanism switch
+    {
+        MetadataReplacementMechanism.Classic => new(10, 1),
+        MetadataReplacementMechanism.Extended => new(65, 1),
+        MetadataReplacementMechanism.ExtendedPosix => new(65, 3),
+        _ => throw new ArgumentOutOfRangeException(nameof(mechanism))
+    };
+    internal static MetadataRenameOperation RenameOperationFor(bool replace) =>
+        replace ? ReplacementOperation(SelectedReplacement) : new(10, 0);
     private readonly SafeFileHandle _parent;
     private readonly byte[] _parentSecurity, _fileSecurity;
     private readonly SecurityIdentifier _owner;
@@ -107,7 +122,20 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
         }
         catch { handle.Dispose(); throw; }
     }
-    private SafeFileHandle Relative(string leaf, MetadataRoleV32 role, uint disposition, byte[]? security, out MetadataNativeResult result)
+    // Test-only opening seam. The production Open keeps its exact role mask,
+    // share=7 and mandatory expected identity. No production caller uses this.
+    internal SafeFileHandle OpenForReplacementDiscovery(string leaf, uint access, uint share, out MetadataNativeResult result)
+    {
+        if ((access != MetadataStoreRoles.Read && access != MetadataStoreRoles.ReadDelete) || share is not (3 or 7))
+            throw new ArgumentException("Invalid replacement discovery handle grants/sharing.");
+        var handle = Relative(leaf, MetadataRoleV32.ManifestCurrent, 1, null, out result, access, share);
+        if (!result.Success) return handle;
+        try { ValidateType(handle, false); _security.Add(handle, Security(handle)); return handle; }
+        catch { handle.Dispose(); throw; }
+    }
+    internal uint AttributesForReplacementDiscovery(SafeFileHandle handle) => BitConverter.ToUInt32(Info(handle, 35, 8));
+    private SafeFileHandle Relative(string leaf, MetadataRoleV32 role, uint disposition, byte[]? security, out MetadataNativeResult result,
+        uint? discoveryAccess = null, uint? discoveryShare = null)
     {
         if (!ResourceControlWireV32.LeafValid(leaf)) throw new ArgumentException("Not one exact metadata component.");
         ValidateParent();
@@ -121,8 +149,8 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
             _parent.DangerousAddRef(ref parentReference);
             var attributes = new ObjectAttributes { Length = (uint)Marshal.SizeOf<ObjectAttributes>(), RootDirectory = _parent.DangerousGetHandle(),
                 ObjectName = unicode, Attributes = 0x40, SecurityDescriptor = descriptor };
-            int status = NtCreateFile(out var handle, MetadataStoreRoles.Access(role), ref attributes, out var io, IntPtr.Zero,
-                0x80, ChildShare, disposition, OutputOptions | 0x40, IntPtr.Zero, 0);
+            int status = NtCreateFile(out var handle, discoveryAccess ?? MetadataStoreRoles.Access(role), ref attributes, out var io, IntPtr.Zero,
+                0x80, discoveryShare ?? ChildShare, disposition, OutputOptions | 0x40, IntPtr.Zero, 0);
             result = new(status, io.Information.ToUInt64()); return handle;
         }
         finally
@@ -135,7 +163,7 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
     }
     public MetadataNativeObservation Query(SafeFileHandle handle)
     {
-        ValidateType(handle, false, allowDeletePending: true);
+        ValidateType(handle, false, allowUnlinkedHeld: true);
         if (!_security.TryGetValue(handle, out var security) || !Security(handle).AsSpan().SequenceEqual(security))
             throw new IOException("Held metadata security changed.");
         byte[] standard = Info(handle, 5, 24);
@@ -149,12 +177,12 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
         if (identity is { FileIdHigh: 0, FileIdLow: 0 }) throw new IOException("Metadata has no full identity.");
         return identity;
     }
-    private static void ValidateType(SafeFileHandle handle, bool directory, bool allowDeletePending = false)
+    private static void ValidateType(SafeFileHandle handle, bool directory, bool allowUnlinkedHeld = false)
     {
         byte[] attributes = Info(handle, 35, 8), standard = Info(handle, 5, 24);
         if ((BitConverter.ToUInt32(attributes) & 0x400) != 0 || (standard[21] != 0) != directory ||
             (!directory && BitConverter.ToUInt32(standard, 16) != 1 &&
-                !(allowDeletePending && standard[20] != 0 && BitConverter.ToUInt32(standard, 16) == 0)))
+                !(allowUnlinkedHeld && BitConverter.ToUInt32(standard, 16) == 0)))
             throw new IOException("Metadata type/link count is unsafe.");
     }
     private byte[] Security(SafeFileHandle handle)
@@ -187,7 +215,14 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
     {
         RequireOriginalToken();
         CheckAligned(offset, bytes.Length);
-        using var aligned = new AlignedBuffer(bytes.Length, Alignment); bytes.CopyTo(aligned.Span);
+        return WriteAligned(handle, offset, bytes, Alignment);
+    }
+    internal MetadataNativeResult WriteAligned(SafeFileHandle handle, long offset, ReadOnlySpan<byte> bytes, long alignment)
+    {
+        RequireOriginalToken(); CheckAligned(offset, bytes.Length);
+        if (alignment < Alignment || alignment > 65536 || !BoundedOutputPlan.PowerOfTwo(alignment) || offset % alignment != 0 || bytes.Length % alignment != 0)
+            throw new ArgumentException("Invalid stricter verified I/O quantum.");
+        using var aligned = new AlignedBuffer(bytes.Length, alignment); bytes.CopyTo(aligned.Span);
         NativeWriteCalls++;
         int status = NtWriteFile(handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, out var io, aligned.Pointer, (uint)bytes.Length, ref offset, IntPtr.Zero);
         return new(status, io.Information.ToUInt64());
@@ -212,27 +247,48 @@ internal sealed class StagedMetadataStoreNative : IStagedMetadataNative
     }
     public MetadataNativeResult Flush(SafeFileHandle handle)
     { RequireOriginalToken(); int status = NtFlushBuffersFile(handle, out var io); return new(status, io.Information.ToUInt64()); }
+    public MetadataNativeResult Allocation(SafeFileHandle handle, long length)
+    {
+        RequireOriginalToken();
+        if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+        return Set(handle, BitConverter.GetBytes(length), 19); // FileAllocationInformation
+    }
     public MetadataNativeResult EndOfFile(SafeFileHandle handle, long length)
     {
         RequireOriginalToken();
         if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
         return Set(handle, BitConverter.GetBytes(length), 20);
     }
-    public MetadataNativeResult Rename(SafeFileHandle handle, string leaf, bool replace)
+    public MetadataNativeResult Rename(SafeFileHandle handle, string leaf, bool replace) =>
+        RenameWithOperation(handle, leaf, RenameOperationFor(replace));
+    internal MetadataNativeResult RenameForReplacementDiscovery(SafeFileHandle handle, string leaf, MetadataReplacementMechanism mechanism) =>
+        RenameWithOperation(handle, leaf, ReplacementOperation(mechanism));
+
+    internal static byte[] RenameBuffer(string leaf, IntPtr anchor, MetadataRenameOperation operation)
+    {
+        if (!ResourceControlWireV32.LeafValid(leaf) || anchor == IntPtr.Zero ||
+            (operation.InformationClass == 10 ? operation.Flags > 1 : operation.InformationClass != 65 || (operation.Flags & ~3u) != 0))
+            throw new ArgumentException("Invalid relative native rename shape.");
+        int offset = IntPtr.Size == 8 ? 20 : 12;
+        byte[] name = Encoding.Unicode.GetBytes(leaf), buffer = new byte[Math.Max(offset + name.Length, IntPtr.Size == 8 ? 24 : 16)];
+        // Class 10 uses BOOLEAN ReplaceIfExists; Ex uses ULONG Flags. With
+        // flags 0/1 this preserves the original class-10 bytes, including padding.
+        BitConverter.GetBytes(operation.Flags).CopyTo(buffer, 0);
+        if (IntPtr.Size == 8) BitConverter.GetBytes(anchor.ToInt64()).CopyTo(buffer, 8);
+        else BitConverter.GetBytes(anchor.ToInt32()).CopyTo(buffer, 4);
+        BitConverter.GetBytes(name.Length).CopyTo(buffer, offset - 4); name.CopyTo(buffer, offset);
+        return buffer;
+    }
+    private MetadataNativeResult RenameWithOperation(SafeFileHandle handle, string leaf, MetadataRenameOperation operation)
     {
         if (!ResourceControlWireV32.LeafValid(leaf)) throw new ArgumentException("Invalid rename component.");
         ValidateParent();
-        int offset = IntPtr.Size == 8 ? 20 : 12;
-        byte[] name = Encoding.Unicode.GetBytes(leaf), buffer = new byte[Math.Max(offset + name.Length, IntPtr.Size == 8 ? 24 : 16)];
-        buffer[0] = replace ? (byte)1 : (byte)0;
         bool reference = false;
         try
         {
             _parent.DangerousAddRef(ref reference);
-            if (IntPtr.Size == 8) BitConverter.GetBytes(_parent.DangerousGetHandle().ToInt64()).CopyTo(buffer, 8);
-            else BitConverter.GetBytes(_parent.DangerousGetHandle().ToInt32()).CopyTo(buffer, 4);
-            BitConverter.GetBytes(name.Length).CopyTo(buffer, offset - 4); name.CopyTo(buffer, offset);
-            var result = Set(handle, buffer, RenameInformationClass);
+            byte[] buffer = RenameBuffer(leaf, _parent.DangerousGetHandle(), operation);
+            var result = Set(handle, buffer, operation.InformationClass);
             if (result.Success) SuccessfulRenames++;
             return result;
         }

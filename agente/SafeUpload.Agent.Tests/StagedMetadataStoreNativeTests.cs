@@ -14,7 +14,7 @@ namespace SafeUpload.Agent.Tests;
 [Trait("Category", "NativeWindows")]
 public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
 {
-    private sealed class Fixture : IDisposable
+    internal sealed class Fixture : IDisposable
     {
         internal readonly TestWorkspace Workspace = new();
         internal readonly string Root;
@@ -34,7 +34,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
             StagedMetadataStoreTests.Plan(logical, role, Native.Alignment, Native.AllocationUnit, predecessor);
         public void Dispose() { Store.Dispose(); Workspace.Dispose(); }
     }
-    private sealed class FaultNative(IStagedMetadataNative inner) : IStagedMetadataNative
+    internal sealed class FaultNative(IStagedMetadataNative inner) : IStagedMetadataNative
     {
         internal string? Fail;
         internal int FlushCount;
@@ -51,6 +51,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
             Fail == "Write" ? new(unchecked((int)0xC0000022), 0) : inner.Write(handle, offset, bytes);
         public MetadataNativeResult Read(SafeFileHandle handle, long offset, Span<byte> bytes) => inner.Read(handle, offset, bytes);
         public MetadataNativeResult Flush(SafeFileHandle handle) => Invoke("Flush" + ++FlushCount, () => inner.Flush(handle));
+        public MetadataNativeResult Allocation(SafeFileHandle handle, long length) => Invoke("Allocation", () => inner.Allocation(handle, length));
         public MetadataNativeResult EndOfFile(SafeFileHandle handle, long length) => Invoke("EndOfFile", () => inner.EndOfFile(handle, length));
         public MetadataNativeResult Rename(SafeFileHandle handle, string leaf, bool replace) => Invoke("Rename", () => inner.Rename(handle, leaf, replace));
         public MetadataNativeResult Delete(SafeFileHandle handle) => Invoke("Delete", () => inner.Delete(handle));
@@ -58,7 +59,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
     }
     private void Log(Fixture fixture, BoundedOutputPlan plan, StagedMetadataStore.Result result)
     {
-        output.WriteLine($"MechanismEvidence=BuilderOSOnly OS={Environment.OSVersion} ExpectedNativeClass=FileRenameInformation({StagedMetadataStoreNative.RenameInformationClass}) " +
+        output.WriteLine($"MechanismEvidence=BuilderOSOnly OS={Environment.OSVersion} NativeRenameClass={StagedMetadataStoreNative.RenameOperationFor(plan.ExpectedPredecessor is not null).InformationClass} NativeRenameFlags=0x{StagedMetadataStoreNative.RenameOperationFor(plan.ExpectedPredecessor is not null).Flags:X} " +
             $"AnchorAccess=0x{StagedMetadataStoreNative.AnchorAccess:X} AnchorShare={StagedMetadataStoreNative.AnchorShare} " +
             $"ReplaceIfExists={plan.ExpectedPredecessor is not null} Role={plan.Role} Access=0x{MetadataStoreRoles.Access(plan.Role):X} ChildShare={StagedMetadataStoreNative.ChildShare} Options=0x{StagedMetadataStoreNative.OutputOptions:X} " +
             $"L={plan.LogicalLength} A={plan.Alignment} U={plan.AllocationUnit} P={plan.PaddedExtent} Q={plan.PeakAllocation} Result={result.Disposition} " +
@@ -66,7 +67,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         foreach (var receipt in result.Receipts)
             output.WriteLine($"Step={receipt.Step} NTSTATUS=0x{receipt.Native.Status:X8} Information={receipt.Native.Information} " +
                 $"Identity={receipt.Observation?.Identity} EOF={receipt.Observation?.EndOfFile} AllocationSize={receipt.Observation?.AllocationSize} " +
-                $"DeletePending={receipt.Observation?.DeletePending} RetainedCharge={fixture.Accounting.Charge(plan.Object)}");
+                $"Links={receipt.Observation?.Links} UnlinkedHeld={receipt.Observation is { Links: 0 }} DeletePending={receipt.Observation?.DeletePending} RetainedChargeAtStep={receipt.RetainedCharge}");
     }
 
     [Fact]
@@ -85,7 +86,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         string other = Path.Combine(fixture.Workspace.Root, "other"); StagedPrivateStorage.CreateDirectory(other);
         using var otherAnchor = StagedMetadataStoreNative.OpenAnchor(other);
         Assert.Throws<IOException>(() => new StagedMetadataStoreNative(otherAnchor, fixture.Native.ParentIdentity));
-        Assert.Equal(new byte[1192], File.ReadAllBytes(Path.Combine(fixture.Root, "ledger")));
+        Assert.Equal(new byte[1192], ReadSharedBytes(Path.Combine(fixture.Root, "ledger")));
         tx.Dispose();
         using (var moved = fixture.Native.Open("ledger", MetadataRoleV32.ManifestCurrent, actual.Identity))
             fixture.Native.Rename(moved, "retained-predecessor", false).Require();
@@ -99,8 +100,8 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
             Assert.Equal(MetadataStoreDisposition.Held, held.Disposition);
             Assert.Null(rejected.Output); // Identity refusal precedes candidate create.
         }
-        Assert.Equal(Enumerable.Repeat((byte)3, 1192), File.ReadAllBytes(Path.Combine(fixture.Root, "ledger")));
-        Assert.Equal(new byte[1192], File.ReadAllBytes(Path.Combine(fixture.Root, "retained-predecessor")));
+        Assert.Equal(Enumerable.Repeat((byte)3, 1192), ReadSharedBytes(Path.Combine(fixture.Root, "ledger")));
+        Assert.Equal(new byte[1192], ReadSharedBytes(Path.Combine(fixture.Root, "retained-predecessor")));
         // A directory reparse point must never be accepted as an anchor or child.
         string junction = Path.Combine(fixture.Root, "junction");
         CreateJunction(junction, fixture.Root);
@@ -132,6 +133,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
     }
 
     [Theory]
+    [InlineData("Allocation")]
     [InlineData("Write")]
     [InlineData("Flush1")]
     [InlineData("EndOfFile")]
@@ -203,20 +205,26 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         using var tx = fixture.Store.TryClaim(next, "replacement.new", "current", Enumerable.Repeat((byte)2, 192).ToArray(), MetadataPhysicalClass.HotJournal)!;
         var lost = fixture.Store.Execute(tx, step => { if (step == MetadataStoreStep.Replace) throw new IOException("injected lost bookkeeping after native success"); });
         Log(fixture, next, lost); Assert.Equal(MetadataStoreDisposition.Held, lost.Disposition);
+        Assert.True(tx.MutationSucceeded, "The selected class-10 rename must succeed before bookkeeping recovery; a native refusal is not an unlinked predecessor.");
+        Assert.Contains(lost.Receipts, r => r.Step == MetadataStoreStep.Replace && r.Native.Success);
+        Assert.Equal(before + 1, fixture.Native.SuccessfulRenames);
         Assert.NotNull(tx.Predecessor); Assert.False(tx.Predecessor!.IsClosed);
-        var oldHeld = fixture.Native.Query(tx.Predecessor); Assert.Equal(oldId, oldHeld.Identity); Assert.True(oldHeld.DeletePending);
+        var oldHeld = fixture.Native.Query(tx.Predecessor); Assert.Equal(oldId, oldHeld.Identity); Assert.Equal(0u, oldHeld.Links);
+        Assert.False(oldHeld.DeletePending);
+        Assert.Equal(MetadataObjectLinkState.UnlinkedHeld, fixture.Accounting.LinkState(oldId));
+        Assert.Equal(Enumerable.Repeat((byte)1, 128), ReadHeldBytes(fixture.Native, tx.Predecessor, 128));
         var newId = fixture.Native.Query(tx.Output!).Identity;
         using (var independent = fixture.Native.Open("current", MetadataRoleV32.ManifestCurrent, newId))
             Assert.Equal(newId, fixture.Native.Query(independent).Identity);
         Assert.NotEqual(oldId, newId); Assert.Equal(before + 1, fixture.Native.SuccessfulRenames);
-        output.WriteLine($"IndependentOld Identity={oldId} EOF={oldHeld.EndOfFile} AllocationSize={oldHeld.AllocationSize} DeletePending={oldHeld.DeletePending} RetainedCharge={fixture.Accounting.Charge(old.Object)}");
+        output.WriteLine($"IndependentOld Identity={oldId} EOF={oldHeld.EndOfFile} AllocationSize={oldHeld.AllocationSize} Links={oldHeld.Links} UnlinkedHeld={oldHeld.Links == 0} DeletePending={oldHeld.DeletePending} RetainedCharge={fixture.Accounting.Charge(old.Object)}");
         Assert.Equal(MetadataStoreDisposition.Held, fixture.Store.RecoverBookkeeping(tx, _ => throw new IOException("second interruption")).Disposition);
         var recovered = fixture.Store.RecoverBookkeeping(tx); Log(fixture, next, recovered);
         Assert.Equal(MetadataStoreDisposition.RecoverableBookkeeping, recovered.Disposition);
         Assert.Equal(before + 1, fixture.Native.SuccessfulRenames);
         Assert.Equal(old.PeakAllocation + next.PeakAllocation, fixture.Accounting.Totals.HotJournal);
-        Assert.Equal(10, StagedMetadataStoreNative.RenameInformationClass);
-        Assert.Equal(Enumerable.Repeat((byte)2, 192), File.ReadAllBytes(Path.Combine(fixture.Root, "current")));
+        Assert.Equal(StagedMetadataStoreReplacementPlanTests.ExpectedProductionReplacement, StagedMetadataStoreNative.RenameOperationFor(true));
+        Assert.Equal(Enumerable.Repeat((byte)2, 192), ReadSharedBytes(Path.Combine(fixture.Root, "current")));
     }
 
     [Fact]
@@ -240,7 +248,7 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         var recovered = fixture.Store.RecoverBookkeeping(tx); Log(fixture, extension, recovered);
         Assert.Equal(MetadataStoreDisposition.RecoverableBookkeeping, recovered.Disposition);
         Assert.Equal(writes + 2, fixture.Native.NativeWriteCalls); // One frame + one inactive slot.
-        byte[] actual = File.ReadAllBytes(Path.Combine(fixture.Root, "segment"));
+        byte[] actual = ReadSharedBytes(Path.Combine(fixture.Root, "segment"));
         Assert.Equal(new byte[a], actual[..(int)a]);
         Assert.Equal(slot, actual[(int)a..(int)(2 * a)]); Assert.Equal(frame, actual[(int)(2 * a)..]);
         Assert.Equal(extension.PeakAllocation, fixture.Accounting.Totals.Shared);
@@ -275,10 +283,30 @@ public sealed class StagedMetadataStoreNativeTests(ITestOutputHelper output)
         var success = fixture.Store.Execute(replacement); Log(fixture, successor, success);
         Assert.Equal(MetadataStoreDisposition.Committed, success.Disposition);
         var predecessor = fixture.Native.Query(replacement.Predecessor!);
-        Assert.True(predecessor.DeletePending); Assert.Equal(oldId, predecessor.Identity);
+        Assert.Equal(0u, predecessor.Links); Assert.False(predecessor.DeletePending); Assert.Equal(oldId, predecessor.Identity);
+        Assert.Equal(new byte[128], ReadHeldBytes(fixture.Native, replacement.Predecessor!, 128));
+        Assert.Equal(MetadataObjectLinkState.UnlinkedHeld, fixture.Accounting.LinkState(oldId));
         Assert.Equal(extension.PeakAllocation + residue.PeakAllocation + old.PeakAllocation + refusedPlan.PeakAllocation + successor.PeakAllocation,
             fixture.Accounting.Totals.Shared);
-        output.WriteLine($"RetainedPredecessor Identity={predecessor.Identity} L=128 P={old.PaddedExtent} Q={old.PeakAllocation} EOF={predecessor.EndOfFile} AllocationSize={predecessor.AllocationSize}; no release inferred from selection or delete-pending");
+        output.WriteLine($"RetainedPredecessor Identity={predecessor.Identity} L=128 P={old.PaddedExtent} Q={old.PeakAllocation} EOF={predecessor.EndOfFile} AllocationSize={predecessor.AllocationSize} Links={predecessor.Links} DeletePending={predecessor.DeletePending}; no release inferred from selection or unlink");
+    }
+
+    private static byte[] ReadSharedBytes(string path)
+    {
+        using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Write | FileShare.Delete);
+        byte[] bytes = new byte[checked((int)reader.Length)]; reader.ReadExactly(bytes); return bytes;
+    }
+    private static byte[] ReadHeldBytes(StagedMetadataStoreNative native, SafeFileHandle held, int length)
+    {
+        byte[] result = new byte[length], block = new byte[native.Alignment];
+        var before = native.Query(held);
+        for (int offset = 0; offset < length; offset += block.Length)
+        {
+            var read = native.Read(held, offset, block); read.Require();
+            int count = Math.Min(block.Length, length - offset); Assert.True(read.Information >= (ulong)count);
+            block.AsSpan(0, count).CopyTo(result.AsSpan(offset));
+        }
+        Assert.Equal(before.Identity, native.Query(held).Identity); return result;
     }
 
     private static void CreateJunction(string link, string target)

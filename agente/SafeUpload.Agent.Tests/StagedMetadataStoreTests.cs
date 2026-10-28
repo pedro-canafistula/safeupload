@@ -36,6 +36,39 @@ public sealed class StagedMetadataStoreTests
         Assert.Equal(60, pairs);
     }
 
+    [Theory]
+    [InlineData(8192, 4096, 4096, 16384)]
+    [InlineData(192, 65536, 4096, 69632)]
+    [InlineData(128, 4096, 65536, 131072)]
+    public void Model_Q_is_a_minimum_precharge_and_measured_native_peak_is_retained(long logical, long a, long u, long observed)
+    {
+        MethodInfo oracle = typeof(GrowthArchiveFitModelTests).GetMethod("PlanOutput", BindingFlags.Static | BindingFlags.NonPublic)!;
+        object expected = oracle.Invoke(null, [logical, a, u])!;
+        long nominal = (long)expected.GetType().GetProperty("Peak")!.GetValue(expected)!;
+        var plan = Plan(logical, MetadataRoleV32.ManifestNew, a, u); var account = Accounting();
+        var identity = new StagedStageIdentity(1, 0, 42);
+        Assert.True(account.TryReserve(plan, MetadataPhysicalClass.HotJournal)); account.Bind(plan.Object, identity);
+        Assert.Throws<MetadataPhysicalOverrunException>(() => account.Observe(plan.Object, identity, observed));
+        long measured = checked((observed + u - 1) / u * u);
+        Assert.Equal(Math.Max(nominal, measured), account.Charge(plan.Object));
+        Assert.Equal(account.Charge(plan.Object), account.Totals.HotJournal);
+        account.Observe(plan.Object, identity, 0); // Later normalization cannot erase the peak.
+        Assert.Equal(Math.Max(nominal, measured), account.Charge(plan.Object));
+        Assert.Throws<IOException>(() => account.TryReserve(Plan(), MetadataPhysicalClass.HotOther));
+    }
+
+    [Fact]
+    public void Persisted_larger_measurement_and_extreme_native_size_retain_the_measured_debit_before_holding()
+    {
+        var plan = Plan(8192, MetadataRoleV32.Segment, 4096, 4096); var identity = new StagedStageIdentity(1, 0, 42);
+        var account = Accounting(); Assert.True(account.TryReserve(plan, MetadataPhysicalClass.Shared)); account.Bind(plan.Object, identity);
+        Assert.Throws<MetadataPhysicalOverrunException>(() => account.Apply(new(plan.Object, identity, 1, 16384, true, true, true, false)));
+        Assert.Equal(16384, account.Charge(plan.Object)); Assert.Equal(16384, account.Totals.Shared);
+        Assert.Throws<MetadataPhysicalOverrunException>(() => account.Observe(plan.Object, identity, long.MaxValue));
+        Assert.Equal(long.MaxValue, account.Charge(plan.Object)); Assert.Equal(long.MaxValue, account.Totals.Shared);
+        Assert.Throws<IOException>(() => account.TryReserve(Plan(), MetadataPhysicalClass.HotOther));
+    }
+
     [Fact]
     public void Logical_EOF_mutant_cannot_reserve_a_padded_write_even_if_its_apparent_budget_fits()
     {
@@ -103,6 +136,7 @@ public sealed class StagedMetadataStoreTests
 
     [Theory]
     [InlineData("Create")]
+    [InlineData("Allocation")]
     [InlineData("Write")]
     [InlineData("Flush1")]
     [InlineData("EndOfFile")]
@@ -133,7 +167,7 @@ public sealed class StagedMetadataStoreTests
         bytes[0] = 255; // The admitted immutable copy owns its bytes through completion.
         var result = store.Execute(tx);
         Assert.Equal(MetadataStoreDisposition.Committed, result.Disposition);
-        Assert.Equal(new[] { "Create", "Write", "Flush1", "EndOfFile", "Flush2", "Rename", "Flush3" }, native.Mutations);
+        Assert.Equal(new[] { "Create", "Allocation", "Write", "Flush1", "EndOfFile", "Flush2", "Rename", "Flush3" }, native.Mutations);
         Assert.Contains(result.Receipts, r => r.Step == MetadataStoreStep.F1 && r.Observation is { EndOfFile: 65536, AllocationSize: 65536 });
         Assert.Contains(result.Receipts, r => r.Step == MetadataStoreStep.F2 && r.Observation is { EndOfFile: 192, AllocationSize: 65536 });
         Assert.Equal(65536, account.Charge(plan.Object));
@@ -165,11 +199,42 @@ public sealed class StagedMetadataStoreTests
         Assert.Null(store.TryClaim(Plan(), "competing", "a", new byte[192], MetadataPhysicalClass.HotOther));
         Assert.Equal(MetadataStoreDisposition.Committed, store.Execute(tx).Disposition);
         Assert.NotNull(tx.Predecessor); Assert.False(tx.Predecessor!.IsClosed);
-        Assert.True(native.Query(tx.Predecessor).DeletePending);
+        Assert.Equal(0u, native.Query(tx.Predecessor).Links);
+        Assert.False(native.Query(tx.Predecessor).DeletePending);
+        Assert.Equal(MetadataObjectLinkState.UnlinkedHeld, account.LinkState(oldId));
+        Assert.Equal(new byte[192], ReadFakeHeld(native, tx.Predecessor, 192));
+        var release = new MetadataStorageTransition(old.Object, oldId, 1, 0, true, true, false, true);
+        Assert.Throws<IOException>(() => account.Apply(release));
         Assert.Equal(131072, account.Totals.HotOther);
         Assert.Equal(MetadataStoreDisposition.Committed, store.Delete(tx).Disposition);
         Assert.Equal(131072, account.Totals.HotOther); // No refund from delete-pending or wrapper success.
         Assert.Throws<InvalidOperationException>(() => store.Delete(tx));
+        tx.Dispose();
+        Assert.Equal(MetadataObjectLinkState.UnlinkedDrained, account.LinkState(oldId));
+        Assert.Equal(131072, account.Totals.HotOther);
+        account.Apply(release);
+        Assert.Equal(65536, account.Totals.HotOther);
+    }
+    private static byte[] ReadFakeHeld(MetadataMemoryNative native, SafeFileHandle held, int length)
+    { byte[] bytes = new byte[length]; native.Read(held, 0, bytes).Require(); return bytes; }
+
+    [Fact]
+    public void Native_rename_refusal_does_not_imply_unlink_or_lost_success()
+    {
+        var native = new MetadataMemoryNative(); var account = Accounting(); using var store = new StagedMetadataStore(native, account);
+        var old = Plan(); StagedStageIdentity oldId;
+        using (var first = store.TryClaim(old, "old.new", "current", new byte[192], MetadataPhysicalClass.HotOther)!)
+        { Assert.Equal(MetadataStoreDisposition.Committed, store.Execute(first).Disposition); oldId = native.Query(first.Output!).Identity; }
+        native.Fail = "Rename"; var next = Plan(predecessor: oldId);
+        using var tx = store.TryClaim(next, "next.new", "current", new byte[192], MetadataPhysicalClass.HotOther)!;
+        var result = store.Execute(tx);
+        Assert.Equal(MetadataStoreDisposition.Held, result.Disposition); Assert.False(tx.MutationSucceeded);
+        Assert.Contains(result.Receipts, r => r.Step == MetadataStoreStep.Replace && r.Native.Status == MetadataMemoryNative.Failure);
+        Assert.Contains(result.Receipts, r => r.Step == MetadataStoreStep.Predecessor && r.Observation is { Links: 1, DeletePending: false });
+        Assert.Equal(oldId, native.Named("current").Identity);
+        Assert.Equal(MetadataObjectLinkState.Linked, account.LinkState(oldId));
+        Assert.Equal(MetadataStoreDisposition.Held, store.RecoverBookkeeping(tx).Disposition);
+        Assert.Equal(1, native.Renames); Assert.Equal(131072, account.Totals.HotOther);
     }
 
     [Fact]
@@ -236,6 +301,20 @@ public sealed class StagedMetadataStoreTests
     }
 
     [Fact]
+    public void Preallocation_overrun_is_measured_and_charged_before_any_data_write()
+    {
+        var native = new MetadataMemoryNative(4096, 4096) { OverallocateOnAllocation = true };
+        var account = Accounting(); using var store = new StagedMetadataStore(native, account);
+        var plan = Plan(8192, MetadataRoleV32.Segment, 4096, 4096);
+        using var tx = store.TryClaim(plan, "segment", "segment", new byte[8192], MetadataPhysicalClass.Shared)!;
+        var result = store.Execute(tx);
+        Assert.Equal(MetadataStoreDisposition.Held, result.Disposition);
+        Assert.Empty(native.Writes); Assert.Equal(12288, account.Charge(plan.Object)); Assert.Equal(12288, account.Totals.Shared);
+        Assert.Contains(result.Receipts, r => r.Step == MetadataStoreStep.Allocation && r.Observation is { AllocationSize: 12288 } && r.RetainedCharge == 12288);
+        Assert.Equal(MetadataStoreDisposition.Held, store.RecoverBookkeeping(tx).Disposition);
+    }
+
+    [Fact]
     public void Native_overallocation_faults_future_admission_without_erasing_the_receipt()
     {
         var native = new MetadataMemoryNative { Overallocate = true }; var account = Accounting(); using var store = new StagedMetadataStore(native, account);
@@ -244,7 +323,10 @@ public sealed class StagedMetadataStoreTests
         Assert.Equal(MetadataStoreDisposition.Held, result.Disposition);
         Assert.Contains(result.Receipts, r => r.Observation is { AllocationSize: 69632 });
         Assert.Throws<IOException>(() => account.TryReserve(Plan(), MetadataPhysicalClass.HotOther));
-        Assert.Equal(65536, account.Charge(plan.Object));
+        Assert.Equal(69632, account.Charge(plan.Object));
+        Assert.Equal(69632, account.Totals.HotOther);
+        Assert.Contains(result.Receipts, r => r.RetainedCharge == 69632);
+        Assert.Equal(MetadataStoreDisposition.Held, store.RecoverBookkeeping(tx).Disposition);
     }
 }
 
@@ -252,13 +334,13 @@ internal sealed class MetadataMemoryNative(long alignment = 65536, long unit = 4
 {
     internal const int Failure = unchecked((int)0xC0000022);
     private sealed class FileState(ulong id)
-    { internal readonly StagedStageIdentity Identity = new(1, 0, id); internal byte[] Data = []; internal long Eof, Allocation; internal bool Deleted; }
+    { internal readonly StagedStageIdentity Identity = new(1, 0, id); internal byte[] Data = []; internal long Eof, Allocation; internal bool Deleted, Unlinked; }
     private readonly Dictionary<string, FileState> _names = new();
     private readonly Dictionary<SafeFileHandle, FileState> _handles = new();
     private ulong _id;
     private int _flush;
     internal string? Fail;
-    internal bool Overallocate;
+    internal bool Overallocate, OverallocateOnAllocation;
     internal Action? BeforeCreate;
     internal int Renames;
     internal List<string> Mutations { get; } = new();
@@ -282,8 +364,8 @@ internal sealed class MetadataMemoryNative(long alignment = 65536, long unit = 4
         var handle = new SafeFileHandle((IntPtr)checked((int)++_id + 100), false); _handles.Add(handle, file); return handle;
     }
     public MetadataNativeObservation Query(SafeFileHandle handle)
-    { var file = _handles[handle]; return new(file.Identity, file.Eof, file.Allocation, 1, file.Deleted); }
-    internal MetadataNativeObservation Named(string leaf) { var file = _names[leaf]; return new(file.Identity, file.Eof, file.Allocation, 1, file.Deleted); }
+    { var file = _handles[handle]; return new(file.Identity, file.Eof, file.Allocation, file.Unlinked ? 0u : 1u, file.Deleted); }
+    internal MetadataNativeObservation Named(string leaf) { var file = _names[leaf]; return new(file.Identity, file.Eof, file.Allocation, file.Unlinked ? 0u : 1u, file.Deleted); }
     internal byte[] Bytes(string leaf) => _names[leaf].Data[..(int)_names[leaf].Eof];
     public MetadataNativeResult Write(SafeFileHandle handle, long offset, ReadOnlySpan<byte> bytes)
     {
@@ -300,13 +382,19 @@ internal sealed class MetadataMemoryNative(long alignment = 65536, long unit = 4
         file.Data.AsSpan((int)offset, length).CopyTo(bytes); return new(0, (ulong)length);
     }
     public MetadataNativeResult Flush(SafeFileHandle handle) => Result("Flush" + ++_flush);
+    public MetadataNativeResult Allocation(SafeFileHandle handle, long length)
+    {
+        var result = Result("Allocation");
+        if (result.Success) _handles[handle].Allocation = BoundedOutputPlan.Round(length, unit) + (OverallocateOnAllocation ? unit : 0);
+        return result;
+    }
     public MetadataNativeResult EndOfFile(SafeFileHandle handle, long length)
     { var result = Result("EndOfFile"); if (result.Success) _handles[handle].Eof = length; return result; }
     public MetadataNativeResult Rename(SafeFileHandle handle, string leaf, bool replace)
     {
         var result = Result("Rename"); if (!result.Success) return result;
         var file = _handles[handle]; string old = _names.Single(p => ReferenceEquals(p.Value, file)).Key;
-        if (_names.TryGetValue(leaf, out var predecessor)) { if (!replace) return new(Failure, 0); predecessor.Deleted = true; }
+        if (_names.TryGetValue(leaf, out var predecessor)) { if (!replace) return new(Failure, 0); predecessor.Unlinked = true; }
         _names.Remove(old); _names[leaf] = file; Renames++; return result;
     }
     public MetadataNativeResult Delete(SafeFileHandle handle) { _handles[handle].Deleted = true; return Result("Delete"); }

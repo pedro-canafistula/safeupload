@@ -14,7 +14,7 @@ internal sealed class MetadataNativeException(MetadataNativeResult result) : IOE
 internal sealed record MetadataNativeObservation(StagedStageIdentity Identity, long EndOfFile, long AllocationSize,
     uint Links, bool DeletePending);
 internal sealed record MetadataOperationReceipt(MetadataStoreStep Step, MetadataNativeResult Native,
-    MetadataNativeObservation? Observation);
+    MetadataNativeObservation? Observation, long RetainedCharge = 0);
 internal interface IStagedMetadataNative : IDisposable
 {
     long Alignment { get; }
@@ -27,6 +27,7 @@ internal interface IStagedMetadataNative : IDisposable
     MetadataNativeResult Write(SafeFileHandle handle, long offset, ReadOnlySpan<byte> bytes);
     MetadataNativeResult Read(SafeFileHandle handle, long offset, Span<byte> bytes);
     MetadataNativeResult Flush(SafeFileHandle handle);
+    MetadataNativeResult Allocation(SafeFileHandle handle, long length);
     MetadataNativeResult EndOfFile(SafeFileHandle handle, long length);
     MetadataNativeResult Rename(SafeFileHandle handle, string leaf, bool replace);
     MetadataNativeResult Delete(SafeFileHandle handle);
@@ -52,6 +53,8 @@ internal sealed class StagedMetadataStore : IDisposable
         internal string OutputLeaf { get; }
         internal string TargetLeaf { get; }
         internal SafeFileHandle? Output, Predecessor;
+        internal IDisposable? OutputPin, PredecessorPin;
+        internal MetadataNativeObservation? PredecessorObservation;
         internal byte[] Bytes { get; }
         internal List<MetadataOperationReceipt> Receipts { get; } = new();
         private readonly object _operationGate = new();
@@ -91,6 +94,7 @@ internal sealed class StagedMetadataStore : IDisposable
                 while (_operationActive) Monitor.Wait(_operationGate);
             }
             Output?.Dispose(); Predecessor?.Dispose();
+            OutputPin?.Dispose(); PredecessorPin?.Dispose();
             lock (owner._claimsGate)
             {
                 owner._claims.Remove(OutputLeaf); owner._claims.Remove(TargetLeaf);
@@ -134,7 +138,10 @@ internal sealed class StagedMetadataStore : IDisposable
         {
             _native.ValidateParent();
             if (tx.Plan.ExpectedPredecessor is { } expected)
+            {
+                tx.PredecessorPin = _accounting.Pin(expected);
                 tx.Predecessor = _native.Open(tx.TargetLeaf, CurrentRole(tx.Plan.Role), expected);
+            }
             EnsureReceiptSpace(tx, 2);
             tx.Output = _native.Create(tx.OutputLeaf, tx.Plan.Role, out var created);
             Record(tx, MetadataStoreStep.Create, created);
@@ -142,8 +149,10 @@ internal sealed class StagedMetadataStore : IDisposable
             if (created.Information != 2) throw new IOException("Relative FILE_CREATE did not return FILE_CREATED.");
             var initial = _native.Query(tx.Output);
             _accounting.Bind(tx.Plan.Object, initial.Identity);
+            tx.OutputPin = _accounting.Pin(initial.Identity);
             Observe(tx, MetadataStoreStep.Create, created, initial);
             Notify(tx, MetadataStoreStep.Create, afterNative);
+            Call(tx, MetadataStoreStep.Allocation, () => _native.Allocation(tx.Output, tx.Plan.PaddedExtent), afterNative);
             WritePadded(tx, 0, tx.Bytes, MetadataStoreStep.Write);
             Notify(tx, MetadataStoreStep.Write, afterNative);
             Call(tx, MetadataStoreStep.F1, () => _native.Flush(tx.Output), afterNative);
@@ -156,16 +165,17 @@ internal sealed class StagedMetadataStore : IDisposable
                 if (tx.Predecessor is not null)
                 {
                     var predecessor = _native.Query(tx.Predecessor);
-                    if (predecessor.Identity != tx.Plan.ExpectedPredecessor || predecessor.DeletePending)
+                    if (predecessor.Identity != tx.Plan.ExpectedPredecessor || predecessor.DeletePending || predecessor.Links != 1)
                         throw new IOException("Held predecessor changed identity or became delete-pending.");
                     using var current = _native.Open(tx.TargetLeaf, CurrentRole(tx.Plan.Role), predecessor.Identity);
                     if (_native.Query(current).Identity != predecessor.Identity) throw new IOException("Replacement target name changed identity.");
                 }
-                EnsureReceiptSpace(tx, 2);
+                EnsureReceiptSpace(tx, 3);
                 var renamed = _native.Rename(tx.Output, tx.TargetLeaf, tx.Predecessor is not null);
                 // Record the native result before any wrapper/observer can fail.
                 Record(tx, MetadataStoreStep.Replace, renamed);
                 if (renamed.Success) tx.MutationSucceeded = true;
+                ObservePredecessor(tx);
                 renamed.Require();
                 Observe(tx, MetadataStoreStep.Replace, renamed, _native.Query(tx.Output));
                 Notify(tx, MetadataStoreStep.Replace, afterNative);
@@ -240,12 +250,14 @@ internal sealed class StagedMetadataStore : IDisposable
         try
         {
             if (_native.Query(tx.Output).EndOfFile != expectedFrontier) throw new IOException("Append frontier changed.");
+            Call(tx, MetadataStoreStep.Allocation, () => _native.Allocation(tx.Output, extension.PaddedExtent), afterNative);
             EnsureReceiptSpace(tx, 2);
             var appended = _native.Write(tx.Output, expectedFrontier, frameBytes);
-            Record(tx, MetadataStoreStep.Append, appended); appended.Require();
-            if (appended.Information != (ulong)frameBytes.Length) throw new IOException("Short raw frame remains held.");
-            tx.MutationSucceeded = true;
+            Record(tx, MetadataStoreStep.Append, appended);
+            if (appended.Success && appended.Information == (ulong)frameBytes.Length) tx.MutationSucceeded = true;
             Observe(tx, MetadataStoreStep.Append, appended, _native.Query(tx.Output));
+            appended.Require();
+            if (appended.Information != (ulong)frameBytes.Length) throw new IOException("Short raw frame remains held.");
             Notify(tx, MetadataStoreStep.Append, afterNative);
             Call(tx, MetadataStoreStep.F1, () => _native.Flush(tx.Output), afterNative);
             long end = checked(expectedFrontier + frame.Length);
@@ -301,12 +313,24 @@ internal sealed class StagedMetadataStore : IDisposable
     };
     private static void EnsureReceiptSpace(Transaction tx, int count)
     { if (tx.Receipts.Count > 32768 - count) throw new IOException("Bounded operation receipt storage exhausted; retain custody."); }
-    private static void Record(Transaction tx, MetadataStoreStep step, MetadataNativeResult result) => tx.Receipts.Add(new(step, result, null));
+    private void Record(Transaction tx, MetadataStoreStep step, MetadataNativeResult result) =>
+        tx.Receipts.Add(new(step, result, null, _accounting.Charge(tx.Plan.Object)));
+    private void ObservePredecessor(Transaction tx)
+    {
+        if (tx.Predecessor is null) return;
+        EnsureReceiptSpace(tx, 1);
+        var observation = _native.Query(tx.Predecessor);
+        tx.PredecessorObservation = observation;
+        try { _accounting.Observe(observation.Identity, observation.AllocationSize, observation.Links); }
+        catch { tx.RecoveryBlocked = true; throw; }
+        finally { tx.Receipts.Add(new(MetadataStoreStep.Predecessor, new(0, 0), observation, _accounting.Charge(observation.Identity))); }
+    }
     private void Observe(Transaction tx, MetadataStoreStep step, MetadataNativeResult result, MetadataNativeObservation observation)
     {
-        tx.Receipts.Add(new(step, result, observation));
-        _accounting.Observe(tx.Plan.Object, observation.Identity, observation.AllocationSize);
-        if (observation.DeletePending && step != MetadataStoreStep.Delete)
+        try { _accounting.Observe(tx.Plan.Object, observation.Identity, observation.AllocationSize, observation.Links); }
+        catch { tx.RecoveryBlocked = true; throw; }
+        finally { tx.Receipts.Add(new(step, result, observation, _accounting.Charge(tx.Plan.Object))); }
+        if ((observation.DeletePending || observation.Links == 0) && step != MetadataStoreStep.Delete)
             throw new IOException("Metadata output unexpectedly became delete-pending.");
     }
     private static void Notify(Transaction tx, MetadataStoreStep step, Action<MetadataStoreStep>? observer)
@@ -319,17 +343,18 @@ internal sealed class StagedMetadataStore : IDisposable
         EnsureReceiptSpace(tx, 2);
         var result = action(); Record(tx, step, result);
         if (result.Success && step == MetadataStoreStep.EndOfFile && tx.PendingAppend is { } append) append.EofSet = true;
-        result.Require();
-        Observe(tx, step, result, _native.Query(tx.Output!)); Notify(tx, step, observer);
+        Observe(tx, step, result, _native.Query(tx.Output!));
+        result.Require(); Notify(tx, step, observer);
     }
     private void WriteSlot(Transaction tx, Transaction.RawAppend append)
     {
         EnsureReceiptSpace(tx, 2);
         var result = _native.Write(tx.Output!, append.SlotIndex * tx.Plan.Alignment, append.Slot);
-        Record(tx, MetadataStoreStep.Slot, result); result.Require();
-        if (result.Information != (ulong)append.Slot.Length) { tx.RecoveryBlocked = true; throw new IOException("Short raw slot remains held."); }
-        append.SlotWritten = true;
+        Record(tx, MetadataStoreStep.Slot, result);
+        if (result.Success && result.Information == (ulong)append.Slot.Length) append.SlotWritten = true;
         Observe(tx, MetadataStoreStep.Slot, result, _native.Query(tx.Output!));
+        result.Require();
+        if (result.Information != (ulong)append.Slot.Length) { tx.RecoveryBlocked = true; throw new IOException("Short raw slot remains held."); }
     }
     private void WritePadded(Transaction tx, long offset, ReadOnlySpan<byte> bytes, MetadataStoreStep step)
     {
@@ -344,9 +369,10 @@ internal sealed class StagedMetadataStore : IDisposable
             bytes.Slice(cursor, Math.Min(alignment, bytes.Length - cursor)).CopyTo(chunk);
             EnsureReceiptSpace(tx, 2);
             var result = _native.Write(tx.Output!, offset + cursor, chunk);
-            Record(tx, step, result); result.Require();
-            if (result.Information != (ulong)alignment) throw new IOException("Short metadata write remains held.");
+            Record(tx, step, result);
             Observe(tx, step, result, _native.Query(tx.Output!));
+            result.Require();
+            if (result.Information != (ulong)alignment) throw new IOException("Short metadata write remains held.");
         }
     }
     private void Verify(Transaction tx, ReadOnlySpan<byte> expected, long offset, long eof)

@@ -1,7 +1,10 @@
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
 namespace SafeUpload.Agent.Tests;
 
-// Pure proposal model, DiagnosticOnly on Linux. No I/O or unfinished production
+// Pure nominal L/P/Q geometry model, DiagnosticOnly on Linux; Q is not a
+// demonstrated native allocation ceiling. Production retained-peak controls
+// compare Q with independent native observations in StagedMetadataStoreTests.
+// No I/O or unfinished production
 // dependencies. These are acceptance arithmetic/state vectors, not a native
 // durability, serialization, kernel-resource or protected-pair proof.
 public sealed class GrowthArchiveFitModelTests
