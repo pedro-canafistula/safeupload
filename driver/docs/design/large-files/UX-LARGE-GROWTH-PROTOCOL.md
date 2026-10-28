@@ -1,8 +1,11 @@
 # T9 growing reservations: revision 6 implementation contracts
 
 2026-10-28. **Proposed addendum for independent review; documents only.**
-Revised after the independent REVISE review; not yet re-reviewed.
-Source anchors below refer to `feat/driver-m2` at `f35ee490`; proposed types and
+Second revision after the independent REVISE re-review; not yet accepted.
+The [re-review](../../../evidence/2026-10-28/t9-growth-protocol-rereview-sol-high.md)
+closed F1/F2/F3/F5/F7 as design corrections, with native/source/runtime proof
+still distinct; its three residual findings are addressed below.
+Source anchors below refer to `feat/driver-m2` at `7867cf37`; proposed types and
 modules are identified as proposed. This is increment 1's contract proposal,
 not completion of its executable transitions, review acceptance, activation or
 qualification. The decomposition is the read-only planner output
@@ -80,7 +83,7 @@ never reused while unresolved; exhaustion revokes this session.
 | 56, 60 | two u32 | PayloadBytes, Flags=0 |
 
 Opcodes: 1 Negotiate, 2 Revoke, 3 RegisterRoot, 4 RegisterChildIntent,
-5 FenceAllocation, 6 ResolveAllocationAck. These are proposed subcommands of
+5 FenceAllocation, 6 ResolveAllocationAck, 7 ShellSnapshot (section 5.4.1). These are proposed subcommands of
 36, not new ordinary operation numbers. No opcode silently succeeds on an
 older peer. NoControl/short/malformed/unsupported result means no modern mode.
 
@@ -568,7 +571,13 @@ initial registry/ticket debt, no content deletion, name mutation or growth close
 The kernel must retain the final-success receipt until ACK even if the writer
 closes immediately. An exact ACK retry uses that receipt or the already-removed
 shell no-op rule; it supplies no storage-release evidence. Successful handoff
-retains InitialResolved, so no later ACK delta is needed to stop initial counts.
+retains InitialResolved, so no later ACK delta is needed to stop initial counts. **Eligibility is mandatory:** a successful transfer cannot prepare a closure
+candidate, select a shared base or delete its ledger until InitialResolved is
+durably committed there. MetadataOnly/terminal Entry alone is insufficient.
+Immediate close/retirement may reduce content custody while the delayed success
+query is pending, but the ledger and its metadata debit remain; retry the exact
+query then InitialResolved before handoff. No success-resolution history delta
+is introduced. CleanupComplete abandonment follows its separate ACK-delta path.
 Native success→service query/commit, ACK loss and immediate writer-close races
 are R3-A05.
 
@@ -600,7 +609,7 @@ non-adoption receipt remains the authority; the ACK is not a replacement for it.
 | Durable state / crash | Initial count on restart / recovery |
 |---|---|
 | Positive allocation reply only, final adoption unknown | 1; query/fence exact original, no guessed success or cleanup |
-| Kernel final success, service query/InitialResolved missing | 1; query same retained intent; only authenticated Attached permits durable success resolution |
+| Kernel final success, immediate close/disposal, delayed query/InitialResolved missing | 1; keep exact ledger/metadata, handoff forbidden even if MetadataOnly; authenticated query → durable InitialResolved → handoff, including crash between each step |
 | InitialResolved committed, memory decrement/ACK lost | 0; reconstruct once, retry success ACK only; content debit unchanged |
 | Binding-null ResourceOnlyClosure committed, cleanup complete, no ACK delta | 1; shared tombstone replaces ledger authority and SID metadata; retry exact ACK |
 | ACK native success, delta append outside committed frontier | 1 until section 10.3 resolves exact append/frontier; no duplicate frame or inferred ACK persistence |
@@ -613,6 +622,60 @@ originate their acceptance through duplicated handles or an arbitrary serialized
 record. ACK still validates the retained kernel shell/current authenticated
 request. U1/U2 must prove old-instance and all adoption boundaries; until then
 the proposed fence remains a contract, not a verified complete mechanism.
+
+### 5.4.1 Separate initial debt and retained kernel-shell credit (residual 2)
+
+Service debt is the durable 8/family and 4/SID unresolved-initial count. Exactly
+one InitialResolved transition releases successful debt; a repeated query/receipt
+cannot decrement it again. **Kernel registry occupancy is a separate credit:**
+propose exactly **8 shell credits per live driver instance globally**, including
+pending, fenced and retained-success entries across every connection/SID. Reserve
+one before StageAttachReserveCapture/queue visibility, extra retained object
+allocation or original-intent capture. A capture failure with proved no shell
+releases that reservation locally; otherwise only actual kernel ACK eviction
+(or proved complete old-instance rundown under U1) releases it. InitialResolved,
+service memory adoption, ACK enqueue/send/timeout and disconnect do not release
+kernel occupancy. The kernel owns its count; a service report cannot refund it.
+
+| Event | Service initial debt / kernel occupied credit |
+|---|---|
+| Reserve/capture succeeds | increment debt when admitted; occupied +1 already reserved before capture |
+| InitialResolved durable | debt -1 once; occupied unchanged, successful shell retained |
+| Success ACK native result says evicted | occupied -1 once in kernel; debt stays 0; reply loss retries eviction bookkeeping only |
+| Abandonment CleanupComplete/handoff | debt 1 until durable ResolutionAcknowledged; occupied remains until actual ACK eviction |
+| Reconnect/service restart | rebuild debt from ledger/base/delta projection; occupied credits come from surviving kernel registry snapshot, never reconstructed as zero from debt=0 |
+| All 8 occupied, service debt=0 | fresh modern CREATE gets correlated resource Busy before capture/heap retention, no new ledger/seed; diagnose retained receipt ACK backlog and retry recovery, not space exhaustion or global Unknown |
+
+Add control-36 **opcode 7 ShellSnapshot**, authenticated like the other resource
+controls; existing confirmed ABI sizes do not change. Empty request payload;
+reply payload **9888 bytes** = header `{BootDomain GUID@0, SnapshotSequence
+u64@16, Count u32@24, Reserved=0 u32@28}` + exactly 8 entries of **1232 bytes**:
+original allocation request[1192]@0, State u32@1192 (1 pending,2 success-retained,
+3 fenced), zero u32@1196, ReceiptId GUID@1200, ReceiptSequence u64@1216,
+OriginCookie u64@1224. Unused entries zero; Count<=8. Pending may have zero
+receipt fields; no tuple or identity is invented. Snapshot is copied under a
+short registry lock and returned without waiting on service. It is occupancy
+and recovery input, not final-success/non-adoption proof. Use opcode 5 for that
+proof, opcode 6 for eviction. Reject changed original/driver/domain/correlation.
+
+On reconnect new CREATE admission stays closed until a coherent snapshot is
+joined to exact durable intents and old-origin cookies. Unknown unmatched slots
+remain occupied/held; they cannot be silently erased. A queued pre-service intent
+with no ledger needs exact serialized non-creation/fence resolution. A retained
+success with debt 0 is prioritized for ACK from its exact InitialResolved ledger
+or base. New instance/boot is U1, not an inferred empty old registry. The bounded
+snapshot covers every occupied slot, including streams already closed.
+
+ACK scheduling: one unique work item per occupied shell, **at most 8**, FIFO with
+retained-success ACKs before new initial work; at most 2 native resolution sends
+active, within section 8.3's class. No per-retry Tasks or duplicate queue items;
+retry keeps original/FenceId and uses bounded existing monotonic backoff. Busy,
+disconnect and cancelled sends retain both the item and shell credit until exact
+native eviction is observed/reconciled. Snapshot reconciliation precedes fresh
+admission after reconnect; it does not reset SID debt. Saturation may stall fresh
+opens while ACKs recover, even with free storage; report that explicit cause.
+The pure model tests durable count reconstruction and repeated crash-after-
+InitialResolved-before-ACK cycles against this independent eight-slot limit.
 
 ### 5.5 Whole-CREATE audit required by U2
 
@@ -676,6 +739,7 @@ ordinary reply-pump description; no reordering of legacy handlers is proposed.
 
 | Population | Current code / proposed modern contract / saturation |
 |---|---|
+| Kernel initial shells | Proposed 8 globally per driver instance across reconnect/SIDs, reserved before CREATE capture; independent of durable debt, retained until actual native ACK eviction (section 5.4.1). |
 | Initial modern intents | Proposed 8 unresolved per authenticated connection family across reconnect, 8 current-connection and 4/original SID across all cookies/restart. Queued/executing/fenced/unacknowledged abandonment counts; attached saves stop counting only on section 5.4's durable InitialResolved success transition. |
 | Ordered | Current 1 worker + 32 queued; legacy allocation/discard/lifecycle/rename/reconcile/epoch-drain/Judge keep FIFO including their existing replies. |
 | Allocation | Current 2 workers + 6 queued for existing bound allocation only. Modern initial allocation placement must preserve legacy ordering and independent growth progress; its admitted unique intents fit the above 8, not an additional queue. Bound-head resource admission stays NotReady. |
@@ -685,15 +749,46 @@ ordinary reply-pump description; no reordering of legacy handlers is proposed.
 | Kernel waiters/pins | Not bounded by service messages. Section 11.1 proposes 32 waiters/K, 256 global and 64 shared operations, admission before allocation/pinning. |
 | Service-to-driver controls | Still serialized by FilterPort._sendGate today. Section 8.3 is a required new bounded progress path, not a result of increment 2. |
 
-The current receiver reserves an ordinary reply credit before `TryGetMessage`
-(`MinifilterInterceptor.cs:365`–`:366`). Separate growth credits/failure workers
-**do not** prove transport intake when ordinary credits are exhausted: physical
-receive backpressures before it can classify the next message. Modern integration
-must establish a bounded resource intake reservation/transport strategy and prove
-it on real ports (U5); no document claim of unconditional growth reception from
-this shell is valid. Do not discard send-lifetime protection or legacy ordering
-to claim progress. Dispatcher GUID Cookie (`StagedRequestDispatcher.cs:58`) is a
-local scheduling identity, not the proposed u64 authenticated wire cookie.
+The current receiver reserves an ordinary reply credit before TryGetMessage
+(`MinifilterInterceptor.cs:365`–`:366`), which can block growth before classification.
+**Choose separate physical growth intake**, not a priority queue behind that
+receiver. Proposed port `\SafeUploadResourcePort` admits one authenticated
+resource client paired to the existing control/ordinary connection; its connect
+context is `{DriverInstance GUID (16 bytes), main ConnectionCookie u64}`
+(24 bytes, a new side-port context, no confirmed ABI size changes). Validate the
+same original service process/token/service SID, live main cookie and instance;
+never accept an independently authenticated replacement service as this group.
+One driver-issued group cookie remains the u64 wire cookie on both ports. A
+second FilterPort object owns the resource handle/lifetimes; provisional side
+connection/root registration precedes main Commit Ready. Capability bit 4 now
+requires this physical intake separation on both peers. Shipped v1/main port and
+Ordered ordering remain unchanged; old peers never receive side-port traffic.
+
+Only grow operation 23 uses resource FilterGetMessage and Growth workers/failure
+credits (8+32, 40 failure credits). Retirement 24 and initial allocation/lifecycle
+stay on main Ordered/Continuation as semantically assigned. The dedicated
+resource receive loop reserves **growth** credit before dequeue and can never
+consume or await one of the 64 ordinary credits. Ordinary backpressure cannot
+prevent receiving growth. Within the resource class, a stalled reply can still
+exhaust 40 credits: no further receive/work is retained, driver I/O deadline
+expires and fails privately; it is not a promise of service from a stuck native
+API. Reject wrong-channel operations without ordinary fallback; no allocation,
+journal/publication or policy handler may run on the resource loop. Each receive
+has its own owned OVERLAPPED/event as existing FilterPort.TryGetMessage requires.
+
+Existing StagedRequestDispatcher queues/reply pools are retained, but modern
+Dispatch must consume the matching pool selected by the physical channel; no
+ordinary-credit reservation followed by transfer into Growth. Preserve main
+FIFO and captured preceding driver for old handlers. Resource group revocation
+is synchronous local state **before** stopping either receive: close admission,
+wake growth waiters, stop producers, cancel both receives, cancel queued sends,
+then drain native callbacks/send/reply/receive leases and finally close handles.
+Disconnect of either port revokes the whole group; neither replacement port is
+published until old ownership drains. A cancelled caller does not free native
+storage still in use. U5 must prove the chosen two-port pairing/intake/native
+lifetime mechanism on implemented source/real ports; models are not that proof.
+Dispatcher GUID Cookie (`StagedRequestDispatcher.cs:58`) is still only local
+scheduling identity, not the group u64 authenticated cookie.
 
 Reconnect adopts old unresolved intent debt into its connection family before
 fresh admission. Origin cookie and SID persist; new AgentInstance does not reset
@@ -788,8 +883,12 @@ locally. Revoke hooks bind the authenticated connection at
 A SYSTEM-owned arbitrary path is insufficient.
 Bootstrap outside `_gate` validates installed roots, fixed NTFS, full directory
 IDs, trusted owner/protected DACL/no untrusted writers and no reparse ancestors.
-Anchor handles exclude rename/delete/security substitution for their lifetime;
-unsupported native exclusion must stop integration, not become a path bypass.
+Root anchors open with FILE_SHARE_READ|FILE_SHARE_WRITE, **without**
+FILE_SHARE_DELETE, excluding native rename/delete while held. Share modes do
+not exclude WRITE_DAC/WRITE_OWNER: protected security must deny untrusted
+security mutation, trusted repair requires prior group revocation, and every
+commit revalidates held security. No claim of excluding hostile local SYSTEM/
+administrator beyond the selected trusted-storage boundary (O2).
 
 RegisterRoot opcode 3 request payload **64 bytes**:
 RootRole u32@0 (1 StageRoot, 2 Reservations, 3 JournalHot, 4 Completed),
@@ -812,7 +911,15 @@ zero[32]@608. Reply **16 bytes**: Result u32, zero u32, ChildIntentId u64.
 Exactly one claimed relative open matches each child intent; recognize by
 RelatedFileObject/root, exact leaf, original process/token and connection.
 The intent is consumed by post-CREATE validation; it never authorizes another
-same-name object. Existing target exclusion is held by the store across replace.
+same-name object. Existing replacement targets use FILE_SHARE_READ|WRITE|DELETE
+so native replacement is possible, plus an exclusive **store namespace claim**
+for the exact anchor/leaf/current identity across validation and rename. Every
+registered writer respects that claim; untrusted writers lack native access.
+A no-SHARE_DELETE target cannot be replaced and is not the chosen mechanism.
+Native sharing alone cannot exclude another privileged DELETE or security
+writer; that remains outside trusted private-storage authority, not a fictitious
+OS exclusion. Recheck exact held target/security before the native step; any
+conflict/changed identity revokes/holds rather than path overwrite.
 
 Role numbers are fixed: 1 LedgerCurrent, 2 LedgerNew, 3 CompanionCurrent,
 4 CompanionNew, 5 ManifestCurrent, 6 ManifestNew, 7 Segment, 8 InventoryCurrent,
@@ -1001,15 +1108,29 @@ cycle is SetPolicy/_sendGate → epoch drain → application growth → budget l
 → RegisterChildIntent → _sendGate. Independent **driver-to-service** lanes do
 not remove this **service-to-driver** cycle.
 
-Propose three admission classes on the **same authenticated port**, retaining
+Propose three normal send classes plus bootstrap/revoke slots within the
+**same authenticated two-port connection group**, retaining
 one common send-lifetime owner, with private per-call buffers and native handle
 references. This is an intended FilterPort change, not current behavior:
 
 | Class | Bounded admission / ownership / kernel callback rule |
 |---|---|
-| Legacy/policy | Existing single `_sendGate` stays for all old controls. Proposed modern wrapper admits 1 active + 8 queued; excess gets local Busy before retention. No metadata or resource-fence callback ever waits for this gate. |
-| Metadata progress | 8 active, **0 queued** native sends; TryAcquire before constructing/retaining a control. RegisterRoot/ChildIntent use a send-lifetime lease but **bypass `_sendGate`**. A full class returns local Busy; same original growth/I/O deadline applies. Separate reserved capacity cannot be consumed by SetPolicy or fencing. |
-| Resource resolution | 2 active, 8 queued, separate from both above. FenceAllocation/ResolveAllocationAck use send-lifetime leases; queue cancellation removes the exact pending item. Callback returns a snapshot/Busy, never waits on application tickets, service replies, journal, namespace drain, epoch or another control. |
+| Legacy/policy (main port) | Existing single `_sendGate` stays for all old controls. Proposed modern wrapper admits 1 active + 8 queued; excess gets local Busy before retention. No metadata or resource-fence callback ever waits for this gate. |
+| Metadata progress (resource port) | 8 active, **0 queued** native sends; TryAcquire before constructing/retaining a control. RegisterRoot/ChildIntent use a send-lifetime lease but **bypass `_sendGate`**. A full class returns local Busy; same original growth/I/O deadline applies. Separate reserved capacity cannot be consumed by SetPolicy or fencing. |
+| Resource resolution (resource port; includes ShellSnapshot) | 2 active, 8 queued, separate from both above. FenceAllocation/ResolveAllocationAck use send-lifetime leases; queue cancellation removes the exact pending item. Callback returns a snapshot/Busy, never waits on application tickets, service replies, journal, namespace drain, epoch or another control. |
+
+Complete assignment: Negotiate Probe/Commit uses main port, one active/no
+queue bootstrap send; it may proceed only with initial admission closed and
+no policy send active (TryAcquire legacy gate, otherwise Busy). RegisterRoot/
+ChildIntent uses resource metadata class. Fence/ACK/ShellSnapshot uses resource
+resolution class. Revoke has one dedicated resource send slot/no queue, but
+**local** revoke is published first; failure/Busy never waits for a remote ACK.
+All other existing controls stay legacy/main and cannot occupy metadata slots.
+Before disposal, reject admission in all classes under group lifecycle state,
+wake waiters/stop producers, cancel queued sends/receives, then join accepted
+native leases without holding lifecycle or policy/map locks. No new negotiation
+or port-handle publication while the old group drains. These are complete
+class assignments, not permission to remove legacy send protection.
 
 A metadata transaction does not retain the budget gate while waiting to enter a
 control queue: metadata admission is nonwaiting. Once admitted, its synchronous
@@ -1060,35 +1181,96 @@ queue fences whose tickets need service progress and require prompt Busy,
 correlated refusals, bounded population and cancellation/dispose with no freed
 send buffer. An unrelated typed Busy is not proof of no allocation commitment.
 
-### 8.4 Supported native-store operations and barriers
+### 8.4 Settled native sequence and documented guarantee boundary
 
-Proposed native store uses held relative `NtCreateFile` with synchronous
-noncached options, alignment-correct resident buffers/offsets/lengths,
-`NtReadFile`/`NtWriteFile`, `NtFlushBuffersFile` (or the existing handle-based
-FlushFileBuffers adapter), `NtSetInformationFile` for exact EOF/allocation,
-relative rename and exact disposition, and lower-instance identity/security/
-volume queries in the driver. No cached fallback, path reopen or claim that
-WriteThrough alone supplies the fence. The NTFS/target availability, supported
-information classes and actual persistence guarantees are U4 native obligations.
+This is a selected sequence, replacing the unnamed future replacement barrier.
+References are offline Microsoft API/documentation links; this task performs no
+network retrieval. No quotations or power-loss guarantee beyond those API
+contracts is asserted.
 
-For bounded ledger/companion/candidate/inventory outputs: admit padded physical
-extent before native create → capture/persist identity → aligned padded write →
-**flush F1** → set exact logical EOF → **flush F2 after EOF** → verify exact
-identity/EOF/allocation → exact held-target relative replacement if applicable →
-verify namespace result and establish the supported durable replacement barrier
-before declaring durable adoption/reducing charge. A successful native rename is
-never issued again; an uncertain final barrier retains the pending transaction,
-full conservative charge and admission fault/hold until exact startup resolution.
-Do not assert a directory/power-loss barrier from atomic rename or a preceding
-file flush: U4 must establish the supported NTFS primitive sequence, or the
-store contract requires a reviewed delta before dependent integration.
+Use relative NtCreateFile/FILE_CREATE for a new output, with
+FILE_NO_INTERMEDIATE_BUFFERING|FILE_WRITE_THROUGH|FILE_SYNCHRONOUS_IO_NONALERT|
+FILE_OPEN_REPARSE_POINT; verify FILE_CREATED, identity/security/link/type through
+that held handle. Sector-aligned buffers, offsets and lengths are required;
+noncached I/O bypasses system data buffering, not every metadata cache.
+[Microsoft file buffering](https://learn.microsoft.com/en-us/windows/win32/fileio/file-buffering)
+and [CreateFile flags/sharing](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
+separate NO_BUFFERING, WRITE_THROUGH and sharing semantics. WRITE_THROUGH requests
+write-through behavior; it is not an application-wide atomic transaction or a
+guarantee that arbitrary hardware honors cache flushes.
 
-Archive append/frontier uses the different aligned grammar and F1/F2/F3 order in
-section 10.3. Every physical padding unit, alternate-frontier slot, candidate,
-append-intent current/replacement and compaction overlap is charged before
-allocation. Fault controls distinguish native success, EOF persistence,
-frontier persistence, exact replacement and later bookkeeping; ambiguous native
-success never becomes another public mutation or a refund.
+| Ordered step | Concrete primitive / acceptance rule |
+|---|---|
+| Create/claim | Relative NtCreateFile using registered anchor and exact one-component name; record may-start before call, captured identity before data. Root/target shares and exclusive store claim are section 8.1, not invented share exclusion of security updates. |
+| Write padded bytes | NtWriteFile (synchronous, noncached/write-through) at aligned offsets, bounded by precharged physical extent; no cached fallback or reopening by path. |
+| F1 | FlushFileBuffers on the same held output handle (native adapter NtFlushBuffersFile); require success before exact logical EOF. |
+| EOF/allocation | NtSetInformationFile(FileEndOfFileInformation), and FileAllocationInformation only within precharged extent; requery actual EOF/allocation. |
+| F2 after EOF | FlushFileBuffers on that same handle again, then verify complete expected bytes/identity/security/EOF. No durable candidate from a pre-EOF flush alone. |
+| Replace | Under exact store namespace claim, NtSetInformationFile(FileRenameInformation) on held source, RootDirectory=held same anchor, exact target leaf, ReplaceIfExists only for prevalidated expected current object. No absolute MoveFileEx, target path reopen or cross-anchor rename. |
+| F3 after replacement | FlushFileBuffers on the renamed source handle, then lower-query exact new current identity/bytes/EOF and held parent identity. On any failed/uncertain call keep predecessor/candidate/intent evidence and all conservative charge; native rename success is final, never issue it again. |
+
+[Microsoft NtSetInformationFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntsetinformationfile)
+documents the information-class operation and native completion, and
+[FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers)
+documents flushing buffered file information. This sequence requests data and
+file-metadata flushes and establishes tested **process-crash/native-completion**
+ordering on supported local fixed NTFS. None of these links specifies an atomic,
+application-level durable transaction across ledger, companion, directory entry
+and another file, nor makes a failed/uncertain rename equivalent to no rename.
+There is no undocumented directory-FSYNC or atomic-sector assumption here.
+
+Where that stronger crash/power-loss guarantee is undocumented, **do not grant
+it**: keep full charge until exact current/predecessor/candidate/receipt and
+physical inventory reconstruct a unique conservative state; missing, rolled-
+back, conflicting or torn evidence holds admission. F3 success alone never
+releases content, certifies complete storage lifetime, or overrides marker/
+identity/sequence checks. An implementation unable to retain enough predecessor/
+transaction evidence for this conservative outcome must stop for a design delta;
+it cannot invent a stronger rename barrier. Independent power-loss/target
+qualification remains separate from these supported API requests and builder
+fault injection. No volume-wide flush is inserted under the growth budget gate
+(it could wait for the very application stream that needs growth).
+
+Archive: create a new exact segment, aligned-write its two initial frontier
+slots, F1, set aligned EOF=2*A, F2; then record exact segment identity. Each
+append is aligned frame write → F1 → monotonic aligned EOF → F2 → inactive
+frontier-slot write → F3, as section 10.3. New inventory/candidate/append-intent/
+compaction-intent replacement uses the above F1/EOF/F2/rename/F3 sequence.
+Uncertain F1/F2/F3 retains every affected physical object and full debit; startup
+classifies the exact append location **before** any legacy tail truncation.
+All metadata operations/query/flushes route through the capability branch;
+no epoch, policy, namespace or service dependency is acquired there.
+
+IRQL contract: registration and relative CREATE, identity/security/type validation,
+read/write/EOF/flush/rename/disposition run PASSIVE. Forwarded CREATE requests
+synchronized post and captures all inputs in nonpaged context. Draining post at
+DISPATCH does no pageable validation/lower I/O: leave entry Revoked/uncertain,
+queue its pre-reserved local PASSIVE rundown owner. CLEANUP/CLOSE can only retire
+local keys/pins at their allowed callback IRQL, with final lower/dereference work
+deferred through that owner; no new allocation or service ACK. U4 first-boot
+review must establish actual callback registrations and cleanup/cancel paths.
+
+### 8.5 Builder-native mechanism experiments (specification only)
+
+These are component controls on an approved builder OS, **no proposed kernel
+boot**, mechanism evidence only, not target 19045.2965 or power-loss qualification.
+Implement later as native tests; none is implemented/run in this increment.
+
+| Control | Exact experiment / PASS (otherwise FAIL or conservative hold) |
+|---|---|
+| N-U4-01 relative confinement | Held NTFS parent + NtCreateFile relative leaf, FILE_CREATE/no-follow; verify full IDs, one link, regular/protected security; traversal/ADS/reparse/wrong parent/wrong target substitutions refuse without altering substitute. |
+| N-U4-02 aligned noncached | Sector/buffer/offset queries then selected flags; 64/128/192/1192/65536/131072-byte logical records, A=4096..65536 model, aligned native buffer. Verify exact bytes, zero padding and measured AllocationSize; deliberate wrong offset/length/buffer alignment must refuse, never cached fallback. Unsupported actual units are reported, not passed through synthetic fixture arithmetic. |
+| N-U4-03 EOF and barriers | Instrument exact write,F1,EOF,F2,rename,F3 order; inject each failure/kill worker between steps, reopen exact handles after process exit, require only uniquely proven complete output be committed and all uncertain objects charged/held. F1 without post-EOF F2 must never produce Prepared. This is not physical power interruption. |
+| N-U4-04 sharing/security | Root handle omits SHARE_DELETE: competing rename/delete must fail. Replace target uses SHARE_DELETE + exclusive store claim: second authorized store writer cannot enter, exact replacement succeeds. Show WRITE_DAC is not excluded by share flags; untrusted token denied by native security, trusted repair requires revoke. Wrong-owner/DACL/link/reparse never normalized. |
+| N-U4-05 exact replacement | Relative FileRenameInformation on held original/new, target exclusion claim and F3; alternate target substitution/failure injection must hold, exact renamed identity survives no-reopen comparison; native success with lost bookkeeping never triggers a second rename. |
+| N-U8-01 physical fit | Compare pure model rounded outputs, current/new overlap, candidate/intent/inventory/padding/frontier allocation to native AllocationSize at actual units; every measured allocation <= precharge, all failed residue remains counted. Higher/unusual actual allocation holds instead of weakening model. |
+| N-U8-02 archive recovery | Unaligned logical payload ends, A-strides, dual slots, full append outside frontier and torn inactive frontier; no committed frame sector changes, classifier finishes exact frontier only, partial/unknown tail holds, no modern truncation. |
+| N-U8-03 migration/selection | Mixed legacy contiguous and modern aligned segments; legacy never modern-appended, selected-prefix copy/suffix/target ranges remain consecutive, every base/ACK/witness reconstructs once; injected selection/copy/delete faults preserve old+new physical debt, no lost selected segment or duplicate changed base. |
+
+Outer-hook cases R3-M01/M02 and real paired resource-port/epoch-drain progress R3-M04
+require the increment-3 implementation and protected execution **after** its
+first-boot review. They are coverage obligations before implementation, not
+experiments that can already pass against an unimplemented metadata driver.
 
 ## 9. Custody, ordinary Discarded receipt and reduction
 
@@ -1233,8 +1415,8 @@ KiB. All three record kinds use the same frame grammar in section 10.3.
 
 | RecordKind | Required fields / selection semantics |
 |---|---|
-| 1 TransferClosure | Entry non-null exact modern terminal journal entry; ResourceClosure non-null MetadataOnly, with HistoryHandoff=null, complete intent, binding, replay/receipts and final release inventory; matching optional OrdinaryDiscardDisposal; ResolutionDelta=null. RecordRevision equals the captured hot manifest revision (positive), PreviousRecordId=null. Retain both effective and allocation high-water generation barriers. |
-| 2 ResourceOnlyClosure | Entry=null, OrdinaryDiscardDisposal=null, ResolutionDelta=null; ResourceClosure non-null MetadataOnly/IntentFenced/InitialResolution CleanupComplete, complete original request/SID and authenticated fence/releases. RecordRevision=1, PreviousRecordId=null. Binding can be null; no invented stage/generations or namespace claims/index entries. |
+| 1 TransferClosure | Entry non-null exact modern terminal journal entry; ResourceClosure non-null MetadataOnly, with HistoryHandoff=null, complete intent, binding, replay/receipts and final release inventory; matching optional OrdinaryDiscardDisposal; ResolutionDelta=null. InitialResolution must be **InitialResolved=7 for successful allocations**, or **CleanupComplete=5 / ResolutionAcknowledged=6 for proved abandonment**; no Open/Attached/Closing/Fenced base even if MetadataOnly. RecordRevision equals the captured hot manifest revision (positive), PreviousRecordId=null. Retain both effective and allocation high-water generation barriers. |
+| 2 ResourceOnlyClosure | Entry=null, OrdinaryDiscardDisposal=null, ResolutionDelta=null; ResourceClosure non-null MetadataOnly/IntentFenced/InitialResolution CleanupComplete=5 or already ResolutionAcknowledged=6, complete original request/SID and authenticated fence/releases. RecordRevision=1, PreviousRecordId=null. Binding can be null; no invented stage/generations or namespace claims/index entries. |
 | 3 InitialResolutionDelta | Entry/ResourceClosure/OrdinaryDiscardDisposal=null; ResolutionDelta non-null as below. Unique RecordId, same TransferId, RecordRevision=previous+1 and PreviousRecordId=exact prior record. Legal only from a proved CleanupComplete base/projection; no authority to rewrite custody or namespace history. |
 
 ResolutionDelta fields are exactly `{State:6 (ResolutionAcknowledged),
@@ -1339,6 +1521,53 @@ post-handoff ACK uses another globally journaled append intent and a **delta**,
 never a replacement base. A native success is final; retry its frontier/index/
 ledger bookkeeping, not another append of a completed record.
 
+### 10.2.1 Pure physical-fit admission model (U8)
+
+The executable independent model is
+`agente/SafeUpload.Agent.Tests/GrowthArchiveFitModelTests.cs`; it performs no I/O
+and consumes no unfinished production code. Model alignment A is 4096..65536
+(power of two); metadata allocation unit U is verified independently and may be
+larger (vectors include 512, 4096, 65536, 1048576). Round(x,U) is checked
+AlignUp; metadata envelope remains max(1 MiB,16*U), journal half unchanged.
+No claimed fit substitutes a smaller assumed allocation for actual native size.
+
+**Complete-envelope rule:** E=canonical serialized Entry bytes, S=complete
+ResourceClosure bytes, W=all remaining envelope bytes, including separators/
+property names/escaped strings/other witnesses, not just fixed field values.
+Require E<=128 KiB, S<=64 KiB, W<=8 KiB, **E+S+W<=128 KiB** before any candidate
+create/handoff. W=8 KiB is a bounded serialization allowance, not free storage.
+At S=64 KiB and W=8 KiB, E can be at most **56 KiB**. Independent maxima
+E=128 KiB,S=64 KiB,W=8 KiB total **200 KiB**, so **do not fit**. Preserve exact
+ledger/metadata/custody and diagnose handoff metadata too large; never truncate
+Entry, omit a receipt or delete the ledger to pass. This is deferred metadata
+retirement, not an added content/file-size cap or denial of already inspected
+publication. A later format split for full independent maxima needs review;
+this model explicitly rejects them instead of calling each component valid.
+Exact production serialization/migration must be compared to these bounds
+before its consumers; arithmetic alone is not a codec maximum proof.
+
+Model simultaneous transfer overlap: journal current/new (each <=128 KiB) plus
+one handoff candidate <=128 KiB consume at most 3*Round(128 KiB,U) of the journal
+half. Ledger current/new <=64 KiB and companion current/new 192 bytes consume
+2*Round(64 KiB,U)+2*Round(192,U) of the other half. Retained failed residue also
+counts; if it no longer fits, refuse another metadata transaction, never forget
+it. Shared controls are **additional accounted shared physical bytes**:
+append-intent current/new, compaction-intent current/new (each <=64 KiB),
+inventory and marker current/new (each 128 bytes), and retained candidate.
+Compaction charge includes all old + up to 32 new physical 4 MiB segments,
+both frontier slots in each segment, controls/replacements/residue. Selection
+alone releases no old physical debt; exact storage release is also required.
+Shared debit still uses 2*rounded total physical +16 MiB, no new budget formula.
+
+Tests cover exact stride boundaries/maximum payload, zero-padding/dual slots,
+checked overflow/invalid units, aligned-output replacement overlap, combined
+maxima refusal/fit boundary, 32-segment source/target selection, old contiguous
+format exclusion, delayed-query successful handoff and separate durable debt/
+eight kernel credits. Deliberately wrong header/frontier/envelope parameters,
+missing padding/second frontier and debt-as-occupancy mutants must fail model
+acceptance. This closes only the **pure arithmetic/state-model** portion of U8,
+not actual native allocation, power-loss durability or codec/selection correctness.
+
 ### 10.3 Aligned append grammar, frontier and durability (finding 3)
 
 Choose **aligned independent frames with two frontier slots**, not read-modify-
@@ -1388,8 +1617,8 @@ EOF; (5) write inactive frontier slot with recorded target sequence/end/ID;
 post-EOF/replacement barriers; only then report SharedCommitted and delete
 candidate/intent/ledger by exact custody. FrameDurable denotes completed F2,
 not merely a successful WriteFile return. Uncertain F1/F2/F3 keeps the intent,
-all physical charge and admission hold. Native availability/durable guarantees
-are U4; no cached fallback or undocumented atomic-write assumption.
+all physical charge and admission hold. Native execution and the documented guarantee limits
+are section 8.4/U4; no cached fallback or undocumented atomic-write assumption.
 
 | Crash/read state (before legacy tail repair) | Exact permitted recovery / charge |
 |---|---|
@@ -1456,7 +1685,7 @@ unrecorded missing selected segments or select away a needed base/ACK barrier.
 
 This is the format/transaction choice for compaction; U8 still requires executable
 migration/selection/maximum-size conservation models before increment 4, and U4
-requires native durability/exclusion proofs. It does not authorize removing old
+requires implemented/native confirmation within section 8.4's guarantee boundary. It does not authorize removing old
 evidence, pruning live epoch/replay barriers or deferring required checks to
 increment 7.
 
@@ -1470,7 +1699,7 @@ increment 7.
 | Ledger deleted, ACK not yet durable | base retains CleanupComplete; initial pending count=1, shared physical debit; retry authenticated ACK then delta |
 | Append before frontier (base or ACK delta) | section 10.3 exact intent/location classifier before any tail repair |
 | SharedCommitted before ledger delete/memory update | exact ledger deletion only; shared projection reconstructs receipt/replay/debit |
-| Successful InitialResolved before content handoff | initial count=0 even while content full debit remains |
+| Immediate-close successful transfer, query delayed beyond disposal, crash before InitialResolved | successful handoff/candidate/ledger deletion forbidden; retain ledger/metadata and count 1, complete authenticated query then durable InitialResolved; only then base with count 0 |
 | Last modern ledger retired, records packed | marker remains; enabled old/disabled startup refuses modern/shared residue |
 | Marker corrupted/removed while modern/shared evidence survives | hold, actionable identity/format diagnostic, no recreate/downgrade normalization |
 | Marker and every local witness erased/rolled back | no detection guarantee from these stores; O2 asks for the precise external trust boundary and repair/uninstall contract |
@@ -1596,6 +1825,59 @@ routing, actual Major/Minor and completion owner for every cached/noncached/
 MDL/EOF/allocation/section actor; unowned native success is not a passing owned
 MDL control. R4-MM02 covers local pin/rundown races at all admission states.
 
+### 11.2 User buffers and MDLs are separate custody (residual 3)
+
+Current `StageReadWrite` locks a caller buffer at `StageStream.c:4824`, maps its
+MDL at `:4832`, waits on Resource at `:4835`, and only then computes effective
+append/file-pointer extent (`:4841`) and crosses capacity (`:4863`). FILE_OBJECT
+pin counts do not bound those page locks. Moving only the later growth test is
+insufficient.
+
+Proposed **owned-I/O admission** applies to each new owned nonpaging READ/WRITE
+data/preparation operation, after handle checks at :5944 and before the
+StageReadWrite call at :5948, **before FltLockUserBuffer, MDL mapping, resource
+waiting or growth heap/pins**. Use the same proposed 32/K and 256-global credits
+as growth waiters: an I/O already holding one converts that credit into a growth
+waiter; it never takes another. Below-C operations hold it through completion
+then release. Reads need this too because they can lock pages before waiting
+behind an MM growth owner. Paging and completion/release minors do not enter **new** admission or initiate
+growth: they find their original counted callback/MDL owner and release that
+credit. They cannot be rejected or queued behind a full admission pool; U6
+must map the exact owned minor/completion route. Saturated write admission completes resource
+failure without buffer lock and marks its save nonpublishable; a rejected read
+has no mutation authority. Do not queue rejected callbacks awaiting a credit.
+
+| Buffer/MDL origin | Custody while waiting / completion |
+|---|---|
+| No MDL, caller user buffer | acquire owned-I/O credit first. Prefer compute/grow before locking pages when safe, but original callback input cannot be touched asynchronously without proved ownership. Any later FltLockUserBuffer occurs under the credit; recheck extent after resource reacquisition. |
+| FltLockUserBuffer-created MDL | retain only the MDL attached to that owned original callback, within its one credit and captured length. Filter Manager owns its completion-time free/unlock; do not manually MmUnlockPages/IoFreeMdl it. Complete/release callback ownership once so normal Filter Manager cleanup runs. |
+| Incoming caller/I/O-manager/upper-driver MDL | borrowed, not a newly allocated filter MDL; retain only through the proved original IRP/callback lifetime, never free/unlock or repurpose it. Rejection completes promptly via original owner. No claim to bound already locked arrivals before filter admission. |
+| Paging bridge partial MDLs | existing StageClonePagingMdls/:5774 and child completion own their exact clone chain under PagingRundown; independent from owned nonpaging buffer credits, no growth wait from paging. |
+| Owned MDL preparation/complete minors or mapped/system buffer | U6 must name the actual Major/Minor callback owner, valid buffer lifetime and legal completion/IRQL; no raw mapped address or borrowed MDL survives that owner. Release/completion cannot wait for a growth credit. |
+
+[Microsoft FltLockUserBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/fltkernel/nf-fltkernel-fltlockuserbuffer)
+is the ownership reference for the Filter Manager-created MDL; never infer its
+ownership from a non-null incoming MdlAddress. Native minor/completion ownership
+still requires the U6 source audit and routed evidence.
+
+Cancellation/admission failure before lock releases only reserved credits; after
+lock, the single terminal callback owner completes/cancels and relinquishes its
+reference, allowing the MDL's actual owner to unlock/free. Worker touches only
+copied growth inputs, never the user buffer or MDL. A late RPC cannot use freed
+buffer memory. Cancel registrations are joined before credit/node free.
+
+These are **count/ownership** bounds, not a claim that 256 callbacks imply small
+locked memory. Model/account each retained page span as
+AlignUp((virtual page offset)+Length,PAGE_SIZE), with Length checked against its
+actual MDL chain/system buffer and ULONG carrier limit; count MDL headers/PFN
+arrays/cancel owners separately from 320 upper-file references. U6 must supply
+actual structures, supported length extrema and worst-case retained bytes and
+saturation measurements before increment 6. No new buffer-size product default
+or narrowed MDL support is selected here. Admission is not complete until the
+pre-lock owned path and borrowed/created MDL completion audit are implemented.
+R4-MM03 now includes many ordinary writers blocked before effective extent,
+pre-existing/created MDLs, cancel-before/after-lock and exact credit/page custody.
+
 ## 12. Dependency-ordered implementation and control inventory
 
 ### 12.1 Seven increments (all T9, no completed checkboxes)
@@ -1620,21 +1902,25 @@ self-checks and an authorized real run. Committed source/fresh labels/matched
 artifact hashes are delivery obligations for the orchestrator; this document-only
 increment performs none of them. No new source-freeze/disposition framework.
 
-### 12.1.1 Required closure checklist (review scheduling)
+### 12.1.1 Three separate review/delivery stages
 
-**Every checkbox is open after this document revision.** Textual mechanisms are
-specified; native facts, executable transitions, independent acceptance and
-first-boot reviews are not proved by editing the design. No increment-7 deferral
-of these gates. The current revision-6 REVISE verdict remains until re-review.
+Contract acceptance, implemented first-boot review and runtime evidence are
+separate. The re-review closed the original F1/F2/F3/F5/F7 **design defects**;
+its residual 1–3 and this revision need independent acceptance. Do not require
+R3-M01/M04 protected execution before increment 3 is written. The table lists
+coverage now; results follow implemented source and first-boot review.
 
-- [ ] T9 before increment 3: close finding 1 outer pre-epoch recognition/post ownership, failed CREATE/draining/CLEANUP/CLOSE and R3-M01 accounting with epoch admission closed; metadata security/lifetime/post-context review before boot.
-- [ ] T9 before increment 3: close finding 2 both-direction control/reply admission, send lifetime/disposal and saturation; U5 includes current shared pre-dequeue receive-credit backpressure. Transitive lock-order review before boot; fence-specific service-independent Busy proof also required before increment 5.
-- [ ] T9 before increment 3: close finding 3 aligned framing/dual frontier, Segment permissions and F1/F2/F3 plus native replacement barriers. U4 target/anchor exclusions and complete role/import/IRQL audit remain open; U8 maximum record/padding/physical fit must pass. Freeze strict modern archive grammar before increment 4.
-- [ ] T9 before increment 4: close finding 4 typed resource-only/ACK/success-count/tail transactions and strict startup/marker classification; U3 every-role release adapter and retirement capture/rundown. Retirement/custody/release/teardown review before boot.
-- [ ] T9 before increment 4: resolve U8 candidate/append-intent/migration/compaction selection and physical envelope; all unknown/torn states held before recovery enables admission. Decide O2 boundary or explicitly retain existing trust scope; no expanded erasure guarantee assumed.
-- [ ] T9 before increment 5: close U1 boot identity/old-instance boundary and U2 **entire** CREATE audit in section 5.5; deadline through all later lifecycle/retirement/failure completion, successful InitialResolved count retirement, no-manifest ACK chain and authenticated fence acceptance. CREATE/adoption/cancellation/fence lifetime/lock-order review before boot.
-- [ ] T9 before increment 6: close finding 5 per-I/O/semantic deadline composition, joined-higher-extent/append/reacquisition controls and **owner-selected** O1 duration/interpretation; no renewed interval.
-- [ ] T9 before increment 6: close findings 6–7 shared operation/waiter/pin admission/release, U6 actual **owned-stream** MM/MDL minor/completion/IRQL inventory and routing proof, complete replay/companion integration. Coherent growth/MM/pin/retirement lifetime/lock-order review before boot.
+| Integration | Contract/fact required before implementation | Implemented source required before its first boot | Runtime/component evidence after implementation |
+|---|---|---|---|
+| T9 increment 3 | U4 selected role/exclusion/IRQL and F1/EOF/F2/rename/F3 sequence with documented guarantee limits; U5 paired growth intake/send classes/lifetimes; U8 pure fit vectors; independently accepted outer pre/post and send-progress text. This revision supplies proposals/model; acceptance remains open. | Both dispatch wrappers and tag-3 classification before existing tags/draining; failed/draining CREATE, CLEANUP/CLOSE/address reuse; connection/instance/unload rundown; authenticated two-port handlers and every actual role/query/import; complete journal→budget→registration→native graph; conservative physical faults. Sol security/lifetime/lock-order review of coherent source. | Builder N-U4-01..05/N-U8-01..03 are mechanism evidence on builder OS; R3-M01 epoch closed, M02 ownership/reuse, M03 dependencies and M04 real port/send progress run on implemented protected pair after review. WDK/static/import and complete agent matrix stay required. |
+| T9 increment 4 | Residual 1 successful-handoff eligibility; U3 every-role release owner/crash contract, U7 owner scope, strict U8 grammar/migration/candidate/tail/ACK/selection models and actual serializer limits. | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
+| T9 increment 5 | Residual 2 separate eight shell credits; U1 boot/old-instance and U2 complete CREATE/cancellation audit; authenticated receipts, bounded snapshot/ACK eviction scheduling, deadline through later lifecycle calls, fence-specific U5 Busy. | Capture-to-callback/exposure ownership, success/non-adoption evidence, eviction credits and reconnect, deadline/failure vs separately owned cleanup; coherent lifetime/lock-order review. | R3-A01..05/R4-D01, repeated durable-success-before-ACK interruption, pending-vs-shell saturation, exact same-name recovery and no failed-CREATE adoption. |
+| T9 increment 6 | Residual 3 pre-buffer-lock owned-I/O credits/MDL ownership; U6 real Major/Minor/IRQL/resource/completion inventory and actual byte/structure maxima; measured 32/256/64 bounds and owner-selected O1. | Full growth/replay/companion/MM/MDL/paging/pin/retirement integration, including user buffers and cancellation ownership, reviewed before boot. | R4-D02/MM01..03 routed actor evidence, many writers before FltLockUserBuffer/resource acquire, borrowed/created MDL release, deadline/teardown/retirement races and Verifier. |
+
+No row is a claim of runtime PASS or permission to boot. Modern admission stays
+closed through the integration prerequisites until the complete readiness
+conjunction and matched-pair qualification pass. Compaction design is not
+approval to expand M2 beyond the required 10k workload or owner deferrals.
 
 ### 12.2 Carried qualification rows
 
@@ -1689,8 +1975,8 @@ harness availability or permission to run them in this documents-only task.
 | R3-M01 confinement | outer pre/post role/size/access/leaf/context mutations | relative noncached/pad/EOF/post-EOF flush/security/unit checks | **epoch admission closed** while counted I/O waits for growth; ledger/companion and registration progress without BP/union/namespace recursion, roots policy-covered |
 | R3-M02 lifetime | metadata tag-3/pre/post context and incarnation/revoke conservation | failed lower CREATE, draining at permitted IRQL, CLEANUP/CLOSE; token/anchor/substitution/link/ADS faults | map key retired before FILE_OBJECT address reuse, generic epoch/BP post never sees metadata context; disconnect/unload, no UAF |
 | R3-M03 lock order | transitive callback/claim completion failures | content leases outside gate | saturated growth + namespace/publication/reduction stress, no budget→journal cycle |
-| R3-M04 control progress | model legacy/progress/fence class saturation and exact send leases | SetPolicy holds _sendGate in epoch drain; parallel metadata registration, fence Busy, cancel/dispose and per-call buffers | growth accounting while epoch closed; no control→service cycle, no abandoned live send storage, bounded queues |
-| R3-A05 initial success/tombstone | no Entry/K closure, InitialResolved and linked ACK delta count reconstruction | final-success query/ACK origin, cross-request/FenceId/duplicated-handle refusal | immediate close after success; ledger deletion before ACK, ACK reply/delta loss and restart: no fabricated Entry, duplicate TransferId base or 8/4 debt leak |
+| R3-M04 control progress | model legacy/progress/fence/bootstrap/revoke slots, paired channels and exact send leases | main 64 failure credits stalled while separate growth 40 credits/intake works; SetPolicy drain, metadata registration, fence Busy, cancel/dispose | wrong process/token/group/side-port rejects; loss of either revokes both before drains, no new handle publication before native leases end; epoch-closed growth accounting progresses |
+| R3-A05 initial success/tombstone | no Entry/K closure, InitialResolved and linked ACK delta count reconstruction | final-success query/ACK origin, cross-request/FenceId/duplicated-handle refusal | delayed final-success query plus immediate close/disposal/crash must keep ledger until InitialResolved; then ledger deletion before ACK, ACK reply/delta loss and restart: no fabricated Entry, duplicate TransferId base or 8/4 debt leak |
 | R3-X01 ordinary discard | strict new receipt, old StageDeleted still rejected | exact delete with reader/section/replacement | ordinary discard refunds after proof, snapshot remains charged, fresh name use |
 | R3-X02 discard crash | section-9 crash table, duplicate/reuse | receipt persist fault after exact native success | live/restart/hot/packed no lost barrier or duplicate release |
 | R4-O01 ordering | forced allocation/growth/close/rename reordering | connection revalidation | journal failure after growth closure, late success cannot reopen |
@@ -1699,8 +1985,8 @@ harness availability or permission to run them in this documents-only task.
 | R4-D02 growth deadline | distinct original I/O/RPC immutable deadlines, joined higher extent and repeated append recomputation | blocked reacquisition and late timer/reply; no second full interval | 32→64 MiB join near deadline and append race: original per-I/O bound, late sufficient grant cannot publish prefix; several I/Os may each pause |
 | R4-MM01 crossings | extent/revalidation/append and owned Major/Minor models | trace owned StagePreOperation :5903/:5948, actual MDL minors and completion owner; unowned fallback insufficient | every supported owned crossing above/below C, C02, no paging RPC/livelock; route evidence required per case |
 | R4-MM02 pins | waiter/worker timeout/signal/release ownership | allocation/cancel fault seams | timeout/disconnect/teardown/retire at every adoption/pin boundary under Verifier |
-| R4-H01 handoff | typed no-Entry/K bases, ACK chain, successful-count and exact append-location crash models | arbitrary unaligned logical payload lengths; A-strides, F1/F2/F3, torn alternate frontier, append before frontier, candidate/intent/ledger delete | classifier before :467 tail repair; no second append, duplicate changed base, ACK rollback/debt leak or missing physical padding/overlap charge |
-| R4-MM03 many waiters | one K >32 and global >256 waiters/>64 operations, reserve-before-pin, exactly-once release | instrument waiter/operation/upper/callback credits and allocation faults, late native result | bounded same-K mass crossing/cancel/closure under Verifier, no service-lane bound substituted for kernel pins |
+| R4-H01 handoff | typed no-Entry/K bases, ACK chain, successful-count and exact append-location crash models | arbitrary unaligned logical payload lengths; A-strides, F1/F2/F3, torn alternate frontier, append before frontier, candidate/intent/ledger delete | classifier before :467 tail repair; no successful base before durable InitialResolved (delayed-query/immediate-close crash); no second append, duplicate changed base, ACK rollback/debt leak or missing physical padding/overlap charge |
+| R4-MM03 many waiters | one K >32 and global >256 waiters/>64 operations; owned-I/O credits before :4824 buffer lock/:4835 resource wait, exact terminal owners | instrument user page spans, borrowed/FilterMgr-created MDLs, waiter/operation/upper/callback credits, allocation/cancel/late result | many ordinary writes queued behind upper MM resource; completion minors release existing credit without new admission; no upper-pin-only or service-lane bound substituted for page custody |
 | R4-H02 downgrade | enabled/disabled/mixed schema matrix | old binaries see marker/envelope | old/disabled startup refuses after shared handoff/packing |
 | R4-H03 marker | corrupt/missing/wrong installation model | exact security/identity and partial-write checks | removal with surviving modern evidence holds, no marker recreation/fallback |
 | R5-S01 inventory | zero-allocation mutable copy, four slots/fifth refusal | reserve-before-create; preallocation/zero EOF/normalization failures | snapshot/hand-back race reduction, charged physical allocation independent of EOF |
@@ -1715,16 +2001,16 @@ Resolve the applicable item before its dependent increment; if it changes a
 contract above, obtain a reviewed design delta. No new VM/build access is
 authorized by listing a control.
 
-| Item | Exact missing fact / gate remaining open after this revision |
+| Item | Selected contract / exact remaining fact / dependent integration |
 |---|---|
-| U1 BootDomain / old instance | Verify Windows 19045.2965 boot-identity source and evidence that old instance/adoption owners cannot act; `StageStream.c:6815` replay /`:8234` unload are not persistent cross-instance proof. **Before increment 5**; restart/new GUID alone never receipt. |
-| U2 Whole CREATE fence | Complete section 5.5 audit: capture reservations :3363/:3421, cancel and provisional :2937/:2961/:2969, every v20 lifecycle/ABORT/retire exchange, final ExposeClaimed :4559–:4567, callback :4408, serial worker :4634 and pre-completion retirement :4606. Prove prompt deadline failure through later lifecycle waits with separately owned cleanup and authenticated success/non-adoption receipt acceptance/count retirement. **Before increment 5**, CREATE lifetime/lock-order review before boot. |
-| U3 Every-role release proof | Native adapters for Stage/Snapshot/PublicationTemporary/Handback, multiple handles/sections/operations, crash/deletion-pending storage and ordinary legacy discard; `StagedStageFile.cs:162` exclusive deletion/absence is not full modern proof. Retired receipt capture and paging/queued-growth rundown must join same revision. **Before increment 4**, retirement/release/teardown review before boot. |
-| U4 Outer metadata/native store | Prove outer pre/post tag/context ownership including CREATE drain/IRQL/deferral, every root/target native exclusion and actual metadata role/query/import; verify synchronous noncached primitives/alignment plus F1/F2/F3 and durable exact-rename namespace barrier (not assumed from atomic rename). Need actual supported NTFS persistence sequence or a reviewed delta; current generic `StagedJournalFile.cs:66` is cached/overlapped machinery. **Before increment 3**, metadata security/lifetime/lock-order review before boot. |
-| U5 Both-direction progress | Prove simultaneous bounded FilterSendMessage progress on same authenticated port, finite native send/reply teardown retaining lifetime leases, fence prompt Busy and metadata callback independent of policy/epoch/service. Current FilterPort._sendGate (:89/:108/:568/:578) and policy drain (Policy.c:1155/:1169) create forbidden edge; section 8.3 is proposed, not implemented. Also solve current receiver ordinary-credit backpressure before :365/:366 with bounded modern intake; current dispatch components do not prove this. **Before increment 3**, fence-specific proof also **before increment 5**. |
-| U6 Owned MM feasibility | Inventory actual owned-stream routing :10927→:5903/:5948, IRP_MN_MDL and IRP_MN_COMPLETE_MDL preparation/completion/MDL and callback ownership, paging :5931–:5942 and EOF/allocation :5990/:6009. Verify IRQL/top-level/known resources, bounded reacquisition under original I/O deadline, reserve-before-exposure and 32/256/64 admission/pin release. Unowned :11044 or old resize worker :4753 is insufficient. **Before increment 6**, growth/MM/pin review before boot; stop condition unchanged. |
-| U7 Erasure trust scope | Name the authority that local SYSTEM/administrator/installer cannot erase **or roll back**, with retained custody, offline/startup, repair and uninstall/reinstall reset rules; or retain existing trusted-private-storage scope. Installer ownership alone provides no independent boundary. **Resolve scope before increment 4**, no expanded guarantee at increment 7/cutover by omission. |
-| U8 Format/physical fit and compaction | Pure codec/model must establish all typed records/append intent <=64 KiB state/intent, <=128 KiB envelope, A/stride/frontier/candidate/replacement rounding inside existing budget envelope and strict migration. **Before increment 3** physical fit; **before increment 4** strict archive/startup grammar, exact candidate/tail/ACK recovery and the section-10.3 bounded prefix-copy inventory-selection/missing-segment proof. Current legacy inventory cannot represent that selection; implement strict format discrimination, never silently skip old consecutive segments. |
+| U1 BootDomain / old instance | Still open before 5: choose/verify OS boot identity and exclusion of old adopters; existing BootId use at StageStream.c:4369 is not the whole proof. No restart/GUID inference. |
+| U2 CREATE / shell ownership | Before 5: section 5.5 whole source audit, prompt final expiry vs separately owned cleanup, authenticated success/fence acceptance and exact eight retained-shell credits/snapshot/ACK eviction. Pure debt/shell model exists; current code clears old receipts (:4461/:4629) and does not implement this registry. |
+| U3 Release adapters | Before 4: identify each slot's actual final handle/section/operation owner and each crash/unknown release witness; retained mutable maximum and driver retirement remain separate. Builder handle/section tests may supply mechanism evidence, not stage rundown proof. |
+| U4 Metadata/native sequence | Contract selected in 8.1/8.4: root no-SHARE_DELETE, replace-target SHARE_DELETE plus trusted exclusive store claim, no invented share exclusion of WRITE_DAC; PASSIVE native work/local draining owner; exact F1/EOF/F2/relative rename/F3 and conservative undocumented-guarantee outcome. Before 3 **accept text and resolve any unsupported primitive/import**, with listed controls designed. Implemented wrappers/IRQL/cancel/deferral/native exclusions must then pass coherent first-boot review; N-U4 controls and protected R3-M controls follow implementation. No unnamed future persistence barrier remains, and no stronger power-loss guarantee is claimed. |
+| U5 Two-direction progress | Physical growth port/group pairing, 40 independent growth credits, legacy/main FIFO/64 ordinary credits, every send class (including negotiation/revoke/snapshot), revoke-before-send and drain-before-handle-publication selected in 6.2/8.3. Before 3 accept mechanism; implemented group/auth/receive/cancel/send buffers require first-boot review. Real concurrent native FilterSendMessage/FilterReplyMessage/teardown and epoch-closed growth progress still need execution; fence Busy proof also before 5 boot. |
+| U6 Owned MM/buffers | Before 6: finish owned :10927→:5903/:5948 Major/Minor/IRQL/resource/MDL/completion audit, and pre-FltLockUserBuffer credits at :4824. Supply actual structures/worst-case page/PFN/cancel storage and validate numerical bounds; no pin-only or unowned :11044 proof. R4-MM routing/native evidence follows implemented review. |
+| U7 Trust scope | Owner decision before 4 unchanged: existing trusted private-storage boundary or separately reviewed external erasure/rollback architecture with availability/repair/uninstall/reset rules. A builder test cannot settle this boundary. |
+| U8 Fit/grammar | GrowthArchiveFitModelTests supplies pure checked arithmetic, maximum combined-envelope refusal/fit, overlap/padding/migration/selection and initial debt/shell state model before 3. Full independent Entry+closure maxima **do not fit** and retain ledger. Before 4 implement/validate actual serialization lengths/strict codecs and typed candidate/tail/delta/prefix selection against model; N-U8 allocation/recovery controls remain builder mechanisms, then required target evidence. No arithmetic result is native durability or qualification. |
 
 ## 14. Open questions for the owner
 
