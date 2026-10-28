@@ -22,6 +22,10 @@ try {
     # Windows' built-in compiler when this gate runs on Windows PowerShell 5.1.
     $result = @(& $path -SelfCheck)
     if ($result -notcontains 'NativeStoreMechanismSelfCheck=PASS') { throw 'Managed control did not pass.' }
+    $managed = @($result | Where-Object { $_ -like '{*' } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.Kind -eq 'SelfCheck' })
+    if ($managed.Count -ne 1 -or $managed[0].FaultRetentionReleaseMutations -ne 'PASS' -or $managed[0].NativeCalls -ne $false) {
+        throw 'Missing extended fault/retention/release mutation receipt.'
+    }
     # Exercise the actual PowerShell -> CLR argument boundary used for verdicts.
     $control = New-Object T9NativeStoreControl
     if ([T9NativeStoreControl]::Verdict($control.FirstDifference,$true) -ne 'PASS' -or
