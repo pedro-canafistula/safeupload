@@ -169,6 +169,51 @@ public sealed class DispatcherReliabilityTests
         Assert.NotNull(auditHandler.Payload);
     }
 
+    [Fact]
+    public async Task Failed_host_heartbeat_and_ambiguous_audit_receipt_preserve_batch_until_reopen_and_retry()
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var audit = new AuditEvent(Guid.NewGuid(), DateTimeOffset.UtcNow, "PC-TESTE", "usuario",
+            "synthetic.txt", ".txt", 10, Verdict.Blocked, [Category.Cpf], [], "teste", 1,
+            @"E:\destino", null, 7, 1, false);
+        await sink.WriteAsync(audit, CancellationToken.None);
+        await sink.RecordOverrideAsync(audit.EventId.ToString(), "Justificativa sintética", CancellationToken.None);
+        var before = await File.ReadAllBytesAsync(workspace.QueueFile);
+
+        var rejectedAudit = new Handler(200,
+            "{\"acceptedEvents\":0,\"acceptedEvents\":1,\"acceptedOverrides\":1}");
+        var failedHeartbeat = new RegisteredHeartbeatHandler(503, "{}");
+        await Cycle(sink, rejectedAudit, failedHeartbeat);
+        Assert.Equal("/agent/heartbeat", failedHeartbeat.Path);
+        Assert.Equal("{\"id_host\":7}", failedHeartbeat.Body);
+        Assert.NotNull(rejectedAudit.Payload);
+        Assert.Equal(before, await File.ReadAllBytesAsync(workspace.QueueFile));
+
+        var reopened = new LocalQueueAuditSink(workspace.QueueFile);
+        Assert.Equal(audit.EventId, Assert.Single(await reopened.ReadPendingAsync(100, CancellationToken.None)).EventId);
+        Assert.Single(await reopened.ReadPendingOverridesAsync(100, CancellationToken.None));
+        var acceptedAudit = new Handler(200, "{\"acceptedEvents\":1,\"acceptedOverrides\":1}");
+        var recoveredHeartbeat = new RegisteredHeartbeatHandler(200, "{\"status\":\"OK\"}");
+        await Cycle(reopened, acceptedAudit, recoveredHeartbeat);
+        Assert.Equal("{\"id_host\":7}", recoveredHeartbeat.Body);
+        Assert.Equal(rejectedAudit.Payload, acceptedAudit.Payload);
+        Assert.Empty(await reopened.ReadPendingAsync(100, CancellationToken.None));
+        Assert.Empty(await reopened.ReadPendingOverridesAsync(100, CancellationToken.None));
+
+        static async Task Cycle(LocalQueueAuditSink queue, Handler auditHandler, RegisteredHeartbeatHandler heartbeatHandler)
+        {
+            using var auditClient = new HttpClient(auditHandler) { BaseAddress = new Uri("http://localhost/agent/") };
+            using var heartbeatClient = new HttpClient(heartbeatHandler) { BaseAddress = new Uri("http://localhost/agent/") };
+            using var dispatcher = new HttpAgentDispatcher(queue, new UnavailablePolicy(), auditClient, "PC-TESTE",
+                TimeSpan.FromSeconds(30), NullLogger<HttpAgentDispatcher>.Instance)
+            {
+                HeartbeatSender = new RegisteredAgentHeartbeat(new AgentApiClient(heartbeatClient), 7)
+            };
+            await dispatcher.RunCycleAsync(CancellationToken.None);
+        }
+    }
+
     private sealed class UnavailablePolicy : IPolicyStore
     {
         public Task<Policy> LoadAsync(CancellationToken token) => throw new InvalidOperationException("Heartbeat AgentApi não deve consultar política.");
