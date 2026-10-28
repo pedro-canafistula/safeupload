@@ -1,0 +1,112 @@
+{
+  "DiagnosticOnly": true,
+  "StartHEAD": "0eeabe6876448c1c64de5bd59085245ea99169ce",
+  "EndHEAD": "0eeabe6876448c1c64de5bd59085245ea99169ce",
+  "Review": "driver/evidence/2026-10-28/t9-growth-rev9-review-sol-high.md",
+  "Finding1": "Selected little-endian u32 Category@0, i32 MemberIndex@4, u32 SnippetUnits@8, UTF-16LE@12. Independent literal byte vector tests both decoder fields and writer bytes; reader order already matched this selected contract.",
+  "VectorHex": "010000000000000001000000410000000000010000000100000042000000000001000000610000000000010000006200",
+  "VectorExpectedFindings": [
+    {
+      "Category": 1,
+      "MemberIndex": 0,
+      "MemberName": "a",
+      "Snippet": "A"
+    },
+    {
+      "Category": 0,
+      "MemberIndex": 1,
+      "MemberName": "b",
+      "Snippet": "B"
+    }
+  ],
+  "Finding2": "U8 labels inline-fit overflow as revision-8 history and states v4 75266-byte reference/state/wrapper bound and outstanding actual complete simultaneous serializer/strict-reader/maximal-shape/limit+1 obligation.",
+  "SDK": "10.0.400",
+  "Runner": "In-process Fact/InlineData reflection discovery with real xUnit assertions; diagnostic only, not Windows matrix/native qualification",
+  "Counts": {
+    "debug": {
+      "discovered": 370,
+      "executed": 370,
+      "passed": 370,
+      "failed": 0,
+      "skipped": 0
+    },
+    "release": {
+      "discovered": 370,
+      "executed": 370,
+      "passed": 370,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "NormalExecutions": 740,
+  "ContractCasesPerConfiguration": 300,
+  "FitCasesPerConfiguration": 70,
+  "NewCasesPerConfiguration": 2,
+  "SwappedReaderMutant": {
+    "Path": "/tmp/t9-rev9-layout.ybx2f3tj-mutant",
+    "Counts": {
+      "discovered": 370,
+      "executed": 370,
+      "passed": 367,
+      "failed": 3,
+      "skipped": 0
+    },
+    "ExpectedFailures": [
+      "GrowthArchiveContractModelTests.Revision9_independent_finding_bytes_fix_category_member_order_for_reader_and_writer()",
+      "GrowthArchiveContractModelTests.Revision9_preserves_more_than_512_units_and_the_existing_16384_finding_cap()",
+      "GrowthArchiveContractModelTests.Revision9_swapped_finding_field_order_mutant_fails_the_independent_vector_oracle()"
+    ],
+    "SourceSha256": "061eca76123207abb196692389e8de83b10bcb08c1aae407435d147960def35f",
+    "ArtifactSha256": "ebc510e3c7dbe1cdcc1671ba6b29dc7d851175ee8aaaea9fb9008f71ea15ec86",
+    "ResultSha256": "daba67c99f568eb6e9fed301873f724fa6a687fd5e943a5ad34133d8629e5b2e",
+    "LogSha256": "600e4890afd9daa1c2cf251e46a0843267f17e87f38f09de1f73c99348cfefed"
+  },
+  "AllExecutionsIncludingExpectedFailingMutant": 1110,
+  "ExpectedMutantFailures": 3,
+  "LocalCompile": {
+    "Result": "PASS all six feature Debug/Release Service/App/Tests builds, warnings as errors",
+    "Source": "0eeabe6876448c1c64de5bd59085245ea99169ce plus model edit",
+    "SnapshotPath": "/tmp/t9-rev9-layout.ybx2f3tj-compile-input",
+    "InputManifestSha256": "13d44fb8256de0ed7d82ec9f5b58e0608ed658d71238ed8188a8d8e76a45d2fe",
+    "BaseArchiveSha256": "7828b43b3c16d7a7a41c546bab86fedde029039e21d9845121f2dad842a95a8c"
+  },
+  "SourceSha256": {
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md": "41a0905d62447936d4c2154b21360390d3020fc8fad03812724670ffe1cfa32e",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs": "aa3349550a48093282bd77189313fc2bc8a9072f842c3fc61535fce2cbe0378d",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveFitModelTests.cs": "bb369dd9bb6d7d7eca680839d0289c7f47546575c53b6a721d1cb7a7ab55fb57",
+    "driver/evidence/2026-10-28/t9-growth-rev9-review-sol-high.md": "2089cbb4d4cedbf71635c97002da9a52c6a1bbb72751fced6e8c730c4c39700a",
+    "driver/scripts/Invoke-LocalAgentCompile.sh": "0d43b20e68b299bc120014a834ad6b530ad9a78a1fcbee5098efaaa67ed2fdfc"
+  },
+  "ArtifactSha256": {
+    "bin/Debug/net10.0/Models.dll": "7ebc1f1cb0470d6991c4ac27567432ea1fda22ce733ec2bcb97cec8e0f103d62",
+    "bin/Release/net10.0/Models.dll": "13a9842f83ff642c9884249998d7c84b56d7c2b77cea249e0e3457b85769c060"
+  },
+  "RunnerSha256": {
+    "Models.csproj": "a0c3c44d27be4cdf359b73ec0ff1038c976dcc33a9abe135cdc0a8d038352bd4",
+    "Program.cs": "cbc011ffb241884dfea2b880e41906d8276cb7ef7150d222ed1dc650557b4751"
+  },
+  "ResultSha256": {
+    "results/inprocess-debug.json": "36020ec35445f0f98b059af7337c370d9806fccc45580b020b1a69370208dba2",
+    "results/inprocess-release.json": "36020ec35445f0f98b059af7337c370d9806fccc45580b020b1a69370208dba2",
+    "debug.log": "cf5fe72f55ccad409d93a0c7eb00385db9e9767a02fe81af624982c84d020010",
+    "release.log": "3ba8fd6b6001c21a2761319a6ea490d7f364140b3d8cbb2a721a792f121326f4",
+    "local-compile.log": "e63e55ecad6e1a16a20e9af71ec9729b26a90fd912bce4a49f6556747d47aad2",
+    "doc-links-final.log": "81180df7ca30ec4887c55a8670cc28e176304f9169e95400909916637fae6d76",
+    "final.diff": "ceae8ada834717c698b13b70597a26826bab848e52e23384ddea51562a824b22",
+    "final-status.txt": "9e309b3f9380fcb4a735ed4961b413639b926725dcfdc03e8a51e979c71d5c93"
+  },
+  "DocLinks": "DocLinks=PASS; broken=298; new=0; baseline=298",
+  "DiffCheck": "PASS for task paths",
+  "CheckboxesUnchanged": true,
+  "FilesEditedByThisTask": [
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs"
+  ],
+  "ForeignTrackedChangesPreserved": [
+    "driver/SafeUpload.Minifilter/StageResourceMetadata.c"
+  ],
+  "StageResourceMetadataCEditedByThisTask": false,
+  "ProductSourceEditedByThisTask": false,
+  "CommitMade": false,
+  "Status": "Revision 9 proposed, pending independent re-review. Actual passive codec acceptance, delivery/native/qualification gates remain open."
+}

@@ -8,6 +8,13 @@ It supersedes inline authorization/approval/Entry storage in 9.3.1–9.3.2,
 remain. The revision-8 text below records its review history. No product file,
 checkbox, admission gate, cap removal or review acceptance changes in this task.
 
+The independent [revision-9 review](../../../evidence/2026-10-28/t9-growth-rev9-review-sol-high.md)
+accepts the out-of-line architecture direction and returns REVISE for the finding
+field order and historical U8 wording. This follow-up selects category/member/
+snippet order with an independent byte vector/mutant, and labels the inline-fit
+conclusion as revision-8 history. Revision 9 remains proposed pending re-review;
+actual v4 codec acceptance and all delivery/native gates remain open.
+
 2026-10-28. **Proposed addendum and pure models for independent review; no product implementation.**
 **Revision-8 proposal/review history:** the independent
 [revision-8 review](../../../evidence/2026-10-28/t9-growth-rev8-review-sol-high.md)
@@ -3305,9 +3312,17 @@ displays in ordinal UTF-16 order, then front-code them: each member stores u32
 longest-common-prefix units with its predecessor (0 for first), u32 suffix units,
 then that suffix in strict UTF-16LE (no BOM). Prefixes cannot split surrogate
 pairs; require canonical longest legal prefix and strictly increasing decoded
-names. Findings preserve original order/multiplicity using i32 member index
-(-1 for null), u32 category 0..4, u32 masked-snippet units, then strict UTF-16LE
-snippet, <=**32 units**. Existing numeric masks are <=16 units; all fixed secret
+names. Findings preserve original order/multiplicity with this exact little-endian
+layout: **u32 Category at offset 0** (0..4), **i32 MemberIndex at offset 4**
+(-1 for null), **u32 SnippetUnits at offset 8**, then strict UTF-16LE snippet
+at offset 12, <=**32 units**. Category precedes member index in both directions.
+Independent vector: `01 00 00 00 00 00 00 00 01 00 00 00 41 00` means
+Category=1, MemberIndex=0, SnippetUnits=1, snippet="A". With the independently
+specified member table ["a", "b"], it must decode to category 1/member "a";
+the swapped-order interpretation category 0/member "b" is valid in range but
+incorrect. R4-H06's pure vector checks exact decoded fields and exact writer
+bytes; its swapped-order mutant must fail that same oracle. Actual codecs must
+pass this vector before use under 12.1.4. Existing numeric masks are <=16 units; all fixed secret
 labels plus `: ` and eight bullets and password labels fit 32; control all current
 labels in producer tests. No new unmasked data is introduced. Complete successful
 inspection has Reason=null (InspectionService's completed scan path); failed/
@@ -3788,6 +3803,15 @@ as errors on a committed agent snapshot plus the model edit. This proposal
 implements no v4 product codec and claims no actual v4 maximum-shape, Windows
 matrix or native qualification result; 12.1.4 remains OPEN.
 
+Revision-9 review layout follow-up (same SDK/runner): **2 additional cases;
+300 contract + 70 unchanged fit = 370 discovered/executed/passed per Debug/Release
+configuration; 740 executions, zero failures/skips**. The independent literal
+vector checks both exact decoded fields and writer bytes. A separate temporary
+reader mutant swapping category/member order executes 370 cases with **3 expected
+failures**, including both new vector controls. All six local feature
+Service/App/Tests compile checks pass with warnings as errors. These are pure
+layout controls; actual passive codec acceptance remains OPEN.
+
 Actual serializer prerequisites,
 native storage/durability, source acceptance and protected-pair qualification
 remain separate; these counts close no checkbox. This revision permits no product source,
@@ -3916,7 +3940,7 @@ authorized by listing a control.
 | U5 Two-direction progress | Accepted 6.2/8.3 bounded intake/send/lifetime contracts are coding prerequisites; real execution is not a prerequisite to writing the substrate. Working dispatcher+adapter must preserve local/kernel Busy and validate both tag/role rules (8.7.2/R3-M08); actual FltLib Busy HRESULT conversion needs real N-U5-01/M08 verification before accepting that adapter. Implemented source review precedes any kernel load; N-U5-01 real gate independence follows review before first protected-target boot/checkpoint. R3-M04P is an early reviewed legacy-drain alternative. **Actor/echo deferred to 6 separately from pools**; full held-old-epoch/saturation/echo proof remains OPEN, plus 5's fence Busy and 6's production growth/teardown. Fake-send tests close no native/protected execution obligation; real 4/5/6 purpose classification remains. |
 | U6 Owned MM/buffers | Before 6: finish owned :10927→:5903/:5948 Major/Minor/IRQL/resource/MDL/completion audit, and pre-FltLockUserBuffer credits at :4824. Supply actual structures/worst-case page/PFN/cancel storage and validate numerical bounds; no pin-only or unowned :11044 proof. R4-MM routing/native evidence follows implemented review. |
 | U7 Trust scope | **Decided O2, 2026-10-28:** existing trusted-service/private-storage boundary; local SYSTEM/administrators trusted, their erasure/rollback outside M2. Surviving modern evidence plus missing/corrupt marker holds. Stronger anchoring is separately reviewed post-M2. No native/security/marker gate is discharged. |
-| U8 Fit/grammar | GrowthArchiveFitModelTests supplies **nominal** independent L/P/Q and A/U geometry, explicit measured/released custody, logical-EOF conservation mutant, combined-envelope and corrected overlap/controls. Base transfer **nominal** overlap fits halves in all 60 pairs (worst nominal ratio 640 KiB/1 MiB=62.5%); native fit requires qualified preallocation/within-Q observations. Unpreallocated chunked NTFS overshoot disproves a general Q ceiling; production sums retained R_phys, raises charge before Held, and cannot erase the peak through normalization. Preallocation/per-call accounting/pin proofs, corrected strict N-U8-01 and target N-U4-06 remain open. ACK scheduling and independent snapshot unknown/missing input models are stronger pure controls; they are not real sends or durable/native reconciliation. Full independent Entry+closure maxima **do not fit** and retain ledger. Proposed 10.5/10.6 and GrowthArchiveContractModelTests supply byte/serializer, typed candidate/tail/delta/prefix and migration models. Revision 9 (10.7) proposes exact bounded out-of-line evidence after the measured v3 stop. Before coding 4 the prerequisite v4 actual serialization/strict-codec proof remains OPEN; new consumer codecs must match the models during implementation before use; N-U8-01 raw peak primitives are before-3-first-boot mechanism controls; N-U8-02/03 actual selector/migration/recovery wait for increment 4, then required target evidence. No arithmetic/builder discovery result is a universal allocation ceiling, native durability or target qualification. |
+| U8 Fit/grammar | GrowthArchiveFitModelTests supplies **nominal** independent L/P/Q and A/U geometry, explicit measured/released custody, logical-EOF conservation mutant, combined-envelope and corrected overlap/controls. Base transfer **nominal** overlap fits halves in all 60 pairs (worst nominal ratio 640 KiB/1 MiB=62.5%); native fit requires qualified preallocation/within-Q observations. Unpreallocated chunked NTFS overshoot disproves a general Q ceiling; production sums retained R_phys, raises charge before Held, and cannot erase the peak through normalization. Preallocation/per-call accounting/pin proofs, corrected strict N-U8-01 and target N-U4-06 remain open. ACK scheduling and independent snapshot unknown/missing input models are stronger pure controls; they are not real sends or durable/native reconciliation. **Revision-8 inline-fit history:** independent Entry+closure maxima did not fit and retained the ledger. **Revision-9/v4 obligation:** the 10.7 reference/state/wrapper bound is **75,266 bytes**, within the unchanged 131,072-byte envelope; actual complete simultaneous v4 ledger/manifest serializers, strict readers, maximal legal shapes and limit+1 refusal must still pass 12.1.4 before consumers. Proposed 10.5/10.6 and GrowthArchiveContractModelTests supply byte/serializer, typed candidate/tail/delta/prefix and migration models. Revision 9 (10.7) proposes exact bounded out-of-line evidence after the measured v3 stop. Before coding 4 the prerequisite v4 actual serialization/strict-codec proof remains OPEN; new consumer codecs must match the models during implementation before use; N-U8-01 raw peak primitives are before-3-first-boot mechanism controls; N-U8-02/03 actual selector/migration/recovery wait for increment 4, then required target evidence. No arithmetic/builder discovery result is a universal allocation ceiling, native durability or target qualification. |
 
 ## 14. Owner decisions
 

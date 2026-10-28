@@ -1084,6 +1084,53 @@ public sealed class GrowthArchiveContractModelTests
         Need(findings is >= 0 and <= EvidenceFindings && names >= 0 && names <= findings);
         Need(suffixUnits >= 0 && suffixUnits <= EvidenceSuffixUnits && logical is > 0 and <= EvidenceLogicalLimit);
     }
+    private static (DurableApproval Approval, byte[] Payload, int EntryBytes, int MetadataBytes, byte[] Vector) IndependentFindingVector()
+    {
+        DurableApproval metadata = Approval(new string('A', 64), true);
+        byte[] source = JsonSerializer.SerializeToUtf8Bytes(new { metadata.Binding.TransferId, metadata.Binding.OperationId, Revision = 1 });
+        byte[] approval = WriteApproval(metadata);
+        // Independently specified little-endian wire bytes, not produced by the
+        // finding writer: category/member/units/UTF-16LE, then names a and b.
+        byte[] vector = Convert.FromHexString(
+            "0100000000000000010000004100" + // category=1, member=0, units=1, A
+            "0000000001000000010000004200" + // category=0, member=1, units=1, B
+            "00000000010000006100" +         // prefix=0, suffix=1, a
+            "00000000010000006200");         // prefix=0, suffix=1, b
+        DurableApproval expected = metadata with { Inspection = metadata.Inspection with {
+            Findings = [new(1, "A", "a"), new(0, "B", "b")] } };
+        return (expected, [.. source, .. approval, .. vector], source.Length, approval.Length, vector);
+    }
+
+    [Fact]
+    public void Revision9_independent_finding_bytes_fix_category_member_order_for_reader_and_writer()
+    {
+        var x = IndependentFindingVector();
+        DurableApproval read = ReadEvidencePayload(x.Payload, x.EntryBytes, x.MetadataBytes, 2, 2, 2);
+        Assert.Equal(new ApprovalFinding(1, "A", "a"), read.Inspection.Findings[0]);
+        Assert.Equal(new ApprovalFinding(0, "B", "b"), read.Inspection.Findings[1]);
+        byte[] written = EvidencePayloadBytes(x.Approval, out int e, out int m, out int f, out int n, out int suffix);
+        Assert.Equal(2, f); Assert.Equal(2, n); Assert.Equal(2, suffix);
+        Assert.Equal(x.Vector, written.AsSpan(e + m).ToArray());
+    }
+
+    [Fact]
+    public void Revision9_swapped_finding_field_order_mutant_fails_the_independent_vector_oracle()
+    {
+        var x = IndependentFindingVector(); byte[] mutant = x.Payload.ToArray();
+        foreach (int findingOffset in new[] { 0, 14 })
+        {
+            int at = x.EntryBytes + x.MetadataBytes + findingOffset;
+            byte[] category = mutant.AsSpan(at, 4).ToArray();
+            mutant.AsSpan(at + 4, 4).CopyTo(mutant.AsSpan(at, 4)); category.CopyTo(mutant.AsSpan(at + 4, 4));
+        }
+        // Swapping the input words models the swapped reader: both alternative
+        // interpretations are in range, so range validation cannot detect it.
+        DurableApproval read = ReadEvidencePayload(mutant, x.EntryBytes, x.MetadataBytes, 2, 2, 2);
+        Assert.Equal(new ApprovalFinding(0, "A", "b"), read.Inspection.Findings[0]);
+        Assert.Equal(new ApprovalFinding(1, "B", "a"), read.Inspection.Findings[1]);
+        Assert.Throws<Xunit.Sdk.EqualException>(() => Assert.Equal(x.Approval.Inspection.Findings, read.Inspection.Findings));
+    }
+
     private static byte[] EvidencePayloadBytes(DurableApproval approval, out int entryBytes, out int metadataBytes,
         out int findings, out int names, out int suffixUnits)
     {
