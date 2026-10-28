@@ -24,6 +24,15 @@
  *   at most one is unclaimed. Opening/Active/retiring and post owners retain
  *   that same credit. No pool borrowing and no fifth lower CREATE owner.
  *   Root capture uses a nonwaiting busy latch, not a lock across native I/O.
+ *   After UserMode original-handle proof, an atomic kernel-handle duplicate
+ *   (same granted access, exact object rechecked) bridges installation of a
+ *   non-authorizing CaptureKey. No handle/duplicate operation holds M.
+ *   The bridge closes only AFTER CaptureKey is visible. CLEANUP marks that
+ *   capture under M; promotion checks it under M and hands the key to Roots
+ *   atomically. Failed capture removes its key before dropping its reference.
+ *   Provisional roots have no RootId, child credit or ordinary I/O authority.
+ *   One bounded nonpaged capture backs fields transferred under M; security
+ *   descriptor contents are queried/examined/freed only at PASSIVE outside M.
  *   Group rundown pins every control and forwarded metadata completion.
  *   Root keys remain nonowning until pre-CLOSE removes them, even on revoke;
  *   the PASSIVE owner releases original references/anchors outside the lock.
@@ -34,6 +43,19 @@
  *   CLOSE removes the key, but record reuse waits for I/O, cleanup, PASSIVE
  *   retirement and replacement pins. New -> Current is the only pin edge;
  *   cancellation/retirement releases that edge once. No cycles or borrowing.
+ *   KEY INVARIANT: membership is withdrawn strictly BEFORE the FILE_OBJECT
+ *   address can recycle. Normal successful CREATE/active I/O/CLEANUP rely on
+ *   native ownership through pre-CLOSE; context references/pins outlive any
+ *   reentrant CLOSE during release. Failed, invalid and deferred CREATE clear
+ *   Key/set Closed BEFORE reference release: unknown CREATE promises no CLOSE.
+ *   Deferred publication stays the transferring post's LAST context access.
+ *   Forced instance/unload retirement atomically revokes and clears root,
+ *   child and provisional membership under M BEFORE callback coverage is
+ *   removed or any owned root/deferred references are dropped. Contexts and
+ *   credits remain pinned until their separate local retirement completes;
+ *   replacement pins retain records, never serve as FILE_OBJECT ownership.
+ *   An abandoned CREATE retains no metadata bypass/Active authority; native
+ *   outcome and charge remain uncertain, never a success or release receipt.
  *   Rename and F3 take a transient zero-access kernel handle on the exact current
  *   FILE_OBJECT (plus a reference) after pinning it. It adds no access grant.
  *   The original predecessor shares READ|WRITE|DELETE. Both holds outlive the
@@ -58,10 +80,16 @@
  *   there. Both protected staging/journal children are checked separately.
  *   This conservative predicate does not repair ACLs or model deny cancellation.
  *
- * Native child CREATE is synchronized and becomes Active only after exact
+ * Native child CREATE requests SUCCESS_WITH_CALLBACK (CREATE post is already
+ * synchronized by Filter Manager) and becomes Active only after exact
  * identity, unnamed/single-link/non-reparse and protected-security validation.
  * File data I/O is PASSIVE, synchronous, noncached, aligned and zero-minor;
  * fast/paging/MDL-backed/cache paths are refused, never silently substituted.
+ * FsFilter callbacks precede ordinary subject/IRQL admission. SyncTypeOther,
+ * release, modified-writer and CC synchronization pass to lower NTFS with no
+ * metadata context. SyncTypeCreateSection fails INSUFFICIENT_RESOURCES through
+ * its supported contract; QUERY_OPEN requests DISALLOW_FSFILTER_IO fallback.
+ * These dispositions grant no cached/paging data I/O or section authority.
  * Normal post at PASSIVE measures each native step. Higher-IRQL post holds
  * unknown, revokes, and defers only resource release; it cannot assert success.
  * MaximumLogicalBytes denotes the agent's precharged extent claim: P=align(L,A)

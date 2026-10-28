@@ -78,6 +78,9 @@ typedef struct _SU_METADATA_GROUP {
     BOOLEAN Paired;
     LONG MetadataControls;
     BOOLEAN RootBusy, AnchorsClosed, ForceForgetKeys;
+    /* Non-authorizing capture key; the RootBusy control owns its reference. */
+    PFILE_OBJECT CaptureKey;
+    BOOLEAN CaptureCleaned;
     UINT64 NextRootId, NextChildId;
     ULONG PostOwners;
     PFLT_VOLUME Volume;
@@ -217,6 +220,28 @@ static BOOLEAN MetadataAuthenticate(_In_ SU_METADATA_GROUP *Group)
     return valid;
 }
 
+/* M held. Teardown cannot rely on another CLOSE through this instance.
+ * Withdraw ALL membership at that transition, before references are released
+ * or callback coverage disappears. Credit/context retirement remains separate. */
+_IRQL_requires_(DISPATCH_LEVEL)
+static VOID MetadataForgetKeysLocked(_Inout_ SU_METADATA_GROUP *Group)
+{
+    ULONG i;
+    Group->ForceForgetKeys = TRUE;
+    Group->Revoked = TRUE;
+    Group->CaptureKey = NULL; Group->CaptureCleaned = TRUE;
+    for (i = 0; i < SU_METADATA_ROOTS; ++i) {
+        Group->Roots[i].Key = NULL; Group->Roots[i].Cleaned = TRUE;
+    }
+    for (i = 0; i < SU_METADATA_CHILDREN; ++i) {
+        SU_METADATA_CHILD *child = &Group->Children[i];
+        if (child->State == 0) continue;
+        child->Key = NULL; child->Closed = TRUE; child->Uncertain = TRUE;
+        /* Revoke's pending-intent owner still releases its replacement edge. */
+        if (child->State != SuMetadataPendingOpen) child->State = SuMetadataRevoked;
+    }
+}
+
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID MetadataReap(_In_ SU_METADATA_GROUP *Group)
 {
@@ -229,6 +254,7 @@ static VOID MetadataReap(_In_ SU_METADATA_GROUP *Group)
     RtlZeroMemory(nodes, sizeof(nodes));
     RtlZeroMemory(originals, sizeof(originals));
     KeAcquireSpinLock(&MetadataLock, &irql);
+    if (Group->ForceForgetKeys) MetadataForgetKeysLocked(Group);
     if (Group->RootBusy || Group->PostOwners != 0) { KeReleaseSpinLock(&MetadataLock, irql); return; }
     for (i = 0; i < SU_METADATA_CHILDREN; ++i)
         if (Group->Children[i].State != 0) ready = FALSE;
@@ -250,14 +276,14 @@ static VOID MetadataReap(_In_ SU_METADATA_GROUP *Group)
         if (port != NULL) FltCloseClientPort(SafeUploadData.Filter, &port);
         i = SU_METADATA_NODES;
         while (i != 0) MetadataFreeNode(&nodes[--i]);
-        /* Drop the owned references while the nonowning root keys still
-         * route a resulting CLOSE. No filesystem or object release under M. */
+        /* Normal retirement retains keys to route native CLOSE. Forced
+         * teardown has already withdrawn them while owning these references.
+         * No filesystem or object release under M. */
         for (i = 0; i < SU_METADATA_ROOTS; ++i)
             if (originals[i] != NULL) ObDereferenceObject(originals[i]);
     }
     KeAcquireSpinLock(&MetadataLock, &irql);
     for (i = 0; i < SU_METADATA_ROOTS; ++i) {
-        if (Group->ForceForgetKeys) Group->Roots[i].Key = NULL;
         if (Group->Roots[i].Key != NULL) ready = FALSE;
     }
     if (Group->PostOwners != 0) ready = FALSE;
@@ -385,7 +411,7 @@ VOID SafeUploadMetadataDestroy(VOID)
     KIRQL irql;
     KeAcquireSpinLock(&MetadataLock, &irql);
     MetadataClosing = TRUE;
-    if (MetadataRoutingGroup != NULL) MetadataRoutingGroup->ForceForgetKeys = TRUE;
+    if (MetadataRoutingGroup != NULL) MetadataForgetKeysLocked(MetadataRoutingGroup);
     KeReleaseSpinLock(&MetadataLock, irql);
     SafeUploadMetadataRevoke(NULL);
     KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
@@ -849,7 +875,8 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
 {
     SU_METADATA_CAPTURE *capture = NULL;
     SU_METADATA_NODE *node;
-    PFILE_OBJECT original = NULL;
+    PFILE_OBJECT original = NULL, bridgeObject = NULL;
+    HANDLE bridge = NULL;
     PFLT_VOLUME volume = NULL;
     SAFEUPLOAD_STAGE_IDENTITY_V19 identity;
     ULONG index, bytes = 0;
@@ -875,11 +902,36 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
         READ_CONTROL | SYNCHRONIZE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
         *IoFileObjectType, UserMode, (PVOID *)&original, NULL);
     if (!NT_SUCCESS(status)) goto Exit;
+    /* Atomically duplicate the proven ORIGINAL handle before installing a
+     * provisional key. Opening its pointer could resurrect an already-cleaned
+     * object. The source handle may have been closed/reused since UserMode
+     * proof, so compare the duplicated object before trusting the bridge. */
+    status = ZwDuplicateObject(ZwCurrentProcess(), (HANDLE)(ULONG_PTR)Request->Handle,
+        ZwCurrentProcess(), &bridge, 0, OBJ_KERNEL_HANDLE, DUPLICATE_SAME_ACCESS);
+    if (status != STATUS_SUCCESS) goto Exit;
+    status = ObReferenceObjectByHandle(bridge, 0, *IoFileObjectType, KernelMode, (PVOID *)&bridgeObject, NULL);
+    if (status != STATUS_SUCCESS) goto Exit;
+    if (bridgeObject != original) { status = STATUS_INVALID_HANDLE; goto Exit; }
+    ObDereferenceObject(bridgeObject); bridgeObject = NULL;
     if (!FlagOn(original->Flags, FO_HANDLE_CREATED) || FlagOn(original->Flags, FO_CLEANUP_COMPLETE)) {
         status = STATUS_INVALID_HANDLE;
         goto Exit;
     }
-    capture = ExAllocatePool2(POOL_FLAG_PAGED, sizeof(*capture), SU_METADATA_TAG);
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (Group->Revoked) status = STATUS_ACCESS_DENIED;
+    else {
+        NT_ASSERT(Group->CaptureKey == NULL);
+        Group->CaptureKey = original;
+        Group->CaptureCleaned = FALSE;
+    }
+    KeReleaseSpinLock(&MetadataLock, irql);
+    if (status != STATUS_SUCCESS) goto Exit;
+    /* Any last-handle CLEANUP can now see the non-authorizing capture key.
+     * It cannot be missed between an unlocked flag check and promotion. */
+    ZwClose(bridge); bridge = NULL;
+    /* Publication copies the bounded node/instance fields under M. Keep
+     * their backing resident; descriptor contents are still PASSIVE-only. */
+    capture = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*capture), SU_METADATA_TAG);
     if (capture == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
     if (captureNeeded) {
         status = MetadataCaptureInstallation(capture);
@@ -919,7 +971,8 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
         goto Exit;
     }
     KeAcquireSpinLock(&MetadataLock, &irql);
-    if (Group->Revoked) status = STATUS_ACCESS_DENIED;
+    if (Group->Revoked || Group->CaptureKey != original || Group->CaptureCleaned ||
+        FlagOn(original->Flags, FO_CLEANUP_COMPLETE)) status = STATUS_ACCESS_DENIED;
     else if (Group->Roots[index].Id != 0) {
         if (Group->Roots[index].Key != original || Group->Roots[index].Cleaned) status = STATUS_INVALID_PARAMETER;
         else { Reply->RootId = Group->Roots[index].Id; publish = TRUE; }
@@ -941,12 +994,21 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
         publish = TRUE;
     }
     if (publish) {
+        Group->CaptureKey = NULL; /* atomic handoff to the registered root */
         Reply->Result = 1;
         Reply->Identity = identity;
         status = STATUS_SUCCESS;
     }
     KeReleaseSpinLock(&MetadataLock, irql);
 Exit:
+    /* Withdraw provisional membership BEFORE any reference/handle release.
+     * RootBusy still prevents another capture or anchor retirement here. */
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    Group->CaptureKey = NULL;
+    Group->CaptureCleaned = FALSE;
+    KeReleaseSpinLock(&MetadataLock, irql);
+    if (bridgeObject != NULL) ObDereferenceObject(bridgeObject);
+    if (bridge != NULL) ZwClose(bridge);
     if (volume != NULL) FltObjectDereference(volume);
     if (original != NULL) ObDereferenceObject(original);
     if (capture != NULL) MetadataFreeCapture(capture);
@@ -1529,7 +1591,7 @@ VOID SafeUploadMetadataInstanceTeardown(PFLT_INSTANCE Instance)
     KeAcquireSpinLock(&MetadataLock, &irql);
     if (MetadataRoutingGroup != NULL &&
         (MetadataRoutingGroup->Instance == Instance || MetadataRoutingGroup->RootBusy)) {
-        MetadataRoutingGroup->ForceForgetKeys = TRUE;
+        MetadataForgetKeysLocked(MetadataRoutingGroup);
         revoke = TRUE;
     }
     KeReleaseSpinLock(&MetadataLock, irql);
@@ -1786,6 +1848,9 @@ static VOID MetadataServiceChildren(_Inout_ SU_METADATA_GROUP *Group)
 {
     ULONG i;
     KIRQL irql;
+    KeAcquireSpinLock(&MetadataLock, &irql);
+    if (Group->ForceForgetKeys) MetadataForgetKeysLocked(Group);
+    KeReleaseSpinLock(&MetadataLock, irql);
     for (i = 0; i < SU_METADATA_ROOTS; ++i) {
         BOOLEAN deferred;
         KeAcquireSpinLock(&MetadataLock, &irql);
@@ -1799,10 +1864,6 @@ static VOID MetadataServiceChildren(_Inout_ SU_METADATA_GROUP *Group)
         PSECURITY_DESCRIPTOR security = NULL;
         BOOLEAN deferred, retire = FALSE;
         KeAcquireSpinLock(&MetadataLock, &irql);
-        if (Group->ForceForgetKeys && child->State != 0) {
-            child->Key = NULL; child->Closed = TRUE; child->Uncertain = TRUE;
-            if (child->State != SuMetadataPendingOpen) child->State = SuMetadataRevoked;
-        }
         deferred = child->Io.InUse && child->Io.Deferred;
         if (deferred) child->Io.Deferred = FALSE;
         KeReleaseSpinLock(&MetadataLock, irql);
@@ -2218,6 +2279,32 @@ static FLT_PREOP_CALLBACK_STATUS MetadataRefuse(_Inout_ PFLT_CALLBACK_DATA Data,
     return FLT_PREOP_COMPLETE;
 }
 
+/* FsFilter lifecycle callbacks are not ordinary service I/O. Lower NTFS owns
+ * its synchronization: neither subject/IRQL admission nor a metadata context
+ * may obstruct release, modified-writer/CC work or SyncTypeOther. Only new
+ * section creation is failed, using the section callback's supported status.
+ * QUERY_OPEN requests an IRP fallback; it never fabricates an open result. */
+_IRQL_requires_max_(APC_LEVEL)
+static BOOLEAN MetadataFsFilterPre(_Inout_ PFLT_CALLBACK_DATA Data, _Out_ FLT_PREOP_CALLBACK_STATUS *Result)
+{
+    *Result = FLT_PREOP_SUCCESS_NO_CALLBACK;
+    switch (Data->Iopb->MajorFunction) {
+    case IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
+        if (Data->Iopb->Parameters.AcquireForSectionSynchronization.SyncType == SyncTypeCreateSection)
+            *Result = MetadataRefuse(Data, STATUS_INSUFFICIENT_RESOURCES);
+        return TRUE;
+    case IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION:
+    case IRP_MJ_ACQUIRE_FOR_MOD_WRITE: case IRP_MJ_RELEASE_FOR_MOD_WRITE:
+    case IRP_MJ_ACQUIRE_FOR_CC_FLUSH: case IRP_MJ_RELEASE_FOR_CC_FLUSH:
+        return TRUE;
+    case IRP_MJ_QUERY_OPEN:
+        *Result = FLT_PREOP_DISALLOW_FSFILTER_IO;
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 _Use_decl_annotations_
 FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_RELATED_OBJECTS Objects,
     PVOID *Context, SU_METADATA_DISPATCH *Dispatch)
@@ -2231,7 +2318,8 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
     UCHAR major = Data->Iopb->MajorFunction;
     WCHAR folded[256];
     USHORT bytes = 0;
-    BOOLEAN live, subject = FALSE, fault = FALSE;
+    BOOLEAN live, subject = FALSE, fault = FALSE, capturing = FALSE;
+    FLT_PREOP_CALLBACK_STATUS callbackResult;
     NTSTATUS status = STATUS_ACCESS_DENIED;
     KIRQL irql;
     RtlZeroMemory(Dispatch, sizeof(*Dispatch));
@@ -2254,28 +2342,39 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
             for (i = 0; i < SU_METADATA_ROOTS; ++i)
                 if (group->Roots[i].Id == group->Children[child].Request.RootId) { root = i; break; }
         }
+        capturing = root == SU_METADATA_ROOTS && major != IRP_MJ_CREATE &&
+            group->RootBusy && group->CaptureKey == object;
     }
-    if (root == SU_METADATA_ROOTS || !ExAcquireRundownProtection(&group->Rundown)) {
+    if (group == NULL || (root == SU_METADATA_ROOTS && !capturing) || !ExAcquireRundownProtection(&group->Rundown)) {
         KeReleaseSpinLock(&MetadataLock, irql);
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
     Dispatch->Handled = TRUE; Dispatch->Cookie = (UINT64)(ULONG_PTR)group->MainCookie;
-    Dispatch->RootId = group->Roots[root].Id;
+    Dispatch->RootId = capturing ? 0 : group->Roots[root].Id;
     if (child != SU_METADATA_CHILDREN) {
         Dispatch->ChildId = group->Children[child].Id;
         Dispatch->Role = group->Children[child].Request.Role;
     }
-    live = !group->Revoked && Objects->Instance == group->Instance &&
+    live = !capturing && !group->Revoked && Objects->Instance == group->Instance &&
         (child != SU_METADATA_CHILDREN || !group->Roots[root].Cleaned);
     if (major == IRP_MJ_CLOSE) {
-        if (child == SU_METADATA_CHILDREN) group->Roots[root].Key = NULL;
-        else { group->Children[child].Key = NULL; group->Children[child].Closed = TRUE; }
+        if (group->CaptureKey == object) { group->CaptureKey = NULL; group->CaptureCleaned = TRUE; }
+        if (!capturing) {
+            if (child == SU_METADATA_CHILDREN) group->Roots[root].Key = NULL;
+            else { group->Children[child].Key = NULL; group->Children[child].Closed = TRUE; }
+        }
         KeReleaseSpinLock(&MetadataLock, irql);
         ExReleaseRundownProtection(&group->Rundown);
         KeSetEvent(&MetadataWork, IO_NO_INCREMENT, FALSE);
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
     if (major == IRP_MJ_CLEANUP) {
+        if (group->CaptureKey == object) group->CaptureCleaned = TRUE;
+        if (capturing) {
+            KeReleaseSpinLock(&MetadataLock, irql);
+            ExReleaseRundownProtection(&group->Rundown);
+            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        }
         if (child == SU_METADATA_CHILDREN) {
             group->Roots[root].Cleaned = TRUE;
             for (i = 0; i < SU_METADATA_CHILDREN; ++i)
@@ -2294,9 +2393,17 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
     KeReleaseSpinLock(&MetadataLock, irql);
+    if (MetadataFsFilterPre(Data, &callbackResult)) {
+        ExReleaseRundownProtection(&group->Rundown);
+        return callbackResult;
+    }
     if (FLT_IS_FASTIO_OPERATION(Data)) {
         ExReleaseRundownProtection(&group->Rundown);
         return FLT_PREOP_DISALLOW_FASTIO;
+    }
+    if (capturing) {
+        ExReleaseRundownProtection(&group->Rundown);
+        return MetadataRefuse(Data, STATUS_DEVICE_NOT_READY);
     }
     if (KeGetCurrentIrql() != PASSIVE_LEVEL || !live) {
         ExReleaseRundownProtection(&group->Rundown);
@@ -2398,7 +2505,7 @@ FLT_PREOP_CALLBACK_STATUS SafeUploadMetadataPre(PFLT_CALLBACK_DATA Data, PCFLT_R
         return MetadataRefuse(Data, status);
     }
     *Context = (PVOID)((ULONG_PTR)completion | 3);
-    return FLT_PREOP_SYNCHRONIZE;
+    return major == IRP_MJ_CREATE ? FLT_PREOP_SUCCESS_WITH_CALLBACK : FLT_PREOP_SYNCHRONIZE;
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
@@ -2541,7 +2648,14 @@ FLT_POSTOP_CALLBACK_STATUS SafeUploadMetadataPost(PFLT_CALLBACK_DATA Data, PCFLT
     c->NativeInformation = draining ? 0 : Data->IoStatus.Information;
     if (draining || KeGetCurrentIrql() != PASSIVE_LEVEL) {
         KeAcquireSpinLock(&MetadataLock, &irql);
-        if (child != NULL) { child->State = SuMetadataRevoked; child->Uncertain = TRUE; }
+        if (child != NULL) {
+            child->State = SuMetadataRevoked; child->Uncertain = TRUE;
+            /* No CLOSE is promised for an unknown/failed CREATE. Withdraw
+             * its nonowning key while this post still owns the reference;
+             * Deferred may let the worker release it immediately. No Active
+             * metadata authority or native-success claim survives this cut. */
+            if (c->Operation == IRP_MJ_CREATE) { child->Key = NULL; child->Closed = TRUE; }
+        }
         if (group->UnknownOutcomes < (UINT64)MAXLONGLONG) ++group->UnknownOutcomes;
         KeReleaseSpinLock(&MetadataLock, irql);
         SafeUploadMetadataRevoke(group->MainCookie);
