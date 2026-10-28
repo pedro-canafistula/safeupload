@@ -235,10 +235,37 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             // durable policy is flushed and accepted. Do that first so
             // recovery can use the private stage namespace without opening
             // a pre-policy access window in the public protected scopes.
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            bool nu501Component = _configuration.GetValue<bool>("Diagnostics:Nu501ComponentHost");
+            if (nu501Component) RequireNu501InertPolicy();
+#endif
             if (!TryPushPolicy(port))
             {
                 return;
             }
+
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            if (nu501Component)
+            {
+                // No staged allocator, recovery, receive, publication, heartbeat
+                // or policy-update loop starts on this component connection.
+                RequireNu501InertPolicy();
+                if (_acceptedPolicyFingerprint is not { Length: 32 } fingerprint)
+                    throw new InvalidOperationException("No accepted component policy fingerprint.");
+                if (!_admissionEvidence.TryBindNu501(port, _policyVersion, fingerprint,
+                    token => new Nu501Harness(port, () =>
+                    {
+                        RequireNu501InertPolicy();
+                        foreach (string root in Nu501Roots())
+                            if (Directory.EnumerateFileSystemEntries(root).Any(path => !Nu501Roots().Contains(path, StringComparer.OrdinalIgnoreCase)))
+                                throw new IOException("N-U5-01 requires empty installed product roots.");
+                    }).RunAsync(token)))
+                    throw new InvalidOperationException("Component evidence endpoint did not bind.");
+                try { stoppingToken.WaitHandle.WaitOne(); }
+                finally { _admissionEvidence.UnbindAsync(port).GetAwaiter().GetResult(); }
+                return;
+            }
+#endif
 
             if (_stagingEnabled && StagedSpaceConfiguration.IsEnabled(_configuration))
             {
@@ -1807,6 +1834,30 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 _logger.LogWarning(ex, "Falha ao compactar o diario de transferencias; ele sera compactado no proximo inicio.");
             }
     }
+
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+    private static string[] Nu501Roots() => [
+        Path.Combine(AgentPaths.RootDirectory, "staging"),
+        Path.Combine(AgentPaths.RootDirectory, "staging", ".space-reservations"),
+        Path.Combine(AgentPaths.RootDirectory, "staging-journal"),
+        Path.Combine(AgentPaths.RootDirectory, "staging-journal", "completed")];
+
+    private void RequireNu501InertPolicy()
+    {
+        if (!_stagingEnabled || !OperatingSystem.IsWindows() ||
+            !string.Equals(AgentPaths.RootDirectory, @"C:\ProgramData\SafeUpload", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("N-U5-01 requires the fixed installed staged component host.");
+        var candidate = DriverPolicyLoader.LoadAsync(_policyStore, CancellationToken.None).GetAwaiter().GetResult();
+        var scopes = candidate.Policy.MonitoredScopes;
+        if (scopes.DestinationPaths.Count != 0 || scopes.RemovableDrives || scopes.NetworkPaths ||
+            AdmissionCoverageEvaluator.GetExpectedPrefixes(candidate.Message).Length != 0 ||
+            candidate.Policy.OverrideAllowed || candidate.Policy.AuditOnly || candidate.Policy.FailOpen)
+            throw new InvalidOperationException("N-U5-01 refuses configured protection or permissive policy.");
+        if (_acceptedPolicyFingerprint is { } accepted && !accepted.AsSpan().SequenceEqual(
+            AdmissionEvidencePolicyFingerprint.ComputeCanonicalCandidateFingerprint(candidate.Message)))
+            throw new InvalidOperationException("Component policy changed since acceptance.");
+    }
+#endif
 
     private bool TryPushPolicy(FilterPort port
         )

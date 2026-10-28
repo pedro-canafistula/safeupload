@@ -13,7 +13,8 @@ namespace SafeUpload.Agent.Service.Diagnostics;
 
 /// <summary>
 /// A feature-build-only, local administrator capture pipe bound to the service's
-/// already-connected FilterPort. It never opens or reconnects a filter port.
+/// already-connected main FilterPort. The component-only command pairs that
+/// original service connection with its real resource handle.
 /// </summary>
 public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
 {
@@ -25,6 +26,12 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
     private Task? _serverTask;
     private NamedPipeServerStream? _currentPipe;
     private long _nextBindingGeneration;
+    private Func<CancellationToken, Task<Nu501Receipt>>? _nu501;
+    private int _nu501Consumed;
+    internal const uint Nu501Magic = 0x3155354e;
+
+    internal bool TryBindNu501(FilterPort port, int policyVersion, byte[] fingerprint,
+        Func<CancellationToken, Task<Nu501Receipt>> run) => TryBind(port, policyVersion, fingerprint, run);
 
     internal bool StagedProofEnabled { get; }
 
@@ -37,7 +44,8 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
     internal bool TryBind(
         IAdmissionEvidenceSender sender,
         int acceptedPolicyVersion,
-        byte[] canonicalCandidateFingerprint)
+        byte[] canonicalCandidateFingerprint,
+        Func<CancellationToken, Task<Nu501Receipt>>? nu501 = null)
     {
         ArgumentNullException.ThrowIfNull(sender);
         ArgumentNullException.ThrowIfNull(canonicalCandidateFingerprint);
@@ -66,6 +74,8 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
                     return false;
                 }
                 _runs.Clear();
+                _nu501 = nu501;
+                _nu501Consumed = 0;
                 _binding = binding;
                 _serverStop = stop;
                 _serverTask = Task.Run(() => ListenAsync(binding, stop.Token));
@@ -93,6 +103,7 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
             if (_binding is null || !ReferenceEquals(_binding.Sender, sender)) return;
             binding = _binding;
             _binding = null;
+            _nu501 = null;
             serverStop = _serverStop;
             serverTask = _serverTask;
             currentPipe = _currentPipe;
@@ -203,6 +214,29 @@ public sealed class AdmissionEvidenceEndpoint : IAsyncDisposable
         // message, so authenticate after the bounded first request is read.
         if (!TryGetAuthorizedCaller(pipe, out AdmissionEvidenceCaller? caller))
             return;
+
+        if (_nu501 is { } runNu501)
+        {
+            // Component binding accepts exactly one fixed, admin-authenticated
+            // command. No arbitrary wire input, paths, policy or authority.
+            if (body.Length != 68 || BinaryPrimitives.ReadUInt32LittleEndian(body) != Nu501Magic ||
+                BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(4)) != 1 ||
+                body.AsSpan(8).IndexOfAnyExcept((byte)0) >= 0 || Interlocked.Exchange(ref _nu501Consumed, 1) != 0)
+            {
+                await AdmissionEvidenceFrames.WriteErrorAsync(pipe, "NU501_INVALID_OR_CONSUMED", stoppingToken).ConfigureAwait(false);
+                return;
+            }
+            Nu501Receipt receipt = await runNu501(stoppingToken).ConfigureAwait(false);
+            byte[] json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(receipt);
+            using var write = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            write.CancelAfter(TimeSpan.FromSeconds(5));
+            byte[] header = new byte[8];
+            BinaryPrimitives.WriteUInt32LittleEndian(header, Nu501Magic);
+            BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), (uint)json.Length);
+            await pipe.WriteAsync(header, write.Token).ConfigureAwait(false);
+            await pipe.WriteAsync(json, write.Token).ConfigureAwait(false);
+            return;
+        }
 
         // A distinct, explicitly enabled SYSTEM-only protocol. The existing
         // capture protocol remains limited to read-only controls 19/20/23.

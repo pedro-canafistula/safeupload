@@ -1,0 +1,22 @@
+{
+  "DiagnosticOnly": true,
+  "StartingHEAD": "a193d41ee4e699d54c491346cbcc8bf020bc7bfc",
+  "CurrentHEAD": "7ccb5453b8bb5176bb0d1971747c116ce42d66b4",
+  "ExternalHEADChange": "owner-decision documentation commits c13c30b4 and 7ccb5453; no agent source changes",
+  "Source": "uncommitted implementation",
+  "LocalBuilds": 12,
+  "NewManagedControls": {
+    "Discovered": 3765,
+    "Selected": 231,
+    "Executed": 231,
+    "Passed": 231,
+    "Failed": 0,
+    "Skipped": 0,
+    "Errors": 0
+  },
+  "PythonControls": 236,
+  "NativeExecution": "NOT RUN",
+  "PowerShell51": "NOT RUN",
+  "NetworkVMBuilderContacts": 0,
+  "CommitsByThisWorker": 0
+}
