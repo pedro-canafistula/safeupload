@@ -1,11 +1,13 @@
 # T9 growing reservations: revision 6 implementation contracts
 
-2026-10-28. **Proposed addendum for independent review; documents only.**
-Second revision after the independent REVISE re-review; not yet accepted.
+2026-10-28. **Proposed addendum and pure models for independent review; no product implementation.**
+Revision 4 after the third independent REVISE review; not yet accepted.
 The [re-review](../../../evidence/2026-10-28/t9-growth-protocol-rereview-sol-high.md)
 closed F1/F2/F3/F5/F7 as design corrections, with native/source/runtime proof
-still distinct; its three residual findings are addressed below.
-Source anchors below refer to `feat/driver-m2` at `7867cf37`; proposed types and
+still distinct. The [third review](../../../evidence/2026-10-28/t9-growth-protocol-rereview2-sol-high.md)
+requires the corrected peak model and explicit increment-3 source/test cut below
+before coding; this revision does not self-declare independent acceptance.
+Source anchors below refer to `feat/driver-m2` at `8ae881b9`; proposed types and
 modules are identified as proposed. This is increment 1's contract proposal,
 not completion of its executable transitions, review acceptance, activation or
 qualification. The decomposition is the read-only planner output
@@ -779,7 +781,25 @@ has its own owned OVERLAPPED/event as existing FilterPort.TryGetMessage requires
 Existing StagedRequestDispatcher queues/reply pools are retained, but modern
 Dispatch must consume the matching pool selected by the physical channel; no
 ordinary-credit reservation followed by transfer into Growth. Preserve main
-FIFO and captured preceding driver for old handlers. Resource group revocation
+FIFO and captured preceding driver for old handlers. The separate resource
+handler validates the captured provisional/authenticated group directly; it must
+not call AwaitDispatchDriverAsync on a preceding Ordered handler (the main lane
+may be the one blocked). This changes no legacy continuation ordering.
+
+The dispatcher releases a pre-dequeue credit immediately on **accepted** work
+(`StagedRequestDispatcher.cs:130`). Thus 40 credits do **not** bound all retained
+growth messages. Queue/worker capacity bounds accepted Growth work at 8+32=40;
+the credit pool independently bounds rejected work plus the next receive owner
+at 40. Combined accepted + rejected + one reserved/dequeued receive is **<=80**,
+not 40. Rejected ownership retains its credit through native failure reply.
+Main accepted work is <=33 Ordered +8 Allocation +40 Continuation =81; ordinary
+rejected/receive owners <=64, combined <=145. A group has at most one receive
+owner per port, inside its pool, no unbounded post-dequeue buffer/task list.
+Saturation closes intake when its class credits are exhausted; accepted native
+reply stalls consume accepted workers, rejected stalls consume failure credits.
+These transport/delegate populations are separate from kernel 32/256/64 and
+metadata/send/ACK limits; first-boot review must size each actual capture.
+ Resource group revocation
 is synchronous local state **before** stopping either receive: close admission,
 wake growth waiters, stop producers, cancel both receives, cancel queued sends,
 then drain native callbacks/send/reply/receive leases and finally close handles.
@@ -1202,7 +1222,7 @@ guarantee that arbitrary hardware honors cache flushes.
 | Ordered step | Concrete primitive / acceptance rule |
 |---|---|
 | Create/claim | Relative NtCreateFile using registered anchor and exact one-component name; record may-start before call, captured identity before data. Root/target shares and exclusive store claim are section 8.1, not invented share exclusion of security updates. |
-| Write padded bytes | NtWriteFile (synchronous, noncached/write-through) at aligned offsets, bounded by precharged physical extent; no cached fallback or reopening by path. |
+| Write padded bytes | **Before issue**, reserve Peak=AlignUp(AlignUp(logical length,A),U), separately from logical EOF; current/predecessor/replacement/residue all retain their own charged extent. NtWriteFile (synchronous, noncached/write-through) at aligned offsets, bounded by precharged physical extent; no cached fallback or reopening by path. |
 | F1 | FlushFileBuffers on the same held output handle (native adapter NtFlushBuffersFile); require success before exact logical EOF. |
 | EOF/allocation | NtSetInformationFile(FileEndOfFileInformation), and FileAllocationInformation only within precharged extent; requery actual EOF/allocation. |
 | F2 after EOF | FlushFileBuffers on that same handle again, then verify complete expected bytes/identity/security/EOF. No durable candidate from a pre-EOF flush alone. |
@@ -1231,6 +1251,20 @@ qualification remains separate from these supported API requests and builder
 fault injection. No volume-wide flush is inserted under the growth budget gate
 (it could wait for the very application stream that needs growth).
 
+Store outputs carry separate LogicalLength L, PaddedWriteExtent P=AlignUp(L,A),
+and admitted PeakAllocation Q=AlignUp(P,U), with A (I/O alignment) independent
+of U (allocation unit). The precharge uses Q **before padded write**, not
+AlignUp(L,U). Incomplete writes, flush/EOF failures and lost completion keep Q.
+A smaller exact EOF does not imply allocation shrink; retain Q until an explicit
+same-identity measurement after F2 plus closed mutation/operations rundown proves
+a lower retained allocation, or exact storage release proves zero. Persist that
+measurement/release transition before lowering maintained physical totals. A
+current immutable predecessor may have such a measured charge; a new replacement
+and every failed residue still need their own Q. No retry reuses another object's
+unused envelope or ignores residue. Actual allocation beyond the admitted bound
+faults/holds admission and preserves evidence; it cannot be normalized to PASS.
+
+
 Archive: create a new exact segment, aligned-write its two initial frontier
 slots, F1, set aligned EOF=2*A, F2; then record exact segment identity. Each
 append is aligned frame write → F1 → monotonic aligned EOF → F2 → inactive
@@ -1252,25 +1286,111 @@ review must establish actual callback registrations and cleanup/cancel paths.
 
 ### 8.5 Builder-native mechanism experiments (specification only)
 
-These are component controls on an approved builder OS, **no proposed kernel
-boot**, mechanism evidence only, not target 19045.2965 or power-loss qualification.
-Implement later as native tests; none is implemented/run in this increment.
+These component experiments run on the approved builder OS **without the new
+kernel**, once the raw native adapter exists. They are mechanism evidence only,
+not target 19045.2965 qualification or physical power-interruption evidence.
+Each fault case must have a preregistered expected result: **Committed**,
+**RecoverableBookkeeping** (same already-successful mutation, no repeat), or
+**Held** (no usable authority, full charge/evidence). Held may pass a preservation
+case; it fails any case requiring positive completion or recovery. No choosing
+classification after seeing the result. Every positive baseline uses the exact
+role masks/shares and native information classes, not FullControl substitutes.
 
-| Control | Exact experiment / PASS (otherwise FAIL or conservative hold) |
+| Control / owning increment / order | Exact experiment and acceptance |
 |---|---|
-| N-U4-01 relative confinement | Held NTFS parent + NtCreateFile relative leaf, FILE_CREATE/no-follow; verify full IDs, one link, regular/protected security; traversal/ADS/reparse/wrong parent/wrong target substitutions refuse without altering substitute. |
-| N-U4-02 aligned noncached | Sector/buffer/offset queries then selected flags; 64/128/192/1192/65536/131072-byte logical records, A=4096..65536 model, aligned native buffer. Verify exact bytes, zero padding and measured AllocationSize; deliberate wrong offset/length/buffer alignment must refuse, never cached fallback. Unsupported actual units are reported, not passed through synthetic fixture arithmetic. |
-| N-U4-03 EOF and barriers | Instrument exact write,F1,EOF,F2,rename,F3 order; inject each failure/kill worker between steps, reopen exact handles after process exit, require only uniquely proven complete output be committed and all uncertain objects charged/held. F1 without post-EOF F2 must never produce Prepared. This is not physical power interruption. |
-| N-U4-04 sharing/security | Root handle omits SHARE_DELETE: competing rename/delete must fail. Replace target uses SHARE_DELETE + exclusive store claim: second authorized store writer cannot enter, exact replacement succeeds. Show WRITE_DAC is not excluded by share flags; untrusted token denied by native security, trusted repair requires revoke. Wrong-owner/DACL/link/reparse never normalized. |
-| N-U4-05 exact replacement | Relative FileRenameInformation on held original/new, target exclusion claim and F3; alternate target substitution/failure injection must hold, exact renamed identity survives no-reopen comparison; native success with lost bookkeeping never triggers a second rename. |
-| N-U8-01 physical fit | Compare pure model rounded outputs, current/new overlap, candidate/intent/inventory/padding/frontier allocation to native AllocationSize at actual units; every measured allocation <= precharge, all failed residue remains counted. Higher/unusual actual allocation holds instead of weakening model. |
-| N-U8-02 archive recovery | Unaligned logical payload ends, A-strides, dual slots, full append outside frontier and torn inactive frontier; no committed frame sector changes, classifier finishes exact frontier only, partial/unknown tail holds, no modern truncation. |
-| N-U8-03 migration/selection | Mixed legacy contiguous and modern aligned segments; legacy never modern-appended, selected-prefix copy/suffix/target ranges remain consecutive, every base/ACK/witness reconstructs once; injected selection/copy/delete faults preserve old+new physical debt, no lost selected segment or duplicate changed base. |
+| N-U4-01 / 3 / **before-first-boot** | Relative NtCreateFile/no-follow against held parent, using exact role desired access/options/shares; positive baseline creates/queries exact regular single-link protected object. Traversal/ADS/reparse/wrong parent/target substitutions refuse without changing substitute. Record masks/options and actual class/status for each call. |
+| N-U4-02 / 3 / **before-first-boot** | Actual alignment queries/native aligned buffers and independent U; logical 64/128/192/1192/65536/131072 vectors, including A>U where the real volume supports it. Alignment negatives specify **adapter pre-issue refusal** or **native-issued negative** in advance; record which, call count and status. Do not require all devices to reject every misaligned address identically or call adapter rejection native evidence. Unsupported actual units are reported, never simulated as native PASS. |
+| N-U4-03 / 3 / **before-first-boot** | Observe logical L, padded P, precharged Q, EOF, native AllocationSize and held identity after create/write/F1, **before EOF normalization**, after EOF/F2, and at each injected failure/lost completion. Require Q reserved before issue and actual <= Q, no decrease from EOF alone. Failed output retains padded peak until proved measurement/release. Process termination does not prove power-loss durability. |
+| N-U4-04 / 3 / **before-first-boot** | Exact root no-SHARE_DELETE must exclude competing rename/delete. Positive replacement target remains held with SHARE_DELETE + store namespace exclusion; competing registered writer cannot enter. Native untrusted WRITE_DAC denied by ACL; share flags alone do not exclude it. Trusted repair requires revoke. Record every relevant handle/operation/pin; deletion-pending predecessor remains charged until those owners drain and exact release is observed. |
+| N-U4-05 / 3 / **before-first-boot** | **Selected class is FileRenameInformation** on held source/relative root, not assumed from StagedHandbackCopier.cs:884's **FileRenameInformationEx**. Record numeric class, flags/ReplaceIfExists, exact masks/shares, statuses and independent before/after identity/mutation count. Positive replacement must succeed while old target handle remains held. Distinguish native refusal from native success whose reply/bookkeeping is lost; interrupt recovery again and require exactly one successful rename, never a second mutation. F3 remains a requested file flush/process-crash mechanism boundary, not a power-loss-safe namespace certificate. |
+| N-U8-01 / 3 / **before-first-boot** | Raw bounded-output/replace/append/frontier primitives: compare model L/P/Q, current/new/predecessor/residue sums and native AllocationSize **before normalization and at faults**, not only final file. Record peak and retained allocation at every boundary; measurement/release proof precedes any decrease. Include tiny output A>U (U=512/4096 if available), failed replacement and deletion-pending predecessor. Raw frames/slots verify disjoint aligned writes and F1/EOF/F2/F3 only; no claim of running the increment-4 archive selector. |
+| N-U8-02 / **4**, retained **before-qualification** gate | Actual archive classifier/tail/frontier/base/delta recovery after increment 4 exists: arbitrary logical ends, appended frame outside frontier, torn inactive slot, current/predecessor intents and repeated interrupted recovery; no modern truncation or repeated committed append. Not an increment-3 exit obligation. |
+| N-U8-03 / **4**, retained **before-qualification** gate | Actual legacy migration, selected-prefix copy/inventory recovery and preservation of every base/ACK/witness; inject copy/select/delete failures with old+new/residue charge. Numeric range tests are not this control. Not an increment-3 exit obligation. |
 
-Outer-hook cases R3-M01/M02 and real paired resource-port/epoch-drain progress R3-M04
-require the increment-3 implementation and protected execution **after** its
-first-boot review. They are coverage obligations before implementation, not
-experiments that can already pass against an unimplemented metadata driver.
+Predetermined fault expectations for N-U4/N-U8-01: successful exact sequence
+and positive replacement is Committed; explicit write/F1/EOF/F2/rename refusal,
+unknown identity, torn bytes or failed final barrier is Held with the correct
+Q and all live predecessors/residue; known native rename/append success with
+only completion/bookkeeping lost is RecoverableBookkeeping **only after exact
+independent identity/mutation observation and required flush reestablishment**.
+Interrupt that bookkeeping recovery a second time: still exactly one native
+rename (or one raw append), not a newly successful mutation. A Held result is
+never relabelled positive recovery. Before-issue adapter alignment rejection
+records zero native calls; native-issued alignment negatives record the actual
+API result and preserve any admitted/created custody.
+
+R3-M01/M04 have increment-3 **diagnostic actor** seams in section 8.6: hold a
+counted epoch while raw metadata work progresses. Their **real growth reply**
+assertions remain increment 6. R3-M03 reduction stress is retained for increment
+4 (growth saturation companion stress for 6); fence/ACK/snapshot require increment
+5. These later assertions are not deleted, weakened or satisfied by raw storage
+primitives. All protected rows follow their owning source's first-boot review.
+
+### 8.6 Increment-3 deliverable and stable test seams (before-coding cut)
+
+Name the deliverable **provisional metadata substrate**. It contains only:
+provisional main/resource group pairing and registration; authenticated metadata
+control dispatch; outer metadata pre/post/tag/refusal routing; bounded native
+store operations; padded-peak physical accounting/short claims; common native
+handle/buffer/connection and PASSIVE rundown infrastructure. Negotiate Probe can
+return provisional identity; **Commit always returns NotReady, Mode=0, no
+accepted capability/grant**, independent of raw substrate test success. No modern
+initial allocation, schema-3 ledger consumer, capacity adoption/growth producer,
+retirement reduction, CREATE registry/fence/ACK/snapshot handler, or archive
+selector/recovery is activated by increment 3. Shared control opcodes that belong
+to 5 remain typed NotReady/unsupported, never successful stubs.
+
+Choose an **opaque bounded-buffer store** to avoid the unfinished schema-3 codec
+as an increment-3 prerequisite. No production source pretends the current strict
+ResourceStateCodecV2 (:66) is schema 3. Proposed module/interface contracts:
+
+| Seam | Inputs / bounded result / exclusions |
+|---|---|
+| Provisional registration | Exact existing control-36 layouts, group identity and role map; native handles referenced before return. Pure header/role/layout validation and paired lifetime types are the only increment-1 wire source dependencies; if absent, implement/review these passive contracts first. No schema-3 transition module dependency. |
+| BoundedOutputPlan | Role, exact transaction/object incarnation, L, independent verified A/U, P, Q, expected predecessor identity and maximum logical bytes; checked shape and Peak-before-issue admission. Immutable byte buffer length exactly L, independently owned through native completion. No JSON interpretation, intent/debit authorization or callback into journal/policy. |
+| Claim/output store | Short typed claim/current revision → exact relative create/read, aligned opaque write/flush/EOF, exact held-target replace/delete and raw aligned offset append/slot flush. Return exact native result/identity/EOF/allocation/operation receipt plus Committed/RecoverableBookkeeping/Held. Native success is final, not retried because a wrapper failed. Serialization/parsing of resource records is a later caller's responsibility. |
+| Physical accounting | Bounded object inventory with peak Q for newly issued/failed objects and independently retained predecessor/residue; explicit exact measured-closed/release events lower charge. Maintain hot/shared deltas under short state serialization, no directory walk or content/journal callbacks on a foreground admission. |
+| Diagnostic fixtures | Inject finite native-call failures vs lost return/bookkeeping separately, observe independent mutation counts and repeat-interrupt recovery. Feed bounded opaque byte patterns and raw frame/frontier buffers, not a fabricated valid schema-3 allocation or archive receipt. |
+
+Add a separately identified, test-only **T9MetadataEpochHoldActor** seam: the
+harness acquires one real counted admission token, closes epoch admission through
+the normal policy transition, and releases the token only after a bounded
+**raw metadata** transaction completes or the monotonic diagnostic deadline ends.
+It is not an application save waiting for growth and issues no grant/reply.
+The actor uses a dedicated test-build control/fixture identity, cannot create
+resource authority or run in product builds; exact test-only control/layout must
+be independently reviewed with implementing source, without changing these
+confirmed product ABIs. Scope it to token acquire/release and captured diagnostic
+counters, not generic policy bypass or silent Unknown reset. Every timeout/cancel/
+teardown releases its token locally and reports failure, not PASS by a hold.
+
+Increment-3 R3-M01 seam: policy covers private roots, diagnostic token holds the
+epoch closed, opaque ledger/companion-shaped bytes still create/replace/flush
+through metadata branch. R3-M04 seam: SetPolicy occupies main send path and 64
+ordinary failure credits are stalled; provisional independent metadata controls/
+raw resource-channel **diagnostic echo** complete with exact owner/correlation,
+then actor releases token. Echo is separately tagged test-only traffic, never
+operation 23 success; no growth handler is needed. Wrong-channel/token/process,
+local revoke/cancel and finite drain are part of this seam. Commit remains
+NotReady before/during/after actor execution.
+
+R3-M02 is fully an increment-3 map/context lifetime row. R3-M03's increment-3
+subset is raw journal-shaped buffer/store claim ordering and fault accounting;
+its **real custody reduction** waits for 4 and production growth stress for 6.
+N-U8-01's raw append/dual-slot writes are in 3; classification, candidate/tail
+recovery, migration and selection are exclusively the increment-4 consumer.
+Increment 3's passive preparation must materialize/validate the existing
+64-byte ResourceControlHeader, 96/112-byte Negotiate, 64/40-byte RegisterRoot,
+640/16-byte RegisterChildIntent, 8/8-byte Revoke and 24-byte PairContext layouts,
+role/access enums and local claim/incarnation/result/lifetime types, with C/C#
+layout/mutation controls before any handler consumes them. These are its exact
+wire/local prerequisites; the existing passive 1192/104/160/352/376-byte
+resource types are not a completed schema-3 state machine. No source consumer of
+Fence/ACK/ShellSnapshot is added in 3. Before increment 4's resource/archive
+consumer, strict source codecs/transitions from increment 1 must exist and pass
+their own checks. This explicitly narrows a dependency, not any
+carried final-pair assertion. O1/O2 need not be decided to code this dormant
+substrate; O2 gates 4, O1 gates 6.
 
 ## 9. Custody, ordinary Discarded receipt and reduction
 
@@ -1546,27 +1666,58 @@ this model explicitly rejects them instead of calling each component valid.
 Exact production serialization/migration must be compared to these bounds
 before its consumers; arithmetic alone is not a codec maximum proof.
 
-Model simultaneous transfer overlap: journal current/new (each <=128 KiB) plus
-one handoff candidate <=128 KiB consume at most 3*Round(128 KiB,U) of the journal
-half. Ledger current/new <=64 KiB and companion current/new 192 bytes consume
-2*Round(64 KiB,U)+2*Round(192,U) of the other half. Retained failed residue also
-counts; if it no longer fits, refuse another metadata transaction, never forget
-it. Shared controls are **additional accounted shared physical bytes**:
-append-intent current/new, compaction-intent current/new (each <=64 KiB),
-inventory and marker current/new (each 128 bytes), and retained candidate.
-Compaction charge includes all old + up to 32 new physical 4 MiB segments,
-both frontier slots in each segment, controls/replacements/residue. Selection
-alone releases no old physical debt; exact storage release is also required.
-Shared debit still uses 2*rounded total physical +16 MiB, no new budget formula.
+For **each** output keep L (logical bytes), P=AlignUp(L,A) (padded native write
+extent) and Q=AlignUp(P,U) (peak allocation precharge). Current/new/predecessor/
+failed residue coexist additively until explicit exact measured-closed or storage-
+release transitions. Round(logical EOF,U) is not the pre-write charge when A>U.
+The mutant that uses that smaller charge fails the model's conservation/admission
+check even when its apparent budget comparison passes. Measurement after exact
+F2 + closed mutation/operation rundown may reduce Q to rounded observed retained
+allocation; failed normalization or unknown outcome retains Q. Do not infer
+release from merely reducing logical EOF or selecting a replacement.
 
-Tests cover exact stride boundaries/maximum payload, zero-padding/dual slots,
-checked overflow/invalid units, aligned-output replacement overlap, combined
-maxima refusal/fit boundary, 32-segment source/target selection, old contiguous
-format exclusion, delayed-query successful handoff and separate durable debt/
-eight kernel credits. Deliberately wrong header/frontier/envelope parameters,
-missing padding/second frontier and debt-as-occupancy mutants must fail model
-acceptance. This closes only the **pure arithmetic/state-model** portion of U8,
-not actual native allocation, power-loss durability or codec/selection correctness.
+Corrected simultaneous base overlap is journal J=3*Q(128 KiB,A,U), other
+B=2*Q(64 KiB,A,U)+2*Q(192,A,U). Existing envelope M=max(1 MiB,16*U) and halves
+remain unchanged. The independent A/U cross-product (A=4096..65536,
+U=512..1048576, powers of two) has **60 pairs**; computed maximum (J+B)/M is
+**62.5%**. Within that domain the corrected base overlap still fits each half:
+
+| A | U | journal J | other B | total peak | existing envelope M |
+|---|---|---|---|---|---|
+| 65536 | 512 or 4096 | 393216 (384 KiB) | 262144 (256 KiB) | 655360 (640 KiB) | 1048576 (1 MiB) |
+| 65536 | 65536 | 393216 | 262144 | 655360 | 1048576 |
+| 65536 | 1048576 | 3145728 (3 MiB) | 4194304 (4 MiB) | 7340032 (7 MiB) | 16777216 (16 MiB) |
+
+Residue is **additional** Q, not included free in the base table. At A=65536,
+U=4096 a fourth 128 KiB journal output uses the full 512 KiB journal half;
+another must refuse until exact release, even if aggregate M has space. A
+predecessor explicitly measured at 4096 plus a new 192-byte replacement and
+failed 128-byte residue at padded peaks holds 4096+65536+65536=135168 bytes;
+without that predecessor measurement all three retain 196608 bytes. Neither
+retry nor failed handoff adds another reservation envelope for the same transfer.
+Native units outside tested vectors require checked recomputation/experiment,
+not a borrowed proof from U=A.
+
+Shared controls separately precharge padded peaks: four 64 KiB intent outputs
+(current/new append and compaction), four 128-byte inventory/marker outputs and
+one 128 KiB candidate. At A=65536, U=512/4096 their sum is **655360 bytes**; logical-only rounding would incorrectly report 409600 at
+U=4096, or 395264 at U=512. At U=1048576 it is nine units =9 MiB.
+Compaction also counts old + new up to 32 full physical 4 MiB segments each,
+including both frontier slots, plus all residue. Shared debit is still
+2*rounded total physical +16 MiB. Selecting a replacement never releases old
+physical allocation before exact owner/storage release.
+
+The strengthened models exercise independent L/P/Q vectors, conservation rejection
+of logical-only charge, exact measurement/release transitions, boundary/overflow,
+combined-envelope refusal/fit and source/target ranges. ACK tests now execute
+bounded 2-active/8-retained scheduling with Busy retry; snapshot reconciliation
+uses independent durable/snapshot inputs including unknown, missing-pending,
+duplicate and unauthenticated entries. Header/frontier mutants test actual
+occupied byte-range overlap/overrun, not constant-equality assertions. These
+remain **pure** models: no claim of actual send scheduling, native snapshots,
+JSON codec validation, preservation of base/delta witnesses, or migration capacity.
+Those are retained increment-4/5 consumer tests. No model closes native durability
+or target qualification.
 
 ### 10.3 Aligned append grammar, frontier and durability (finding 3)
 
@@ -1840,9 +1991,10 @@ waiting or growth heap/pins**. Use the same proposed 32/K and 256-global credits
 as growth waiters: an I/O already holding one converts that credit into a growth
 waiter; it never takes another. Below-C operations hold it through completion
 then release. Reads need this too because they can lock pages before waiting
-behind an MM growth owner. Paging and completion/release minors do not enter **new** admission or initiate
-growth: they find their original counted callback/MDL owner and release that
-credit. They cannot be rejected or queued behind a full admission pool; U6
+behind an MM growth owner. Paging does not enter owned nonpaging admission or initiate growth: the
+paging bridge retains/releases its separate PagingRundown and child/partial-MDL
+owner. Completion/release minors for already admitted **nonpaging** work do not
+enter new admission: they find/release their original counted callback/MDL owner. They cannot be rejected or queued behind a full admission pool; U6
 must map the exact owned minor/completion route. Saturated write admission completes resource
 failure without buffer lock and marks its save nonpublishable; a rejected read
 has no mutation authority. Do not queue rejected callbacks awaiting a credit.
@@ -1886,7 +2038,7 @@ pre-existing/created MDLs, cancel-before/after-lock and exact credit/page custod
 |---|---|
 | T9 increment 1 | Review this addendum; extend passive C/C# ABI, strict schema-3 codec and pure transition/replay/fence models (sections 2–6, 8–10). No negotiation/admission. Linux ABI/mutation/conservation/crash controls; changed C gets paired WDK/static/import gates; agent gets full four-leg delivery matrix. Growth duration owner decision before its dependent producer. |
 | T9 increment 2 | Landed `272a33d1`: StagedRequestDispatcher/StagedRequestLane/MinifilterRequestDispatch preserve Ordered legacy FIFO and bound existing workers/failure replies. No growth handler. Native pre-dequeue credit/control/reply progress is **open U5**, prerequisite to increment 3, not closed by this component delivery. |
-| T9 increment 3 | After 1; integrate metadata kernel capability module and agent anchored store, noncached native operations and maintained hot/shared totals; use 2 for dispatch. Sections 8/10 roles complete, no generic budget I/O. Confinement/native controls and pre-boot lifetime/lock-order/security review; growable admission closed. |
+| T9 increment 3 | **Provisional metadata substrate** (8.6): pair/register, route pre/post, bounded opaque-buffer native store, padded-peak accounting and lifetimes; passive layout/role/lifetime contracts first, **no schema-3 codec dependency**. Commit stays NotReady. Test with named epoch-hold diagnostic actor and raw primitives; no growth/fence/selector consumers. Later production assertions stay in their owning increments. |
 | T9 increment 4 | After 1–3; integrate custody/reduction, stage-write retirement producer, modern startup/shared history/marker and ordinary Discarded receipt, all release adapters (sections 3/9/10). R5/R4-H/R3-X controls prove reserve-before-create and exact reduction/release. Still no growable admission. |
 | T9 increment 5 | After 1–4; modern initial allocation and 120 s issuance-to-adoption/fence/recovery (sections 5/6), exact replay no reseed/double debit; lost identity/reply self-heals same name. R3-A/R4-D01; pre-boot CREATE/adoption review. Small-window production remains gated pending 6. |
 | T9 increment 6 | After 1–5 and approved growth duration; end-to-end ledger→companion→reply/adoption, semantic replay and **every MM path** (sections 3/4/7/11). R3-G/C, R4-D02/MM; coherent growth/MM security/lifetime/lock-order review before first boot. |
@@ -1899,28 +2051,44 @@ discovery/execution (no skips); every changed kernel needs both WDK builds,
 PREfast/ApiValidator zero warnings/errors and both imports PASS, plus required
 Verifier. Harness changes need PowerShell **5.1** parse/native signatures,
 self-checks and an authorized real run. Committed source/fresh labels/matched
-artifact hashes are delivery obligations for the orchestrator; this document-only
-increment performs none of them. No new source-freeze/disposition framework.
+artifact hashes are delivery obligations for the orchestrator; this document/pure-model revision
+performs no Windows delivery gate or kernel boot. No new source-freeze/disposition framework.
 
 ### 12.1.1 Three separate review/delivery stages
 
 Contract acceptance, implemented first-boot review and runtime evidence are
 separate. The re-review closed the original F1/F2/F3/F5/F7 **design defects**;
 its residual 1–3 and this revision need independent acceptance. Do not require
-R3-M01/M04 protected execution before increment 3 is written. The table lists
+R3-M01/M04 diagnostic protected execution before increment 3 is written, or
+production-growth assertions before increment 6 exists. The table lists
 coverage now; results follow implemented source and first-boot review.
 
 | Integration | Contract/fact required before implementation | Implemented source required before its first boot | Runtime/component evidence after implementation |
 |---|---|---|---|
-| T9 increment 3 | U4 selected role/exclusion/IRQL and F1/EOF/F2/rename/F3 sequence with documented guarantee limits; U5 paired growth intake/send classes/lifetimes; U8 pure fit vectors; independently accepted outer pre/post and send-progress text. This revision supplies proposals/model; acceptance remains open. | Both dispatch wrappers and tag-3 classification before existing tags/draining; failed/draining CREATE, CLEANUP/CLOSE/address reuse; connection/instance/unload rundown; authenticated two-port handlers and every actual role/query/import; complete journal→budget→registration→native graph; conservative physical faults. Sol security/lifetime/lock-order review of coherent source. | Builder N-U4-01..05/N-U8-01..03 are mechanism evidence on builder OS; R3-M01 epoch closed, M02 ownership/reuse, M03 dependencies and M04 real port/send progress run on implemented protected pair after review. WDK/static/import and complete agent matrix stay required. |
-| T9 increment 4 | Residual 1 successful-handoff eligibility; U3 every-role release owner/crash contract, U7 owner scope, strict U8 grammar/migration/candidate/tail/ACK/selection models and actual serializer limits. | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
-| T9 increment 5 | Residual 2 separate eight shell credits; U1 boot/old-instance and U2 complete CREATE/cancellation audit; authenticated receipts, bounded snapshot/ACK eviction scheduling, deadline through later lifecycle calls, fence-specific U5 Busy. | Capture-to-callback/exposure ownership, success/non-adoption evidence, eviction credits and reconnect, deadline/failure vs separately owned cleanup; coherent lifetime/lock-order review. | R3-A01..05/R4-D01, repeated durable-success-before-ACK interruption, pending-vs-shell saturation, exact same-name recovery and no failed-CREATE adoption. |
-| T9 increment 6 | Residual 3 pre-buffer-lock owned-I/O credits/MDL ownership; U6 real Major/Minor/IRQL/resource/completion inventory and actual byte/structure maxima; measured 32/256/64 bounds and owner-selected O1. | Full growth/replay/companion/MM/MDL/paging/pin/retirement integration, including user buffers and cancellation ownership, reviewed before boot. | R4-D02/MM01..03 routed actor evidence, many writers before FltLockUserBuffer/resource acquire, borrowed/created MDL release, deadline/teardown/retirement races and Verifier. |
+| T9 increment 3 | **Before-coding conjunction:** corrected independent A/U peak/conservation models accepted; 8.6 opaque-buffer interface, passive wire/role/lifetime source prerequisites and diagnostic seams accepted; U4/U5/outer ownership contracts settled. O1/O2 not prerequisites. | **Before-first-boot:** coherent substrate source review of both wrappers/tag-3/refusal/drain/CLEANUP/CLOSE/reuse; both ports/auth/group rundown and all actual captures/imports/roles; exact selected native class/masks/shares, graph, peak/residue accounting and PASSIVE owners; N-U4-01..05 and N-U8-01 raw native mechanisms, paired WDK/static/import gates and full agent matrix. | After review, R3-M01/M04 **diagnostic epoch-hold/raw-store** seams and R3-M02 lifetime plus R3-M03 raw dependency subset execute on substrate. Commit always NotReady. Real reduction/fence/snapshot/archive/growth assertions are retained in 4/5/6, not exits of 3. |
+| T9 increment 4 | Residual 1 successful-handoff eligibility; U3 every-role release owner/crash contract, U7 owner scope, strict U8 grammar/migration/candidate/tail/ACK/selection models and actual serializer limits. | Retirement/capture/paging+growth rundown, receipt/inventory/debit transition, release/custody and teardown, any added metadata permissions reviewed before boot. | R3-X/R4-H/R5-S native/protected crashes, **N-U8-02/03 actual selector/recovery/migration**, R3-M03 real reduction stress, delayed query/immediate close, base/delta state reconstruction and exact physical release. |
+| T9 increment 5 | Residual 2 separate eight shell credits; U1 boot/old-instance and U2 complete CREATE/cancellation audit; authenticated receipts, bounded snapshot/ACK eviction scheduling, deadline through later lifecycle calls, fence-specific U5 Busy. | Capture-to-callback/exposure ownership, success/non-adoption evidence, eviction credits and reconnect, deadline/failure vs separately owned cleanup; coherent lifetime/lock-order review. | R3-A01..05/R4-D01, R3-M04 **real fence/ACK/snapshot** progress, repeated durable-success-before-ACK interruption, pending-vs-shell saturation, exact same-name recovery and no failed-CREATE adoption. |
+| T9 increment 6 | Residual 3 pre-buffer-lock owned-I/O credits/MDL ownership; U6 real Major/Minor/IRQL/resource/completion inventory and actual byte/structure maxima; measured 32/256/64 bounds and owner-selected O1. | Full growth/replay/companion/MM/MDL/paging/pin/retirement integration, including user buffers and cancellation ownership, reviewed before boot. | R4-D02/MM01..03 and R3-M01/M04 **production growth/reply** plus R3-M03 saturated growth/reduction integration; routed actor evidence, many writers before FltLockUserBuffer/resource acquire, borrowed/created MDL release, deadline/teardown/retirement races and Verifier. |
 
 No row is a claim of runtime PASS or permission to boot. Modern admission stays
 closed through the integration prerequisites until the complete readiness
 conjunction and matched-pair qualification pass. Compaction design is not
 approval to expand M2 beyond the required 10k workload or owner deferrals.
+
+### 12.1.2 Increment-3 readiness conjunction — required order
+
+- [ ] T9 **before-coding**: independent acceptance of this revision's corrected L/P/Q, A/U cross-product, overlap/residue conservation and logical-EOF mutant; accept the bounded 8.6 source/test cut and its opaque interface. Passive product layouts/role/lifetime types must exist before their consumers; strict schema-3 codecs/transitions are **not** consumed by this substrate.
+- [ ] T9 **before-first-boot**: implement only that dormant substrate; pass exact-role/class positive/negative native mechanism controls, compile/matrix and both WDK/static/import gates; independently review all coherent pre-boot source listed above. Include four-child-handle scheduling, both ports, every send/receive/reply lifetime, matched-invalid telemetry, physical peak/release and failure graph. F3 is not a power-loss namespace certificate.
+- [ ] T9 **before-qualification**: after owning source exists and its first-boot review passes, complete 4's archive/custody/selector/migration, 5's CREATE/shell/fence/ACK, and 6's routed growth/MM/MDL/deadline assertions, then matched-pair gates. Diagnostic actor/raw tests never count as these production assertions.
+
+The prerequisite is the accepted **contract/fact**, not a runtime control
+requiring unimplemented source. Implementing substrate source must not fill
+NotReady stubs with partial modern authority merely to run a later row.
+
+No box is self-closed by this edit or its Linux model results. This conjunction
+allows increment 3 coding only after the two **before-coding** items are accepted;
+it does not require later production-growth controls before the substrate is
+written, nor permit enabling Commit or dropping their final assertions.
 
 ### 12.2 Carried qualification rows
 
@@ -1972,10 +2140,10 @@ harness availability or permission to run them in this documents-only task.
 | R3-A03 fence/ACK | duplicated/reordered fence and lost resolution ACK | changed intent/FenceId/identity refusal | no name release while any adopter/attach possibility remains; exactly-once cleanup/release |
 | R3-A04 reconnect | durable SID/family debt, origin/new cookie | service restart vs driver/boot proof adapter | churn cannot evade bounds; restart alone no receipt; identity-unknown reply loss recovers |
 | R3-Q01 bounds | current Ordered/Allocation/Continuation/Growth lanes and reply credits; bounded duplicates | exhaust ordinary pre-dequeue credits, stall accepted/rejected native replies, reconnect | prove the chosen bounded modern intake strategy permits resource progress; no unconditional claim from separate failure queues alone; local revoke before drains |
-| R3-M01 confinement | outer pre/post role/size/access/leaf/context mutations | relative noncached/pad/EOF/post-EOF flush/security/unit checks | **epoch admission closed** while counted I/O waits for growth; ledger/companion and registration progress without BP/union/namespace recursion, roots policy-covered |
+| R3-M01 confinement | outer pre/post role/size/access/leaf/context mutations | 3: opaque noncached/padded-peak/EOF/F2/security primitives | **3 diagnostic subset:** T9MetadataEpochHoldActor keeps counted epoch closed while raw store/registration progresses, Commit NotReady; **6 retained production gate:** actual application I/O waiting for growth, real ledger/companion/reply progress without BP/namespace recursion |
 | R3-M02 lifetime | metadata tag-3/pre/post context and incarnation/revoke conservation | failed lower CREATE, draining at permitted IRQL, CLEANUP/CLOSE; token/anchor/substitution/link/ADS faults | map key retired before FILE_OBJECT address reuse, generic epoch/BP post never sees metadata context; disconnect/unload, no UAF |
-| R3-M03 lock order | transitive callback/claim completion failures | content leases outside gate | saturated growth + namespace/publication/reduction stress, no budget→journal cycle |
-| R3-M04 control progress | model legacy/progress/fence/bootstrap/revoke slots, paired channels and exact send leases | main 64 failure credits stalled while separate growth 40 credits/intake works; SetPolicy drain, metadata registration, fence Busy, cancel/dispose | wrong process/token/group/side-port rejects; loss of either revokes both before drains, no new handle publication before native leases end; epoch-closed growth accounting progresses |
+| R3-M03 lock order | raw claim/fault model before 3 | 3: opaque store/physical delta callbacks, no content/journal dependency | **4 retained:** actual reduction/content lease stress; **6 retained:** saturated production growth + namespace/publication/reduction, no budget→journal cycle. Neither is a substrate exit. |
+| R3-M04 control progress | 3: provisional/bootstrap/metadata/revoke classes and paired lifetimes; 40 accepted + <=40 rejected/receive Growth transport bound | **3 diagnostic subset:** actor holds epoch/SetPolicy, ordinary failure owner latch full, raw metadata control/diagnostic side-port echo progresses; no growth or intent-registry success stubs | **3:** wrong group/process/channel, cancel/revoke/drain with Commit NotReady; **5 retained:** real fence/ACK/snapshot Busy/eviction; **6 retained:** production growth reply and ledger progress under saturation. Diagnostic echo never substitutes for either. |
 | R3-A05 initial success/tombstone | no Entry/K closure, InitialResolved and linked ACK delta count reconstruction | final-success query/ACK origin, cross-request/FenceId/duplicated-handle refusal | delayed final-success query plus immediate close/disposal/crash must keep ledger until InitialResolved; then ledger deletion before ACK, ACK reply/delta loss and restart: no fabricated Entry, duplicate TransferId base or 8/4 debt leak |
 | R3-X01 ordinary discard | strict new receipt, old StageDeleted still rejected | exact delete with reader/section/replacement | ordinary discard refunds after proof, snapshot remains charged, fresh name use |
 | R3-X02 discard crash | section-9 crash table, duplicate/reuse | receipt persist fault after exact native success | live/restart/hot/packed no lost barrier or duplicate release |
@@ -2006,11 +2174,11 @@ authorized by listing a control.
 | U1 BootDomain / old instance | Still open before 5: choose/verify OS boot identity and exclusion of old adopters; existing BootId use at StageStream.c:4369 is not the whole proof. No restart/GUID inference. |
 | U2 CREATE / shell ownership | Before 5: section 5.5 whole source audit, prompt final expiry vs separately owned cleanup, authenticated success/fence acceptance and exact eight retained-shell credits/snapshot/ACK eviction. Pure debt/shell model exists; current code clears old receipts (:4461/:4629) and does not implement this registry. |
 | U3 Release adapters | Before 4: identify each slot's actual final handle/section/operation owner and each crash/unknown release witness; retained mutable maximum and driver retirement remain separate. Builder handle/section tests may supply mechanism evidence, not stage rundown proof. |
-| U4 Metadata/native sequence | Contract selected in 8.1/8.4: root no-SHARE_DELETE, replace-target SHARE_DELETE plus trusted exclusive store claim, no invented share exclusion of WRITE_DAC; PASSIVE native work/local draining owner; exact F1/EOF/F2/relative rename/F3 and conservative undocumented-guarantee outcome. Before 3 **accept text and resolve any unsupported primitive/import**, with listed controls designed. Implemented wrappers/IRQL/cancel/deferral/native exclusions must then pass coherent first-boot review; N-U4 controls and protected R3-M controls follow implementation. No unnamed future persistence barrier remains, and no stronger power-loss guarantee is claimed. |
-| U5 Two-direction progress | Physical growth port/group pairing, 40 independent growth credits, legacy/main FIFO/64 ordinary credits, every send class (including negotiation/revoke/snapshot), revoke-before-send and drain-before-handle-publication selected in 6.2/8.3. Before 3 accept mechanism; implemented group/auth/receive/cancel/send buffers require first-boot review. Real concurrent native FilterSendMessage/FilterReplyMessage/teardown and epoch-closed growth progress still need execution; fence Busy proof also before 5 boot. |
+| U4 Metadata/native sequence | Contract selected in 8.1/8.4: root no-SHARE_DELETE, replace-target SHARE_DELETE plus trusted exclusive store claim, no invented share exclusion of WRITE_DAC; PASSIVE native work/local draining owner; exact F1/EOF/F2/relative rename/F3 and conservative undocumented-guarantee outcome. Before 3 coding accept the 8.6 opaque native-store/diagnostic cut and these contracts, with no later schema consumer. Before first boot verify actual primitives/imports and exact role/class native controls. Implemented wrappers/IRQL/cancel/deferral/native exclusions must then pass coherent first-boot review; N-U4 controls and protected R3-M controls follow implementation. No unnamed future persistence barrier remains, and no stronger power-loss guarantee is claimed. |
+| U5 Two-direction progress | Physical growth port/group pairing; accepted Growth <=40 **plus** rejected/receive <=40; legacy/main accepted <=81 plus ordinary rejected/receive <=64; every send class (including negotiation/revoke/snapshot), revoke-before-send and drain-before-handle-publication selected in 6.2/8.3. Before 3 coding accept 8.6 provisional-only mechanism; diagnostic raw metadata/echo covers progress without production growth. Implemented group/auth/receive/cancel/send buffers require first-boot review; real fence/ACK/snapshot and growth are retained for 5/6. Real concurrent native FilterSendMessage/FilterReplyMessage/teardown and epoch-closed growth progress still need execution; fence Busy proof also before 5 boot. |
 | U6 Owned MM/buffers | Before 6: finish owned :10927→:5903/:5948 Major/Minor/IRQL/resource/MDL/completion audit, and pre-FltLockUserBuffer credits at :4824. Supply actual structures/worst-case page/PFN/cancel storage and validate numerical bounds; no pin-only or unowned :11044 proof. R4-MM routing/native evidence follows implemented review. |
 | U7 Trust scope | Owner decision before 4 unchanged: existing trusted private-storage boundary or separately reviewed external erasure/rollback architecture with availability/repair/uninstall/reset rules. A builder test cannot settle this boundary. |
-| U8 Fit/grammar | GrowthArchiveFitModelTests supplies pure checked arithmetic, maximum combined-envelope refusal/fit, overlap/padding/migration/selection and initial debt/shell state model before 3. Full independent Entry+closure maxima **do not fit** and retain ledger. Before 4 implement/validate actual serialization lengths/strict codecs and typed candidate/tail/delta/prefix selection against model; N-U8 allocation/recovery controls remain builder mechanisms, then required target evidence. No arithmetic result is native durability or qualification. |
+| U8 Fit/grammar | Before 3 coding: GrowthArchiveFitModelTests now supplies independent L/P/Q and A/U peak arithmetic, explicit measured/released custody, logical-EOF conservation mutant, combined-envelope and corrected overlap/controls. Base transfer overlap fits existing halves in all 60 pairs (worst 640 KiB/1 MiB). ACK scheduling and independent snapshot unknown/missing input models are stronger pure controls; they are not real sends or durable/native reconciliation. Full independent Entry+closure maxima **do not fit** and retain ledger. Before 4 implement/validate actual serialization lengths/strict codecs and typed candidate/tail/delta/prefix selection against model; N-U8-01 raw peak primitives are before-3-first-boot mechanism controls; N-U8-02/03 actual selector/migration/recovery wait for increment 4, then required target evidence. No arithmetic result is native durability or qualification. |
 
 ## 14. Open questions for the owner
 
