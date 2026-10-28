@@ -1,0 +1,122 @@
+{
+ "Label": "m2t9i3a1028a2",
+ "Gate": "PASS",
+ "Provenance": {
+  "SourceCommit": "a6958c1009309b60197b08bb21e1fc2f6cfae5cf",
+  "ArchiveSHA256": "05D2FDE6BCEAAF93496A98C42E35292D26CCEE8D209B4D921785F718F3692A5A",
+  "BuilderIdentity": {
+   "Builder": "builder2",
+   "BuilderHost": "192.168.122.211",
+   "BuilderComputerName": "SU-BUILDER2",
+   "ParityCheck": false
+  },
+  "Profiles": [
+   "feature-debug",
+   "feature-release"
+  ],
+  "TestLegs": 4
+ },
+ "RuntimeQualification": false,
+ "ServiceInstalled": false,
+ "Profiles": {
+  "feature-debug": {
+   "user": {
+    "Counters": {
+     "total": "3509",
+     "executed": "3509",
+     "passed": "3509",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "553255822ec14505649bdb5c33327845be14654388586c373aa7460e9fe11f08"
+   },
+   "system": {
+    "Counters": {
+     "total": "25",
+     "executed": "25",
+     "passed": "25",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "9f202da0440bfa8013d42ed6d5610a047abd75bde40329528caf67bbc280080f"
+   },
+   "ExactDiscoveryAndRequiredCasesVerified": true
+  },
+  "feature-release": {
+   "user": {
+    "Counters": {
+     "total": "3509",
+     "executed": "3509",
+     "passed": "3509",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "87b82c36bec35459937443a2ed490b71b1d339524df9566b78a573dcf19a608f"
+   },
+   "system": {
+    "Counters": {
+     "total": "25",
+     "executed": "25",
+     "passed": "25",
+     "failed": "0",
+     "error": "0",
+     "timeout": "0",
+     "aborted": "0",
+     "inconclusive": "0",
+     "passedButRunAborted": "0",
+     "notRunnable": "0",
+     "notExecuted": "0",
+     "disconnected": "0",
+     "warning": "0",
+     "completed": "0",
+     "inProgress": "0",
+     "pending": "0"
+    },
+    "TrxSha256": "abb6c74e9ce9b72b9c4ff4529c395581b958adb8a85a84c1431cdfaba7a1084e"
+   },
+   "ExactDiscoveryAndRequiredCasesVerified": true
+  }
+ },
+ "Packages": {
+  "feature-release": {
+   "package_manifest_sha256": "00D36DA25AA4E51E0056607D893C91A15D82F85D74BC40D4B69EAF2FEB13D2C4",
+   "package_sha256": "C971969A882DB28FBD7C96254440B56093E73A623F9CE3F424B2681568984238",
+   "exe_sha256": "4E9E3E3102FA695C16322ABDE45F7A8A852B90CF5BF8B4902B40994F2321DC20",
+   "app_exe_sha256": "A6083D784BB4922E6F2374A23627020EFEAE1541C21B34707F166C7ACE309C93"
+  }
+ },
+ "Notes": "Includes the 97 Windows-native N-U4/N-U8 mechanism cases (builder-OS mechanism evidence, not target 19045.2965 qualification). Failed predecessor m2t9i3a1028a1 (3 native failures) is retained."
+}
