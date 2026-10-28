@@ -139,4 +139,51 @@ public sealed class StagedAllocationRecoveryTests : IDisposable
         Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), "one"));
         Assert.Equal(first, budget.Reserve(Guid.NewGuid(), "two"));
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Lost_initial_reply_stays_charged_until_exact_driver_abandonment_even_after_restart(bool restart)
+    {
+        const string sid = "S-1-5-21-100";
+        var budget = Budget(); var journal = Journal(); Guid driver = Guid.NewGuid(), id = Guid.NewGuid();
+        string stage = Path.Combine(Stage, id.ToString("N") + ".txt");
+        budget.Reserve(id, sid, stage); File.WriteAllText(stage, "private bytes");
+        var transfer = new StagedTransfer(id, stage, Path.Combine(_workspace.Root, "public.txt"),
+            SafeUpload.Agent.Core.Domain.DestinationKind.Cloud, "fixture", 42, 1)
+            { RequestorSid = sid, RequestorProcessCreationTime = 123456 };
+        var entry = await journal.CreateAsync(transfer, default, allocationDisposition: 3,
+            allocationReferenceKind: 0, driverInstanceId: driver,
+            parentDirectoryIdentity: StagedStageFile.ReadDirectoryIdentity(_workspace.Root));
+        budget.RecordStage(id, stage, entry.StageIdentity!); budget.Bind(entry);
+        // The agent committed its reply tuple, but no adoption/abandonment
+        // message arrives. Background accounting cannot invent that proof.
+        byte[] grant = await File.ReadAllBytesAsync(stage + ".space");
+        if (restart)
+        {
+            journal = Journal();
+            budget = new(Stage, new(true, 512 * MiB, 128 * MiB, 0), () => 2048 * MiB, journal);
+            await journal.RetainInterruptedAsync(default);
+            entry = await journal.ReadAsync(id, default);
+            Assert.Equal(TransferJournalState.Unsealed, entry.State);
+        }
+        await budget.ReconcileAsync(journal, default);
+        Assert.True(budget.ContentReservationPending(id));
+        Assert.Throws<StagedSpaceException>(() => budget.Reserve(Guid.NewGuid(), sid));
+        Assert.Equal(grant, await File.ReadAllBytesAsync(stage + ".space"));
+        Assert.Equal(entry, await journal.ReadAsync(id, default));
+
+        // Existing kind-5 is sufficient only when the driver supplies this
+        // exact abandonment proof. Timeout and restart do not supply it.
+        var discard = new StagedDiscardRequest(id, StagedTransferJournal.VersionIdentity(entry), StagedDiscardKind.UnattachedAllocation);
+        Assert.Equal(StagedDiscardStatus.Pending, await journal.BeginOrConfirmDiscardAsync(discard, default, 42, driver));
+        await budget.ReconcileAsync(journal, default);
+        Assert.True(budget.ContentReservationPending(id));
+        Assert.Equal(StagedDiscardStatus.Acknowledged, await journal.CompleteDiscardAsync(discard, default));
+        await budget.ReconcileAsync(journal, default);
+        Assert.False(budget.ContentReservationPending(id)); Assert.Empty(Directory.GetFiles(Records));
+        Assert.False(File.Exists(stage + ".space")); Assert.False(File.Exists(transfer.DestinationPath));
+        Assert.Equal(StagedDiscardStatus.Acknowledged, await journal.CompleteDiscardAsync(discard, default));
+        Assert.True(budget.Reserve(Guid.NewGuid(), sid) >= 16 * MiB);
+    }
+
 }

@@ -50,6 +50,7 @@ public sealed partial class StagedSpaceBudget
     private readonly Dictionary<string, long> _reservationChargesBySid = new(StringComparer.Ordinal);
     private readonly HashSet<Guid> _liveSnapshots = new();
     private bool _faulted;
+    internal Action<Guid>? MetadataRetirementPersistedObserver { get; set; }
     private Dictionary<string, long>? _archiveAllocations;
     private long _archiveAllocationBytes;
     private long _hotAllocationBytes;
@@ -107,6 +108,7 @@ public sealed partial class StagedSpaceBudget
         // Validate all persisted locators before any exact-object cleanup can use them.
         if (legacyJournal is not null) UpgradeLegacyJournal(legacyJournal);
         VerifyInventory(stagingRoot);
+        if (legacyJournal is not null) RetireReleasedMetadata(legacyJournal);
     }
 
     // Call before any allocator ACL recovery can alter inherited evidence.
@@ -508,9 +510,14 @@ public sealed partial class StagedSpaceBudget
         }
         if (!StagedStageFile.TryDeleteExactAndConfirmAbsent(path, identity, out var failure))
             throw new IOException("Exact reservation metadata retirement is unresolved.", failure);
-        // A crash before this removal only overcharges; restart reconstructs
-        // absence after the durable metadata deletion. Repeated cleanup is a no-op.
-        RemoveReservation(record);
+        // Restart reconstructs absence after the durable metadata deletion.
+        // Any failure before totals adopt it must prevent further admission.
+        try
+        {
+            MetadataRetirementPersistedObserver?.Invoke(record.Id);
+            RemoveReservation(record);
+        }
+        catch { _faulted = true; throw; }
     }
 
     internal void Bind(TransferJournalEntry entry)
@@ -650,14 +657,16 @@ public sealed partial class StagedSpaceBudget
         }
     }
 
-    // Finished never-exposed allocations keep exact journal/replay evidence and
-    // high-water generations, but do not retain one 1-MiB SID charge per abort.
+    // Completed versions keep exact journal/replay evidence and high-water
+    // generations under shared history accounting, without a per-SID envelope.
     private bool RetireCompletedMetadata(Reservation record, TransferJournalEntry entry, StagedTransferJournal journal,
         bool exactContentRelease = false)
     {
         if ((!record.ContentReleased && !exactContentRelease) || record.Snapshot is not null || _liveSnapshots.Contains(record.Id) ||
-            entry.DiscardKind is not (StagedDiscardKind.UnattachedAllocation or StagedDiscardKind.RetireUnexposed or
-                StagedDiscardKind.RetireAttachedPrivate) || !StagedTransferJournal.StageSpaceUpgradeComplete(entry) ||
+            record.StageIdentity is null || entry.StageIdentity != record.StageIdentity ||
+            entry.Transfer.TransferId != record.Id || entry.Transfer.StagePath != record.StagePath ||
+            !record.LegacyGuard && entry.Transfer.RequestorSid != record.Sid ||
+            !StagedTransferJournal.StageSpaceUpgradeComplete(entry) ||
             !StagedStageFile.TryConfirmAbsent(entry.Transfer.StagePath, out _) ||
             !StagedStageFile.TryConfirmAbsent(entry.Transfer.StagePath + ".space", out _)) return false;
         // Replace the per-user metadata envelope BEFORE deleting its ledger.

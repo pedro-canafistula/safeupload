@@ -53,6 +53,19 @@ public sealed partial class StagedSpaceBudget
         VerifyJournalInventory(directory, journal);
     }
 
+    // All locators and inventory have been validated before startup consumes
+    // an already-durable content refund. Unfinished content stays on recovery.
+    private void RetireReleasedMetadata(StagedTransferJournal journal)
+    {
+        foreach (var record in _reservations.Values.Where(record => record.ContentReleased).ToArray())
+        {
+            TransferJournalEntry entry;
+            try { entry = journal.ReadAsync(record.Id, CancellationToken.None).GetAwaiter().GetResult(); }
+            catch (FileNotFoundException) { continue; } // Missing evidence keeps the metadata charge.
+            RetireCompletedMetadata(record, entry, journal);
+        }
+    }
+
     private bool LegacySecurityMetadataPath(string path)
     {
         string leaf = Path.GetFileName(path);

@@ -1,0 +1,40 @@
+{
+ "DiagnosticOnly": true,
+ "Platform": "Linux",
+ "ProductQualification": false,
+ "WindowsMatrixGate": false,
+ "BaseCommit": "cdde6b21930df7ef1470bf50be824877b57c273c",
+ "Worker": "gpt-6.1-sol high (t9-completed-retire); root reviewed diff and reran the final subset independently",
+ "PreFixBaseline": {
+  "DiagnosticOnly": true,
+  "Discovered": 3270,
+  "Selected": 13,
+  "Executed": 13,
+  "Passed": 3,
+  "Failed": 10,
+  "Skipped": 0,
+  "Errors": 0
+ },
+ "FinalSubset": {
+  "DiagnosticOnly": true,
+  "Discovered": 3275,
+  "Selected": 113,
+  "Executed": 113,
+  "Passed": 113,
+  "Failed": 0,
+  "Skipped": 0,
+  "Errors": 0
+ },
+ "LocalCompile": "feature Debug/Release service+app+tests, 0 warnings / 0 errors (worker run)",
+ "SourceSha256": {
+  "agente/SafeUpload.Agent.Service/Interception/StagedSpaceBudget.cs": "d65b61f5c3cc027a6cc3132634ea48552b3edd4b9a493a693e2d2b1e9ec381f9",
+  "agente/SafeUpload.Agent.Service/Interception/StagedSpaceUpgrade.cs": "5d6b9c6626c27aa0152686148e1ba74079ab590ce9338ab9f16dbd9fc7a6130c",
+  "agente/SafeUpload.Agent.Tests/StagedCompletedMetadataTests.cs": "18ed398d5cb58de5f8281a50e796de25095a751c148ddf5916e3d0ec58a371e2",
+  "agente/SafeUpload.Agent.Tests/StagedAllocationRecoveryTests.cs": "9c3a4020f9a3a4b8501ccd1ba6b7f18f10ae7790fe11a7c678e3662741871618"
+ },
+ "Limits": [
+  "Ordinary Discarded has no durable disposal receipt; it keeps four-copy capacity plus metadata",
+  "Lost initial allocation reply: restart does not prove abandonment; needs a driver fence of every possible CREATE/reply adoption, exact-intent resolution and abandonment evidence",
+  "Bound/growable equivalents of kind-5 cleanup are unspecified"
+ ]
+}
