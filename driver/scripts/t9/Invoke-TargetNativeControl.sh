@@ -72,7 +72,8 @@ git show "$commit:$baseline_script" > "$ev/baseline.ps1"
 printf 'Commit=%s\nControlSHA256=%s\nDomain=%s\nHost=%s\n' "$commit" "$control_sha" "$dom" "$host" > "$ev/inputs.txt"
 sha256sum "$ev/"*.ps1 driver/scripts/{run-disk.sh,image-store.sh,remote_ps.py} "${BASH_SOURCE[0]}" driver/scripts/t9/native_control_verdict.py >> "$ev/inputs.txt"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=yes)
-remote() { timeout 420 python3 driver/scripts/remote_ps.py "$host"; }
+# The control launches get a longer transport bound (REMOTE_TIMEOUT); everything else keeps 420 s.
+remote() { timeout "${REMOTE_TIMEOUT:-420}" python3 driver/scripts/remote_ps.py "$host"; }
 monotonic() { python3 -c 'import time; print(int(time.monotonic()))'; }
 wait_up() {
     local deadline
@@ -226,7 +227,7 @@ try {
     if ($Subject -eq 'admin' -and (-not $admin -or $identity.Name -ine "$env:COMPUTERNAME\vika")) { throw 'Wrong admin remote-shell subject' }
     [pscustomobject]@{Subject=$Subject;User=$identity.Name;SID=$identity.User.Value;Admin=$admin;Session=$session;PID=$PID;BootId=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o');Parser='5.1 PASS';SHA256=$ExpectedHash} |
         ConvertTo-Json -Compress | Set-Content -LiteralPath "$d\$Subject-subject.json" -Encoding UTF8
-    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -File "$d\control.ps1" -ExpectedOS 19045.2965 2> "$d\$Subject-stderr.txt" |
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -File "$d\control.ps1" -ExpectedOS 19045.2965 -ProgressPath "$d\$Subject-progress.txt" 2> "$d\$Subject-stderr.txt" |
         Set-Content -LiteralPath "$d\$Subject.jsonl" -Encoding UTF8
     $code = $LASTEXITCODE
 } catch {
@@ -382,19 +383,26 @@ PS
     grep -qx 'GuestHashAndParse=True' "$ev/$subject-parse.txt" || stop 'missing parser/hash receipt'
     inventory "$ev/$subject-before" || stop 'pre-control OS/driver gate failed'
     if [ "$subject" = actor ]; then
-        call "$ev/actor-launch" <<PS || stop 'interactive task failed/timed out'
+        # Liveness bound only (no timing assertion): nu406t1 timed out at 300 s on a first-logon actor
+        # profile with no progress trace; the control now streams per-case progress and the bound is 15 min.
+        REMOTE_TIMEOUT=1080 call "$ev/actor-launch" <<PS || stop 'interactive task failed/timed out'
 \$ErrorActionPreference = 'Stop'
 \$explorers = @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | Where-Object { (Invoke-CimMethod -InputObject \$_ -MethodName GetOwner).User -eq 't5actor' })
 if (\$explorers.Count -ne 1 -or \$explorers[0].SessionId -le 0) { throw 'Requires exactly one signed-in t5actor desktop; prepare with existing lab tools' }
 ('ACTOR_SESSION=' + \$explorers[0].SessionId) | Set-Content -LiteralPath '$guest/actor-session.txt' -Encoding ASCII
 \$principal = New-ScheduledTaskPrincipal -UserId "\$env:COMPUTERNAME\t5actor" -LogonType Interactive -RunLevel Limited
 \$action = New-ScheduledTaskAction -Execute "\$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File $guest/subject.ps1 -Subject actor -ExpectedHash $control_sha'
-\$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+\$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 Register-ScheduledTask -TaskName 'T9Native-$label' -Principal \$principal -Action \$action -Settings \$settings | Out-Null
 Start-ScheduledTask -TaskName 'T9Native-$label'
 \$sw = [Diagnostics.Stopwatch]::StartNew()
-while (\$sw.Elapsed.TotalSeconds -lt 330 -and (-not (Test-Path -LiteralPath '$guest/actor-exit.txt') -or (Get-ScheduledTask -TaskName 'T9Native-$label').State -eq 'Running')) { Start-Sleep -Seconds 1 }
-if (-not (Test-Path -LiteralPath '$guest/actor-exit.txt') -or (Get-ScheduledTask -TaskName 'T9Native-$label').State -eq 'Running') { throw 'Actor timed out; STOP' }
+while (\$sw.Elapsed.TotalSeconds -lt 930 -and (-not (Test-Path -LiteralPath '$guest/actor-exit.txt') -or (Get-ScheduledTask -TaskName 'T9Native-$label').State -eq 'Running')) { Start-Sleep -Seconds 1 }
+if (-not (Test-Path -LiteralPath '$guest/actor-exit.txt') -or (Get-ScheduledTask -TaskName 'T9Native-$label').State -eq 'Running') {
+    Get-CimInstance Win32_Process | Where-Object { \$_.Name -match '^(powershell|csc|cvtres|MsMpEng|conhost)\.exe\$' } |
+        Select-Object Name,ProcessId,ParentProcessId,SessionId,CreationDate,KernelModeTime,UserModeTime,WorkingSetSize,CommandLine |
+        Format-List | Out-File -LiteralPath '$guest/actor-timeout-processes.txt' -Encoding UTF8
+    throw 'Actor timed out; STOP'
+}
 ([string](Get-ScheduledTaskInfo -TaskName 'T9Native-$label').LastTaskResult) | Set-Content -LiteralPath '$guest/actor-task-exit.txt' -Encoding ASCII
 Get-ScheduledTaskInfo -TaskName 'T9Native-$label' | Format-List *
 'ActorCompleted=True'
@@ -402,7 +410,7 @@ PS
         grep -qx 'ActorCompleted=True' "$ev/actor-launch.txt" || stop 'missing actor completion receipt'
     else
         # A failed child is collected before the host verdict stops the sequence.
-        call "$ev/admin-launch" <<PS || stop 'admin transport failed'
+        REMOTE_TIMEOUT=1080 call "$ev/admin-launch" <<PS || stop 'admin transport failed'
 & powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -File '$guest/subject.ps1' -Subject admin -ExpectedHash '$control_sha'
 'AdminWrapperExit=' + \$LASTEXITCODE
 PS

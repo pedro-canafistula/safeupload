@@ -40,8 +40,13 @@ privacy and first-logon-animation suppression follow StageNotepad's pattern.
 It requests a reboot, waits up to 300 monotonic seconds for a **changed boot
 ID**, rechecks OS and stopped/unloaded original driver, then waits up to 180
 monotonic seconds for exactly one `t5actor` Explorer in a session >0. A limited
-Interactive scheduled task runs the actor control. No manual sign-in pause or
-product installation is involved. The one-boot secret stays on that discarded
+Interactive scheduled task runs the actor control under a 15-minute liveness
+bound (930 s wait, 1080 s transport). This is not a timing assertion. The first
+target attempt `nu406t1` hit the original 5-minute bound with no trace, so each
+subject now writes `<subject>-progress.txt`: monotonic elapsed time around
+Add-Type/self-check and at every case change. On timeout the runner also records
+the powershell/csc/Defender process state. No manual sign-in pause or product
+installation is involved. The one-boot secret stays on that discarded
 actor disk. Before/control/after boot IDs must match the post-reboot inventory;
 the initial actor boot must differ. Admin must not reboot during its row.
 

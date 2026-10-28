@@ -4,13 +4,17 @@ param(
     [switch]$SelfCheck,
     [ValidateSet('19045.2965','19045.6466')][string]$ExpectedOS = '19045.2965',
     [switch]$ExpectBuilderTable = $true,
-    [string]$TempParent = [IO.Path]::GetTempPath()
+    [string]$TempParent = [IO.Path]::GetTempPath(),
+    [string]$ProgressPath
 )
 # N-U4-06, unprotected exact-target mechanism evidence, NOT protected-pair qualification.
 # Windows PowerShell 5.1 / x64 / built-in Add-Type only; no SDK or test host.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 try {
+$progressClock = [Diagnostics.Stopwatch]::StartNew()
+function Write-Progress51([string]$Text) { if ($ProgressPath) { [IO.File]::AppendAllText($ProgressPath, ([string]$progressClock.ElapsedMilliseconds + ' ms ' + $Text + [Environment]::NewLine)) } }
+Write-Progress51 'AddTypeStart'
 if (-not ('T9NativeStoreControl' -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
@@ -111,12 +115,23 @@ public sealed class T9NativeStoreControl {
         for(int i=0;i<pairs.Length;i+=2) d.Add((string)pairs[i],pairs[i+1]);
         return d;
     }
+    // Diagnostic liveness only: one flushed line per case change, never part of a verdict.
+    public string ProgressPath;
+    readonly System.Diagnostics.Stopwatch clock=System.Diagnostics.Stopwatch.StartNew();
+    string progressCase;
+    void Progress() {
+        if(ProgressPath==null || context==progressCase) return;
+        progressCase=context;
+        File.AppendAllText(ProgressPath,clock.ElapsedMilliseconds+" ms seq="+(Events.Count+1)+" "+context+Environment.NewLine);
+    }
     void Emit(string kind, params object[] pairs) {
+        Progress();
         var d=Fields(pairs); d.Add("Kind",kind); d.Add("Case",context); d.Add("Sequence",Events.Count+1); Events.Add(d);
     }
     static string Hex(int value) { return "0x"+unchecked((uint)value).ToString("X8"); }
     void Difference(string text) { if(FirstDifference==null) FirstDifference=text; }
     void Receipt(string operation, int status, IO_STATUS_BLOCK io, params object[] pairs) {
+        Progress();
         var d=Fields(pairs); d.Add("Kind","Native"); d.Add("Case",context); d.Add("Sequence",Events.Count+1);
         d.Add("Operation",operation); d.Add("NTSTATUS",Hex(status));
         d.Add("IoStatus",Hex(unchecked((int)io.Status.ToInt64()))); d.Add("Information",io.Information.ToUInt64()); Events.Add(d);
@@ -997,12 +1012,17 @@ public sealed class T9NativeStoreControl {
         Write-Output 'NativeStoreMechanismSelfCheck=PASS'
         return
     }
+    Write-Progress51 'AddTypeAndSelfCheckDone'
     $control = New-Object T9NativeStoreControl
+    if ($ProgressPath) { $control.ProgressPath = $ProgressPath }
     $scriptHash = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     [pscustomobject]@{Kind='Script'; SHA256=$scriptHash; PSVersion=$PSVersionTable.PSVersion.ToString(); ProcessBits=([IntPtr]::Size*8)} | ConvertTo-Json -Compress
     if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Runtime requires Windows PowerShell 5.1.' }
+    Write-Progress51 'RunStart'
     $control.Run($TempParent,[bool]$ExpectBuilderTable,$ExpectedOS)
+    Write-Progress51 'RunReturned'
     foreach ($record in $control.Events) { $record | ConvertTo-Json -Depth 12 -Compress }
+    Write-Progress51 'EventsWritten'
     $verdict = [T9NativeStoreControl]::Verdict($control.FirstDifference,[bool]$ExpectBuilderTable)
     [pscustomobject]@{Kind='Verdict'; Verdict=$verdict; FirstDifference=$control.FirstDifference; ReplacementRows=$control.ReplacementCount; AllocationRows=$control.AllocationCount; FaultRows=$control.FaultCount; RetentionRows=$control.RetentionCount; ReleaseRows=$control.ReleaseCount; ExpectedOS=$ExpectedOS; MechanismDiscovery=($ExpectedOS -eq '19045.6466'); TargetEvidence=($ExpectedOS -eq '19045.2965'); ProductQualification=$false; PersistedReleaseVerified=$false; TargetBaselineMatches=$control.TargetBaselineMatches; ExpectedBaselineMatches=$control.ExpectedBaselineMatches; LabStop=($verdict -eq 'DIFFERS')} | ConvertTo-Json -Compress
     Write-Output ('NativeStoreMechanism='+$verdict)
