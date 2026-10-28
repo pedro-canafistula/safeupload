@@ -1,0 +1,14 @@
+# T9 increment 3: first Windows execution of the native mechanism cases — 2026-10-28
+
+**Matrix `m2t9i3a1028a1` (source `60acb1a5`, builder2, feature Debug/user): 3,407 executed, 3,404 passed, 3 failed.** The run stopped after the failed leg (`AgentMatrixGate=False`);
+no further leg ran. All three failures are new native cases; the 3,404 others, including N-U4-02/-03/-04, passed. The failed matrix receipt is retained unchanged. The focused diagnostic
+`m2t9fdiag1028a1` (`Invoke-FocusedAgentDiagnostic.sh`, same commit, class filter) reproduced exactly the same three failures: 16 cases executed, 13 passed (my pre-run expected count of 6 was wrong, and the script's count check correctly refused it).
+Builder 19045 is mechanism evidence only, not target qualification.
+
+| Case | Observation (native receipt) | Reading |
+|---|---|---|
+| N-U4-01 | Store result Committed; the test's own `File.ReadAllBytes(ledger)` then failed "being used by another process". | **Test defect.** `ReadAllBytes` opens FileShare.Read, which conflicts with the store's still-open writable handle. Verify through a shared (Read\|Write\|Delete) handle. |
+| N-U8-01 | Two sequential 4096-byte noncached writes of a 2·A segment: after the 2nd write `EOF=8192`, **`AllocationSize=16384`**, model peak `Q=8192`; store classified **Held**. | **Real mechanism finding.** NTFS can over-allocate beyond `AlignUp(P,U)` when a file is extended by successive writes. The store correctly refused to report Committed over an unbounded allocation. The model/design must either preallocate (set allocation to P before writing) or write the padded extent in one call, or bound the over-allocation, and re-measure. |
+| N-U4-05 | Second store operation with `ReplaceIfExists=True` over the held target: `Step=Replace NTSTATUS=0xC0000022` (STATUS_ACCESS_DENIED), `SuccessfulNativeRenames` stayed 1, store result Held; the later `DeletePending` assertion therefore failed on a replacement that never happened. | **The positive held-target replacement is NOT established on this builder with class 10 and the current access/share combination.** (An earlier version of this table read this row as 'a replaced predecessor is unlinked, not delete-pending'; that was an unsupported inference, corrected 2026-10-28 after the agent worker re-read the raw status.) Candidate mechanisms to measure: class 10 with the predecessor handle opened FILE_SHARE_DELETE, FileRenameInformationEx (class 65) with REPLACE_IF_EXISTS, and with POSIX_SEMANTICS (the existing helper at `StagedHandbackCopier.cs:884` already uses the Ex class). |
+
+Next: agent worker fixes the test defect, the allocation finding and measures the replacement candidates, re-measures with the focused script, then a fresh four-leg matrix. Raw: `driver/evidence/2026-10-28/exact-agent-matrix-m2t9i3a1028a1-*`, `t9-diagnostic-m2t9fdiag1028a1/` (local, ignored).
