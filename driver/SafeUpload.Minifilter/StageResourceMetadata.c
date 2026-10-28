@@ -645,6 +645,12 @@ static BOOLEAN MetadataSecurityPredicate(_In_ const SU_METADATA_NODE *Node,
         FILE_WRITE_ATTRIBUTES | DELETE | FILE_DELETE_CHILD | WRITE_DAC | WRITE_OWNER;
     const ACCESS_MASK destructive = DELETE | FILE_DELETE_CHILD | WRITE_DAC | WRITE_OWNER |
         FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES;
+    /* Design 8.7.1 AncestorEdge: on the Windows ancestor itself only untrusted
+     * DELETE, FILE_DELETE_CHILD, WRITE_DAC and WRITE_OWNER refuse. Stock
+     * C:\ProgramData grants BUILTIN\Users (CI)(WD,AD,WEA,WA) on itself, which
+     * the wider set wrongly refused (N-U5-01 nu501c3). Inheritable grants that
+     * reach an unprotected child keep the wider set below. */
+    const ACCESS_MASK ancestorAuthority = DELETE | FILE_DELETE_CHILD | WRITE_DAC | WRITE_OWNER;
     GENERIC_MAPPING mapping = {FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_GENERIC_EXECUTE, FILE_ALL_ACCESS};
     if (!MetadataSecurityParts(Node->Security, &owner, &dacl, &protectedDacl) ||
         !MetadataTrustedSid(owner, WindowsAncestor && !InstallationParent) ||
@@ -678,7 +684,7 @@ static BOOLEAN MetadataSecurityPredicate(_In_ const SU_METADATA_NODE *Node,
         if (!WindowsAncestor) {
             if (!trusted && (mask & mutations) != 0) return FALSE;
         } else {
-            if (!trusted && !FlagOn(header->AceFlags, INHERIT_ONLY_ACE) && (mask & destructive) != 0)
+            if (!trusted && !FlagOn(header->AceFlags, INHERIT_ONLY_ACE) && (mask & ancestorAuthority) != 0)
                 return FALSE;
             if (!trusted && Child != NULL && !childProtected &&
                 FlagOn(header->AceFlags, CONTAINER_INHERIT_ACE) && (mask & destructive) != 0) {

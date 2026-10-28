@@ -26,6 +26,11 @@ $secureBoot = $null
 try { $secureBoot = Confirm-SecureBootUEFI }
 catch { if ($_.Exception.Message -match '0xC0000100') { $secureBoot = $false } else { throw } }
 if ($secureBoot -ne $false) { throw 'Secure Boot must be off' }
+# Record the stock Windows ancestors' security before any change (RegisterRoot
+# evaluates them; nu501c3 was refused on the ProgramData edge).
+foreach ($p in @('C:\', 'C:\ProgramData')) {
+    [pscustomobject]@{Kind='AncestorSecurity'; Path=$p; Sddl=(Get-Acl -LiteralPath $p).Sddl} | ConvertTo-Json -Compress
+}
 $bcd = & bcdedit.exe /enum '{current}' 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0 -or $bcd -notmatch '(?im)^testsigning\s+Yes\s*$') { throw 'Test signing must already be enabled' }
 $filters = & fltmc.exe filters 2>&1 | Out-String
@@ -58,6 +63,9 @@ foreach ($root in @($data) + $roots) {
         [void]$acl.AddAccessRule($rule)
     }
     Set-Acl -LiteralPath $root -AclObject $acl
+}
+foreach ($root in @($data) + $roots) {
+    [pscustomobject]@{Kind='InstalledSecurity'; Path=$root; Sddl=(Get-Acl -LiteralPath $root).Sddl} | ConvertTo-Json -Compress
 }
 # Domain validation requires a category (RN-009). With no destinations,
 # removable or network scope, this is an authentication-only inert policy.
