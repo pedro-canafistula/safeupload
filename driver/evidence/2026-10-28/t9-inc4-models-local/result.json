@@ -1,0 +1,41 @@
+{
+  "DiagnosticOnly": true,
+  "SDK": "10.0.400",
+  "SourceSha256": {
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md": "4f9bf5bbaec8fb82c945f4e09806b7930bcdff9dc2eac69b2d5ba347b5a5f9e1",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs": "6e4873b85aefdcc86cde67c0e848a45a7270d96d529250c2df672c7a417c0084"
+  },
+  "Models": [
+    {
+      "discovered": 187,
+      "executed": 187,
+      "passed": 187,
+      "failed": 0,
+      "skipped": 0,
+      "configuration": "debug"
+    },
+    {
+      "discovered": 187,
+      "executed": 187,
+      "passed": 187,
+      "failed": 0,
+      "skipped": 0,
+      "configuration": "release"
+    }
+  ],
+  "NewCasesPerConfiguration": 117,
+  "UnchangedFitCasesPerConfiguration": 70,
+  "LocalCompile": "feature Debug/Release Service/App/Tests PASS; warnings-as-errors",
+  "WindowsMatrix": false,
+  "IndependentReview": "Pending",
+  "ActualSchema3SerializerPrerequisite": "Open before dependent increment-4 coding",
+  "OpenOwnerDecision": "O3 public promotion accounting",
+  "ArtifactSha256": {
+    "/tmp/t9-inc4-models/bin/Debug/net10.0/Models.dll": "123a835e1224789c51c1b49f51710975fda3d6bd70e766c4cf95be3cd93f12e2",
+    "/tmp/t9-inc4-models/bin/Release/net10.0/Models.dll": "97f3f22be9befdb7aca06cf58528dc27d20980be1dff0d90a0c32df40683042c"
+  },
+  "StartHEAD": "7c3ab3e5",
+  "EndHEAD": "cd1eef8926ed43e7555a1e82321f0daeac393ae6",
+  "ConcurrentHEADAdvance": "Another session committed harness/evidence only; no design baseline or agente source difference from 7c3ab3e5",
+  "ProductSourceDeltaDuringTask": []
+}
