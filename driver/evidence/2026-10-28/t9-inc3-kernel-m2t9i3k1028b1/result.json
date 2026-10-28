@@ -1,0 +1,36 @@
+{
+ "Label": "m2t9i3k1028b1",
+ "Gate": "PASS",
+ "SourceCommit": "4f1d69d3",
+ "Builder": "builder1",
+ "ProductQualification": false,
+ "VmBooted": false,
+ "Scope": "Static/build/import/signature gate of the increment-3 kernel pair-context fix (ConnectNotify context copied without ProbeForRead) found by N-U5-01 nu501c2. Narrow independent check pending before the next component load.",
+ "PriorAttempt": "m2t9i3k1028a9 refused at commit resolution (mistyped hash 46a6b8ba); nothing built or sent.",
+ "Signature": {
+  "SignatureValid": true,
+  "SignatureStatus": "Valid",
+  "ActualSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "ExpectedSigner": "A6D6CE1AA28835D509160A80ADB7894869AADF38",
+  "SignedSHA256": "09474AB2420FCA46227A61F74B83AE9FF810C315F1305637A7448C0FE3DCB44B",
+  "UnsignedSHA256": "19CBF5E6C9FEBB94B0A8671D4F37337E6992E10932E9167FEB62BB064FE8A2B3",
+  "UnsignedArtifactUnchanged": true
+ },
+ "SummaryRows": [
+  "LABEL=m2t9i3k1028b1",
+  "ARCHIVE_SHA256=705C02E42A463787877775B7A35A634B8FC0E43DEDC66357322323138E5C039B",
+  "SOURCE_COMMIT=4f1d69d3ef8e4354922ca8be6a166b113569cbeb",
+  "BUILDER=DESKTOP-O1LP5DG",
+  "BUILD_END_UTC=2026-10-28T22:53:19.4318000Z",
+  "KernelBuildProfiles=owned-feature,owned-feature-release",
+  "Builder=builder1",
+  "BuilderHost=192.168.122.210",
+  "BuilderComputerName=DESKTOP-O1LP5DG",
+  "ParityCheck=False",
+  "driver:owned-feature : configuration=Debug feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=19CBF5E6C9FEBB94B0A8671D4F37337E6992E10932E9167FEB62BB064FE8A2B3",
+  "driver:owned-feature-release : configuration=Release feature=true owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 apivalidator=True prefast=True artifact_sha256=857EE1F993B21BC763F3A55CB9186B04DF201979FC9862CCC755835BF14EFE49",
+  "inspector-feature-release : owner_fsp=false exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=EB1373361BCE270323D704DD32AC43877C1CB574BC8B8CC48CDE0E9CCFAA0A29",
+  "writer-fixture : exit=0 succeeded=True warnings=0 errors=0 artifact_sha256=45363A0E8E36B32AF318A31A1C0CA64807D8F8FEF5C8319F3AC28A6671E6B40A",
+  "sign : exit=0 unsigned_sha256=19CBF5E6C9FEBB94B0A8671D4F37337E6992E10932E9167FEB62BB064FE8A2B3 signing_copy_sha256=19CBF5E6C9FEBB94B0A8671D4F37337E6992E10932E9167FEB62BB064FE8A2B3 unsigned_unchanged=True store=LocalMachine output_sha256=09474AB2420FCA46227A61F74B83AE9FF810C315F1305637A7448C0FE3DCB44B signed_sha256=09474AB2420FCA46227A61F74B83AE9FF810C315F1305637A7448C0FE3DCB44B signature_valid=True signer=A6D6CE1AA28835D509160A80ADB7894869AADF38"
+ ]
+}
