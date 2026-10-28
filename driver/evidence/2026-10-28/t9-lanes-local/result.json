@@ -1,0 +1,34 @@
+{
+ "DiagnosticOnly": true,
+ "Platform": "Linux",
+ "ProductQualification": false,
+ "WindowsMatrixGate": false,
+ "BaseCommit": "b066c30b",
+ "Worker": "gpt-6.1-sol high (t9-lanes); root read the dispatcher/lane/routing code and the receive-loop diff, recompiled feature Debug/Release (PASS, -warnaserror) and reran the final subset",
+ "RootRerun": {
+  "Discovered": 3303,
+  "Selected": 96,
+  "Executed": 96,
+  "Passed": 96,
+  "Failed": 0,
+  "Skipped": 0,
+  "Errors": 0
+ },
+ "WorkerRuns": "feature+normal Debug/Release compile 12/12 builds 0 warnings/errors; 96 feature tests; 59 non-feature; 3 heartbeat; 1,000-message stress per configuration. Initial probes 35/64 and 90/120 failed on Windows-only filename comparator and are retained in worker-validation.txt",
+ "SourceSha256": {
+  "agente/SafeUpload.Agent.Service/Interception/MinifilterInterceptor.cs": "6969b3a245b0a5195429fd73a991456da562d508ddcf2d6d6e8ab251fdc81796",
+  "agente/SafeUpload.Agent.Service/Interception/MinifilterRequestDispatch.cs": "e7c6fc90ec04e20295593b9d171f83d536cbd3de002cfc0677b7e29cce48225c",
+  "agente/SafeUpload.Agent.Service/Interception/StagedRequestDispatcher.cs": "a51f0380b89c0d29e75df07e81d4d4f5cb00ba1b6aa586ba15be58447c891f2d",
+  "agente/SafeUpload.Agent.Service/Interception/StagedRequestLane.cs": "b1315bff9a0878d20ee0a676214bbfbce47451a6aa42bb0c9abb44758e2e9124",
+  "agente/SafeUpload.Agent.Service/Interception/StagedRequestContinuations.cs": "6cdc2891e4b761956259ca186bc8e01b4da93cc50c46509348d60812be7e3da8",
+  "agente/SafeUpload.Agent.Tests/StagedRequestDispatcherTests.cs": "5262594b7b861b987c24567eeeb755303651b23dd27f381186a4cfdf8b6e0f2f",
+  "agente/SafeUpload.Agent.Tests/StagedAttachmentV20Tests.cs": "8611e99d2b493c1b23ea5de5af1664d836cc0ffbdeebb0f0569aa423ba717504",
+  "agente/SafeUpload.Agent.Tests/StagedAllocationResolutionTests.cs": "812b6e374fcc034b7ea825ed42cb6a842e55e455a9c43805f8cbe576137f19dc"
+ },
+ "Limits": [
+  "Not Windows or pair qualification; the four-leg feature matrix remains required",
+  "Native controls still needed: real-port saturation, disconnect/reconnect with queued work, late replies, NoWaiter and transport failures, worker joins before port close",
+  "Legacy allocation stays on the single ordered lane (a 120 s seed wait blocks other ordered requests as the inline path did); splitting it needs its own ordering analysis (increment 5)",
+  "Growth lane has no handler; nothing sends growth requests"
+ ]
+}

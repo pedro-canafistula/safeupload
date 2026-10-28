@@ -1,0 +1,69 @@
+T9 increment 2: Linux-only diagnostics, base b066c30b, working tree edits; no commit, network or Windows execution.
+Current product code was exercised by final-lifetime (feature) and normal-final; the final deterministic stress setup was subsequently exercised in both builds.
+All test results have Selected == Executed; Errors=0; Skipped=0. No assertion or threshold was weakened.
+Initial broad probe: 24 allocator tests require NTFS/ReFS, 1 requires cmd.exe, 4 persistence-fault tests require native Windows APIs.
+Broader regression: 30 native-lifecycle cases require the explicit Windows filename comparator. These failed locally; they were not qualified or marked skipped.
+Final portable selection is diagnostic, not a replacement for those Windows cases or the four-leg user/SYSTEM gate.
+
+bash /tmp/t9-dispatch-tests.sh 'Inline_lifecycle_sequence|StagedRequestTraceTests|StagedAllocationResolutionTests|Op13_and_op15_' before
+{"DiagnosticOnly": true, "Discovered": 3276, "Selected": 64, "Executed": 64, "Passed": 35, "Failed": 29, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/before.json
+Log: /tmp/safeupload-t9-dispatch-tests/results/before.log
+
+bash /tmp/t9-dispatch-tests.sh 'Inline_lifecycle_sequence|StagedRequestTraceTests' shell-first
+{"DiagnosticOnly": true, "Discovered": 3276, "Selected": 14, "Executed": 14, "Passed": 14, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/shell-first.json
+Log: /tmp/safeupload-t9-dispatch-tests/results/shell-first.log
+
+bash /tmp/t9-dispatch-tests.sh 'StagedRequestDispatcherTests|Inline_lifecycle_sequence|StagedRequestTraceTests' dispatcher-controls
+{"DiagnosticOnly": true, "Discovered": 3298, "Selected": 36, "Executed": 36, "Passed": 36, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/dispatcher-controls.json
+Log: /tmp/safeupload-t9-dispatch-tests/results/dispatcher-controls.log
+
+bash /tmp/t9-dispatch-tests.sh 'StagedRequestDispatcherTests|Inline_lifecycle_sequence|StagedRequestTraceTests|StagedNativeLifecycleDispatcherTests|StagedAllocationRecoveryTests|Allocation_resolution_layout_and_full_request_echo|Terminal_receipt_refuses_every|Allocation_resolution_profile|Uncertain_post_commit_failure|Dispatcher_saturation_preserves|StagedTransferJournalTests.Empty_stage|StagedTransferJournalTests.Empty_sealed_rename|StagedTransferJournalTests.A_stage_that_becomes_empty|StagedTransferJournalTests.Seal_refuses_a_version|StagedTransferJournalTests.Startup_retries_a_durable_seal|StagedTransferJournalTests.Retried_kernel_seal|StagedTransferJournalTests.Pending_namespace_transaction|StagedTransferJournalTests.Sealed_transfer_survives|V20_attachment_order|V20_epoch_drain_replay|V20_epoch_rejects|Waiting_destination_continuation|Waiting_recovery_continuation' regression
+{"DiagnosticOnly": true, "Discovered": 3300, "Selected": 120, "Executed": 120, "Passed": 90, "Failed": 30, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/regression.json
+Log: /tmp/safeupload-t9-dispatch-tests/results/regression.log
+
+bash /tmp/t9-dispatch-final.sh
+{"DiagnosticOnly": true, "Discovered": 3302, "Selected": 95, "Executed": 95, "Passed": 95, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/final-portable.json
+Log: /tmp/safeupload-t9-dispatch-tests/results/final-portable.log
+
+bash /tmp/t9-dispatch-final.sh final-lifetime
+{"DiagnosticOnly": true, "Discovered": 3303, "Selected": 96, "Executed": 96, "Passed": 96, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/final-lifetime.json
+Log: /tmp/safeupload-t9-dispatch-tests/results/final-lifetime.log
+
+bash /tmp/t9-dispatch-normal-tests.sh 'StagedRequestDispatcherTests|Inline_lifecycle_sequence|StagedRequestTraceTests|StagedReceiveHeartbeatTests|Dispatcher_saturation_preserves|Allocation_resolution_layout_and_full_request_echo|Terminal_receipt_refuses_every|Allocation_resolution_profile|Uncertain_post_commit_failure|V20_attachment_order|V20_epoch_drain_replay|V20_epoch_rejects' normal-final
+{"DiagnosticOnly": true, "Discovered": 2655, "Selected": 59, "Executed": 59, "Passed": 59, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-normal-tests/results/normal-final.json
+Log: /tmp/safeupload-t9-dispatch-normal-tests/results/normal-final.log
+
+/home/victor/Work/safeupload-tools/dotnet/dotnet /tmp/safeupload-t9-dispatch-tests/runner/bin/Debug/net10.0-windows/Runner.dll 'StagedReceiveHeartbeatTests' /tmp/safeupload-t9-dispatch-tests/results/heartbeat-final.json
+{"DiagnosticOnly": true, "Discovered": 3303, "Selected": 3, "Executed": 3, "Passed": 3, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/heartbeat-final.json
+Heartbeat output was returned directly by the tool.
+
+bash /tmp/t9-dispatch-tests.sh 'Thousand_messages_with_randomized_completion_have_one_correlated_outcome_each' deterministic-stress
+{"DiagnosticOnly": true, "Discovered": 3303, "Selected": 1, "Executed": 1, "Passed": 1, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-tests/results/deterministic-stress.json
+Log: /tmp/safeupload-t9-dispatch-tests/results/deterministic-stress.log
+
+bash /tmp/t9-dispatch-normal-tests.sh 'Thousand_messages_with_randomized_completion_have_one_correlated_outcome_each' deterministic-stress-normal
+{"DiagnosticOnly": true, "Discovered": 2655, "Selected": 1, "Executed": 1, "Passed": 1, "Failed": 0, "Skipped": 0, "Errors": 0}
+Receipt: /tmp/safeupload-t9-dispatch-normal-tests/results/deterministic-stress-normal.json
+Log: /tmp/safeupload-t9-dispatch-normal-tests/results/deterministic-stress-normal.log
+
+Final feature compile command: bash driver/scripts/Invoke-LocalAgentCompile.sh feature-debug feature-release
+Latest log: /tmp/t9-dispatch-feature-delivery.log -- 6/6 Service/App/Tests builds, Debug/Release, 0 warnings/0 errors, exit 0.
+Non-feature compile command: bash driver/scripts/Invoke-LocalAgentCompile.sh normal-debug normal-release
+Log: /tmp/t9-dispatch-normal-final.log -- 6/6 builds, 0 warnings/0 errors, exit 0. Latest non-feature stress runner also rebuilt Tests and dependencies with warnings as errors.
+Intermediate successful compile logs: /tmp/t9-dispatch-compile.log (all four profiles, 12/12); /tmp/t9-dispatch-feature-final.log and /tmp/t9-dispatch-feature-lifetime.log (6/6 each).
+git diff --check: PASS. Concurrent driver design changes belong to the other worker and were left untouched.
+Portable final selector script:
+#!/usr/bin/env bash
+set -euo pipefail
+filter='StagedRequestDispatcherTests|Inline_lifecycle_sequence|StagedRequestTraceTests|StagedNativeLifecycleDispatcherTests.Typed_wire|StagedNativeLifecycleDispatcherTests.Stale_or_unbound_prepare|StagedAllocationRecoveryTests|Allocation_resolution_layout_and_full_request_echo|Terminal_receipt_refuses_every|Allocation_resolution_profile|Uncertain_post_commit_failure|Dispatcher_saturation_preserves|Other_native_reply_errors|StagedTransferJournalTests.Empty_stage|StagedTransferJournalTests.Empty_sealed_rename|StagedTransferJournalTests.A_stage_that_becomes_empty|StagedTransferJournalTests.Seal_refuses_a_version|StagedTransferJournalTests.Startup_retries_a_durable_seal|StagedTransferJournalTests.Retried_kernel_seal|StagedTransferJournalTests.Pending_namespace_transaction|StagedTransferJournalTests.Sealed_transfer_survives|V20_attachment_order|V20_epoch_drain_replay|V20_epoch_rejects|Waiting_destination_continuation|Waiting_recovery_continuation'
+bash /tmp/t9-dispatch-tests.sh "$filter" "${1:-final-portable}"
+

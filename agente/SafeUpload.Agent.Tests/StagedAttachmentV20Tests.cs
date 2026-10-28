@@ -532,6 +532,75 @@ public sealed partial class StagedAttachmentV20Tests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task Inline_lifecycle_sequence_exposes_each_durable_transition_and_exact_reply_to_the_next_request(bool dispatched)
+    {
+        var errors = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+        using var dispatcher = dispatched ? new StagedRequestDispatcher(default, () => true, errors.Enqueue) : null;
+        var f = await CreateFixtureAsync(false);
+        _workspace.WritePolicy(JsonSerializer.Serialize(PolicyDocument.Default with
+        {
+            MonitoredScopes = MonitoredScopesDocument.Default with
+            { DestinationPaths = [Path.GetDirectoryName(f.Transfer.DestinationPath)!] }
+        }));
+        var log = new LifecycleErrorLog();
+        var policy = new LocalPolicyStore(_workspace.PolicyFile);
+        ulong requestId = 9500;
+        foreach (var (operation, result, state) in new[]
+        {
+            (Operation.StageAttachPrepare, StageV20Result.AttachPrepared, StagedAttachmentStateV20.Prepared),
+            (Operation.StageAttachCommit, StageV20Result.AttachCommitted, StagedAttachmentStateV20.Committed),
+            (Operation.StageCompletionPermit, StageV20Result.CompletionPermitted, StagedAttachmentStateV20.CompletionPermitted),
+            (Operation.StageHandleObserved, StageV20Result.HandleLifetimeObserved, StagedAttachmentStateV20.HandleObserved)
+        })
+        {
+            var payload = new SafeUploadStageLifecycleV20
+            {
+                Version = Contract.StageExtensionVersion, StructSize = Contract.StageLifecycleV20Size,
+                Operation = operation, RequestId = ++requestId, TransferId = f.Version.TransferId,
+                DestinationGeneration = (ulong)f.Version.DestinationGeneration,
+                StageIdentity = WireIdentity(f.Version.StageIdentity), DriverInstanceId = f.DriverInstanceId,
+                ParentDirectoryIdentity = WireIdentity(f.ParentDirectoryIdentity)
+            };
+            var request = LifecycleRequest(f, payload);
+            var failure = MinifilterInterceptor.CreateDispatchFailure(request);
+            if (operation == Operation.StageAttachPrepare) Assert.Null(failure.Lifecycle);
+            else
+            {
+                var expectedFailure = payload; expectedFailure.Result = StageV20Result.RetryableFailure;
+                var actualFailure = failure.Lifecycle!.Value;
+                Assert.Equal(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref expectedFailure, 1)).ToArray(),
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref actualFailure, 1)).ToArray());
+            }
+            async Task Handle()
+            {
+                var response = MinifilterInterceptor.ApplyStageLifecycleV20(LifecycleRequest(f, payload), f.Journal,
+                    f.DriverInstanceId, policy, log, _ => true,
+                    OperatingSystem.IsWindows() ? NtPathTranslator.ToDosPath : path => path);
+                Assert.Equal(PortVerdict.Allow, response.Verdict);
+                var expected = payload; expected.Result = result;
+                var actual = response.Reply!.Value;
+                Assert.Equal(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref expected, 1)).ToArray(),
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref actual, 1)).ToArray());
+                Assert.Equal(state, (await f.Journal.ReadAsync(f.Version.TransferId, default)).AttachmentStateV20);
+            }
+            if (dispatcher is null) await Handle();
+            else
+            {
+                var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var credit = await dispatcher.ReserveReplyAsync(default);
+                Assert.True(dispatcher.Dispatch(credit, dispatcher.Cookie, StagedDispatchLane.Ordered, async _ =>
+                { await Handle(); done.SetResult(); }, error =>
+                { done.SetException(error ?? new IOException("Unexpected lifecycle saturation")); return Task.CompletedTask; }));
+                await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+        }
+        Assert.Empty(log.Errors);
+        Assert.Empty(errors);
+        Assert.False(File.Exists(f.Transfer.DestinationPath));
+    }
+
     // Both build profiles, existing parameterless fixture and friend APIs.
     [Theory]
     [InlineData(13u, false)] [InlineData(13u, true)]

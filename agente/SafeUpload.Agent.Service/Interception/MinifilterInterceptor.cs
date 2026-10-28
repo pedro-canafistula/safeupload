@@ -69,6 +69,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
     // successfully delivered, and staging recovery completes before the
     // dispatcher accepts any stage mutation.
     private Guid? _activeDriverInstanceId;
+    private object? _receiveConnection;
     // On a fresh authenticated channel, this is the sole authority retained
     // for replaying a previously committed op17 after its reply was lost. It
     // never makes ordinary stage operations ready.
@@ -267,10 +268,22 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             Task? startupTask = null;
             Task? heartbeatTask = null;
             var receiveHeartbeat = new StagedReceiveHeartbeat();
+            var connection = new object();
+            Volatile.Write(ref _receiveConnection, connection);
+            using var dispatcher = new StagedRequestDispatcher(stoppingToken,
+                () => ReferenceEquals(Volatile.Read(ref _receiveConnection), connection),
+                error =>
+                {
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
-            long boundTicket = _boundReadiness.BeginConnection();
+                    _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
+#endif
+                    _logger.LogWarning(error, "A bounded failure reply was not delivered.");
+                });
+            Task<Guid?> orderedDriver = Task.FromResult(_activeDriverInstanceId);
+            long boundTicket = 0;
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            boundTicket = _boundReadiness.BeginConnection();
             _logger.LogWarning("Bound staging readiness: {Reason}", _boundReadiness.Snapshot.Reason);
-            using var boundContinuations = new StagedRequestContinuations(publishCancellation.Token);
 #endif
             try
             {
@@ -349,258 +362,34 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     receiveHeartbeat.Waiting();
+                    using var replyCredit = dispatcher.ReserveReplyAsync(stoppingToken).AsTask().GetAwaiter().GetResult();
                     if (!port.TryGetMessage(out SafeUploadRequest request, out ulong messageId, stoppingToken)) break;
+                    Guid cookie = dispatcher.Cookie;
                     using var trace = new StagedRequestTrace(request, messageId, _logger, receiveHeartbeat);
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-                    if (request.Operation == Operation.StageSeal)
+                    bool validHeader = HasDispatchHeader(request);
+                    // Feature wrappers also own malformed-carrier denial and
+                    // readiness effects. Preserve their original priority.
+                    StagedDispatchLane lane = DispatchLane(request);
+                    Task<Guid?> precedingDriver = orderedDriver;
+                    var completion = new TaskCompletionSource<Guid?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    bool accepted = dispatcher.Dispatch(replyCredit, cookie, lane, token =>
+                        ExecuteDispatchedRequestAsync(port, request, messageId, trace, dispatcher, cookie, lane,
+                            validHeader, precedingDriver, token, boundTicket), error =>
                     {
-                        SafeUploadRequest sealRequest = request;
-                        ulong sealMessage = messageId;
-                        Guid? sealDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(trace.Defer(token => ReplySealAsync(port, sealRequest, sealMessage, sealDriver, token)));
-                        continue;
-                    }
-                    if (request.Operation == PrivateCancellationV28.Operation || request.Reserved == PrivateCancellationV28.Version)
-                    {
-                        SafeUploadRequest cancellationRequest = request;
-                        ulong cancellationMessage = messageId;
-                        Guid? cancellationDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(trace.Defer(token => ReplyPrivateCancellationAsync(port, cancellationRequest,
-                            cancellationMessage, cancellationDriver, token)));
-                        continue;
-                    }
-                    if (request.Operation == PublicDispositionV25.Operation || request.Reserved == PublicDispositionV25.Version)
-                    {
-                        SafeUploadRequest publicRequest = request;
-                        ulong publicMessageId = messageId;
-                        Guid? publicDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(trace.Defer(token =>
-                            ReplyPublicOpenAsync(port, publicRequest, publicMessageId, publicDriver, token)));
-                        continue;
-                    }
-                    if (request.Operation == NativeLifecycleV24.Operation || request.Reserved == NativeLifecycleV24.Version)
-                    {
-                        SafeUploadRequest nativeRequest = request;
-                        ulong nativeMessageId = messageId;
-                        Guid? nativeDriver = _activeDriverInstanceId;
-                        boundContinuations.Dispatch(trace.Defer(token =>
-                            ReplyNativeLifecycleAsync(port, nativeRequest, nativeMessageId, nativeDriver, token)));
-                        continue;
-                    }
-                    if (request.Reserved == Contract.StageBoundAllocationVersion &&
-                        request.Operation == Operation.StageAllocate)
-                    {
-                        Guid? capturedDriver = _activeDriverInstanceId;
-                        // The out variables in the receive condition are reused.
-                        // Copy them inside this iteration before queueing work.
-                        SafeUploadRequest capturedRequest = request;
-                        ulong capturedMessageId = messageId;
-                        boundContinuations.Dispatch(trace.Defer(token =>
-                            ReplyBoundAllocationAsync(port, capturedRequest, capturedMessageId, capturedDriver, token)));
-                        continue;
-                    }
-#endif
-                    uint verdict;
-                    string? stageName = null;
-                    StagedAllocationReply? typedCreateReply = null;
-                    uint? allocationResolution = null;
-                    uint? typedStatusReply = null;
-                    SafeUploadStageLifecycleV20? typedLifecycleReply = null;
-                    SafeUploadStageRenameReplyV20? typedRenameReply = null;
-                    SafeUploadStageReconcileReplyV20? typedReconcileReply = null;
-                    SafeUploadStageEpochDrainReplyV20? typedEpochDrainReply = null;
-                    bool reconcileDrainReplayOnly = false;
-                    if (request.Version != Contract.Version || request.StructSize != Contract.RequestSize ||
-                        (request.Operation != Operation.StageDiagnostic && !request.HasKnownFlags))
-                    {
-                        verdict = PortVerdict.Deny;
-                    }
-                    else if (request.Operation == Operation.StageAllocate)
-                    {
-                        // A typed v20 marker is opaque binary input even when its
-                        // operation-specific flags are malformed. Route every
-                        // such request through the strict typed parser so it
-                        // can be denied without interpreting ImageName as text.
-                        if (request.Reserved == Contract.StageExtensionVersion ||
-                            (request.Flags & Contract.StageV20ReplyFlag) != 0)
-                            (verdict, typedCreateReply, allocationResolution) = AllocateStageV19(request);
-                        else if (_stagingEnabled)
-                            verdict = PortVerdict.Deny;
-                        else
-                        {
-                            (verdict, stageName) = AllocateStage(request, out typedCreateReply, out var allocation);
-                            trace.Allocation = allocation;
-                        }
-                    }
-                    else if (request.Operation == Operation.StageSeal)
-                    {
-                        if (request.Reserved is Contract.StageExtensionVersion or 31)
-                            (verdict, typedStatusReply) = SealStageV19(request);
-                        else if (_stagingEnabled) verdict = PortVerdict.Deny;
-                        else verdict = SealStage(request);
-                    }
-                    else if (request.Operation == Operation.StageDiscard)
-                    {
-                        if (request.Reserved == Contract.StageExtensionVersion)
-                            (verdict, typedStatusReply) = DiscardStageV19(request);
-                        else if (_stagingEnabled) verdict = PortVerdict.Deny;
-                        else verdict = DiscardStage(request);
-                    }
-                    else if (request.Operation == Operation.StageCreateAfterDiscard)
-                    {
-                        verdict = PortVerdict.Deny; // reserved operation 10; fresh creates use ordinary max+1 allocation
-                    }
-                    else if (request.Operation == Operation.StageReconcile)
-                    {
-                        (verdict, typedReconcileReply, reconcileDrainReplayOnly) =
-                            RegisterDriverInstanceV20(request);
-                    }
-                    else if (request.Operation == Operation.StageEpochDrain)
-                    {
-                        (verdict, typedEpochDrainReply) = DrainDriverInstanceV20(request);
-                    }
-                    else if (request.Operation is Operation.StageAttachPrepare or
-                             Operation.StageAttachCommit or Operation.StageAttachAbort or
-                             Operation.StageCompletionPermit or Operation.StageRetireUnexposed or
-                             Operation.StageRetireAttachedPrivate or Operation.StageHandleObserved)
-                    {
-                        (verdict, typedLifecycleReply) = ApplyStageLifecycleV20(request);
-                    }
-                    else if (request.Operation is Operation.StageRename or
-                             Operation.StageRenameCommit or Operation.StageRenameAbort)
-                    {
-                        (verdict, typedRenameReply) = RetargetStage(request);
-                    }
-                    else if (request.Operation == Operation.StageDiagnostic)
-                    {
-                        _logger.LogWarning("Staged kernel diagnostic: phase {Phase}, status 0x{Status:X8}, path {Path}",
-                            request.Flags, request.Reserved, request.GetPath());
-                        verdict = PortVerdict.Deny;
-                    }
-                    else
-                    {
-                        verdict = request.Operation is Operation.Create or Operation.Read
-                            ? Judge(request) : PortVerdict.Deny;
-                    }
-
-                    try
-                    {
-                        if (typedReconcileReply is { } reconcileReply)
-                        {
-                            bool drainReplayOnly = reconcileReply.Result == StageV20Result.EpochBusy &&
-                                reconcileDrainReplayOnly;
-                            if (drainReplayOnly)
-                            {
-                                // Reconciliation may report a durably drained
-                                // epoch after this channel was established. Fence
-                                // ordinary work before attempting the reply; a
-                                // lost response must not leave an old in-memory
-                                // Ready bit authorizing mutations.
-                                _activeDriverInstanceId = null;
-                                _drainReplayDriverInstanceId = reconcileReply.DriverInstanceId;
-                                _stageV20Ready = false;
-                                _stagingRecoveryReady = false;
-                            }
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-                            if (drainReplayOnly) _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
-#endif
-                            bool delivered = port.ReplyStageReconcileV20(messageId, reconcileReply);
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-                            if (reconcileReply.Result == StageV20Result.CapabilitiesAccepted)
-                            {
-                                if (_nativeStartupRecovery?.TryGetBoundResult(reconcileReply.DriverInstanceId, out var receipt) == true &&
-                                    receipt is not null)
-                                    _boundReadiness.CompleteRecovery(boundTicket, receipt);
-                                _boundReadiness.CompleteNegotiation(boundTicket, reconcileReply.DriverInstanceId,
-                                    reconcileReply.Version, reconcileReply.AcceptedCapabilityMask, delivered);
-                                _logger.LogWarning("Bound staging readiness: {Reason}", _boundReadiness.Snapshot.Reason);
-                            }
-#endif
-                            if (delivered && reconcileReply.Result == StageV20Result.CapabilitiesAccepted)
-                            {
-                                _activeDriverInstanceId = reconcileReply.DriverInstanceId;
-                                _drainReplayDriverInstanceId = null;
-                                _stageV20Ready = true;
-                                if (!_stagingRecovered)
-                                {
-                                    try
-                                    {
-                                        RecoverStagingSubsystem(stoppingToken);
-                                        _stagingRecovered = true;
-                                    }
-                                    catch (Exception recoveryError)
-                                    {
-                                        _logger.LogCritical(recoveryError,
-                                            "Stage-v20 recovery failed after capability negotiation; staged requests remain refused.");
-                                        _stageV20Ready = false;
-                                        _activeDriverInstanceId = null;
-                                    }
-                                }
-                                _stagingRecoveryReady = _stagingRecovered;
-                                if (_stagingRecoveryReady) _stagingReadySignal.TrySetResult(true);
-                            }
-                        }
-                        else if (typedEpochDrainReply is { } drainReply)
-                        {
-                            bool delivered = port.ReplyStageEpochDrainV20(messageId, drainReply);
-                            if (delivered && drainReply.Result == StageV20Result.EpochDrained)
-                            {
-                                _stageV20Ready = false;
-                                _stagingRecoveryReady = false;
-                                _activeDriverInstanceId = null;
-                                _drainReplayDriverInstanceId = null;
-                            }
-                        }
-                        else if (typedRenameReply is { } renameReply)
-                        {
-                            _ = port.ReplyStageRenameCommitV20(messageId, renameReply);
-                        }
-                        else if (typedLifecycleReply is { } lifecycleReply)
-                        {
-                            _ = port.ReplyStageLifecycleV20(messageId, lifecycleReply);
-                        }
-                        else if (allocationResolution is { } resolution)
-                            _ = port.ReplyAllocationResolutionV20(messageId, request, resolution);
-                        else if (verdict == PortVerdict.Allow && typedCreateReply is { } typedCreate)
-                        {
-                            SafeUploadStageIdentityV19 wireIdentity = ToWireStageIdentity(typedCreate.StageIdentity);
-                            port.ReplyStageCreateV19(messageId, request.RequestId,
-                                Path.GetFileName(typedCreate.Transfer.StagePath),
-                                checked((ulong)typedCreate.DestinationGeneration), in wireIdentity);
-                        }
-                        else if (verdict == PortVerdict.Allow && typedStatusReply is { } typedStatus)
-                            port.ReplyStageStatusV19(messageId, request.RequestId, typedStatus);
-                        else if (trace.Allocation is { } allocation && stageName is not null)
-                        {
-                            // The sole legacy basename reply is the only source
-                            // of this volatile authority. Typed/bound replies never enter here.
-                            FilterReplyResult reply = port.ReplyAllocation(messageId, request.RequestId, verdict, stageName);
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-                            // This failure used to reach the exception path below.
-                            // Keep its readiness effect while retaining the exact result.
-                            if (reply == FilterReplyResult.NoWaiter)
-                                _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
-#endif
-                            StagedRejectedAllocation? rejected = StagedRejectedAllocation.FromReply(
-                                messageId, request.RequestId, allocation, reply);
-                            if (rejected is not null)
-                                _rejectedAllocations.TryAdd(allocation.Entry.Transfer.TransferId, rejected);
-                        }
-                        else
-                            port.Reply(messageId, request.RequestId, verdict, stageName);
-                    }
-                    catch (Exception ex)
-                    {
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-                        _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
-#endif
-                        _logger.LogWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
-                    }
+                        ReplyDispatchFailure(port, request, messageId, error);
+                        return Task.CompletedTask;
+                    }, trace.Defer, () => completion.TrySetResult(_activeDriverInstanceId));
+                    if (accepted && lane == StagedDispatchLane.Ordered) orderedDriver = completion.Task;
                 }
             }
             finally
             {
                 receiveHeartbeat.Stop();
+                dispatcher.Revoke();
+                try { dispatcher.DrainAsync().GetAwaiter().GetResult(); }
+                catch (Exception error)
+                { _logger.LogError(error, "Request lanes drained with a failure before FilterPort close."); }
+                Volatile.Write(ref _receiveConnection, null);
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
                 _boundReadiness.Invalidate(StagedBoundBlocker.Disconnected);
                 _nativeStartupRecovery?.Invalidate();
@@ -623,11 +412,6 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     catch (OperationCanceledException) { }
                     catch (Exception ex) { _logger.LogWarning(ex, "Receive heartbeat stopped before FilterPort close."); }
                 }
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-                try { boundContinuations.DrainAsync().GetAwaiter().GetResult(); }
-                catch (Exception error)
-                { _logger.LogError(error, "Bound allocation continuations drained with a failure before FilterPort close."); }
-#endif
                 if (startupTask is not null)
                 {
                     try { startupTask.GetAwaiter().GetResult(); }
@@ -688,6 +472,223 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             "Laco do minifiltro encerrado. {Answered} vereditos, {OverBudget} fora do prazo.",
             Interlocked.Read(ref _answered),
             Interlocked.Read(ref _overBudget));
+    }
+
+    private void ProcessOrderedRequest(FilterPort port, SafeUploadRequest request, ulong messageId,
+        StagedRequestTrace trace, StagedRequestDispatcher dispatcher, Guid cookie, CancellationToken token,
+        long boundTicket)
+    {
+        if (token.IsCancellationRequested || !dispatcher.IsCurrent(cookie))
+        {
+            ReplyDispatchFailure(port, request, messageId, null);
+            return;
+        }
+        uint verdict;
+        string? stageName = null;
+        StagedAllocationReply? typedCreateReply = null;
+        uint? allocationResolution = null;
+        uint? typedStatusReply = null;
+        SafeUploadStageLifecycleV20? typedLifecycleReply = null;
+        SafeUploadStageRenameReplyV20? typedRenameReply = null;
+        SafeUploadStageReconcileReplyV20? typedReconcileReply = null;
+        SafeUploadStageEpochDrainReplyV20? typedEpochDrainReply = null;
+        bool reconcileDrainReplayOnly = false;
+        if (request.Version != Contract.Version || request.StructSize != Contract.RequestSize ||
+            (request.Operation != Operation.StageDiagnostic && !request.HasKnownFlags))
+        {
+            verdict = PortVerdict.Deny;
+        }
+        else if (request.Operation == Operation.StageAllocate)
+        {
+            // A typed v20 marker is opaque binary input even when its
+            // operation-specific flags are malformed. Route every
+            // such request through the strict typed parser so it
+            // can be denied without interpreting ImageName as text.
+            if (request.Reserved == Contract.StageExtensionVersion ||
+                (request.Flags & Contract.StageV20ReplyFlag) != 0)
+                (verdict, typedCreateReply, allocationResolution) = AllocateStageV19(request);
+            else if (_stagingEnabled)
+                verdict = PortVerdict.Deny;
+            else
+            {
+                (verdict, stageName) = AllocateStage(request, out typedCreateReply, out var allocation);
+                trace.Allocation = allocation;
+            }
+        }
+        else if (request.Operation == Operation.StageSeal)
+        {
+            if (request.Reserved is Contract.StageExtensionVersion or 31)
+                (verdict, typedStatusReply) = SealStageV19(request);
+            else if (_stagingEnabled) verdict = PortVerdict.Deny;
+            else verdict = SealStage(request);
+        }
+        else if (request.Operation == Operation.StageDiscard)
+        {
+            if (request.Reserved == Contract.StageExtensionVersion)
+                (verdict, typedStatusReply) = DiscardStageV19(request);
+            else if (_stagingEnabled) verdict = PortVerdict.Deny;
+            else verdict = DiscardStage(request);
+        }
+        else if (request.Operation == Operation.StageCreateAfterDiscard)
+        {
+            verdict = PortVerdict.Deny; // reserved operation 10; fresh creates use ordinary max+1 allocation
+        }
+        else if (request.Operation == Operation.StageReconcile)
+        {
+            (verdict, typedReconcileReply, reconcileDrainReplayOnly) =
+                RegisterDriverInstanceV20(request);
+        }
+        else if (request.Operation == Operation.StageEpochDrain)
+        {
+            dispatcher.RevokeGrowth();
+            (verdict, typedEpochDrainReply) = DrainDriverInstanceV20(request);
+        }
+        else if (request.Operation is Operation.StageAttachPrepare or
+                 Operation.StageAttachCommit or Operation.StageAttachAbort or
+                 Operation.StageCompletionPermit or Operation.StageRetireUnexposed or
+                 Operation.StageRetireAttachedPrivate or Operation.StageHandleObserved)
+        {
+            (verdict, typedLifecycleReply) = ApplyStageLifecycleV20(request);
+        }
+        else if (request.Operation is Operation.StageRename or
+                 Operation.StageRenameCommit or Operation.StageRenameAbort)
+        {
+            (verdict, typedRenameReply) = RetargetStage(request);
+        }
+        else if (request.Operation == Operation.StageDiagnostic)
+        {
+            _logger.LogWarning("Staged kernel diagnostic: phase {Phase}, status 0x{Status:X8}, path {Path}",
+                request.Flags, request.Reserved, request.GetPath());
+            verdict = PortVerdict.Deny;
+        }
+        else
+        {
+            verdict = request.Operation is Operation.Create or Operation.Read
+                ? Judge(request) : PortVerdict.Deny;
+        }
+
+        if (token.IsCancellationRequested || !dispatcher.IsCurrent(cookie))
+        {
+            ReplyDispatchFailure(port, request, messageId, null);
+            return;
+        }
+        try
+        {
+            if (typedReconcileReply is { } reconcileReply)
+            {
+                bool drainReplayOnly = reconcileReply.Result == StageV20Result.EpochBusy &&
+                    reconcileDrainReplayOnly;
+                if (drainReplayOnly)
+                {
+                    dispatcher.RevokeGrowth();
+                    // Reconciliation may report a durably drained
+                    // epoch after this channel was established. Fence
+                    // ordinary work before attempting the reply; a
+                    // lost response must not leave an old in-memory
+                    // Ready bit authorizing mutations.
+                    _activeDriverInstanceId = null;
+                    _drainReplayDriverInstanceId = reconcileReply.DriverInstanceId;
+                    _stageV20Ready = false;
+                    _stagingRecoveryReady = false;
+                }
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                if (drainReplayOnly) _boundReadiness.Invalidate(StagedBoundBlocker.UnresolvedPrerequisite);
+#endif
+                bool delivered = port.ReplyStageReconcileV20(messageId, reconcileReply);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                if (dispatcher.IsCurrent(cookie) && !token.IsCancellationRequested &&
+                    reconcileReply.Result == StageV20Result.CapabilitiesAccepted)
+                {
+                    if (_nativeStartupRecovery?.TryGetBoundResult(reconcileReply.DriverInstanceId, out var receipt) == true &&
+                        receipt is not null)
+                        _boundReadiness.CompleteRecovery(boundTicket, receipt);
+                    _boundReadiness.CompleteNegotiation(boundTicket, reconcileReply.DriverInstanceId,
+                        reconcileReply.Version, reconcileReply.AcceptedCapabilityMask, delivered);
+                    _logger.LogWarning("Bound staging readiness: {Reason}", _boundReadiness.Snapshot.Reason);
+                }
+#endif
+                if (delivered && dispatcher.IsCurrent(cookie) && !token.IsCancellationRequested &&
+                    reconcileReply.Result == StageV20Result.CapabilitiesAccepted)
+                {
+                    _activeDriverInstanceId = reconcileReply.DriverInstanceId;
+                    _drainReplayDriverInstanceId = null;
+                    _stageV20Ready = true;
+                    if (!_stagingRecovered)
+                    {
+                        try
+                        {
+                            RecoverStagingSubsystem(token);
+                            token.ThrowIfCancellationRequested();
+                            _stagingRecovered = true;
+                        }
+                        catch (Exception recoveryError)
+                        {
+                            _logger.LogCritical(recoveryError,
+                                "Stage-v20 recovery failed after capability negotiation; staged requests remain refused.");
+                            _stageV20Ready = false;
+                            _activeDriverInstanceId = null;
+                        }
+                    }
+                    _stagingRecoveryReady = _stagingRecovered;
+                    if (_stagingRecoveryReady) _stagingReadySignal.TrySetResult(true);
+                }
+            }
+            else if (typedEpochDrainReply is { } drainReply)
+            {
+                bool delivered = port.ReplyStageEpochDrainV20(messageId, drainReply);
+                if (delivered && drainReply.Result == StageV20Result.EpochDrained)
+                {
+                    _stageV20Ready = false;
+                    _stagingRecoveryReady = false;
+                    _activeDriverInstanceId = null;
+                    _drainReplayDriverInstanceId = null;
+                }
+            }
+            else if (typedRenameReply is { } renameReply)
+            {
+                _ = port.ReplyStageRenameCommitV20(messageId, renameReply);
+            }
+            else if (typedLifecycleReply is { } lifecycleReply)
+            {
+                _ = port.ReplyStageLifecycleV20(messageId, lifecycleReply);
+            }
+            else if (allocationResolution is { } resolution)
+                _ = port.ReplyAllocationResolutionV20(messageId, request, resolution);
+            else if (verdict == PortVerdict.Allow && typedCreateReply is { } typedCreate)
+            {
+                SafeUploadStageIdentityV19 wireIdentity = ToWireStageIdentity(typedCreate.StageIdentity);
+                port.ReplyStageCreateV19(messageId, request.RequestId,
+                    Path.GetFileName(typedCreate.Transfer.StagePath),
+                    checked((ulong)typedCreate.DestinationGeneration), in wireIdentity);
+            }
+            else if (verdict == PortVerdict.Allow && typedStatusReply is { } typedStatus)
+                port.ReplyStageStatusV19(messageId, request.RequestId, typedStatus);
+            else if (trace.Allocation is { } allocation && stageName is not null)
+            {
+                // The sole legacy basename reply is the only source
+                // of this volatile authority. Typed/bound replies never enter here.
+                FilterReplyResult reply = port.ReplyAllocation(messageId, request.RequestId, verdict, stageName);
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+                // This failure used to reach the exception path below.
+                // Keep its readiness effect while retaining the exact result.
+                if (reply == FilterReplyResult.NoWaiter)
+                    _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
+#endif
+                StagedRejectedAllocation? rejected = StagedRejectedAllocation.FromReply(
+                    messageId, request.RequestId, allocation, reply);
+                if (rejected is not null)
+                    _rejectedAllocations.TryAdd(allocation.Entry.Transfer.TransferId, rejected);
+            }
+            else
+                port.Reply(messageId, request.RequestId, verdict, stageName);
+        }
+        catch (Exception ex)
+        {
+#if SAFEUPLOAD_ADMISSION_EVIDENCE
+            _boundReadiness.Invalidate(StagedBoundBlocker.ProtocolChanged);
+#endif
+            _logger.LogWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
+        }
     }
 
     private (uint Verdict, SafeUploadStageRenameReplyV20? Reply) RetargetStage(SafeUploadRequest request)

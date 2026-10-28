@@ -39,6 +39,19 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         return MemoryMarshal.Read<SafeUploadRequest>(bytes);
     }
 
+    [Fact]
+    public void Dispatcher_saturation_preserves_exact_retryable_allocation_failure_without_noncommit_authority()
+    {
+        var request = Request();
+        var failure = MinifilterInterceptor.CreateDispatchFailure(request);
+        Assert.Equal(StageV20Result.RetryableFailure, failure.AllocationResolution);
+        Assert.Null(failure.Lifecycle); Assert.Null(failure.Rename);
+        var reply = FilterPort.CreateAllocationResolutionReplyV20(request, failure.AllocationResolution!.Value);
+        FilterPort.ValidateAllocationResolutionReplyV20(reply, request);
+        request.Version++;
+        Assert.Null(MinifilterInterceptor.CreateDispatchFailure(request).AllocationResolution);
+    }
+
     private async Task<StagedAllocationReply?> Allocate(StagedTransferAllocator allocator, SafeUploadRequest request)
     {
         Assert.True(request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source));
