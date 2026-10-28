@@ -145,7 +145,7 @@ static VOID MetadataRemoveChildLocked(_Inout_ SU_METADATA_GROUP *Group, _In_ ULO
 _IRQL_requires_(PASSIVE_LEVEL)
 static VOID MetadataServiceChildren(_Inout_ SU_METADATA_GROUP *Group);
 _IRQL_requires_(PASSIVE_LEVEL)
-static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Root,
+static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
     _Out_ PULONG Alignment, _Out_ PULONG Unit);
 
 typedef struct _SU_METADATA_REFUSAL_RECORD {
@@ -707,12 +707,16 @@ static NTSTATUS MetadataQueryDirectory(_In_ PFLT_INSTANCE Instance, _In_ PFILE_O
     FILE_ATTRIBUTE_TAG_INFORMATION tag;
     ULONG bytes = 0;
     NTSTATUS status;
+    RtlZeroMemory(&id, sizeof(id));
+    RtlZeroMemory(&standard, sizeof(standard));
+    RtlZeroMemory(&tag, sizeof(tag));
     status = FltQueryInformationFile(Instance, Object, &standard, sizeof(standard), FileStandardInformation, &bytes);
     if (!NT_SUCCESS(status)) return status;
     if (bytes != sizeof(standard) || !standard.Directory || standard.DeletePending) return STATUS_NOT_A_DIRECTORY;
     status = FltQueryInformationFile(Instance, Object, &tag, sizeof(tag), FileAttributeTagInformation, &bytes);
     if (!NT_SUCCESS(status)) return status;
-    if (bytes != sizeof(tag) || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT) || tag.ReparseTag != 0)
+    /* ReparseTag is undefined unless the attribute is set; the attribute decides. */
+    if (bytes != sizeof(tag) || FlagOn(tag.FileAttributes, FILE_ATTRIBUTE_REPARSE_POINT))
         return STATUS_REPARSE_POINT_ENCOUNTERED;
     status = FltQueryInformationFile(Instance, Object, &id, sizeof(id), FileIdInformation, &bytes);
     if (!NT_SUCCESS(status)) return status;
@@ -881,7 +885,7 @@ static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture
         !MetadataSecurityPredicate(&Capture->Nodes[2], TRUE, TRUE, &Capture->Nodes[5])) return STATUS_ACCESS_DENIED;
     for (i = 3; i < SU_METADATA_NODES; ++i)
         if (!MetadataSecurityPredicate(&Capture->Nodes[i], FALSE, FALSE, NULL)) return STATUS_ACCESS_DENIED;
-    return MetadataCaptureAlignment(Capture->Instance, Capture->Nodes[0].Object,
+    return MetadataCaptureAlignment(Capture->Instance, Capture->Volume,
         &Capture->IoAlignment, &Capture->AllocationUnit);
 }
 
@@ -984,7 +988,7 @@ static NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP *Group,
     status = FltQuerySecurityObject(captureNeeded ? capture->Instance : Group->Instance, original,
         OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, capture->Scratch, node->SecurityBytes, &bytes);
     if (!NT_SUCCESS(status)) goto Exit;
-    if (!RtlEqualMemory(capture->Scratch, node->Security, node->SecurityBytes)) {
+    if (bytes != node->SecurityBytes || !RtlEqualMemory(capture->Scratch, node->Security, node->SecurityBytes)) {
         status = STATUS_INVALID_SECURITY_DESCR;
         revoke = TRUE;
         goto Exit;
@@ -1652,20 +1656,20 @@ static BOOLEAN MetadataPowerOfTwo(_In_ ULONG Value)
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFILE_OBJECT Root,
+static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE Instance, _In_ PFLT_VOLUME Volume,
     _Out_ PULONG Alignment, _Out_ PULONG Unit)
 {
     FILE_FS_SECTOR_SIZE_INFORMATION sector;
     FILE_FS_SIZE_INFORMATION size;
-    FILE_ALIGNMENT_INFORMATION alignment;
+    FLT_VOLUME_PROPERTIES properties;
     IO_STATUS_BLOCK io;
-    ULONG bytes = 0, a = 4096;
+    ULONG returned = 0, a = 4096;
     UINT64 unit;
     NTSTATUS status;
     *Alignment = *Unit = 0;
     RtlZeroMemory(&sector, sizeof(sector));
     RtlZeroMemory(&size, sizeof(size));
-    RtlZeroMemory(&alignment, sizeof(alignment));
+    RtlZeroMemory(&properties, sizeof(properties));
     RtlZeroMemory(&io, sizeof(io));
     status = FltQueryVolumeInformation(Instance, &io, &sector, sizeof(sector), FileFsSectorSizeInformation);
     if (status != STATUS_SUCCESS) return status;
@@ -1676,18 +1680,22 @@ static __declspec(noinline) NTSTATUS MetadataCaptureAlignment(_In_ PFLT_INSTANCE
         size.TotalAllocationUnits.QuadPart <= 0 || size.AvailableAllocationUnits.QuadPart < 0 ||
         size.AvailableAllocationUnits.QuadPart > size.TotalAllocationUnits.QuadPart)
         return STATUS_INFO_LENGTH_MISMATCH;
-    status = FltQueryInformationFile(Instance, Root, &alignment, sizeof(alignment), FileAlignmentInformation, &bytes);
-    if (status != STATUS_SUCCESS) return status;
-    if (bytes != sizeof(alignment) || alignment.AlignmentRequirement >= 65536) return STATUS_NOT_SUPPORTED;
+    /* FileAlignmentInformation is answered by the I/O manager from device
+     * state, not by NTFS, so it is not sent below the filter. The volume
+     * properties carry the same AlignmentRequirement; a fixed-size buffer
+     * normally returns STATUS_BUFFER_OVERFLOW with the fixed fields valid. */
+    status = FltGetVolumeProperties(Volume, &properties, sizeof(properties), &returned);
+    if (status != STATUS_SUCCESS && status != STATUS_BUFFER_OVERFLOW) return status;
+    if (properties.AlignmentRequirement >= 65536) return STATUS_NOT_SUPPORTED;
     if (!MetadataPowerOfTwo(sector.LogicalBytesPerSector) ||
         !MetadataPowerOfTwo(sector.PhysicalBytesPerSectorForAtomicity) ||
         !MetadataPowerOfTwo(sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity) ||
-        !MetadataPowerOfTwo(alignment.AlignmentRequirement + 1)) return STATUS_NOT_SUPPORTED;
+        !MetadataPowerOfTwo(properties.AlignmentRequirement + 1)) return STATUS_NOT_SUPPORTED;
     if (sector.LogicalBytesPerSector > a) a = sector.LogicalBytesPerSector;
     if (sector.PhysicalBytesPerSectorForAtomicity > a) a = sector.PhysicalBytesPerSectorForAtomicity;
     if (sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity > a)
         a = sector.FileSystemEffectivePhysicalBytesPerSectorForAtomicity;
-    if (alignment.AlignmentRequirement + 1 > a) a = alignment.AlignmentRequirement + 1;
+    if (properties.AlignmentRequirement + 1 > a) a = properties.AlignmentRequirement + 1;
     unit = (UINT64)size.SectorsPerAllocationUnit * size.BytesPerSector;
     if (a > 65536 || unit > 65536 || !MetadataPowerOfTwo((ULONG)unit)) return STATUS_NOT_SUPPORTED;
     *Alignment = a;
@@ -1728,7 +1736,8 @@ static __declspec(noinline) NTSTATUS MetadataInspectChild(_In_ SU_METADATA_GROUP
     Measurement->DeletePending = standard.DeletePending;
     status = FltQueryInformationFile(Group->Instance, Object, &tag, sizeof(tag), FileAttributeTagInformation, &bytes);
     if (status != STATUS_SUCCESS) return status;
-    if (bytes != sizeof(tag) || tag.ReparseTag != 0 || FlagOn(tag.FileAttributes,
+    /* ReparseTag is undefined unless the attribute is set; the attribute decides. */
+    if (bytes != sizeof(tag) || FlagOn(tag.FileAttributes,
         FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_SPARSE_FILE |
         FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED))
         return STATUS_FILE_INVALID;
@@ -2213,7 +2222,7 @@ static __declspec(noinline) NTSTATUS MetadataRootIoPost(_In_ SU_METADATA_COMPLET
         ((Context->Operation == IRP_MJ_QUERY_INFORMATION || Context->Operation == IRP_MJ_QUERY_VOLUME_INFORMATION) &&
          Context->NativeInformation != Context->Length)) return STATUS_INFO_LENGTH_MISMATCH;
     if (Context->Operation != IRP_MJ_QUERY_VOLUME_INFORMATION) return STATUS_SUCCESS;
-    status = MetadataCaptureAlignment(Context->Group->Instance, Context->Object, &alignment, &unit);
+    status = MetadataCaptureAlignment(Context->Group->Instance, Context->Group->Volume, &alignment, &unit);
     if (status != STATUS_SUCCESS) return status;
     return alignment == Context->Group->IoAlignment && unit == Context->Group->AllocationUnit ?
         STATUS_SUCCESS : STATUS_FILE_INVALID;
