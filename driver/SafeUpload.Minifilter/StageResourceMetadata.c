@@ -744,14 +744,12 @@ static NTSTATUS MetadataCaptureSecurity(_In_ PFLT_INSTANCE Instance, _Inout_ SU_
 }
 
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS MetadataReadLink(_In_ PCWSTR Name, _Inout_ PUNICODE_STRING Target)
+static NTSTATUS MetadataReadLink(_In_ PCUNICODE_STRING Name, _Inout_ PUNICODE_STRING Target)
 {
-    UNICODE_STRING name;
     OBJECT_ATTRIBUTES attributes;
     HANDLE handle;
     NTSTATUS status;
-    RtlInitUnicodeString(&name, Name);
-    InitializeObjectAttributes(&attributes, &name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    InitializeObjectAttributes(&attributes, (PUNICODE_STRING)Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
     status = ZwOpenSymbolicLinkObject(&handle, SYMBOLIC_LINK_QUERY, &attributes);
     if (!NT_SUCCESS(status)) return status;
     status = ZwQuerySymbolicLinkObject(handle, Target, NULL);
@@ -794,7 +792,10 @@ static NTSTATUS MetadataCheckProgramData(_Inout_ SU_METADATA_CAPTURE *Capture)
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture)
 {
-    UNICODE_STRING device, system, name, actualVolume;
+    UNICODE_STRING device, system, name, actualVolume, systemDevice, resolved;
+    UNICODE_STRING driveLink = RTL_CONSTANT_STRING(L"\\GLOBAL??\\C:");
+    UNICODE_STRING systemLink = RTL_CONSTANT_STRING(L"\\SystemRoot");
+    USHORT slash, slashes = 0;
     OBJECT_ATTRIBUTES attributes;
     IO_STATUS_BLOCK io;
     PSAFEUPLOAD_INSTANCE_CONTEXT context = NULL;
@@ -808,12 +809,28 @@ static NTSTATUS MetadataCaptureInstallation(_Inout_ SU_METADATA_CAPTURE *Capture
     system.Buffer = Capture->SystemBuffer;
     system.Length = 0;
     system.MaximumLength = sizeof(Capture->SystemBuffer);
-    status = MetadataReadLink(L"\\GLOBAL??\\C:", &device);
+    status = MetadataReadLink(&driveLink, &device);
     if (!NT_SUCCESS(status)) return status;
-    status = MetadataReadLink(L"\\SystemRoot", &system);
+    status = MetadataReadLink(&systemLink, &system);
     if (!NT_SUCCESS(status)) return status;
-    if (!RtlPrefixUnicodeString(&device, &system, TRUE) || system.Length <= device.Length ||
-        system.Buffer[device.Length / sizeof(WCHAR)] != L'\\') return STATUS_NOT_SUPPORTED;
+    /* Windows 10 names \SystemRoot as \Device\BootDevice\Windows, and
+     * \Device\BootDevice is itself a link to the volume (measured on 19045,
+     * N-U5-01 nu501c4), so a literal prefix never matched. Resolve exactly one
+     * hop of the system path's device component, then require it to equal C:.
+     * A second hop, or any other device, refuses. */
+    for (slash = 1; slash < system.Length / sizeof(WCHAR); ++slash)
+        if (system.Buffer[slash] == L'\\' && ++slashes == 2) break;
+    if (slashes != 2 || system.Buffer[0] != L'\\' || (USHORT)((slash + 1) * sizeof(WCHAR)) >= system.Length)
+        return STATUS_NOT_SUPPORTED;
+    systemDevice.Buffer = system.Buffer;
+    systemDevice.Length = systemDevice.MaximumLength = (USHORT)(slash * sizeof(WCHAR));
+    resolved.Buffer = (PWCHAR)Capture->Scratch;
+    resolved.Length = 0;
+    resolved.MaximumLength = 1024;
+    status = MetadataReadLink(&systemDevice, &resolved);
+    if (status == STATUS_OBJECT_TYPE_MISMATCH) resolved = systemDevice; /* already a device object */
+    else if (!NT_SUCCESS(status)) return status;
+    if (!RtlEqualUnicodeString(&resolved, &device, TRUE)) return STATUS_NOT_SUPPORTED;
     status = MetadataCheckProgramData(Capture);
     if (!NT_SUCCESS(status)) return status;
     status = FltGetVolumeFromName(SafeUploadData.Filter, &device, &Capture->Volume);
