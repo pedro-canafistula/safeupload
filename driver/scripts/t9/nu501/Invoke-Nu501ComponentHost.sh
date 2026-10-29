@@ -125,10 +125,16 @@ finish() {
     if [ "$rc" -ne 0 ] && [ -n "$active" ] && [ "$active" = "$label" ] &&
         tr -d '\r' < "$ev/prepare.txt" 2>/dev/null | grep -qx 'Nu501ComponentPrepared=True' &&
         [ "$($V domstate "$dom" 2>/dev/null)" = running ]; then
-        elf="/var/tmp/nu501-$label.elf"
-        if timeout 900 $V qemu-monitor-command "$dom" --hmp "dump-guest-memory $elf" > "$ev/live-dump.txt" 2>&1 && [ -s "$elf" ]; then
-            timeout 900 /var/tmp/safeupload-qemu-tools/build/contrib/elf2dmp/elf2dmp "$elf" "$ev/guest-live.dmp" >> "$ev/live-dump.txt" 2>&1 || true
-            rm -f "$elf" 2>/dev/null || true
+        # QEMU writes a path-named dump as libvirt-qemu mode 0400 (unreadable here,
+        # nu501c6); hand it a descriptor of a file this user owns instead.
+        elf="$ev/guest-live.elf"
+        if ( exec 9>"$elf" && timeout 60 $V qemu-monitor-command "$dom" --pass-fds 9 \
+                '{"execute":"getfd","arguments":{"fdname":"nu501dump"}}' ) > "$ev/live-dump.txt" 2>&1 &&
+            timeout 900 $V qemu-monitor-command "$dom" \
+                '{"execute":"dump-guest-memory","arguments":{"paging":false,"protocol":"fd:nu501dump"}}' >> "$ev/live-dump.txt" 2>&1 &&
+            [ -s "$elf" ]; then
+            timeout 900 /var/tmp/safeupload-qemu-tools/build/contrib/elf2dmp/elf2dmp "$elf" "$ev/guest-live.dmp" >> "$ev/live-dump.txt" 2>&1 &&
+                rm -f "$elf"
         fi
         ls -la "$ev/guest-live.dmp" >> "$ev/live-dump.txt" 2>&1 || true
     fi
