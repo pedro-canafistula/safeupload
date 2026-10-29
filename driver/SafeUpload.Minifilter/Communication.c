@@ -196,6 +196,8 @@ SafeUploadStageDisposeControl (
 
     C_ASSERT( sizeof( SAFEUPLOAD_STAGE_DISPOSE_MESSAGE ) + sizeof( SAFEUPLOAD_STAGE_DISPOSE_REPLY ) <=
               sizeof( SAFEUPLOAD_POLICY_MESSAGE ) );
+    /* The message routine dispatches by command number before this routine runs. */
+    C_ASSERT( SAFEUPLOAD_CONTROL_STAGE_STREAMS != SAFEUPLOAD_CONTROL_STAGE_DISPOSE );
     *ReturnOutputBufferLength = 0;
     if (InputBufferLength != sizeof( SAFEUPLOAD_STAGE_DISPOSE_MESSAGE ) ||
         OutputBuffer == NULL || OutputBufferLength != sizeof( SAFEUPLOAD_STAGE_DISPOSE_REPLY )) {

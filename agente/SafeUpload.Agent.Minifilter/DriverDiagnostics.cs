@@ -11,7 +11,7 @@ public static class DiagnosticsCommand
     public const uint WriterStateStatus = 12;
     public const uint DenyRingRead = 27;
     public const uint DiagCounters = 28;
-    public const uint StageStreams = 29;
+    public const uint StageStreams = 37; // 29 is ControlCommand.StageDispose
 }
 
 public static class DiagnosticsContract

@@ -564,7 +564,8 @@ typedef struct _SAFEUPLOAD_STAGE_ALLOCATION_RESOLUTION_REPLY_V20 {
  * read them while the service runs). Both are read-only. */
 #define SAFEUPLOAD_CONTROL_DENY_RING_READ                   ((UINT32) 27)
 #define SAFEUPLOAD_CONTROL_DIAG_COUNTERS                    ((UINT32) 28)
-#define SAFEUPLOAD_CONTROL_STAGE_STREAMS                    ((UINT32) 29)
+/* 29 is SAFEUPLOAD_CONTROL_STAGE_DISPOSE; sharing it routed every disposal into this query (M2 MVP row mvpACDord1). */
+#define SAFEUPLOAD_CONTROL_STAGE_STREAMS                    ((UINT32) 37)
 #define SAFEUPLOAD_ADMISSION_COVERAGE_MAX_SCOPES \
     ((UINT32)(SAFEUPLOAD_MAX_PREFIXES + SAFEUPLOAD_MAX_PREFIXES + SAFEUPLOAD_BOOT_SCOPE_MAX_PREFIXES + 2))
 #define SAFEUPLOAD_ADMISSION_COVERAGE_MAX_INSTANCES         ((UINT32) 128)
