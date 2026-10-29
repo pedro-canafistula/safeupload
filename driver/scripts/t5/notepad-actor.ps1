@@ -24,11 +24,19 @@ public sealed class T5ProbeCreateResult {
     public string Steps;
     public IntPtr HeldHandle;
 }
+public sealed class T5ReadResult {
+    public int Code;
+    public string Steps;
+    public long Length;
+    public string Sha256;
+}
 public static class T5Native {
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern IntPtr CreateFileW(string name, uint access, uint share, IntPtr sa, uint disposition, uint flags, IntPtr template);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool WriteFile(IntPtr h, byte[] buffer, int count, out int written, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool ReadFile(IntPtr h, byte[] buffer, int count, out int read, IntPtr overlapped);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -37,9 +45,16 @@ public static class T5Native {
     static extern bool SetFileInformationByHandle(IntPtr h, int informationClass, byte[] information, uint size);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr w, string l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern bool PostMessageW(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
     // .NET Framework SendKeys uses a journal hook that Windows refuses without UI access: set the text and post the command.
     public static void SetText(IntPtr hwnd, string text) { SendMessageW(hwnd, 0x000C /* WM_SETTEXT */, IntPtr.Zero, text); }
+    public static void ReplaceText(IntPtr hwnd, string text) {
+        // Unlike WM_SETTEXT on a multiline Edit, EM_REPLACESEL sends edit-change
+        // notifications so Notepad marks this existing document modified.
+        SendMessageW(hwnd, 0x00B1 /* EM_SETSEL */, IntPtr.Zero, new IntPtr(-1));
+        SendMessageW(hwnd, 0x00C2 /* EM_REPLACESEL */, new IntPtr(1), text);
+    }
     public static bool PostCommand(IntPtr hwnd, int id) { return PostMessageW(hwnd, 0x0111 /* WM_COMMAND */, new IntPtr(id), IntPtr.Zero); }
     static int Err() { return Marshal.GetLastWin32Error(); }
     // A refused open's NTSTATUS: Win32 reports STATUS_DELETE_PENDING as 5, like any access denial (2026-10-11 native control).
@@ -74,6 +89,30 @@ public static class T5Native {
         return log;
     }
     public static int Delete(string path) { return DeleteFileW(path) ? 0 : Err(); }
+    public static T5ReadResult Read(string path) {
+        var r = new T5ReadResult();
+        IntPtr h = OpenProbe(path, 0x80000000u /* GENERIC_READ */, 7 /* share R/W/D */, 3, 0x80);
+        r.Code = Valid(h) ? 0 : Err(); r.Steps = "read-open=" + r.Code;
+        if (!Valid(h)) return r; // denied control exports no bytes or digest
+        try {
+            using (var hash = System.Security.Cryptography.SHA256.Create()) {
+                byte[] buffer = new byte[65536]; int count;
+                for (;;) {
+                    if (!ReadFile(h, buffer, buffer.Length, out count, IntPtr.Zero)) {
+                        r.Code = Err(); r.Steps += " read=" + r.Code; return r;
+                    }
+                    if (count == 0) break;
+                    r.Length += count; hash.TransformBlock(buffer, 0, count, buffer, 0);
+                }
+                hash.TransformFinalBlock(new byte[0], 0, 0);
+                r.Sha256 = BitConverter.ToString(hash.Hash).Replace("-", ""); r.Steps += " read=0";
+            }
+        } finally {
+            int close = CloseCode(h); r.Steps += " read-close=" + close;
+            if (close != 0) r.Code = close;
+        }
+        return r;
+    }
     public static int Move(string source, string target) { return MoveFileExW(source, target, 2) ? 0 : Err(); }
     public static T5ProbeCreateResult Hold(string path, bool writer, byte[] bytes) {
         IntPtr h = OpenProbe(path, writer ? 0xC0000000u : 0x80000000u, writer ? 7u : 3u, writer ? 2u : 3u, 0x80);
@@ -219,6 +258,30 @@ interface IT5FileOperation {
 public static class T5Shell {
     [DllImport("shell32.dll", CharSet=CharSet.Unicode, PreserveSig=true)]
     static extern int SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid iid, out IntPtr item);
+    public static string Transfer(string source, string target, bool move) {
+        object com=null; IntPtr item=IntPtr.Zero, folder=IntPtr.Zero;
+        try {
+            Guid iid=new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
+            int hr=SHCreateItemFromParsingName(source,IntPtr.Zero,ref iid,out item);
+            string log="shell-item-hr="+hr;if(hr<0)return log;
+            hr=SHCreateItemFromParsingName(System.IO.Path.GetDirectoryName(target),IntPtr.Zero,ref iid,out folder);
+            log+=" shell-folder-hr="+hr;if(hr<0)return log;
+            com=Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("3AD05575-8857-4850-9277-11B85BDB8E09")));
+            IT5FileOperation op=(IT5FileOperation)com;
+            hr=op.SetOperationFlags(0x0014u | 0x0400u); // same flags as Delete
+            log+=" shell-flags-hr="+hr;if(hr<0)return log;
+            string name=System.IO.Path.GetFileName(target);
+            hr=move ? op.MoveItem(item,folder,name,IntPtr.Zero) : op.CopyItem(item,folder,name,IntPtr.Zero);
+            log+=" shell-transfer-item-hr="+hr;if(hr<0)return log;
+            hr=op.PerformOperations();log+=" shell-perform-hr="+hr;
+            bool aborted=true;int end=op.GetAnyOperationsAborted(out aborted);
+            return log+" shell-abort-hr="+end+" shell-aborted="+(aborted?1:0);
+        } finally {
+            if(folder!=IntPtr.Zero)Marshal.Release(folder);
+            if(item!=IntPtr.Zero)Marshal.Release(item);
+            if(com!=null)Marshal.FinalReleaseComObject(com);
+        }
+    }
     public static string Delete(string path) {
         object com=null; IntPtr item=IntPtr.Zero;
         try {
@@ -328,6 +391,50 @@ function Invoke-NotepadSaveAs([string]$Path, [string]$Text, $obs) {
 }
 # m2t5ord14: another process briefly held the coordinator's freshly moved cmd-3.json open and a plain ReadAllText died with a
 # sharing violation, which ended the actor and hung the row. Retry only sharing/lock violations, for a bounded time.
+function Invoke-NotepadEdit([string]$Path,[string]$Text,$obs) {
+    $p=Start-Process notepad.exe -ArgumentList ('"'+$Path+'"') -PassThru
+    try {
+        $root=[Windows.Automation.AutomationElement]::RootElement
+        $byPid=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,$p.Id)
+        $main=Wait-Element {$root.FindFirst([Windows.Automation.TreeScope]::Children,$byPid)}
+        $obs.WindowsAtOpen=@(Get-WindowTexts $p.Id)
+        if($null -eq $main){throw 'Notepad existing-file window did not appear'}
+        $opened=Wait-Element {if((Get-Process -Id $p.Id).MainWindowTitle.StartsWith([IO.Path]::GetFileName($Path),[StringComparison]::OrdinalIgnoreCase)){return $true};$null}
+        $obs.OpenedExistingTitle=(Get-Process -Id $p.Id).MainWindowTitle
+        if($opened -ne $true){throw 'Notepad did not open the requested existing file'}
+        $edit=$main.FindFirst([Windows.Automation.TreeScope]::Descendants,(New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ClassNameProperty,'Edit')))
+        if($null -eq $edit){throw 'Notepad existing-file edit control not found'}
+        [T5Native]::ReplaceText([IntPtr]$edit.Current.NativeWindowHandle,$Text)
+        $dirty=Wait-Element {if((Get-Process -Id $p.Id).MainWindowTitle.StartsWith('*')){return $true};$null} 5
+        $obs.DirtyObserved=($dirty -eq $true)
+        if(-not $obs.DirtyObserved){throw 'Notepad never displayed the modified title'}
+        $obs.MenuPath='command-save'
+        [void][T5Native]::PostCommand([IntPtr]$main.Current.NativeWindowHandle,3)
+        $saved=Wait-Element {if(-not (Get-Process -Id $p.Id).MainWindowTitle.StartsWith('*')){return $true};$null} 5
+        if($saved -ne $true){
+            $file=$main.FindFirst([Windows.Automation.TreeScope]::Descendants,(New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty,'File')))
+            if($null -eq $file){throw 'Notepad File menu unavailable for Save fallback'}
+            $file.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            $save=Wait-Element {$root.FindFirst([Windows.Automation.TreeScope]::Descendants,(New-Object Windows.Automation.AndCondition(
+                (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,$p.Id)),
+                (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty,'Save')))))}
+            if($null -eq $save){throw 'Notepad File > Save unavailable'}
+            $obs.MenuPath='File > Save'
+            $save.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            $saved=Wait-Element {if(-not (Get-Process -Id $p.Id).MainWindowTitle.StartsWith('*')){return $true};$null}
+        }
+        $obs.WindowsAfterSave=@(Get-WindowTexts $p.Id)
+        $obs.Title=(Get-Process -Id $p.Id).MainWindowTitle
+        $obs.SaveCompleted=($saved -eq $true -and -not $obs.Title.StartsWith('*') -and $obs.WindowsAfterSave.Count -eq 1)
+        if(-not $obs.SaveCompleted){throw ('Notepad Save failed: '+($obs.WindowsAfterSave -join ' | '))}
+        [void]$p.CloseMainWindow()
+        $obs.NoPromptClosed=$p.WaitForExit(10000)
+        if(-not $obs.NoPromptClosed){throw ('Notepad close showed a prompt: '+((Get-WindowTexts $p.Id) -join ' | '))}
+    } finally {
+        $obs.WindowsAtExit=@(Get-WindowTexts $p.Id)
+        if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+    }
+}
 function Read-ActorControlText([string]$Path) {
     $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
     for (;;) {
@@ -495,6 +602,21 @@ for (;;) {
             'native-save' { $result.Steps=[T5Native]::Save($c.Path,$bytes,2,$false) }
             'native-clear' { $result.Method='Native TRUNCATE_EXISTING + close (UI-independent equivalent)'; $result.Steps=[T5Native]::Save($c.Path,$bytes,5,$false) }
             'native-append' { $result.Method='Native OPEN_EXISTING + append (existing readable seeded edit)'; $result.Steps=[T5Native]::Save($c.Path,$bytes,3,$true) }
+            'native-read' {$result.Read=[T5Native]::Read($c.Path);$result.Steps=$result.Read.Steps}
+            'notepad-edit' {$result.Ui=[ordered]@{};Invoke-NotepadEdit $c.Path ([string]$c.Text) $result.Ui;$result.Steps='notepad-edit=0'}
+            {$_ -cin @('shell-copy-in','shell-move-in','shell-move-within')} {
+                $move=$c.Op -ne 'shell-copy-in'
+                $source=if($c.Op -eq 'shell-move-within'){[string]$c.Text}else{Join-Path $env:TEMP ('t5-shell-'+[guid]::NewGuid().ToString('N')+'.txt')}
+                if($c.Op -ne 'shell-move-within'){[IO.File]::WriteAllBytes($source,$bytes)}
+                $result.Source=$source;$result.SourceInActorTemp=($source.StartsWith($env:TEMP.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase))
+                $result.SourceRead=[T5Native]::Read($source)
+                if($result.SourceRead.Code -ne 0 -or $result.SourceRead.Length -le 0){throw 'Shell source was not readable and nonempty'}
+                $result.Ui=[ordered]@{WindowsBefore=@(Get-T5DesktopWindows)}
+                try {$result.Steps=[T5Shell]::Transfer($source,$c.Path,$move)}finally{$result.Ui.WindowsAfter=@(Get-T5DesktopWindows)}
+                $result.SourceGone=-not (Test-Path -LiteralPath $source)
+                # Keep move failures' sources as evidence; copy cleanup happens only after recording its observation.
+                if(-not $move){Remove-Item -LiteralPath $source -Force}
+            }
             'native-delete' { $result.Child=Invoke-T5Child 'delete' $c.Path;$result.Steps='delete='+$result.Child.Code }
             'second-open-empty' { $result.Child=Invoke-T5Child 'read-empty' $c.Path;$result.Steps='second-open='+$result.Child.Code }
             'hold-no-share-delete' { if($script:workflowHeld){throw 'A workflow handle is already held'};$script:workflowHeld=[T5Native]::Hold($c.Path,$false,$bytes);$result.Steps=$script:workflowHeld.Steps }

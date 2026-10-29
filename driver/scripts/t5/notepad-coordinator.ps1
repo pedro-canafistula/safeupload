@@ -1724,13 +1724,14 @@ function Wait-T5WorkflowState($Record,[string]$Path,[byte[]]$Expected,[bool]$Abs
     }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
     throw ('Workflow settlement timed out: path='+$Path+' absent='+$Absent+' release='+$RequireRelease+' handback='+$RequireHandback+' lastTransientSampleError='+$lastTransient+' raw='+($image | ConvertTo-Json -Depth 8 -Compress)+' journal='+($journal | ConvertTo-Json -Depth 12 -Compress))
 }
-function Set-T5DeleteDenyFixture([string]$Path,[string]$Parent,[string]$Sid) {
+function Set-T5DeleteDenyFixture([string]$Path,[string]$Parent,[string]$Sid,[switch]$ReadDeny) {
     $identity=New-Object Security.Principal.SecurityIdentifier($Sid)
     $fileAcl=Get-Acl -LiteralPath $Path;$parentAcl=Get-Acl -LiteralPath $Parent
     $fixture=[pscustomobject]@{Path=$Path;Parent=$Parent;Sid=$Sid;FileBefore=$fileAcl.Sddl;ParentBefore=$parentAcl.Sddl;FileDenied=$null;ParentDenied=$null;Restored=$false}
     try {
-        $fileAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,[Security.AccessControl.FileSystemRights]::Delete,[Security.AccessControl.AccessControlType]::Deny)))
-        $parentAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,[Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles,[Security.AccessControl.AccessControlType]::Deny)))
+        $right=if($ReadDeny){[Security.AccessControl.FileSystemRights]::ReadData}else{[Security.AccessControl.FileSystemRights]::Delete}
+        $fileAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,$right,[Security.AccessControl.AccessControlType]::Deny)))
+        if(-not $ReadDeny){$parentAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,[Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles,[Security.AccessControl.AccessControlType]::Deny)))}
         Set-Acl -LiteralPath $Path -AclObject $fileAcl;Set-Acl -LiteralPath $Parent -AclObject $parentAcl
         $fixture.FileDenied=(Get-Acl -LiteralPath $Path).Sddl;$fixture.ParentDenied=(Get-Acl -LiteralPath $Parent).Sddl
         return $fixture
@@ -1751,7 +1752,7 @@ function Invoke-T5Workflow($Spec,$Record,[string]$HandbackDirectory,[string[]]$B
     $priorBytes=[Text.Encoding]::ASCII.GetBytes($prior);$newerBytes=[Text.Encoding]::ASCII.GetBytes($newer)
     $empty=New-Object byte[] 0;$saveCodes=@{open=0;write=0;close=0}
     $expected=$priorBytes;$handbackBytes=$cpfBytes;$path=$Record.Path
-    $seed=$Spec.Op -notin @('explorer-empty','empty-copy','empty-move')
+    $seed=$Spec.Op -notin @('explorer-empty','empty-copy','empty-move','shell-copy-in','shell-move-in','shell-move-within')
     if($seed){
         [void](Invoke-T5WorkflowAck $Record 'native-create' $path $prior $saveCodes @())
         [void](Wait-T5WorkflowState $Record $path $priorBytes $false $true $false '' @() $empty)
@@ -1761,6 +1762,39 @@ function Invoke-T5Workflow($Spec,$Record,[string]$HandbackDirectory,[string[]]$B
     if(@($baseline.ParseErrors).Count -or @($baseline.SchemaErrors).Count){throw 'Workflow baseline journal is invalid'}
     $ids=@($baseline.Records | ForEach-Object TransferId);$Record.WorkflowBaseline=$baseline.Records
     switch($Spec.Op){
+        'notepad-edit' {
+            [void](Invoke-T5WorkflowAck $Record 'notepad-edit' $path $newer @{'notepad-edit'=0} $ids)
+            $expected=$newerBytes;$Record.Method='Real Notepad existing-file open, replace text, File > Save, prompt-free close'
+        }
+        {$_ -cin @('shell-copy-in','shell-move-in')} {
+            $codes=@{'shell-item-hr'=0;'shell-folder-hr'=0;'shell-flags-hr'=0;'shell-transfer-item-hr'=0;'shell-perform-hr'=0;'shell-abort-hr'=0;'shell-aborted'=0}
+            $ack=Invoke-T5WorkflowAck $Record $Spec.Op $path $newer $codes $ids
+            if($ack.SourceInActorTemp -ne $true -or $ack.SourceRead.Code -ne 0 -or $ack.SourceRead.Length -ne $newerBytes.Length -or $ack.SourceRead.Sha256 -cne (Sha $newerBytes)){throw 'Shell source bytes differ from the newer payload or source is outside actor TEMP'}
+            if($Spec.Op -eq 'shell-move-in' -and ($ack.SourceGone -ne $true -or (Test-Path -LiteralPath $ack.Source))){throw 'Shell move left its TEMP source behind'}
+            $Record.SourceGone=$ack.SourceGone;$expected=$newerBytes
+        }
+        'shell-move-within' {
+            $oldPath=Join-Path $root $Spec.AuxiliaryLeaves[0]
+            [void](Invoke-T5WorkflowAck $Record 'native-create' $oldPath $prior $saveCodes @())
+            [void](Wait-T5WorkflowState $Record $oldPath $priorBytes $false $true $false '' @() $empty)
+            $codes=@{'shell-item-hr'=0;'shell-folder-hr'=0;'shell-flags-hr'=0;'shell-transfer-item-hr'=0;'shell-perform-hr'=0;'shell-abort-hr'=0;'shell-aborted'=0}
+            $ack=Invoke-T5WorkflowAck $Record 'shell-move-within' $path $oldPath $codes @()
+            if($ack.Source -ine $oldPath -or $ack.SourceGone -ne $true -or $ack.SourceRead.Code -ne 0 -or $ack.SourceRead.Length -ne $priorBytes.Length -or $ack.SourceRead.Sha256 -cne (Sha $priorBytes)){throw 'Protected shell move did not consume the exact published prior'}
+            $Record.OldPath=$oldPath;$Record.SourceGone=$true
+            $Record.Method='IFileOperation MoveItem on published bytes within the same volume; seed Release required, no new Release required for native rename'
+        }
+        'native-read' {
+            $deniedPath=Join-Path $root $Spec.AuxiliaryLeaves[0]
+            [void](Invoke-T5WorkflowAck $Record 'native-create' $deniedPath $prior $saveCodes @())
+            [void](Wait-T5WorkflowState $Record $deniedPath $priorBytes $false $true $false '' @() $empty)
+            $read=Invoke-T5WorkflowAck $Record 'native-read' $path '' @{'read-open'=0;read=0;'read-close'=0} $ids
+            if($read.Read.Code -ne 0 -or $read.Read.Length -ne $priorBytes.Length -or $read.Read.Sha256 -cne (Sha $priorBytes)){throw 'Standard actor did not read the exact existing bytes'}
+            $fixture=Set-T5DeleteDenyFixture $deniedPath $root $result.ActorSid -ReadDeny;$Record.Fixtures+=$fixture
+            try {
+                $denied=Invoke-T5WorkflowAck $Record 'native-read' $deniedPath '' @{'read-open'=5} @()
+                if($denied.Read.Code -ne 5 -or $denied.Read.Length -ne 0 -or $null -ne $denied.Read.Sha256){throw 'Denied sibling exported bytes or did not return access denied'}
+            }finally{Restore-T5DeleteDenyFixture $fixture}
+        }
         'explorer-empty' {
             $oldPath=Join-Path $root $Spec.AuxiliaryLeaves[0]
             [void](Invoke-T5WorkflowAck $Record 'native-create' $oldPath '' $saveCodes @())
@@ -1909,8 +1943,8 @@ function Get-Handback([string]$Directory, [string[]]$BeforePaths, [byte[]]$Expec
 # lower-mutation ledger and cannot promote the canonical INCONCLUSIVE verdict.
 foreach($spec in @($cases | Where-Object {$_.Workflow})){
     $hashes=@()
-    if($spec.Op -notin @('explorer-empty','empty-copy','empty-move')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' published clean prior'))}
-    if($spec.Op -cin @('inflight-before','inflight-after')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' inspected newer save'))}
+    if($spec.Op -notin @('explorer-empty','empty-copy','empty-move','shell-copy-in','shell-move-in')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' published clean prior'))}
+    if($spec.Op -cin @('inflight-before','inflight-after','notepad-edit','shell-copy-in','shell-move-in')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' inspected newer save'))}
     foreach($leaf in @($spec.Leaf)+@($spec.AuxiliaryLeaves)) {if($leaf){$script:T5WorkflowPublicHashes[(Join-Path $root $leaf)]=$hashes}}
 }
 $script:n = 0

@@ -12,7 +12,7 @@ import tempfile
 root = Path(__file__).resolve().parent
 launcher = root.parent / 'Invoke-StageNotepad.sh'
 required_cases = json.loads((root / 'notepad-cases.json').read_text())
-assert len(required_cases) == 20 and len({c['Kind'] for c in required_cases}) == 20
+assert len(required_cases) == 25 and len({c['Kind'] for c in required_cases}) == 25
 spec = importlib.util.spec_from_file_location('original_verdict_controls', root / 'notepad-verdict.SelfCheck.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -47,7 +47,32 @@ flows = {
     'inflight-after': [save, ('inflight-after', 'hold-open=0 hold-write=0 hold-close=0 delete=0')],
     'delete-cpf': [save, ('native-delete', 'delete=0'), save],
     'native-append': [save, ('native-append', 'open=0 seek=0 write=0 close=0')],
+    'notepad-edit': [save, ('notepad-edit', 'notepad-edit=0')],
+    'native-read': [save, save, ('native-read', 'read-open=0 read=0 read-close=0'), ('native-read', 'read-open=5')],
 }
+shell_steps = 'shell-item-hr=0 shell-folder-hr=0 shell-flags-hr=0 shell-transfer-item-hr=0 shell-perform-hr=0 shell-abort-hr=0 shell-aborted=0'
+flows.update({'shell-copy-in': [('shell-copy-in', shell_steps)], 'shell-move-in': [('shell-move-in', shell_steps)],
+              'shell-move-within': [save, ('shell-move-within', shell_steps)]})
+
+# Assert each leaf's complete approval set, including all original leaves: adding
+# a newer payload for a new case must never authorize it under another name.
+approved = env['approved_public_hash_map']()
+for spec in required_cases:
+    payloads = []
+    if spec.get('Workflow'):
+        if spec['Op'] in ('notepad-edit', 'native-read', 'shell-move-within', 'native-clear', 'remove-item', 'shell-delete',
+                          'deny-acl', 'deny-share', 'inflight-before', 'inflight-after', 'delete-cpf', 'native-append'):
+            payloads.append(('T5 '+spec['Kind']+' published clean prior').encode())
+        if spec['Op'] in ('notepad-edit', 'shell-copy-in', 'shell-move-in', 'inflight-before', 'inflight-after'):
+            payloads.append(('T5 '+spec['Kind']+' inspected newer save').encode())
+    elif not spec['Sensitive']:
+        payloads.append(('T5 '+spec['Kind']+' clean text').encode())
+    hashes = {hashlib.sha256(payload).hexdigest().upper() for payload in payloads}
+    for leaf in [spec['Leaf'], *spec.get('AuxiliaryLeaves', [])]:
+        check(approved[leaf] == hashes, leaf+' exact approval set')
+        newer_digest = hashlib.sha256(b'T5 ShellCopyIn inspected newer save').hexdigest().upper()
+        if spec['Kind'] != 'ShellCopyIn':
+            check(newer_digest not in approved[leaf], leaf+' never approves another leaf newer bytes')
 
 with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
     env['raw_dir'] = temp + '/row-raw'
@@ -64,7 +89,9 @@ with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
         acks = []
         for index, (op, steps) in enumerate(flows[spec['Op']]):
             path = case['Path']
-            if spec['Op'] == 'explorer-empty' and index == 0:
+            if spec['Op'] in ('explorer-empty', 'shell-move-within') and index == 0:
+                path = scope+'\\'+spec['AuxiliaryLeaves'][0]
+            if spec['Op'] == 'native-read' and index in (1, 3):
                 path = scope+'\\'+spec['AuxiliaryLeaves'][0]
             if spec['Op'] in ('deny-acl', 'deny-share') and index in ((1, 2) if spec['Op'] == 'deny-acl' else (1, 2, 3, 4)):
                 path = r'C:\T5\control\native-fixture\file.txt'
@@ -73,6 +100,18 @@ with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
                 ack['Child'] = dict(Pid=600, Sid=sid, Path=path, Length=0, FirstByte=-1, ReadWrite=True)
             if op == 'empty-move': ack['SourceGone'] = True
             if op == 'empty-copy': ack['SourceLength'] = 0
+            if op == 'notepad-edit':
+                ack['Ui'] = dict(DirtyObserved=True, SaveCompleted=True, NoPromptClosed=True, Title='notepad-edit.txt - Notepad',
+                                 OpenedExistingTitle='notepad-edit.txt - Notepad',
+                                 WindowsAfterSave=['notepad-edit.txt - Notepad'], WindowsAtExit=[], MenuPath='command-save')
+            if op in ('shell-copy-in', 'shell-move-in', 'shell-move-within'):
+                ack.update(Source=scope+'\\'+spec['AuxiliaryLeaves'][0] if op == 'shell-move-within' else r'C:\Users\t5actor\AppData\Local\Temp\t5-shell.txt',
+                           SourceInActorTemp=op != 'shell-move-within', SourceGone=op != 'shell-copy-in',
+                           SourceRead=dict(Code=0, Length=len(expected), Sha256=hashlib.sha256(expected).hexdigest().upper(),
+                                           Steps='read-open=0 read=0 read-close=0'))
+            if op == 'native-read':
+                ack['Read'] = (dict(Code=0, Length=len(expected), Sha256=hashlib.sha256(expected).hexdigest().upper()) if index == 2
+                               else dict(Code=5, Length=0, Sha256=None))
             acks.append(ack)
         case['WorkflowAcks'] = acks
         check(env['workflow_steps_match'](case), spec['Kind']+' complete native steps')
@@ -83,6 +122,24 @@ with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
             if mutate == 'wrong-path': bad['WorkflowAcks'][-1]['Path'] = r'C:\outside.txt'
             if mutate == 'system': bad['WorkflowAcks'][-1]['ActorSid'] = 'S-1-5-18'
             check(not env['workflow_steps_match'](bad), spec['Kind']+' reject '+mutate)
+        if spec['Op'] in ('shell-copy-in', 'shell-move-in', 'shell-move-within'):
+            bad = copy.deepcopy(case); bad['WorkflowAcks'][-1]['SourceRead']['Sha256'] = '0'*64
+            check(not env['workflow_steps_match'](bad), spec['Kind']+' rejects wrong source bytes')
+            if spec['Op'] != 'shell-copy-in':
+                bad = copy.deepcopy(case); bad['WorkflowAcks'][-1]['SourceGone'] = False
+                check(not env['workflow_steps_match'](bad), spec['Kind']+' rejects source not gone')
+            if spec['Op'] != 'shell-move-within':
+                bad = copy.deepcopy(case); bad['WorkflowAcks'][-1]['SourceInActorTemp'] = False
+                check(not env['workflow_steps_match'](bad), spec['Kind']+' rejects source outside actor TEMP')
+        if spec['Op'] == 'notepad-edit':
+            for field in ('DirtyObserved', 'SaveCompleted', 'NoPromptClosed'):
+                bad = copy.deepcopy(case); bad['WorkflowAcks'][-1]['Ui'][field] = False
+                check(not env['workflow_steps_match'](bad), spec['Kind']+' rejects '+field)
+        if spec['Op'] == 'native-read':
+            bad = copy.deepcopy(case); bad['WorkflowAcks'][2]['Read']['Sha256'] = '0'*64
+            check(not env['workflow_steps_match'](bad), 'ReadExisting rejects wrong actor read hash')
+            bad = copy.deepcopy(case); bad['WorkflowAcks'][-1]['Read']['Length'] = 1
+            check(not env['workflow_steps_match'](bad), 'ReadExisting rejects denied byte export')
         observation = module.sample(1, spec['Leaf'], expected is not None)
         if expected is not None:
             digest = hashlib.sha256(expected).hexdigest().upper()
@@ -98,6 +155,12 @@ with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
         target.update(Absent=False, Length=1, Sha256='0'*64)
         check(not env['workflow_observed_bytes_match'](bad_observation), spec['Kind']+' rejects unknown intermediate content')
         check(not env['raw_case_final_matches'](case, [bad_observation]), spec['Kind']+' unexpected public byte fails')
+        if spec['Op'] == 'shell-move-within':
+            case.update(OldNameAbsent=True, SourceGone=True)
+            check(env['workflow_order_matches'](case, [observation]), 'ShellMoveWithin auxiliary name absent')
+            bad = copy.deepcopy(observation)
+            next(i for i in bad['CurrentImages'] if i['Path'].lower().endswith('\\'+spec['AuxiliaryLeaves'][0]))['Absent'] = False
+            check(not env['workflow_order_matches'](case, [bad]), 'ShellMoveWithin old name survived')
         if spec['Op'].startswith('inflight-'):
             before = spec['Op'] == 'inflight-before'
             gate_content = ('T5 '+case['Kind']+(' published clean prior' if before else ' inspected newer save')).encode()
@@ -128,10 +191,20 @@ with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
         journal = dict(TransferId='seed', State='5', StageDeleted=True, SealedLength=len(content),
                        Sha256Hex=hashlib.sha256(content).hexdigest().upper(), DestinationPath=case['Path'])
         records = [journal]
+        if spec['Op'] == 'notepad-edit':
+            prior = ('T5 '+case['Kind']+' published clean prior').encode()
+            case['WorkflowBaseline'] = [dict(journal, TransferId='prior', SealedLength=len(prior),
+                                             Sha256Hex=hashlib.sha256(prior).hexdigest().upper())]
         if spec['Op'] == 'explorer-empty':
             journal['DestinationPath'] = scope+'\\'+spec['AuxiliaryLeaves'][0]
             case['WorkflowJournalSnapshots'] = [[journal]]
             records = []
+        if spec['Op'] in ('shell-move-within', 'native-read'):
+            seed = dict(journal, DestinationPath=scope+'\\'+spec['AuxiliaryLeaves'][0])
+            case['WorkflowJournalSnapshots'] = [[seed]]
+            if spec['Op'] == 'shell-move-within': records = []  # native rename emits no new Release
+            else:
+                case['Fixtures'] = [dict(Path=seed['DestinationPath'], Sid=sid, Restored=True, FileBefore='old', FileDenied='deny')]
         if spec.get('Handback'):
             prior = ('T5 '+case['Kind']+' published clean prior').encode()
             blocked = prior+b'\r\nT5 notepad CPF: 529.982.247-25' if spec['Op'] == 'native-append' else b'T5 notepad CPF: 529.982.247-25'
@@ -151,6 +224,20 @@ with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
         check(env['workflow_journal_matches'](case), spec['Kind']+' complete journal')
         bad = copy.deepcopy(case); bad['JournalParseErrors'] = ['lost frame']
         check(not env['workflow_journal_matches'](bad), spec['Kind']+' corrupt journal cannot pass')
+        if spec['Op'] in ('shell-move-within', 'native-read'):
+            bad = copy.deepcopy(case); bad['WorkflowJournalSnapshots'] = []
+            check(not env['workflow_journal_matches'](bad), spec['Kind']+' missing auxiliary seed Release fails')
+        if spec['Op'] in ('notepad-edit', 'shell-copy-in', 'shell-move-in', 'native-read'):
+            bad = copy.deepcopy(case); bad['Journal'][0]['Sha256Hex'] = '0'*64
+            check(not env['workflow_journal_matches'](bad), spec['Kind']+' wrong Released bytes fail')
+            bad = copy.deepcopy(case); bad['Journal'][0]['DestinationPath'] = r'C:\outside.txt'
+            check(not env['workflow_journal_matches'](bad), spec['Kind']+' wrong Release destination fails')
+        if spec['Op'] == 'notepad-edit':
+            bad = copy.deepcopy(case); bad['WorkflowBaseline'] = []
+            check(not env['workflow_journal_matches'](bad), 'Notepad edit requires prior publication before editing')
+            bad = copy.deepcopy(case); bad['Journal'][0]['TransferId'] = 'prior'
+            bad['StageEvidence'][0]['TransferId'] = 'prior'
+            check(not env['workflow_journal_matches'](bad), 'Notepad edit requires a distinct newer Release')
         if spec.get('Handback'):
             (handbacks/(digest+'.bin')).write_bytes(b'')
             check(not env['workflow_journal_matches'](case), spec['Kind']+' missing full-content handback fails')

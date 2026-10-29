@@ -9,11 +9,11 @@
 # deny ring. The independent raw artifacts and result are copied off before the run disk is discarded.
 #
 # Usage: driver/scripts/Invoke-StageNotepad.sh <debuggee domain> <tag> <driver.sys> <agent zip> [ordinary|runtime-verifier|boot-verifier]
-# T5_STAGE_SPACE=off (default on) sets Interception:StageSpace:Enabled=false in the installed appsettings.json, as T4_STAGE_SPACE=off
-# does: an isolation row from the T9 whole-allowance reservation defect (owner 2026-10-21). NOT the product default: <tag>-stage-space.txt
-# records it and the verdict gains a T5StageSpaceConfig INFO line. No gate, threshold or assertion changes.
+# T5_STAGE_SPACE=off sets only Interception:StageSpace:Enabled=false; FloorOnly is preserved. The default "on" leaves the
+# package settings unchanged (the MVP package defaults to Enabled=false, FloorOnly=true). Configuration is recorded below.
 #
 # Evidence: driver/evidence/<day>/<tag>-*; the verdict is <tag>-verdict.txt; the exit status is 0 only when every required line passes.
+# After separate restoration, <tag>-mvp-verdict.txt derives A/C/D task outcomes; it never changes the full-row exit status.
 set -uo pipefail
 workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 code_root=$workspace_root
@@ -60,6 +60,7 @@ fi
     printf 'LocalDriverSys=%s\nLocalDriverSysSHA256=%s\n' "$sys" "$driver_sha"
     printf 'LocalAgentZip=%s\nLocalAgentZipSHA256=%s\n' "$zip" "$agent_zip_sha"
     printf 'LocalAgentServiceEntry=SafeUpload.Agent.Service.exe\nExpectedExtractedServiceSHA256=%s\n' "$agent_service_sha"
+    printf 'SourceCommit=%s\n' "$(git rev-parse HEAD)"
     printf 'StageSpace=%s\n' "$stage_space"
 } > "$ev/$tag-input-hashes.txt"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
@@ -80,14 +81,20 @@ source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BAS
 alive=no; result_saved=no; raw_saved=no
 finish() {
     local test_status=$?
+    local restoration=PASS
     trap - EXIT
     echo "== discard the run disk"
     if ! run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1; then
-        cat "$ev/$tag-final-restored-state.txt"
         echo 'T5Restoration=FAIL'
-        exit 22
+        restoration=FAIL
+        test_status=22
     fi
     cat "$ev/$tag-final-restored-state.txt"
+    printf 'T5Restoration %s separate run_disk_end; receipt=%s\n' "$restoration" "$ev/$tag-final-restored-state.txt" >> "$ev/$tag-verdict.txt"
+    python3 "$code_scripts/t5/mvp-task-verdict.py" "$ev/$tag-verdict.txt" > "$ev/$tag-mvp-verdict.txt"
+    local mvp_status=$?
+    cat "$ev/$tag-mvp-verdict.txt"
+    if [ "$test_status" -eq 0 ] && [ "$mvp_status" -ne 0 ]; then test_status=$mvp_status; fi
     exit "$test_status"
 }
 run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
@@ -173,10 +180,14 @@ if [ "$stage_space" = off ]; then
 $ErrorActionPreference = 'Stop'
 $path = 'C:\Program Files\SafeUpload\Agent\appsettings.json'
 $json = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+$floorOnly = $json.Interception.StageSpace.FloorOnly
 $json.Interception.StageSpace.Enabled = $false
 $text = $json | ConvertTo-Json -Depth 8
 [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
 'STAGE_SPACE_ENABLED=' + (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json).Interception.StageSpace.Enabled
+$readback = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+'STAGE_SPACE_FLOOR_ONLY=' + $readback.Interception.StageSpace.FloorOnly
+if ($readback.Interception.StageSpace.FloorOnly -ne $floorOnly) { throw 'T5 override changed FloorOnly' }
 PS
     grep -qx 'STAGE_SPACE_ENABLED=False' "$ev/$tag-stage-space.txt" || { echo 'could not disable StageSpace for the isolation row'; exit 23; }
 fi
@@ -273,6 +284,8 @@ $ErrorActionPreference = 'Continue'
 'RAW_MANIFEST_PRESENT=' + [bool](Test-Path C:\T5\raw\manifest.ndjson)
 'DRIVER_LOADED=' + [bool](fltmc.exe filters | Select-String SafeUpload)
 'VERIFIER=' + ((& verifier.exe /query | Out-String) -replace '\s+', ' ')
+try { 'LIVE_DRIVER_SHA256=' + (Get-FileHash -LiteralPath 'C:\Windows\System32\drivers\SafeUpload.sys' -Algorithm SHA256).Hash.ToUpperInvariant() } catch { 'LIVE_DRIVER_SHA256=ERROR' }
+try { 'LIVE_SERVICE_EXE_SHA256=' + (Get-FileHash -LiteralPath 'C:\Program Files\SafeUpload\Agent\SafeUpload.Agent.Service.exe' -Algorithm SHA256).Hash.ToUpperInvariant() } catch { 'LIVE_SERVICE_EXE_SHA256=ERROR' }
 try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring | Select-Object -Last 60) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
 try { $counters = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters; 'WRITER_STATE=' + ($counters.writerState | ConvertTo-Json -Depth 6 -Compress); 'COUNTERS_AFTER=' + ($counters | ConvertTo-Json -Depth 6 -Compress) } catch { 'WRITER_STATE_ERROR=' + $_.Exception.Message }
 'AFTER_DONE=True'
@@ -315,6 +328,55 @@ def verdict(name, outcome, reason):
     if outcome not in ('PASS', 'FAIL', 'INCONCLUSIVE'):
         outcome = 'FAIL'
     out.append(f"{name} {outcome} {reason}")
+def receipt_fields(text, key):
+    return re.findall(r'^' + re.escape(key) + r'=(.*)$', text, re.M)
+
+def artifact_hashes_match(inputs, installed, after_text):
+    bindings = {
+        'LocalDriverSysSHA256': [(installed, 'UPLOAD_DRIVER_SHA256'), (installed, 'INSTALLED_DRIVER_SHA256'), (after_text, 'LIVE_DRIVER_SHA256')],
+        'LocalAgentZipSHA256': [(installed, 'UPLOAD_AGENT_ZIP_SHA256')],
+        'ExpectedExtractedServiceSHA256': [(installed, 'EXTRACTED_SERVICE_EXE_SHA256'), (after_text, 'LIVE_SERVICE_EXE_SHA256')],
+    }
+    for key, observations in bindings.items():
+        expected = receipt_fields(inputs, key)
+        if len(expected) != 1 or not re.fullmatch(r'[A-F0-9]{64}', expected[0]):
+            return False
+        if any(receipt_fields(text, field) != expected for text, field in observations):
+            return False
+    return True
+
+def mode_readback_matches(run_mode, ready_text, after_text, arming_text):
+    def query(text):
+        fields = receipt_fields(text, 'VERIFIER')
+        return fields[0] if len(fields) == 1 else ''
+    final = query(after_text)
+    if run_mode == 'ordinary':
+        return all('No drivers are currently verified' in q and not re.search(r'SafeUpload\.sys', q, re.I)
+                   for q in (query(ready_text), final))
+    if run_mode == 'runtime-verifier':
+        return (receipt_fields(arming_text, 'RUNTIME_VERIFIER_ARMED') == ['True'] and
+                re.search(r'SafeUpload\.sys', final, re.I) is not None and
+                re.search(r'Verifier Flags:\s*0x0*13b\b', final, re.I) is not None)
+    if run_mode == 'boot-verifier':
+        return (receipt_fields(arming_text, 'BOOT_VERIFIER_CONFIGURED') == ['True'] and
+                all(re.search(r'SafeUpload\.sys', q, re.I) and re.search(r'Verifier Flags:\s*0x(?!0+\b)[0-9a-f]+', q, re.I)
+                    for q in (query(ready_text), final)))
+    return False
+
+def read_run_receipt(suffix):
+    try:
+        return open(verdict_path.removesuffix('-verdict.txt') + suffix, encoding='utf-8', errors='replace').read()
+    except OSError:
+        return ''
+
+inputs = read_run_receipt('-input-hashes.txt')
+verdict('T5PairHashes', 'PASS' if artifact_hashes_match(inputs, read_run_receipt('-install.txt'), after) else 'FAIL',
+        'local driver/package/service hashes equal upload, installed/extracted and post-run driver/service readback; ' +
+        '; '.join(key + '=' + ','.join(receipt_fields(inputs, key)) for key in
+                  ('LocalDriverSysSHA256', 'LocalAgentZipSHA256', 'ExpectedExtractedServiceSHA256')))
+verdict('T5ModeReadback', 'PASS' if mode_readback_matches(mode, read_run_receipt('-ready.txt'), after,
+        read_run_receipt('-runtime-verifier.txt' if mode == 'runtime-verifier' else '-boot-verifier.txt')) else 'FAIL',
+        'requested mode=' + mode + '; ordinary requires no verified drivers; runtime requires SafeUpload.sys flags 0x13B before tasks and after run')
 result = None
 if result_saved == 'yes':
     try: result = json.load(open(result_path, encoding='utf-8'))
@@ -712,9 +774,9 @@ def approved_public_hash_map():
     for spec in required_cases:
         payloads = []
         if spec.get('Workflow'):
-            if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move'):
+            if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move', 'shell-copy-in', 'shell-move-in'):
                 payloads.append(('T5 ' + spec['Kind'] + ' published clean prior').encode('ascii'))
-            if spec['Op'] in ('inflight-before', 'inflight-after'):
+            if spec['Op'] in ('inflight-before', 'inflight-after', 'notepad-edit', 'shell-copy-in', 'shell-move-in'):
                 payloads.append(('T5 ' + spec['Kind'] + ' inspected newer save').encode('ascii'))
         elif not spec.get('Sensitive'):
             payloads.append(('T5 ' + spec['Kind'] + ' clean text').encode('ascii'))
@@ -728,9 +790,9 @@ def workflow_observed_bytes_match(sample):
         if not spec.get('Workflow'):
             continue
         payloads = []
-        if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move'):
+        if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move', 'shell-copy-in', 'shell-move-in'):
             payloads.append(('T5 ' + spec['Kind'] + ' published clean prior').encode('ascii'))
-        if spec['Op'] in ('inflight-before', 'inflight-after'):
+        if spec['Op'] in ('inflight-before', 'inflight-after', 'notepad-edit', 'shell-copy-in', 'shell-move-in'):
             payloads.append(('T5 ' + spec['Kind'] + ' inspected newer save').encode('ascii'))
         hashes = {hashlib.sha256(payload).hexdigest().upper() for payload in payloads}
         for leaf in [spec['Leaf'], *spec.get('AuxiliaryLeaves', [])]:
@@ -770,6 +832,16 @@ def workflow_steps_match(case):
         'delete-cpf': [('native-create', save), ('native-delete', {'delete': 0}), ('native-create', save)],
         'native-append': [('native-create', save), ('native-append', {'open': 0, 'seek': 0, 'write': 0, 'close': 0})],
     }
+    shell = {'shell-item-hr': 0, 'shell-folder-hr': 0, 'shell-flags-hr': 0, 'shell-transfer-item-hr': 0,
+             'shell-perform-hr': 0, 'shell-abort-hr': 0, 'shell-aborted': 0}
+    sequences.update({
+        'notepad-edit': [('native-create', save), ('notepad-edit', {'notepad-edit': 0})],
+        'shell-copy-in': [('shell-copy-in', shell)],
+        'shell-move-in': [('shell-move-in', shell)],
+        'shell-move-within': [('native-create', save), ('shell-move-within', shell)],
+        'native-read': [('native-create', save), ('native-create', save),
+                        ('native-read', {'read-open': 0, 'read': 0, 'read-close': 0}), ('native-read', {'read-open': 5})],
+    })
     expected = sequences.get(spec['Op'], [])
     acks = case.get('WorkflowAcks') or []
     if len(acks) != len(expected) or not expected:
@@ -780,7 +852,9 @@ def workflow_steps_match(case):
             return False
         index = len(numbers)
         expected_path = case['Path']
-        if spec['Op'] == 'explorer-empty' and index == 0:
+        if spec['Op'] in ('explorer-empty', 'shell-move-within') and index == 0:
+            expected_path = scope_path + '\\' + spec['AuxiliaryLeaves'][0]
+        if spec['Op'] == 'native-read' and index in (1, 3):
             expected_path = scope_path + '\\' + spec['AuxiliaryLeaves'][0]
         if spec['Op'] in ('deny-acl', 'deny-share'):
             native_indexes = (1, 2) if spec['Op'] == 'deny-acl' else (1, 2, 3, 4)
@@ -809,9 +883,43 @@ def workflow_steps_match(case):
             return False
         if op in ('shell-rename-empty', 'shell-delete') and not isinstance(ack.get('Ui'), dict):
             return False
+        if op == 'notepad-edit':
+            ui = ack.get('Ui') or {}
+            if (ui.get('DirtyObserved') is not True or ui.get('SaveCompleted') is not True or ui.get('NoPromptClosed') is not True or
+                not str(ui.get('OpenedExistingTitle') or '').lower().startswith(spec['Leaf'].lower()) or
+                not ui.get('Title') or ui['Title'].startswith('*') or len(ui.get('WindowsAfterSave') or []) != 1 or
+                ui.get('WindowsAtExit') != [] or ui.get('MenuPath') not in ('command-save', 'File > Save')):
+                return False
+        if op in ('shell-copy-in', 'shell-move-in', 'shell-move-within'):
+            content = workflow_expected(case)
+            read = ack.get('SourceRead') or {}
+            if (not isinstance(ack.get('Ui'), dict) or read.get('Code') != 0 or read.get('Length') != len(content) or
+                read.get('Sha256') != hashlib.sha256(content).hexdigest().upper() or
+                read.get('Steps') != 'read-open=0 read=0 read-close=0'):
+                return False
+            if op == 'shell-move-within':
+                if str(ack.get('Source') or '').lower() != (scope_path + '\\' + spec['AuxiliaryLeaves'][0]).lower():
+                    return False
+            elif ack.get('SourceInActorTemp') is not True or not ack.get('Source') or str(ack['Source']).lower().startswith(scope_path.lower() + '\\'):
+                return False
+            if op != 'shell-copy-in' and ack.get('SourceGone') is not True:
+                return False
+        if op == 'native-read':
+            read = ack.get('Read') or {}
+            if index == 2:
+                content = workflow_expected(case)
+                if read.get('Code') != 0 or read.get('Length') != len(content) or read.get('Sha256') != hashlib.sha256(content).hexdigest().upper():
+                    return False
+            elif read.get('Code') != 5 or read.get('Length') != 0 or read.get('Sha256') is not None or ack.get('Steps') != 'read-open=5':
+                return False
     return numbers == sorted(set(numbers))
 
 def workflow_order_matches(case, samples):
+    if case.get('Op') == 'shell-move-within':
+        spec = workflow_spec(case)
+        old = (scope_path + '\\' + spec['AuxiliaryLeaves'][0]).lower()
+        images = [i for i in (samples[-1].get('CurrentImages') or []) if i.get('Path', '').lower() == old] if samples else []
+        return case.get('OldNameAbsent') is True and case.get('SourceGone') is True and len(images) == 1 and images[0].get('Absent') is True
     if case.get('Op') not in ('inflight-before', 'inflight-after'):
         return True
     proof = case.get('ForcedOrderProof') or {}
@@ -872,7 +980,7 @@ def workflow_handback_matches(case, content):
 def workflow_journal_matches(case):
     spec = workflow_spec(case)
     records = case.get('Journal')
-    if not isinstance(records, list) or (not records and spec['Op'] != 'explorer-empty') or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != []:
+    if not isinstance(records, list) or (not records and spec['Op'] not in ('explorer-empty', 'shell-move-within')) or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != []:
         return False
     expected = workflow_expected(case)
     if spec.get('Handback'):
@@ -890,12 +998,38 @@ def workflow_journal_matches(case):
         seed = [j for snap in case.get('WorkflowJournalSnapshots', []) for j in snap if j.get('DestinationPath', '').lower() == old and j.get('State') == '5' and j.get('StageDeleted') is True and j.get('SealedLength') == 0 and j.get('Sha256Hex') == hashlib.sha256(b'').hexdigest().upper()]
         if not seed:
             return False
+    if spec['Op'] in ('shell-move-within', 'native-read'):
+        old = (scope_path + '\\' + spec['AuxiliaryLeaves'][0]).lower()
+        prior = ('T5 ' + case['Kind'] + ' published clean prior').encode('ascii')
+        if not any(j.get('DestinationPath', '').lower() == old and j.get('State') == '5' and j.get('StageDeleted') is True and
+                   j.get('SealedLength') == len(prior) and j.get('Sha256Hex') == hashlib.sha256(prior).hexdigest().upper()
+                   for snap in case.get('WorkflowJournalSnapshots', []) for j in snap):
+            return False
+    if spec['Op'] in ('notepad-edit', 'shell-copy-in', 'shell-move-in', 'native-read'):
+        baseline_ids = {j.get('TransferId') for j in case.get('WorkflowBaseline', [])}
+        if not any(j.get('DestinationPath', '').lower() == case['Path'].lower() and j.get('State') == '5' and
+                   j.get('StageDeleted') is True and j.get('TransferId') and
+                   (spec['Op'] == 'native-read' or j['TransferId'] not in baseline_ids) and
+                   j.get('SealedLength') == len(expected) and j.get('Sha256Hex') == hashlib.sha256(expected).hexdigest().upper()
+                   for j in records):
+            return False
+    if spec['Op'] == 'notepad-edit':
+        prior = ('T5 ' + case['Kind'] + ' published clean prior').encode('ascii')
+        if not any(j.get('DestinationPath', '').lower() == case['Path'].lower() and j.get('State') == '5' and
+                   j.get('StageDeleted') is True and j.get('TransferId') and j.get('SealedLength') == len(prior) and
+                   j.get('Sha256Hex') == hashlib.sha256(prior).hexdigest().upper() for j in case.get('WorkflowBaseline', [])):
+            return False
+    if spec['Op'] == 'native-read':
+        fixtures = case.get('Fixtures') or []
+        if len(fixtures) != 1 or not all(f.get('Restored') is True and f.get('FileBefore') != f.get('FileDenied') and
+                                       f.get('Path', '').lower() == old and f.get('Sid') == (result or {}).get('ActorSid') for f in fixtures):
+            return False
     stages = case.get('StageEvidence')
     if not isinstance(stages, list) or len(stages) != len(records) or {s.get('TransferId') for s in stages} != {j.get('TransferId') for j in records}:
         return False
     if any(type(s.get('Exists')) is not bool or (s['Exists'] and (not spec.get('Handback') or type(s.get('Length')) is not int or s['Length'] <= 0)) for s in stages):
         return False
-    if expected is not None and spec['Op'] != 'explorer-empty':
+    if expected is not None and spec['Op'] not in ('explorer-empty', 'shell-move-within'):
         if not any(j.get('State') == '5' and j.get('Sha256Hex') == hashlib.sha256(expected).hexdigest().upper() and j.get('SealedLength') == len(expected) for j in records):
             return False
     if spec['Op'] in ('deny-acl', 'deny-share', 'inflight-before'):
@@ -970,6 +1104,9 @@ raw_ok = (ro.get('Status') == 'OK' and ro.get('CaseId') == 'T5' and ro.get('Obse
           disposal.get('Status') == 'OK' and raw_schema_ok and raw_artifacts_ok)
 verdict('T5RawObserver', 'PASS' if raw_ok else 'FAIL',
         f"status={ro.get('Status')}; baseline={baseline.get('Status')}; samples={len(raw_samples)}; disposal={disposal.get('Status')}; schema={raw_schema_ok}; artifacts={raw_artifact_reason}")
+observed_bytes_ok = (raw_ok and all(workflow_observed_bytes_match(s) for s in raw_samples if s.get('Status') == 'OK'))
+verdict('T5ObservedNoUnapprovedBytes', 'PASS' if observed_bytes_ok else 'FAIL',
+        'all accepted independent raw/public observations contain only exact per-leaf approved payloads; sampled evidence, not a canonical lower-mutation proof')
 out.append(f"T5RawErrorsSuperseded INFO {superseded_errors} transient observation error sample(s) superseded by the next valid sample of the same case (owner 2026-10-22); all stay in the result")
 verdict('T5RawEvidenceRetained', 'PASS' if raw_artifacts_ok else 'FAIL',
         f"copied={raw_saved}; guest-manifest={re.search(r'^RAW_MANIFEST_PRESENT=True$', after, re.M) is not None}; {raw_artifact_reason}")
@@ -1011,7 +1148,7 @@ for c in cases:
         journal_ok = workflow_journal_matches(c)
         ok = (not c.get('Error') and raw_case_ok and steps_ok and no_empty_leftover and journal_ok and order_ok and
               c.get('WorkflowOutcome') is True and c.get('NoStageLeftover') is True and c.get('Leaked') is False)
-        if spec['Op'] == 'explorer-empty':
+        if spec['Op'] in ('explorer-empty', 'shell-move-within'):
             old = (scope_path + '\\' + spec['AuxiliaryLeaves'][0]).lower()
             old_images = [i for i in (raw_case_samples[-1].get('CurrentImages', []) if raw_case_samples else []) if i.get('Path', '').lower() == old]
             ok = ok and c.get('OldNameAbsent') is True and len(old_images) == 1 and old_images[0].get('Absent') is True
@@ -1058,7 +1195,7 @@ verdict('T5JournalSettledAfterRun', journal_outcome_after, journal_detail_after)
 for r in ((result or {}).get('Ring') or [])[-25:]:
     out.append(f"T5DenyRing INFO {r[:400]}")
 if os.environ.get('T5_STAGE_SPACE_EFFECTIVE') == 'off':
-    out.append('T5StageSpaceConfig INFO StageSpace disabled by T5_STAGE_SPACE=off (product default is enabled): isolation row from the T9 reservation defect, not a product-configuration result')
+    out.append('T5StageSpaceConfig INFO T5_STAGE_SPACE=off sets Enabled=false only, preserving package FloorOnly (MVP defaults Enabled=false, FloorOnly=true)')
 out.append(f"T5Duration INFO {elapsed} s ({mode})")
 open(verdict_path, 'w').write('\n'.join(out) + '\n')
 print('\n'.join(out))

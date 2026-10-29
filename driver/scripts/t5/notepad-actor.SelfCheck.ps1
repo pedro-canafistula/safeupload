@@ -65,6 +65,10 @@ try {
     Assert-Actor ($steps -match '^test-create=(80|183) test-delete=skipped-create-failed save-create=0 save-write=0 save-close=0$') 'failed probe attempted deletion or save failed'
     Assert-Actor ([T5ActorSelfCheckIdentity]::Read($path) -eq $before) 'failed probe deleted/recreated the public object'
     Assert-Actor ([Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($path)) -eq 'clean saved bytes') 'final clean bytes differ'
+    $read=[T5Native]::Read($path)
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try {$digest=[BitConverter]::ToString($sha.ComputeHash($saved)).Replace('-','')}finally{$sha.Dispose()}
+    Assert-Actor ($read.Code -eq 0 -and $read.Steps -ceq 'read-open=0 read=0 read-close=0' -and $read.Length -eq $saved.Length -and $read.Sha256 -ceq $digest) 'GENERIC_READ must return exact length/hash'
     'ExistingNameFailedProbe=PASS; identity=' + $before + '; ' + $steps
 
     $newPath = Join-Path $root 'new.txt'

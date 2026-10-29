@@ -150,5 +150,51 @@
     "Workflow": true,
     "Expected": "Prior",
     "Handback": true
+  },
+  {
+    "Kind": "NotepadEditApprove",
+    "Op": "notepad-edit",
+    "Leaf": "notepad-edit.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Newer"
+  },
+  {
+    "Kind": "ShellCopyIn",
+    "Op": "shell-copy-in",
+    "Leaf": "shell-copy-in.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Newer"
+  },
+  {
+    "Kind": "ShellMoveIn",
+    "Op": "shell-move-in",
+    "Leaf": "shell-move-in.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Newer"
+  },
+  {
+    "Kind": "ShellMoveWithin",
+    "Op": "shell-move-within",
+    "Leaf": "shell-move-within.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Prior",
+    "AuxiliaryLeaves": [
+      "shell-move-within-prior.txt"
+    ]
+  },
+  {
+    "Kind": "ReadExisting",
+    "Op": "native-read",
+    "Leaf": "read-existing.txt",
+    "Sensitive": false,
+    "Workflow": true,
+    "Expected": "Prior",
+    "AuxiliaryLeaves": [
+      "read-existing-denied.txt"
+    ]
   }
 ]
