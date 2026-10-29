@@ -27,6 +27,7 @@ expected_cases = {
     'B': ('ExcelSaveAsApprove', 'ExcelInPlaceApprove', 'ExcelCpfHandBack'),
     'C': ('ShellCopyIn', 'ShellMoveIn', 'ShellMoveWithin', 'PublicDeleteExplorer'),
     'D': ('ReadExisting',),
+    'W': ('WordSaveAsApprove', 'WordInPlaceApprove', 'WordOverwriteApprove', 'WordCpfHandBack'),
 }
 check(mvp.TASK_CASES == expected_cases, 'exact owner task mapping')
 all_names = sorted({name for task in expected_cases for name in mvp.dependencies(task)})
@@ -55,6 +56,11 @@ check(mvp.evaluate(office)[0] == {'B': 'PASS'}, 'Office profile evaluates only B
 check('MVPA NOT_RUN' in mvp.evaluate(office)[1], 'Office profile never relabels absent A/C/D as PASS')
 check(mvp.evaluate(office.replace('T5OfficeBase PASS', 'T5OfficeBase FAIL'))[0] == {'B': 'FAIL'}, 'B requires Office restoration')
 check(set(mvp.evaluate(office + 'T5RunProfile INFO BasicTasks\n')[0].values()) == {'FAIL'}, 'conflicting profiles cannot pass')
+office_apps = 'T5RunProfile INFO OfficeApps\n' + ''.join(name + ' PASS exact receipt\n' for name in sorted(set(mvp.dependencies('B') + mvp.dependencies('W')))) + proofs
+check(mvp.evaluate(office_apps)[0] == {'B': 'PASS', 'W': 'PASS'}, 'OfficeApps evaluates B and W')
+check(mvp.evaluate(office_apps.replace('T5WordOverwriteApprove PASS', 'T5WordOverwriteApprove FAIL'))[0] == {'B': 'PASS', 'W': 'FAIL'}, 'failed Word overwrite does not pass or relabel Excel')
+check(mvp.evaluate(office_apps.replace('T5WordCpfHandBack PASS', 'T5WordCpfHandBack INCONCLUSIVE'))[0] == {'B': 'PASS', 'W': 'INCONCLUSIVE'}, 'Word INCONCLUSIVE never turns green')
+check(mvp.evaluate(office_apps.replace('T5OfficeBase PASS', 'T5OfficeBase FAIL'))[0] == {'B': 'FAIL', 'W': 'FAIL'}, 'both Office tasks require restoration')
 
 launcher = (root.parent / 'Invoke-StageNotepad.sh').read_text()
 names = {'receipt_fields', 'artifact_hashes_match', 'mode_readback_matches'}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Excel receipts, secret channel and Office lifecycle; no VM/network/COM."""
+"""Offline Excel/Word receipts, secret channel and Office lifecycle; no VM/network/COM."""
 import ast
 import copy
 import hashlib
@@ -19,11 +19,13 @@ launcher_path = root.parent / 'Invoke-StageNotepad.sh'
 launcher = launcher_path.read_text()
 inventory = json.loads((root / 'notepad-cases.json').read_text())
 office = [c for c in inventory if c.get('Office')]
-assert len(inventory) == 28 and {c['Kind'] for c in office} == {'ExcelSaveAsApprove', 'ExcelInPlaceApprove', 'ExcelCpfHandBack'}
+assert len(inventory) == 32 and {c['Kind'] for c in office} == {'ExcelSaveAsApprove', 'ExcelInPlaceApprove', 'ExcelCpfHandBack',
+    'WordSaveAsApprove', 'WordInPlaceApprove', 'WordOverwriteApprove', 'WordCpfHandBack'}
 module_spec = importlib.util.spec_from_file_location('host_controls', root / 'notepad-verdict.SelfCheck.py')
 module = importlib.util.module_from_spec(module_spec)
 module_spec.loader.exec_module(module)
-names = {'excel_record_matches', 'excel_releases', 'excel_steps_match', 'excel_journal_matches', 'excel_final_matches',
+names = {'office_record_matches', 'office_releases', 'office_steps_match', 'office_journal_matches', 'office_final_matches',
+         'office_app', 'office_versions', 'word_alerts_match',
          'workflow_spec', 'workflow_steps_match', 'workflow_journal_matches', 'workflow_handback_matches', 'raw_case_final_matches',
          'approved_public_hash_map', 'workflow_observed_bytes_match', 'archive_payload_matches'}
 functions = [n for block in re.findall(r"<<'PY'\n(.*?)\nPY\n", launcher, re.S)
@@ -48,22 +50,34 @@ with tempfile.TemporaryDirectory(prefix='t5-office-controls-') as temp:
     env['raw_dir'] = str(work / 'row-raw')
     journals = work / 'row-journal-evidence'; journals.mkdir()
     handbacks = work / 'row-handback-evidence'; handbacks.mkdir()
+    alerts = work / 'row-word-alerts'; alerts.mkdir()
     for spec in office:
+        app = spec.get('OfficeApp', 'Excel'); prefix = app.lower(); versions_key = app+'Versions'
         sensitive = spec['Sensitive']
         case = dict(spec, Path=scope+'\\'+spec['Leaf'], NativeStepsChecked=True, NativeStepsOk=True,
                     JournalParseErrors=[], JournalSchemaErrors=[], FinalJournalOutcomeVerified=True, SettlementStatus='PASS')
-        ops = [spec['Op'], 'excel-read'] if sensitive else [spec['Op'], 'excel-edit', 'excel-read']
+        next_op = 'word-overwrite' if spec['Kind'] == 'WordOverwriteApprove' else prefix+'-edit'
+        ops = [spec['Op'], prefix+'-read'] if sensitive else [spec['Op'], next_op, prefix+'-read']
         case['WorkflowAcks'] = []
         handback_path = env['result']['HandbackDirectory']+'\\'+spec['Leaf']
         for i, op in enumerate(ops):
             final = i > 0 or sensitive
             a1 = '529.982.247-25' if sensitive else (2 if final else 1) if spec['Kind'] == 'ExcelInPlaceApprove' else 'T5 '+spec['Kind']
-            ui = dict(ExcelPid=600+i, ExcelSid=sid, SessionId=3, ExcelCreationTime=10000+i, Version='16.0', Build='20326', Action=op,
-                      Saved=True, Ready=True, Closed=True, Quit=True, ExcelExited=True, ReadOnly=False,
+            ui = dict(SessionId=3, Version='16.0', Build='16.0.20326' if app == 'Word' else '20326', Action=op,
+                      Saved=True, Ready=True, Closed=True, Quit=True, ReadOnly=False,
                       ProtectedViewCount=0, Windows=['Workbook - Excel'], WindowsAtExit=[], A1=a1, B1=3,
                       C1='blocked' if sensitive else 'edit' if final else 'prior', PriorCellsVerified=op == 'excel-edit')
-            case['WorkflowAcks'].append(dict(N=i+1, Op=op, Path=handback_path if sensitive and op == 'excel-read' else case['Path'],
-                                            ActorPid=500, ActorSid=sid, Steps='excel=0', Ui=ui))
+            ui.update({app+'Pid': 600+i, app+'Sid':sid, app+'CreationTime':10000+i, app+'Exited':True})
+            if app == 'Word':
+                ui.update(Text='T5 Word CPF: 529.982.247-25' if sensitive else 'T5 '+spec['Kind']+(' inspected newer save' if final else ' published clean prior'),
+                          PriorTextVerified=op == 'word-edit', Windows=['Document - Word'], AlertTexts=[])
+                monitor = dict(WordPid=600+i, WordCreationTime=10000+i, SawWordWindow=True, MonitorPid=900+i, MonitorSid=sid, SessionId=3, Ready=True,
+                               Stopped=True, TimedOut=False, PollCount=3, AlertTexts=[], Error=None)
+                artifact = uuid.uuid4().hex+'.json'
+                (alerts / artifact).write_text(json.dumps(monitor))
+                ui['AlertMonitor'] = dict(monitor, Artifact='C:/T5/control/word-alerts/'+artifact)
+            case['WorkflowAcks'].append(dict(N=i+1, Op=op, Path=handback_path if sensitive and op == prefix+'-read' else case['Path'],
+                                            ActorPid=500, ActorSid=sid, Steps=prefix+'=0', Ui=ui))
         versions = []
         payloads = []
         for i in range(1 if sensitive else 2):
@@ -71,7 +85,7 @@ with tempfile.TemporaryDirectory(prefix='t5-office-controls-') as temp:
             payloads.append(payload)
             digest = hashlib.sha256(payload).hexdigest().upper()
             row = dict(TransferId=uuid.uuid4().hex, DestinationPath=case['Path'], ProcessId=600+i,
-                       ProcessName='EXCEL.EXE', RequestorSid=sid, RequestorProcessCreationTime=10000+i, SessionId=3, State='6' if sensitive else '5',
+                       ProcessName='WINWORD.EXE' if app == 'Word' else 'EXCEL.EXE', RequestorSid=sid, RequestorProcessCreationTime=10000+i, SessionId=3, State='6' if sensitive else '5',
                        HandbackState='2' if sensitive else '0', StageDeleted=True, SealedOnce=True,
                        Sha256Hex=digest, SealedLength=len(payload), DestinationGeneration=i+1,
                        DriverInstanceId='test-driver', StageIdentity=dict(VolumeSerialNumber=1, FileIdHigh=2, FileIdLow=3+i))
@@ -90,10 +104,14 @@ with tempfile.TemporaryDirectory(prefix='t5-office-controls-') as temp:
                 row['ArchiveRecord'] = dict(Artifact=container_name, FrameOffset=4096, Length=len(data),
                                             Sha256=hashlib.sha256(data).hexdigest().upper(), TransferId=row['TransferId'])
             versions.append(row)
-        case.update(ExcelVersions=versions, Journal=copy.deepcopy(versions),
+        case[versions_key] = versions
+        case.update(Journal=copy.deepcopy(versions),
                     StageEvidence=[dict(TransferId=j['TransferId'], Exists=False) for j in versions],
                     ExpectedLength=len(payloads[-1]), ExpectedSha256=versions[-1]['Sha256Hex'])
-        case['WorkflowAcks'][-1].update(Steps='excel=0 read-open=0 read=0 read-close=0',
+        if spec['Kind'] == 'WordOverwriteApprove':
+            case['WorkflowAcks'][1]['Ui'].update(OverwriteRequested=True,
+                OverwritePriorRead=dict(Code=0, Steps='read-open=0 read=0 read-close=0', Length=versions[0]['SealedLength'], Sha256=versions[0]['Sha256Hex']))
+        case['WorkflowAcks'][-1].update(Steps=prefix+'=0 read-open=0 read=0 read-close=0',
                                       Read=dict(Code=0, Length=len(payloads[-1]), Sha256=versions[-1]['Sha256Hex']))
         if sensitive:
             digest = versions[0]['Sha256Hex']
@@ -123,30 +141,58 @@ with tempfile.TemporaryDirectory(prefix='t5-office-controls-') as temp:
             env['result']['Cases'] = [case]
         for mutation in ('cell', 'readonly', 'dialog', 'actor', 'excel-subject', 'live-excel', 'wrong-read', 'missing-ack', 'missing-creation'):
             bad = copy.deepcopy(case); last = bad['WorkflowAcks'][-1]
-            if mutation == 'cell': last['Ui']['A1'] = 'wrong cell'
+            if mutation == 'cell': last['Ui']['Text' if app == 'Word' else 'A1'] = 'wrong text/cell'
             if mutation == 'readonly': last['Ui']['ReadOnly'] = True
             if mutation == 'dialog': last['Ui']['Windows'].append('Error dialog')
             if mutation == 'actor': last['ActorSid'] = 'S-1-5-18'
-            if mutation == 'excel-subject': last['Ui']['ExcelSid'] = 'S-1-5-18'
-            if mutation == 'live-excel': last['Ui']['ExcelExited'] = False
+            if mutation == 'excel-subject': last['Ui'][app+'Sid'] = 'S-1-5-18'
+            if mutation == 'live-excel': last['Ui'][app+'Exited'] = False
             if mutation == 'wrong-read': last['Read']['Sha256'] = '0'*64
             if mutation == 'missing-ack': bad['WorkflowAcks'].pop()
-            if mutation == 'missing-creation': last['Ui']['ExcelCreationTime'] = None
+            if mutation == 'missing-creation': last['Ui'][app+'CreationTime'] = None
             check(not env['workflow_steps_match'](bad), spec['Kind']+' rejects '+mutation)
+        if app == 'Word':
+            for mutation in ('alert', 'missing-monitor', 'monitor-subject', 'blind-monitor', 'old-process', 'monitor-timeout', 'COM-error', 'missing-log'):
+                bad = copy.deepcopy(case); ui = bad['WorkflowAcks'][-1]['Ui']
+                if mutation == 'alert': ui['AlertTexts'] = ['Word: file permission error']
+                if mutation == 'missing-monitor': ui.pop('AlertMonitor')
+                if mutation == 'monitor-subject': ui['AlertMonitor']['MonitorSid'] = 'S-1-5-18'
+                if mutation == 'blind-monitor': ui['AlertMonitor']['SawWordWindow'] = False
+                if mutation == 'old-process': ui['AlertMonitor']['WordCreationTime'] -= 1
+                if mutation == 'monitor-timeout': ui['AlertMonitor']['TimedOut'] = True
+                if mutation == 'COM-error': ui['ErrorText'] = 'HRESULT file permission error'
+                if mutation == 'missing-log': ui['AlertMonitor']['Artifact'] = 'C:/T5/control/word-alerts/'+'0'*32+'.json'
+                check(not env['workflow_steps_match'](bad), spec['Kind']+' rejects '+mutation)
+            name = case['WorkflowAcks'][-1]['Ui']['AlertMonitor']['Artifact'].rsplit('/', 1)[-1]
+            original_log = (alerts / name).read_bytes()
+            log = json.loads(original_log); log['AlertTexts'] = ['Word: file permission error']
+            (alerts / name).write_text(json.dumps(log))
+            check(not env['workflow_steps_match'](case), spec['Kind']+' retained alert cannot be hidden by the actor receipt')
+            (alerts / name).write_bytes(original_log)
+            if next_op == 'word-edit' and not sensitive:
+                bad = copy.deepcopy(case); bad['WorkflowAcks'][1]['Ui']['PriorTextVerified'] = False
+                check(not env['workflow_steps_match'](bad), spec['Kind']+' must reopen the published prior')
+            if spec['Kind'] == 'WordOverwriteApprove':
+                for mutation in ('missing-request', 'wrong-prior', 'edit-instead'):
+                    bad = copy.deepcopy(case)
+                    if mutation == 'missing-request': bad['WorkflowAcks'][1]['Ui']['OverwriteRequested'] = False
+                    if mutation == 'wrong-prior': bad['WorkflowAcks'][1]['Ui']['OverwritePriorRead']['Sha256'] = '0'*64
+                    if mutation == 'edit-instead': bad['WorkflowAcks'][1]['Op'] = 'word-edit'
+                    check(not env['workflow_steps_match'](bad), 'Word overwrite rejects '+mutation)
         for mutation in ('hash', 'length', 'path', 'identity', 'generation', 'uninspected', 'unreleased', 'leftover', 'missing-proof', 'process-reuse'):
             bad = copy.deepcopy(case)
-            if mutation == 'hash': bad['ExcelVersions'][-1]['Sha256Hex'] = '0'*64
-            if mutation == 'length': bad['ExcelVersions'][-1]['SealedLength'] += 1
-            if mutation == 'path': bad['ExcelVersions'][-1]['DestinationPath'] = r'C:\outside.xlsx'
-            if mutation == 'identity': bad['ExcelVersions'][-1]['StageIdentity']['FileIdLow'] += 1
-            if mutation == 'generation': bad['ExcelVersions'][-1]['DestinationGeneration'] += 1
-            if mutation == 'uninspected': bad['ExcelVersions'][-1]['SealedOnce'] = False
-            if mutation == 'unreleased': bad['ExcelVersions'][-1]['State'] = '3'
+            if mutation == 'hash': bad[versions_key][-1]['Sha256Hex'] = '0'*64
+            if mutation == 'length': bad[versions_key][-1]['SealedLength'] += 1
+            if mutation == 'path': bad[versions_key][-1]['DestinationPath'] = r'C:\outside.xlsx'
+            if mutation == 'identity': bad[versions_key][-1]['StageIdentity']['FileIdLow'] += 1
+            if mutation == 'generation': bad[versions_key][-1]['DestinationGeneration'] += 1
+            if mutation == 'uninspected': bad[versions_key][-1]['SealedOnce'] = False
+            if mutation == 'unreleased': bad[versions_key][-1]['State'] = '3'
             if mutation == 'leftover': bad['StageEvidence'][-1]['Exists'] = True
             if mutation == 'missing-proof':
-                bad['ExcelVersions'][-1]['JournalArtifact'] = ''
-                if bad['ExcelVersions'][-1].get('ArchiveRecord'): bad['ExcelVersions'][-1]['ArchiveRecord']['Artifact'] = ''
-            if mutation == 'process-reuse': bad['ExcelVersions'][-1]['RequestorProcessCreationTime'] += 1
+                bad[versions_key][-1]['JournalArtifact'] = ''
+                if bad[versions_key][-1].get('ArchiveRecord'): bad[versions_key][-1]['ArchiveRecord']['Artifact'] = ''
+            if mutation == 'process-reuse': bad[versions_key][-1]['RequestorProcessCreationTime'] += 1
             check(not env['workflow_journal_matches'](bad), spec['Kind']+' rejects '+mutation)
         bad_sample = copy.deepcopy(observation)
         image = next(i for i in bad_sample['CurrentImages'] if i['Path'].lower() == case['Path'].lower())
@@ -239,9 +285,16 @@ trap 'exit 143' TERM
         check(('T5Restoration FAIL' in (work / 'stub-verdict.txt').read_text()) == (not cleanup_ok), 'cleanup failure stays failed')
 
 actor = (root / 'notepad-actor.ps1').read_text()
-excel = actor[actor.index('function Invoke-T5Excel('):actor.index('function Read-ActorControlText')]
+excel = actor[actor.index('function Invoke-T5Excel('):actor.index('function Start-T5WordAlertMonitor')]
 check('[IO.Path]::Combine' in excel and 'Join-Path ' not in re.sub(r'#[^\n]*', '', excel), 'Excel COM uses CLR Combine strings')
 check('$wb.SaveAs($target,51)' in excel and '$wb.Save()' in excel and '$x.Workbooks.Open($target)' in excel, 'real Excel SaveAs/Save/reopen')
+word = actor[actor.index('function Invoke-T5Word('):actor.index('function Read-ActorControlText')]
+check('[IO.Path]::Combine' in word and 'Join-Path ' not in re.sub(r'#[^\n]*', '', word), 'Word COM uses CLR Combine strings')
+check('$doc.SaveAs2($target,16)' in word and '$doc.Save()' in word and '$w.Documents.Open($target,$false,$false)' in word,
+      'real Word new/overwrite SaveAs, in-place Save and writable reopen')
+check('$w.ActiveWindow.Hwnd' in word and '$w.Hwnd' not in word, 'Word identity binds the actual document window')
+check('word-alerts' in launcher and 'Start-Job' in actor and 'TryGetCurrentPattern' in actor, 'interactive alert monitor logs retained even while COM blocks')
+check('.BackgroundSave=' not in word and 'MemoryPressure' not in word, 'Word save pattern has no background-save or section-trimming workaround')
 baseline_source = (root.parent / 'Get-StagedBaseline.ps1').read_text()
 check("[switch] $OfficeBase" in baseline_source and "if ($OfficeBase)" in baseline_source, 'baseline opt-in')
 check("$checks['NoTestProfiles'] = (@(Get-CimInstance Win32_UserProfile | Where-Object { -not $_.Special -and $_.LocalPath -notmatch '\\\\vika$' }).Count -eq 0)" in baseline_source,

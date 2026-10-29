@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Derive MVP drop-1 A/C/D or Office B from exact T5 lines; never rewrite the full row.
+"""Derive MVP A/C/D or Office B/W from exact T5 lines; never rewrite the full row.
 
 Usage: mvp-task-verdict.py <tag-verdict.txt>
 The launcher calls this after separate restoration, including when the full row
 exits nonzero. PASS here describes this run's tasks, not final-pair qualification
-in both modes. T5RunProfile selects BasicTasks (A/C/D) or OfficeExcel (B).
-Legacy receipts without that line retain A/C/D. Word is a drop-1 limitation.
+in both modes. T5RunProfile selects BasicTasks (A/C/D), OfficeApps (B/W),
+or legacy OfficeExcel (B). Receipts without that line retain A/C/D.
 """
 import argparse
 from pathlib import Path
@@ -23,12 +23,13 @@ TASK_CASES = {
     'B': ('ExcelSaveAsApprove', 'ExcelInPlaceApprove', 'ExcelCpfHandBack'),
     'C': ('ShellCopyIn', 'ShellMoveIn', 'ShellMoveWithin', 'PublicDeleteExplorer'),
     'D': ('ReadExisting',),
+    'W': ('WordSaveAsApprove', 'WordInPlaceApprove', 'WordOverwriteApprove', 'WordCpfHandBack'),
 }
 
 
 def dependencies(task):
     names = list(COMMON)
-    if task == 'B':
+    if task in ('B', 'W'):
         names.extend(('T5OfficeBase', 'T5OfficeAccount'))
     for case in TASK_CASES[task]:
         names.extend(('T5' + case, 'T5' + case + 'NoEmptyLeftover'))
@@ -47,14 +48,17 @@ def evaluate(text, tasks=None):
             lines.setdefault(fields[0], []).append(line)
     outcomes = {}
     profiles = lines.get('T5RunProfile', [])
-    profile_ok = not profiles or profiles in (['T5RunProfile INFO BasicTasks'], ['T5RunProfile INFO OfficeExcel'])
+    profile_ok = not profiles or profiles in (['T5RunProfile INFO BasicTasks'], ['T5RunProfile INFO OfficeExcel'], ['T5RunProfile INFO OfficeApps'])
     if tasks is None:
-        tasks = ('B',) if profiles == ['T5RunProfile INFO OfficeExcel'] else ('A', 'C', 'D') if profile_ok else tuple(TASK_CASES)
+        if profiles == ['T5RunProfile INFO OfficeApps']:
+            tasks = ('B', 'W')
+        else:
+            tasks = ('B',) if profiles == ['T5RunProfile INFO OfficeExcel'] else ('A', 'C', 'D') if profile_ok else tuple(TASK_CASES)
     report = [
         'MVPDrop1 INFO Per-run task outcomes; final matched pair still needs ordinary and runtime Verifier runs.',
         'HistoricalFullRow INFO The historical full-row verdict and its INCONCLUSIVE proof lines are unchanged and are not MVP task outcomes.',
         'HistoricalProof INFO T5CanonicalNoUnapprovedByte and *DeleteBarrier stay full-row requirements; sampled byte observations do not establish a canonical never-public proof.',
-        'MVPScope INFO OfficeExcel runs only B on the Office base; BasicTasks runs A/C/D. Word is a documented drop-1 limitation.',
+        'MVPScope INFO OfficeApps runs B/W on the Office base; legacy OfficeExcel runs B; BasicTasks runs A/C/D. Word W is a qualification candidate, not a cutover approval.',
     ]
     for task in TASK_CASES:
         if task not in tasks:

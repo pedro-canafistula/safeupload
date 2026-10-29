@@ -498,6 +498,145 @@ function Invoke-T5Excel([string]$Op,[string]$Path,[string]$Kind,$obs) {
     }
     if(-not $obs.ExcelExited){throw 'Excel process remained after Close/Quit'}
 }
+function Start-T5WordAlertMonitor([int]$WordPid,[string]$Directory) {
+    [void][IO.Directory]::CreateDirectory($Directory)
+    $stem=[guid]::NewGuid().ToString('N')
+    $file=[IO.Path]::Combine($Directory,$stem+'.json');$stop=[IO.Path]::Combine($Directory,$stem+'.stop')
+    $textFunction=(Get-Item Function:\Get-WindowTexts).ScriptBlock.ToString()
+    $job=Start-Job -ArgumentList $WordPid,$file,$stop,$textFunction -ScriptBlock {
+        param($WordPid,$File,$Stop,$TextFunction)
+        $ErrorActionPreference='Stop'
+        $record=[ordered]@{WordPid=$WordPid;MonitorPid=$PID;MonitorSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value;
+            SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId;WordCreationTime=$null;SawWordWindow=$false;
+            Ready=$false;Stopped=$false;TimedOut=$false;PollCount=0;AlertTexts=@();Error=$null}
+        function Write-Monitor {
+            [IO.File]::WriteAllText(($File+'.tmp'),($record | ConvertTo-Json -Depth 6 -Compress))
+            if([IO.File]::Exists($File)){[IO.File]::Replace(($File+'.tmp'),$File,$null)}else{[IO.File]::Move(($File+'.tmp'),$File)}
+        }
+        try {
+            Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
+            $record.WordCreationTime=(Get-Process -Id $WordPid -ErrorAction Stop).StartTime.ToUniversalTime().ToFileTimeUtc()
+            Set-Item Function:\Get-WindowTexts -Value ([scriptblock]::Create($TextFunction))
+            $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+210*[Diagnostics.Stopwatch]::Frequency
+            do {
+                $byPid=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,([int]$WordPid))
+                $root=[Windows.Automation.AutomationElement]::RootElement
+                $top=@($root.FindAll([Windows.Automation.TreeScope]::Children,$byPid))
+                if($top.Count -gt 0){$record.SawWordWindow=$true}
+                $condition=New-Object Windows.Automation.AndCondition($byPid,(New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Window)))
+                $windows=@($root.FindAll([Windows.Automation.TreeScope]::Descendants,$condition))
+                $alert=$false # only dialog-class or modal windows; Word's border/splash windows are not alerts
+                foreach($window in $windows){
+                    try {
+                        $pattern=$null
+                        if($window.Current.ClassName -match '#32770|bosa_sdm|NUIDialog' -or
+                            ($window.TryGetCurrentPattern([Windows.Automation.WindowPattern]::Pattern,[ref]$pattern) -and $pattern.Current.IsModal)){$alert=$true}
+                    }catch [Windows.Automation.ElementNotAvailableException]{}
+                }
+                if($alert){$record.AlertTexts=@(@($record.AlertTexts)+@(Get-WindowTexts ([int]$WordPid)) | Sort-Object -Unique)}
+                if($record.AlertTexts.Count -gt 32){throw 'Word alert evidence exceeded 32 distinct windows'}
+                $record.PollCount++;$record.Ready=$true;Write-Monitor
+                if([IO.File]::Exists($Stop)){$record.Stopped=$true;break}
+                Start-Sleep -Milliseconds 100
+            }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+            if(-not $record.Stopped){$record.TimedOut=$true}
+        }catch{$record.Error=$_.Exception.ToString()}
+        finally{Write-Monitor}
+    }
+    return [pscustomobject]@{Job=$job;File=$file;Stop=$stop}
+}
+function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
+    $w=$null;$doc=$null;$wordProcess=$null;$monitor=$null
+    [string]$target=[IO.Path]::Combine([IO.Path]::GetDirectoryName($Path),[IO.Path]::GetFileName($Path))
+    $prior='T5 '+$Kind+' published clean prior'
+    $newer='T5 '+$Kind+' inspected newer save'
+    $cpf=$Kind -ceq 'WordCpfHandBack'
+    $expected=if($cpf){'T5 Word CPF: 529.982.247-25'}elseif($Op -cin @('word-edit','word-overwrite','word-read')){$newer}else{$prior}
+    $obs.AlertTexts=@()
+    try {
+        $w=New-Object -ComObject Word.Application
+        $w.Visible=$true;$w.DisplayAlerts=0
+        # Word exposes HWND on Window, unlike Excel's Application.Hwnd.
+        # An unsaved blank document binds the actual COM instance before any protected open/save.
+        $doc=$w.Documents.Add()
+        [uint32]$wordPid=0
+        [void][T5Native]::GetWindowThreadProcessId([IntPtr]$w.ActiveWindow.Hwnd,[ref]$wordPid)
+        if($wordPid -le 0){throw 'Word process identity missing'}
+        $wordProcess=Get-Process -Id $wordPid -ErrorAction Stop
+        $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$wordPid) -ErrorAction Stop
+        $owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction Stop
+        $obs.WordPid=$wordPid;$obs.WordSid=$owner.Sid;$obs.SessionId=$wordProcess.SessionId
+        $obs.WordCreationTime=$wordProcess.StartTime.ToUniversalTime().ToFileTimeUtc()
+        $obs.Version=[string]$w.Version;$obs.Build=[string]$w.Build;$obs.Action=$Op
+        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -or
+            $wordProcess.SessionId -ne (Get-Process -Id $PID).SessionId -or $wordProcess.SessionId -le 0){throw 'Word is not the interactive standard actor'}
+        $monitor=Start-T5WordAlertMonitor $wordPid ([IO.Path]::Combine($Control,'word-alerts'))
+        $ready=Wait-Element {
+            if([IO.File]::Exists($monitor.File)){
+                $state=(Read-ActorControlText $monitor.File) | ConvertFrom-Json
+                if($state.Error -or $state.TimedOut){throw 'Word alert monitor failed to start'}
+                if($state.Ready -eq $true){return $state}
+            };$null
+        } 15
+        if($null -eq $ready -or $ready.MonitorSid -cne $obs.WordSid -or $ready.SessionId -ne $obs.SessionId){throw 'Word alert monitor is not in the interactive actor session'}
+        if($Op -ceq 'word-overwrite'){
+            $obs.OverwritePriorRead=[T5Native]::Read($target)
+            if($obs.OverwritePriorRead.Code -ne 0 -or $obs.OverwritePriorRead.Length -le 0){throw 'Word overwrite lacks the published prior'}
+            $obs.OverwriteRequested=$true
+        }
+        if($Op -cin @('word-saveas','word-seed','word-cpf','word-overwrite')){
+            $doc.Content.Text=$expected
+            $doc.SaveAs2($target,16) # wdFormatDocumentDefault: .docx, including replacement of the published prior.
+        }else{
+            $doc.Close(0);[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc);$doc=$null
+            $doc=$w.Documents.Open($target,$false,$false)
+            if($doc.ReadOnly){throw 'Word reopened the document read-only'}
+            if($Op -ceq 'word-edit'){
+                if(([string]$doc.Content.Text).TrimEnd([char[]]@(13,10)) -cne $prior){throw 'Word reopen did not show the published prior text'}
+                $obs.PriorTextVerified=$true
+                $doc.Content.Text=$newer;$doc.Save()
+            }
+        }
+        # Observe completion without another mutation or changes to Word's save options.
+        $ready=Wait-Element {if($w.BackgroundSavingStatus -eq 0){return $true};$null} 30
+        $obs.Ready=($ready -eq $true)
+        $obs.Text=([string]$doc.Content.Text).TrimEnd([char[]]@(13,10))
+        $obs.Saved=[bool]$doc.Saved;$obs.ReadOnly=[bool]$doc.ReadOnly;$obs.ProtectedViewCount=$w.ProtectedViewWindows.Count
+        $obs.Windows=@(Get-WindowTexts $wordPid)
+        if($obs.Text -cne $expected -or -not $obs.Ready -or -not $obs.Saved -or $obs.ReadOnly -or
+            $obs.ProtectedViewCount -ne 0 -or $obs.Windows.Count -gt 1){throw ('Word save/reopen failed: '+($obs.Windows -join ' | '))}
+        $doc.Close(0);$obs.Closed=$true
+        [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc);$doc=$null
+        $w.Quit(0);$obs.Quit=$true
+    }catch{
+        $obs.ErrorText=$_.Exception.ToString()
+        if($wordProcess){$obs.WindowsOnFailure=@(Get-WindowTexts $wordProcess.Id)}
+        throw
+    }finally{
+        if($doc){try{$doc.Close(0)}catch{$obs.QuitError=$_.Exception.Message}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc)}}
+        if($w){
+            if(-not $obs.Quit){try{$w.Quit(0)}catch{$obs.QuitError=$_.Exception.Message}}
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($w)
+        }
+        [GC]::Collect();[GC]::WaitForPendingFinalizers()
+        $obs.WordExited=($null -ne $wordProcess -and $wordProcess.WaitForExit(10000))
+        if($wordProcess){$obs.WindowsAtExit=@(Get-WindowTexts $wordProcess.Id)}
+        if($monitor){
+            [IO.File]::WriteAllText($monitor.Stop,'stop')
+            try{
+                [void]($monitor.Job | Wait-Job -Timeout 5)
+                if($monitor.Job.State -cne 'Completed'){throw 'Word alert monitor did not finish'}
+                $monitor.Job | Receive-Job -ErrorAction Stop | Out-Null
+                $obs.AlertMonitor=(Read-ActorControlText $monitor.File) | ConvertFrom-Json
+                $obs.AlertMonitor | Add-Member -NotePropertyName Artifact -NotePropertyValue $monitor.File
+                $obs.AlertTexts=@($obs.AlertMonitor.AlertTexts)
+            }catch{$obs.MonitorError=$_.Exception.ToString()}
+            finally{$monitor.Job | Stop-Job -ErrorAction SilentlyContinue;$monitor.Job | Remove-Job -Force -ErrorAction SilentlyContinue}
+        }
+    }
+    if(-not $obs.WordExited -or $obs.MonitorError -or $null -eq $obs.AlertMonitor -or $obs.AlertMonitor.Error -or
+        $obs.AlertMonitor.Stopped -ne $true -or $obs.AlertMonitor.TimedOut -ne $false -or $obs.AlertTexts.Count -gt 0){throw 'Word error/alert/cleanup evidence did not pass'}
+}
 function Read-ActorControlText([string]$Path) {
     $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
     for (;;) {
@@ -671,6 +810,12 @@ for (;;) {
                 Invoke-T5Excel ([string]$c.Op) ([string]$c.Path) ([string]$c.Text) $result.Ui
                 $result.Steps='excel=0'
                 if($c.Op -ceq 'excel-read'){$result.Read=[T5Native]::Read($c.Path);$result.Steps+=' '+$result.Read.Steps}
+            }
+            {$_ -cin @('word-saveas','word-seed','word-cpf','word-edit','word-overwrite','word-read')} {
+                $result.Ui=[ordered]@{}
+                Invoke-T5Word ([string]$c.Op) ([string]$c.Path) ([string]$c.Text) $result.Ui
+                $result.Steps='word=0'
+                if($c.Op -ceq 'word-read'){$result.Read=[T5Native]::Read($c.Path);$result.Steps+=' '+$result.Read.Steps}
             }
             'notepad-edit' {$result.Ui=[ordered]@{};Invoke-NotepadEdit $c.Path ([string]$c.Text) $result.Ui;$result.Steps='notepad-edit=0'}
             {$_ -cin @('shell-copy-in','shell-move-in','shell-move-within')} {

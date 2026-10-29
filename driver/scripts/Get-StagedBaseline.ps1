@@ -131,6 +131,8 @@ if ($OfficeBase) {
         $checks['OfficeInstallation'] = ($office.VersionToReport -ceq '16.0.20326.20232' -and
             [string]$office.UpdatesEnabled -ieq 'False' -and
             $installedExcel.Count -eq 1)
+        $checks['OfficeWordInstallation'] = ($installedExcel.Count -eq 1 -and
+            (Test-Path -LiteralPath ([IO.Path]::Combine([IO.Path]::GetDirectoryName($installedExcel[0]),'WINWORD.EXE')) -PathType Leaf))
         $checks['OfficeBaseIdentity'] = ($uuid -ceq 'FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3')
     } catch {
         $checks['NoTestProfiles'] = $false; $checks['OfficeActorAccount'] = $false; $checks['OfficeInstallation'] = $false

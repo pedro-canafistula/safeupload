@@ -224,5 +224,46 @@
     "Office": true,
     "Expected": "Absent",
     "Handback": true
+  },
+  {
+    "Kind": "WordSaveAsApprove",
+    "Op": "word-saveas",
+    "Leaf": "word-saveas.docx",
+    "Sensitive": false,
+    "Workflow": true,
+    "Office": true,
+    "OfficeApp": "Word",
+    "Expected": "Document"
+  },
+  {
+    "Kind": "WordInPlaceApprove",
+    "Op": "word-seed",
+    "Leaf": "word-inplace.docx",
+    "Sensitive": false,
+    "Workflow": true,
+    "Office": true,
+    "OfficeApp": "Word",
+    "Expected": "Document"
+  },
+  {
+    "Kind": "WordOverwriteApprove",
+    "Op": "word-seed",
+    "Leaf": "word-overwrite.docx",
+    "Sensitive": false,
+    "Workflow": true,
+    "Office": true,
+    "OfficeApp": "Word",
+    "Expected": "Document"
+  },
+  {
+    "Kind": "WordCpfHandBack",
+    "Op": "word-cpf",
+    "Leaf": "word-cpf.docx",
+    "Sensitive": true,
+    "Workflow": true,
+    "Office": true,
+    "OfficeApp": "Word",
+    "Expected": "Absent",
+    "Handback": true
   }
 ]

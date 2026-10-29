@@ -9,7 +9,7 @@
 # deny ring. The independent raw artifacts and result are copied off before the run disk is discarded.
 #
 # Usage: driver/scripts/Invoke-StageNotepad.sh <debuggee domain> <tag> <driver.sys> <agent zip> [ordinary|runtime-verifier|boot-verifier]
-# Excel task B only, on the sealed Office base (ordinary or runtime-verifier):
+# Office tasks B (Excel) and W (Word), on the sealed Office base (ordinary or runtime-verifier):
 #   T5_OFFICE_BASE=1 SAFEUPLOAD_DEBUGGEE=win10-debug3 driver/scripts/Invoke-StageNotepad.sh win10-debug3 <fresh-tag> <driver.sys> <agent.zip> ordinary
 #   T5_OFFICE_BASE=1 SAFEUPLOAD_DEBUGGEE=win10-debug3 driver/scripts/Invoke-StageNotepad.sh win10-debug3 <fresh-tag> <driver.sys> <agent.zip> runtime-verifier
 # Password: ~/Work/safeupload-tools/secrets/office-base-20261029-t5actor.txt (0600), read only at runtime into the remote channel.
@@ -20,7 +20,7 @@
 # package settings unchanged (the MVP package defaults to Enabled=false, FloorOnly=true). Configuration is recorded below.
 #
 # Evidence: driver/evidence/<day>/<tag>-*; the verdict is <tag>-verdict.txt; the exit status is 0 only when every required line passes.
-# After separate restoration, <tag>-mvp-verdict.txt derives A/C/D or Office B task outcomes; it never turns a failed full row green.
+# After separate restoration, <tag>-mvp-verdict.txt derives A/C/D or Office B/W task outcomes; it never turns a failed full row green.
 set -uo pipefail
 workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 code_root=$workspace_root
@@ -243,7 +243,7 @@ New-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\P
 $data = 'C:\ProgramData\SafeUpload'
 New-Item -ItemType Directory -Force -Path $data | Out-Null
 $policy = @{ version = 1; activeCategories = @('Cpf'); monitoredScopes = @{ extensions = @('.txt'); destinationPaths = @('C:\Protected'); removableDrives = $false; networkPaths = $false }; failOpen = $false; auditOnly = $false; overrideEnabled = $false } | ConvertTo-Json -Depth 5
-if ($officeBase) { $p = $policy | ConvertFrom-Json; $p.monitoredScopes.extensions = @('.xlsx'); $policy = $p | ConvertTo-Json -Depth 5 }
+if ($officeBase) { $p = $policy | ConvertFrom-Json; $p.monitoredScopes.extensions = @('.xlsx','.docx'); $policy = $p | ConvertTo-Json -Depth 5 }
 Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
 & "$d\Protect-SafeUploadPolicy.ps1"
 & "$d\Install-SafeUploadAgent.ps1" -ServiceExecutablePath "$agentDir\SafeUpload.Agent.Service.exe"
@@ -415,6 +415,8 @@ PS
     if scp -r "${opts[@]}" "vika@$host:C:/T5/raw" "$ev/$tag-raw" >/dev/null 2>&1 && \
         find "$ev/$tag-raw" -type f -name manifest.ndjson -size +0c -print -quit | grep -q .; then raw_saved=yes; fi
     scp "${opts[@]}" "vika@$host:C:/T5/control/actor-error.txt" "$ev/$tag-actor-error.txt" >/dev/null 2>&1 || true
+    # Independent interactive monitor logs survive even if Word blocks inside COM on an alert.
+    scp -r "${opts[@]}" "vika@$host:C:/T5/control/word-alerts" "$ev/$tag-word-alerts" >/dev/null 2>&1 || true
     # The agent's own warnings and errors explain slow or refused publications (record IDs survive the guest clock step).
     remote <<'PS' > "$ev/$tag-service-events.txt"
 $base = [long](Get-Content -LiteralPath 'C:\T5\event-baseline.txt')
@@ -490,7 +492,7 @@ def read_run_receipt(suffix):
         return ''
 
 office_run = os.environ.get('T5_OFFICE_BASE_EFFECTIVE') == '1'
-out.append('T5RunProfile INFO ' + ('OfficeExcel' if office_run else 'BasicTasks'))
+out.append('T5RunProfile INFO ' + ('OfficeApps' if office_run else 'BasicTasks'))
 if office_run:
     baseline_receipt = read_run_receipt('-baseline.txt')
     installed_receipt = read_run_receipt('-install.txt')
@@ -656,7 +658,7 @@ def valid_raw_sample(s):
 T5_TRANSIENT_PHASES = ('ActorRunning', 'WorkflowSettlement', 'AfterActorAcknowledgementSettlement')
 # Owner 2026-10-22 (third rule, deny-list): in these phases any capture failure is a race unless it is one of the verdict-class errors.
 T5_FATAL_OBSERVATION_ERRORS = ('CPF or unexpected nonempty fixture bytes',
-                               'Excel observation journal is invalid',
+                               'Office observation journal is invalid',
                                'differs from the independently captured baseline parent',
                                'Raw parent directory identity is incomplete',
                                'One or more raw target images or artifacts are missing/incomplete',
@@ -903,7 +905,13 @@ def journal_settled_verdict(listing_text):
     if hot:
         return 'FAIL', '%d unfinished journal entr%s remain after the run: %s' % (len(hot), 'y' if len(hot) == 1 else 'ies', '; '.join(hot[:5]))
     return 'PASS', 'the hot journal is empty after the run (every transfer completed and archived)'
-def excel_record_matches(case, record):
+def office_app(case):
+    return 'Word' if (workflow_spec(case) or {}).get('OfficeApp') == 'Word' else 'Excel'
+
+def office_versions(case):
+    return case.get(office_app(case) + 'Versions') or []
+
+def office_record_matches(case, record):
     """Bind the workbook digest to retained service bytes, subject and object."""
     import pathlib
     try:
@@ -933,74 +941,113 @@ def excel_record_matches(case, record):
                 ('VolumeSerialNumber', 'FileIdHigh', 'FileIdLow')) or not record.get('DriverInstanceId') or not record.get('TransferId') or
                 type(record.get('DestinationGeneration')) is not int or record['DestinationGeneration'] <= 0):
             return False
-        writers = [a.get('Ui') or {} for a in case.get('WorkflowAcks', []) if a.get('Op') != 'excel-read']
+        app = office_app(case)
+        writers = [a.get('Ui') or {} for a in case.get('WorkflowAcks', []) if a.get('Op') != app.lower() + '-read']
         return (record.get('DestinationPath', '').lower() == (scope_path + '\\' + case['Leaf']).lower() and
                 record.get('RequestorSid') == (result or {}).get('ActorSid') and record.get('SealedOnce') is True and
                 type(record.get('SealedLength')) is int and record['SealedLength'] > 0 and
                 re.fullmatch(r'[A-F0-9]{64}', str(record.get('Sha256Hex') or '')) is not None and
-                re.fullmatch(r'excel(?:\.exe)?', str(record.get('ProcessName') or ''), re.I) is not None and
-                any(w.get('ExcelPid') == record.get('ProcessId') and w.get('ExcelSid') == record['RequestorSid'] and
-                    type(w.get('ExcelCreationTime')) is int and w['ExcelCreationTime'] > 0 and
-                    w['ExcelCreationTime'] == record.get('RequestorProcessCreationTime') and
+                re.fullmatch(r'winword(?:\.exe)?' if app == 'Word' else r'excel(?:\.exe)?', str(record.get('ProcessName') or ''), re.I) is not None and
+                any(w.get(app + 'Pid') == record.get('ProcessId') and w.get(app + 'Sid') == record['RequestorSid'] and
+                    type(w.get(app + 'CreationTime')) is int and w[app + 'CreationTime'] > 0 and
+                    w[app + 'CreationTime'] == record.get('RequestorProcessCreationTime') and
                     w.get('SessionId') == record.get('SessionId') and type(w.get('SessionId')) is int and w['SessionId'] > 0 for w in writers))
     except (OSError, ValueError, KeyError, TypeError):
         return False
 
-def excel_releases(case):
-    return [j for j in case.get('Journal', []) if j.get('State') == '5' and j.get('StageDeleted') is True and excel_record_matches(case, j)]
+def office_releases(case):
+    return [j for j in case.get('Journal', []) if j.get('State') == '5' and j.get('StageDeleted') is True and office_record_matches(case, j)]
 
-def excel_steps_match(case):
+def word_alerts_match(case, ack):
+    import pathlib
+    ui = ack.get('Ui') or {}
+    monitor = ui.get('AlertMonitor') or {}
+    artifact = str(monitor.get('Artifact') or '').replace('/', '\\')
+    name = artifact.rsplit('\\', 1)[-1]
+    if not re.fullmatch(r'[a-f0-9]{32}\.json', name) or not artifact.lower().startswith('c:\\t5\\control\\word-alerts\\'):
+        return False
+    try:
+        path = pathlib.Path(raw_dir.removesuffix('-raw') + '-word-alerts', name)
+        if path.stat().st_size > 131072:
+            return False
+        persisted = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return False
+    return (persisted == {k: v for k, v in monitor.items() if k != 'Artifact'} and ui.get('AlertTexts') == [] and
+            not ui.get('ErrorText') and not ui.get('MonitorError') and monitor.get('WordPid') == ui.get('WordPid') and
+            monitor.get('MonitorSid') == ack.get('ActorSid') and monitor.get('SessionId') == ui.get('SessionId') and
+            type(monitor.get('MonitorPid')) is int and monitor['MonitorPid'] > 0 and monitor['MonitorPid'] not in (ack.get('ActorPid'), ui.get('WordPid')) and
+            monitor.get('Ready') is True and monitor.get('Stopped') is True and monitor.get('TimedOut') is False and
+            monitor.get('SawWordWindow') is True and monitor.get('WordCreationTime') == ui.get('WordCreationTime') and
+            type(monitor.get('PollCount')) is int and monitor['PollCount'] > 0 and not monitor.get('Error') and monitor.get('AlertTexts') == [])
+
+def office_steps_match(case):
     spec = workflow_spec(case)
-    ops = [spec['Op'], 'excel-read'] if spec.get('Sensitive') else [spec['Op'], 'excel-edit', 'excel-read']
+    app = office_app(case)
+    prefix = app.lower()
+    next_op = 'word-overwrite' if case.get('Kind') == 'WordOverwriteApprove' else prefix + '-edit'
+    ops = [spec['Op'], prefix + '-read'] if spec.get('Sensitive') else [spec['Op'], next_op, prefix + '-read']
     acks = case.get('WorkflowAcks') or []
-    versions = case.get('ExcelVersions') or []
+    versions = office_versions(case)
     if (case.get('Error') or case.get('NativeStepsChecked') is not True or case.get('NativeStepsOk') is not True or
             len(acks) != len(ops) or len(versions) != (1 if spec.get('Sensitive') else 2)):
         return False
     numbers = []
     for index, (ack, op) in enumerate(zip(acks, ops)):
         ui = ack.get('Ui') or {}
-        path = (case.get('Handback') or {}).get('Path') if spec.get('Sensitive') and op == 'excel-read' else case['Path']
+        path = (case.get('Handback') or {}).get('Path') if spec.get('Sensitive') and op == prefix + '-read' else case['Path']
         if (ack.get('Op') != op or ack.get('Error') or ack.get('ActorSid') != (result or {}).get('ActorSid') or
                 ack.get('ActorSid') == 'S-1-5-18' or not ack.get('ActorPid') or type(ack.get('N')) is not int or
                 str(ack.get('Path') or '').lower() != str(path or '').lower() or
-                ui.get('ExcelSid') != ack.get('ActorSid') or type(ui.get('ExcelPid')) is not int or ui['ExcelPid'] <= 0 or
-                type(ui.get('ExcelCreationTime')) is not int or ui['ExcelCreationTime'] <= 0 or
-                type(ui.get('SessionId')) is not int or ui['SessionId'] <= 0 or ui.get('Version') != '16.0' or ui.get('Build') != '20326' or
-                any(ui.get(key) is not True for key in ('Saved', 'Ready', 'Closed', 'Quit', 'ExcelExited')) or
+                ui.get(app + 'Sid') != ack.get('ActorSid') or type(ui.get(app + 'Pid')) is not int or ui[app + 'Pid'] <= 0 or
+                type(ui.get(app + 'CreationTime')) is not int or ui[app + 'CreationTime'] <= 0 or
+                type(ui.get('SessionId')) is not int or ui['SessionId'] <= 0 or ui.get('Version') != '16.0' or
+                (re.fullmatch(r'(?:16\.0\.)?20326(?:\.20232)?', str(ui.get('Build') or '')) is None if app == 'Word' else ui.get('Build') != '20326') or
+                any(ui.get(key) is not True for key in ('Saved', 'Ready', 'Closed', 'Quit', app + 'Exited')) or
                 ui.get('ReadOnly') is not False or ui.get('ProtectedViewCount') != 0 or ui.get('WindowsAtExit') != [] or
                 not isinstance(ui.get('Windows'), list) or len(ui['Windows']) > 1 or ui.get('QuitError') or ui.get('Action') != op):
             return False
         final = index > 0 or spec.get('Sensitive')
-        expected_a = ('529.982.247-25' if spec.get('Sensitive') else
-                      (2 if final else 1) if case['Kind'] == 'ExcelInPlaceApprove' else 'T5 ' + case['Kind'])
-        expected_c = 'blocked' if spec.get('Sensitive') else 'edit' if final else 'prior'
-        if ui.get('A1') != expected_a or ui.get('B1') != 3 or ui.get('C1') != expected_c or (op == 'excel-edit' and ui.get('PriorCellsVerified') is not True):
-            return False
-        if op == 'excel-read':
+        if app == 'Word':
+            expected_text = 'T5 Word CPF: 529.982.247-25' if spec.get('Sensitive') else 'T5 ' + case['Kind'] + (' inspected newer save' if final else ' published clean prior')
+            if ui.get('Text') != expected_text or not word_alerts_match(case, ack) or (op == 'word-edit' and ui.get('PriorTextVerified') is not True):
+                return False
+            if op == 'word-overwrite':
+                prior = ui.get('OverwritePriorRead') or {}
+                if (ui.get('OverwriteRequested') is not True or prior.get('Code') != 0 or prior.get('Steps') != 'read-open=0 read=0 read-close=0' or
+                        prior.get('Length') != versions[0].get('SealedLength') or prior.get('Sha256') != versions[0].get('Sha256Hex')):
+                    return False
+        else:
+            expected_a = ('529.982.247-25' if spec.get('Sensitive') else
+                          (2 if final else 1) if case['Kind'] == 'ExcelInPlaceApprove' else 'T5 ' + case['Kind'])
+            expected_c = 'blocked' if spec.get('Sensitive') else 'edit' if final else 'prior'
+            if ui.get('A1') != expected_a or ui.get('B1') != 3 or ui.get('C1') != expected_c or (op == 'excel-edit' and ui.get('PriorCellsVerified') is not True):
+                return False
+        if op == prefix + '-read':
             read = ack.get('Read') or {}
-            if (ack.get('Steps') != 'excel=0 read-open=0 read=0 read-close=0' or read.get('Code') != 0 or
+            if (ack.get('Steps') != prefix + '=0 read-open=0 read=0 read-close=0' or read.get('Code') != 0 or
                     read.get('Length') != versions[-1].get('SealedLength') or read.get('Sha256') != versions[-1].get('Sha256Hex')):
                 return False
-        elif ack.get('Steps') != 'excel=0':
+        elif ack.get('Steps') != prefix + '=0':
             return False
         numbers.append(ack['N'])
     return numbers == sorted(set(numbers))
 
-def excel_journal_matches(case):
+def office_journal_matches(case):
     spec = workflow_spec(case)
-    versions = case.get('ExcelVersions') or []
+    app = office_app(case)
+    versions = office_versions(case)
     records = case.get('Journal') or []
-    if (not excel_steps_match(case) or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != [] or
+    if (not office_steps_match(case) or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != [] or
             case.get('FinalJournalOutcomeVerified') is not True or case.get('SettlementStatus') != 'PASS' or
             len({j.get('TransferId') for j in versions}) != len(versions)):
         return False
-    if any(not excel_record_matches(case, j) or j.get('StageDeleted') is not True or not any(
+    if any(not office_record_matches(case, j) or j.get('StageDeleted') is not True or not any(
             j.get('TransferId') == r.get('TransferId') and j.get('Sha256Hex') == r.get('Sha256Hex') and
             j.get('SealedLength') == r.get('SealedLength') and j.get('State') == r.get('State') for r in records) for j in versions):
         return False
-    if any(j.get('ProcessId') != case['WorkflowAcks'][i]['Ui']['ExcelPid'] or
-           j.get('RequestorProcessCreationTime') != case['WorkflowAcks'][i]['Ui']['ExcelCreationTime'] for i, j in enumerate(versions)):
+    if any(j.get('ProcessId') != case['WorkflowAcks'][i]['Ui'][app + 'Pid'] or
+           j.get('RequestorProcessCreationTime') != case['WorkflowAcks'][i]['Ui'][app + 'CreationTime'] for i, j in enumerate(versions)):
         return False
     stages = case.get('StageEvidence')
     if (not isinstance(stages, list) or len(stages) != len(records) or {s.get('TransferId') for s in stages} != {j.get('TransferId') for j in records} or
@@ -1024,7 +1071,7 @@ def excel_journal_matches(case):
             versions[1]['Sha256Hex'] != versions[0]['Sha256Hex'] and
             case.get('ExpectedLength') == versions[-1]['SealedLength'] and case.get('ExpectedSha256') == versions[-1]['Sha256Hex'])
 
-def excel_final_matches(case, samples):
+def office_final_matches(case, samples):
     spec = workflow_spec(case)
     path = (scope_path + '\\' + spec['Leaf']).lower()
     images = [i for i in (samples[-1].get('CurrentImages') or []) if str(i.get('Path') or '').lower() == path] if samples else []
@@ -1033,7 +1080,7 @@ def excel_final_matches(case, samples):
     if spec.get('Sensitive'):
         return (images[0].get('Absent') is True and images[0].get('FileId') is None and images[0].get('LogicalArtifact') is None and
                 all(i.get('Absent') is True or i.get('Length') == 0 for s in samples for i in s.get('CurrentImages', []) if str(i.get('Path') or '').lower() == path))
-    versions = excel_releases(case)
+    versions = office_releases(case)
     return (images[0].get('Absent') is False and any(j['Sha256Hex'] == images[0].get('Sha256') == case.get('ExpectedSha256') and
             j['SealedLength'] == images[0].get('Length') == case.get('ExpectedLength') for j in versions))
 
@@ -1043,7 +1090,7 @@ def approved_public_hash_map():
         payloads = []
         if spec.get('Office'):
             matches = [c for c in ((globals().get('result') or {}).get('Cases') or []) if c.get('Kind') == spec['Kind']]
-            approved[spec['Leaf'].lower()] = {j['Sha256Hex'] for c in matches for j in excel_releases(c)} if not spec.get('Sensitive') else set()
+            approved[spec['Leaf'].lower()] = {j['Sha256Hex'] for c in matches for j in office_releases(c)} if not spec.get('Sensitive') else set()
             continue
         if spec.get('Workflow'):
             if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move', 'shell-copy-in', 'shell-move-in'):
@@ -1090,7 +1137,7 @@ def workflow_expected(case):
 def workflow_steps_match(case):
     spec = workflow_spec(case)
     if spec and spec.get('Office'):
-        return excel_steps_match(case)
+        return office_steps_match(case)
     if not spec or case.get('Error') or not case.get('NativeStepsChecked') or not case.get('NativeStepsOk'):
         return False
     save = {'open': 0, 'write': 0, 'close': 0}
@@ -1257,7 +1304,7 @@ def workflow_handback_matches(case, content):
 def workflow_journal_matches(case):
     spec = workflow_spec(case)
     if spec and spec.get('Office'):
-        return excel_journal_matches(case)
+        return office_journal_matches(case)
     records = case.get('Journal')
     if not isinstance(records, list) or (not records and spec['Op'] not in ('explorer-empty', 'shell-move-within')) or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != []:
         return False
@@ -1337,7 +1384,7 @@ def raw_case_final_matches(case, samples):
         return False
     image = images[0]
     if (workflow_spec(case) or {}).get('Office'):
-        return excel_final_matches(case, samples)
+        return office_final_matches(case, samples)
     if workflow_spec(case):
         expected = workflow_expected(case)
         if expected is None:
