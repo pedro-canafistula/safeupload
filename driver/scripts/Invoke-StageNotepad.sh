@@ -1219,7 +1219,9 @@ def workflow_steps_match(case):
         if op == 'notepad-edit':
             ui = ack.get('Ui') or {}
             if (ui.get('DirtyObserved') is not True or ui.get('SaveCompleted') is not True or ui.get('NoPromptClosed') is not True or
-                not str(ui.get('OpenedExistingTitle') or '').lower().startswith(spec['Leaf'].lower()) or
+                # Notepad titles the window with the shell display name, which hides known extensions.
+                str(ui.get('OpenedExistingTitle') or '').lower() not in {spec['Leaf'].lower() + ' - notepad',
+                                                                       spec['Leaf'].rsplit('.', 1)[0].lower() + ' - notepad'} or
                 not ui.get('Title') or ui['Title'].startswith('*') or len(ui.get('WindowsAfterSave') or []) != 1 or
                 ui.get('WindowsAtExit') != [] or ui.get('MenuPath') not in ('command-save', 'File > Save')):
                 return False

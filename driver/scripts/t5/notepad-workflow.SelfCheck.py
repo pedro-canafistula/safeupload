@@ -115,6 +115,11 @@ with tempfile.TemporaryDirectory(prefix='t5-workflow-controls-') as temp:
             acks.append(ack)
         case['WorkflowAcks'] = acks
         check(env['workflow_steps_match'](case), spec['Kind']+' complete native steps')
+        if spec['Op'] == 'notepad-edit':
+            # Notepad shows the shell display name; a hidden extension is the same file, another name is not.
+            for title, accepted in (('notepad-edit - Notepad', True), ('other - Notepad', False), ('notepad-edit-x - Notepad', False)):
+                alt = copy.deepcopy(case); alt['WorkflowAcks'][-1]['Ui']['OpenedExistingTitle'] = title
+                check(env['workflow_steps_match'](alt) == accepted, 'notepad-edit title ' + title)
         for mutate in ('missing', 'failed', 'wrong-path', 'system'):
             bad = copy.deepcopy(case)
             if mutate == 'missing': bad['WorkflowAcks'].pop()
