@@ -7,15 +7,12 @@ namespace SafeUpload.Agent.Service.Dispatch;
 internal sealed record AdministrationConfiguration(
     Uri? BaseUri, TimeSpan Timeout, TimeSpan DispatchInterval, AgentHeartbeatConfiguration Heartbeat)
 {
-    internal static AdministrationConfiguration Parse(IConfiguration configuration)
+    internal static AdministrationConfiguration Parse(IConfiguration configuration, RegisteredHostIdentityStore? identities = null)
     {
-        var heartbeat = AgentHeartbeatConfiguration.Parse(
-            configuration["CentroAdministracao:HeartbeatProtocol"],
-            configuration["CentroAdministracao:RegisteredHostId"],
-            configuration["CentroAdministracao:RegisteredUserId"]);
         string? address = configuration["CentroAdministracao:BaseUrl"];
         if (string.IsNullOrWhiteSpace(address))
         {
+            var heartbeat = ReadHeartbeat(configuration, null, identities);
             if (heartbeat.RegisteredHostId is not null)
                 throw new InvalidOperationException("Heartbeat AgentApi exige CentroAdministracao:BaseUrl.");
             return new(null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30), heartbeat);
@@ -37,7 +34,23 @@ internal sealed record AdministrationConfiguration(
             throw new InvalidOperationException("CentroAdministracao:TimeoutSeconds excede o limite do cliente HTTP.");
         if (interval.TotalMilliseconds > uint.MaxValue - 1)
             throw new InvalidOperationException("CentroAdministracao:DispatchIntervalSeconds excede o limite do temporizador.");
-        return new(uri, timeout, interval, heartbeat);
+        return new(uri, timeout, interval, ReadHeartbeat(configuration, uri, identities));
+    }
+
+    private static AgentHeartbeatConfiguration ReadHeartbeat(IConfiguration configuration, Uri? server,
+        RegisteredHostIdentityStore? identities)
+    {
+        string? protocol = configuration["CentroAdministracao:HeartbeatProtocol"];
+        string? host = configuration["CentroAdministracao:RegisteredHostId"];
+        string? legacyUser = configuration["CentroAdministracao:RegisteredUserId"];
+        if (protocol == "AgentApi" && string.IsNullOrWhiteSpace(host) && string.IsNullOrWhiteSpace(legacyUser) &&
+            identities is not null && server is not null)
+            return new(identities.Resolve(server, null));
+
+        var heartbeat = AgentHeartbeatConfiguration.Parse(protocol, host, legacyUser);
+        if (heartbeat.RegisteredHostId is { } id && server is not null && identities is not null)
+            identities.Resolve(server, id);
+        return heartbeat;
     }
 
     private static TimeSpan ReadPositiveSeconds(IConfiguration configuration, string name, int fallback)

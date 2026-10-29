@@ -1,5 +1,7 @@
 # Configuração e versão do agente — 29/10/2026
 
+Atualização posterior: Lucas escolheu id_host para esta integração. Ver [identidade persistente por servidor](IDENTIDADE-HOST-20261029.md); em AgentApi, após provisionamento, RegisteredHostId pode ser recuperado do armazenamento protegido. As evidências de 181 testes abaixo pertencem ao incremento anterior, 0fa5bda0.
+
 Incremento sobre a composição f2591c02 do PR #64. Corrige a versão fixa do heartbeat por endpointId e valida a configuração do serviço antes de criar os clientes de comunicação. Não altera contratos Java, políticas, cadastro, fila, driver ou painel.
 
 ## Modos preservados

@@ -1,6 +1,6 @@
 # Integração do agente: recorte para revisão
 
-Atualização de 29/10: [configuração e versão do agente](CONFIGURACAO-COMUNICACAO-20261029.md). Incremento restrito ao serviço e testes, com 181 casos selecionados aprovados; preserva os dois protocolos. O contrato final do MVP por endpointId versus id_host continua em alinhamento. Identidade gerada na instalação, instalador único e M2 ficam para depois do MVP proposto por Pedro, se confirmado pela equipe.
+Atualização de 29/10: Lucas escolheu id_host, seguindo o contrato atual do backend. [Identidade persistente e limites](IDENTIDADE-HOST-20261029.md) acrescenta recuperação do host já provisionado, vinculada ao servidor, sem cadastro automático. A [configuração e versão do agente](CONFIGURACAO-COMUNICACAO-20261029.md) tem a evidência anterior de 181 testes; a nova composição exige seu próprio CI. Legacy fica como compatibilidade explícita. Instalador único e M2 continuam em recortes posteriores.
 
 Base: main `d6605e4db8043d56e25e0e05adc075f797aa77c9`, incluindo as alterações do backend do Thiago. Este documento é o índice da composição; relatórios anteriores descrevem os commits e ambientes indicados em cada um.
 

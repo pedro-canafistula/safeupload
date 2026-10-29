@@ -140,7 +140,8 @@ public static class Program
         // maquina que ainda nao aponta para nenhum painel precisa proteger de
         // forma autonoma, e nao ficar esperando um servidor que talvez nunca
         // seja configurado.
-        var administration = AdministrationConfiguration.Parse(builder.Configuration);
+        var administration = AdministrationConfiguration.Parse(builder.Configuration,
+            new RegisteredHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "identity", "host-registration.json")));
         string endpointId = Environment.MachineName;
         builder.Services.AddSingleton(new CommunicationHealth(administration.BaseUri is not null));
         var heartbeatConfiguration = administration.Heartbeat;
