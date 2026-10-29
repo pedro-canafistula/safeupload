@@ -228,7 +228,7 @@ public sealed class DriverDiagnosticsTests
         foreach (var (field, offset) in expected)
             Assert.Equal(offset, Marshal.OffsetOf<SafeUploadStageStreamRecord>(field).ToInt32());
         Assert.Equal(16, Marshal.OffsetOf<SafeUploadStageStreams>(nameof(SafeUploadStageStreams.Entries)).ToInt32());
-        Assert.Equal(29u, DiagnosticsCommand.StageStreams);
+        Assert.Equal(37u, DiagnosticsCommand.StageStreams); // 29 is ControlCommand.StageDispose (c3f3f5d1)
     }
 
     [Fact]

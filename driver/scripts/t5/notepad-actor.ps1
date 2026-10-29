@@ -400,7 +400,9 @@ function Invoke-NotepadEdit([string]$Path,[string]$Text,$obs) {
         $main=Wait-Element {$root.FindFirst([Windows.Automation.TreeScope]::Children,$byPid)}
         $obs.WindowsAtOpen=@(Get-WindowTexts $p.Id)
         if($null -eq $main){throw 'Notepad existing-file window did not appear'}
-        $opened=Wait-Element {if((Get-Process -Id $p.Id).MainWindowTitle.StartsWith([IO.Path]::GetFileName($Path),[StringComparison]::OrdinalIgnoreCase)){return $true};$null}
+        # Notepad titles the window with the shell display name, which hides known extensions ("notepad-edit - Notepad").
+        $titles=@(([IO.Path]::GetFileName($Path)+' - Notepad'),([IO.Path]::GetFileNameWithoutExtension($Path)+' - Notepad'))
+        $opened=Wait-Element {$t=(Get-Process -Id $p.Id).MainWindowTitle;if(@($titles | Where-Object {$_ -ieq $t}).Count -gt 0){return $true};$null}
         $obs.OpenedExistingTitle=(Get-Process -Id $p.Id).MainWindowTitle
         if($opened -ne $true){throw 'Notepad did not open the requested existing file'}
         $edit=$main.FindFirst([Windows.Automation.TreeScope]::Descendants,(New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ClassNameProperty,'Edit')))
