@@ -9,11 +9,18 @@
 # deny ring. The independent raw artifacts and result are copied off before the run disk is discarded.
 #
 # Usage: driver/scripts/Invoke-StageNotepad.sh <debuggee domain> <tag> <driver.sys> <agent zip> [ordinary|runtime-verifier|boot-verifier]
+# Excel task B only, on the sealed Office base (ordinary or runtime-verifier):
+#   T5_OFFICE_BASE=1 SAFEUPLOAD_DEBUGGEE=win10-debug3 driver/scripts/Invoke-StageNotepad.sh win10-debug3 <fresh-tag> <driver.sys> <agent.zip> ordinary
+#   T5_OFFICE_BASE=1 SAFEUPLOAD_DEBUGGEE=win10-debug3 driver/scripts/Invoke-StageNotepad.sh win10-debug3 <fresh-tag> <driver.sys> <agent.zip> runtime-verifier
+# Password: ~/Work/safeupload-tools/secrets/office-base-20261029-t5actor.txt (0600), read only at runtime into the remote channel.
+# Existing t5actor/profile/password are preserved. One-boot autologon exists only on the disposable overlay.
+# Office mode refuses a running domain, nonstandard vda, or any debug2/debug3 run/parked state; it restores base-20261014
+# after run_disk_end on success/failure/HUP/INT/TERM. Unresolved run files/state are retained if cleanup fails; neither base is booted writable.
 # T5_STAGE_SPACE=off sets only Interception:StageSpace:Enabled=false; FloorOnly is preserved. The default "on" leaves the
 # package settings unchanged (the MVP package defaults to Enabled=false, FloorOnly=true). Configuration is recorded below.
 #
 # Evidence: driver/evidence/<day>/<tag>-*; the verdict is <tag>-verdict.txt; the exit status is 0 only when every required line passes.
-# After separate restoration, <tag>-mvp-verdict.txt derives A/C/D task outcomes; it never changes the full-row exit status.
+# After separate restoration, <tag>-mvp-verdict.txt derives A/C/D or Office B task outcomes; it never turns a failed full row green.
 set -uo pipefail
 workspace_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 code_root=$workspace_root
@@ -22,6 +29,11 @@ cd "$workspace_root"
 dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?agent zip}"; mode="${5:-runtime-verifier}"
 [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{2,29}$ ]] || { echo 'Invalid tag'; exit 2; }
 case "$mode" in ordinary|runtime-verifier|boot-verifier) ;; *) echo 'Unknown mode'; exit 2;; esac
+office_base=${T5_OFFICE_BASE:-0}
+case "$office_base" in 0|1) ;; *) echo 'T5_OFFICE_BASE must be 0 or 1'; exit 2;; esac
+if [ "$office_base" = 1 ]; then
+    [ "$dom" = win10-debug3 ] && [ "$mode" != boot-verifier ] || { echo 'Office mode requires win10-debug3 and ordinary/runtime-verifier'; exit 2; }
+fi
 stage_space=${T5_STAGE_SPACE-on}
 case "$stage_space" in on|off) ;; *) echo 'T5_STAGE_SPACE must be on or off'; exit 2;; esac
 [ -f "$sys" ] && [ -f "$zip" ] || { echo 'needs the signed driver and the agent zip'; exit 2; }
@@ -62,6 +74,7 @@ fi
     printf 'LocalAgentServiceEntry=SafeUpload.Agent.Service.exe\nExpectedExtractedServiceSHA256=%s\n' "$agent_service_sha"
     printf 'SourceCommit=%s\n' "$(git rev-parse HEAD)"
     printf 'StageSpace=%s\n' "$stage_space"
+    printf 'OfficeBase=%s\n' "$office_base"
 } > "$ev/$tag-input-hashes.txt"
 opts=(-F /dev/null -i /home/victor/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new)
 guest='C:/Users/vika/Documents'
@@ -79,10 +92,51 @@ started=$(date +%s)
 echo "== run disk"
 source "$(dirname "${BASH_SOURCE[0]}")/image-store.sh"; source "$(dirname "${BASH_SOURCE[0]}")/run-disk.sh"
 alive=no; result_saved=no; raw_saved=no
+# Office-base lifecycle: functions are exercised with local stubs by the self-check.
+t5_original_base=/var/lib/libvirt/images/win10-debug3.base-20261014.qcow2
+t5_office_base=/var/lib/libvirt/images/win10-debug3.office-base-20261029.qcow2
+t5_office_repoint=0
+t5_office_preflight() {
+    [ "$($V domstate "$dom")" = 'shut off' ] && [ "$($V domstate win10-debug2)" = 'shut off' ] || { echo 'Office mode requires both clones shut off'; return 1; }
+    [ "$(_rd_vda "$dom" --inactive)" = "$t5_original_base" ] || { echo 'Office mode requires exact base-20261014 vda'; return 1; }
+    local conflict
+    for conflict in "$RUN_DISK_STATE"/win10-debug[23]*; do
+        [ ! -e "$conflict" ] || { echo 'Office mode refuses conflicting run/parked state'; return 1; }
+    done
+    [ -f "$t5_original_base" ] && [ -f "$t5_office_base" ] || return 1
+    [ "$(_rd_vol "$t5_office_base" format)" = qcow2 ] && [ "$(_rd_vol "$t5_office_base" backing)" = "$t5_original_base" ] || { echo 'Unexpected Office backing chain'; return 1; }
+    _rd_named_elsewhere "$dom" "$t5_office_base" && { echo 'Another domain names the Office base'; return 1; }
+    t5_original_stat=$(stat -c '%d:%i:%s:%Y:%Z' "$t5_original_base") || return 1
+    t5_office_stat=$(stat -c '%d:%i:%s:%Y:%Z' "$t5_office_base") || return 1
+    $V dumpxml --inactive "$dom" > "$ev/$tag-pre-office.xml" || return 1
+}
+t5_office_return() {
+    [ "$t5_office_repoint" = 1 ] || return 0
+    # run_disk_end normally leaves the guest off on the Office base. If it
+    # failed, preserve the unresolved state/files but still restore the domain.
+    if [ "$($V domstate "$dom")" != 'shut off' ]; then
+        local current
+        current=$(_rd_vda "$dom" --inactive) || return 1
+        if [ "$current" = "$t5_office_base" ] || [ "$current" = "$t5_original_base" ]; then
+            _rd_shutdown "$dom" || return 1
+        else
+            $V destroy "$dom" >/dev/null || return 1
+        fi
+    fi
+    [ "$($V domstate "$dom")" = 'shut off' ] || return 1
+    _rd_repoint "$dom" "$t5_original_base" || return 1
+    [ "$(_rd_vda "$dom" --inactive)" = "$t5_original_base" ] &&
+        cmp -s "$ev/$tag-pre-office.xml" <($V dumpxml --inactive "$dom") &&
+        [ "$(stat -c '%d:%i:%s:%Y:%Z' "$t5_original_base")" = "$t5_original_stat" ] &&
+        [ "$(stat -c '%d:%i:%s:%Y:%Z' "$t5_office_base")" = "$t5_office_stat" ] || return 1
+    echo 'T5OfficeOriginalVdaAndXmlRestored=True'
+    echo 'T5OfficeBothBasesUntouched=True'
+}
 finish() {
     local test_status=$?
     local restoration=PASS
     trap - EXIT
+    trap '' HUP INT TERM
     echo "== discard the run disk"
     if ! run_disk_end "$dom" "$tag" > "$ev/$tag-final-restored-state.txt" 2>&1; then
         echo 'T5Restoration=FAIL'
@@ -90,6 +144,14 @@ finish() {
         test_status=22
     fi
     cat "$ev/$tag-final-restored-state.txt"
+    if [ "${office_base:-0}" = 1 ]; then
+        local office_restored=PASS
+        if ! t5_office_return > "$ev/$tag-office-restored-state.txt" 2>&1; then
+            office_restored=FAIL; restoration=FAIL; test_status=22
+        fi
+        cat "$ev/$tag-office-restored-state.txt"
+        printf 'T5OfficeBase %s original/Office chain pinned; both base stats and original XML/vda restored; receipt=%s\n' "$office_restored" "$ev/$tag-office-restored-state.txt" >> "$ev/$tag-verdict.txt"
+    fi
     printf 'T5Restoration %s separate run_disk_end; receipt=%s\n' "$restoration" "$ev/$tag-final-restored-state.txt" >> "$ev/$tag-verdict.txt"
     python3 "$code_scripts/t5/mvp-task-verdict.py" "$ev/$tag-verdict.txt" > "$ev/$tag-mvp-verdict.txt"
     local mvp_status=$?
@@ -97,13 +159,22 @@ finish() {
     if [ "$test_status" -eq 0 ] && [ "$mvp_status" -ne 0 ]; then test_status=$mvp_status; fi
     exit "$test_status"
 }
-run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
+if [ "$office_base" = 1 ]; then t5_office_preflight > "$ev/$tag-office-preflight.txt" 2>&1 || { cat "$ev/$tag-office-preflight.txt"; exit 12; }; fi
 trap finish EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ "$office_base" = 1 ]; then
+    t5_office_repoint=1
+    _rd_repoint "$dom" "$t5_office_base" || exit 12
+fi
+run_disk_begin "$dom" "$tag" > "$ev/$tag-checkpoint.txt" 2>&1 || { cat "$ev/$tag-checkpoint.txt"; exit 12; }
 wait_ssh || { echo 'guest did not boot on the run disk'; exit 3; }
 
 echo "== baseline"
 scp "${opts[@]}" "$code_scripts/Get-StagedBaseline.ps1" "vika@$host:$guest/Get-StagedBaseline.ps1" || exit 3
-echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1'" | remote | tee "$ev/$tag-baseline.txt" >/dev/null
+baseline_arg=''; [ "$office_base" = 0 ] || baseline_arg='-OfficeBase'
+echo "& 'C:\\Users\\vika\\Documents\\Get-StagedBaseline.ps1' $baseline_arg" | remote | tee "$ev/$tag-baseline.txt" >/dev/null
 grep -q '^BaselineClean=True' "$ev/$tag-baseline.txt" || { echo 'BASELINE NOT CLEAN on a fresh run disk: the base changed'; exit 10; }
 baseline_uuid_count=$(grep -c '^UUID=' "$ev/$tag-baseline.txt" || true)
 baseline_uuid=$(sed -n 's/^UUID=//p' "$ev/$tag-baseline.txt" | tr '[:lower:]' '[:upper:]')
@@ -148,14 +219,23 @@ New-Item -ItemType Directory -Force -Path 'C:\Protected' | Out-Null
 & icacls.exe 'C:\Protected' /grant 'BUILTIN\Users:(OI)(CI)M' | Out-Null
 # The destination folder must exist before the driver loads: staging never creates a directory inside a protected folder.
 New-Item -ItemType Directory -Force -Path 'C:\Protected\t5' | Out-Null
-# The actor signs in interactively at the next boot (one-boot autologon on the disposable run disk).
-$name = 't5actor'; $password = 'T5!' + [guid]::NewGuid().ToString('N').Substring(0, 20)
+# Office's existing account owns DPAPI-bound M365 credentials. Never mutate it.
+$officeBase = '__T5_OFFICE_BASE__' -ceq '1'
+$name = 't5actor'
+if ($officeBase) {
+    $officeActor = Get-LocalUser -Name $name -ErrorAction Stop
+    if (-not $officeActor.Enabled) { throw 'Office actor is disabled' }
+    'OFFICE_ACTOR_SID=' + $officeActor.SID.Value
+    'OFFICE_ACTOR_PASSWORD_LAST_SET=' + $officeActor.PasswordLastSet.ToUniversalTime().ToString('o')
+} else {
+$password = 'T5!' + [guid]::NewGuid().ToString('N').Substring(0, 20)
 New-LocalUser -Name $name -Password (ConvertTo-SecureString $password -AsPlainText -Force) -AccountNeverExpires -PasswordNeverExpires | Out-Null
 Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $name -ErrorAction SilentlyContinue
 $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 foreach ($v in @{ AutoAdminLogon = '1'; DefaultUserName = $name; DefaultDomainName = $env:COMPUTERNAME; DefaultPassword = $password }.GetEnumerator()) {
     New-ItemProperty -LiteralPath $key -Name $v.Key -Value $v.Value -PropertyType String -Force | Out-Null }
 New-ItemProperty -LiteralPath $key -Name AutoLogonCount -Value 1 -PropertyType DWord -Force | Out-Null
+}
 # A brand-new account's first sign-in otherwise stops at the privacy-settings pages and the first-logon animation, with no desktop.
 New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' -Force | Out-Null
 New-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' -Name DisablePrivacyExperience -Value 1 -PropertyType DWord -Force | Out-Null
@@ -163,6 +243,7 @@ New-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\P
 $data = 'C:\ProgramData\SafeUpload'
 New-Item -ItemType Directory -Force -Path $data | Out-Null
 $policy = @{ version = 1; activeCategories = @('Cpf'); monitoredScopes = @{ extensions = @('.txt'); destinationPaths = @('C:\Protected'); removableDrives = $false; networkPaths = $false }; failOpen = $false; auditOnly = $false; overrideEnabled = $false } | ConvertTo-Json -Depth 5
+if ($officeBase) { $p = $policy | ConvertFrom-Json; $p.monitoredScopes.extensions = @('.xlsx'); $policy = $p | ConvertTo-Json -Depth 5 }
 Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
 & "$d\Protect-SafeUploadPolicy.ps1"
 & "$d\Install-SafeUploadAgent.ps1" -ServiceExecutablePath "$agentDir\SafeUpload.Agent.Service.exe"
@@ -173,8 +254,44 @@ PS
 install_ps=${install_ps//__T5_EXPECTED_DRIVER_SHA__/$driver_sha}
 install_ps=${install_ps//__T5_EXPECTED_AGENT_ZIP_SHA__/$agent_zip_sha}
 install_ps=${install_ps//__T5_EXPECTED_SERVICE_SHA__/$agent_service_sha}
+install_ps=${install_ps//__T5_OFFICE_BASE__/$office_base}
 printf '%s\n' "$install_ps" | remote | tee "$ev/$tag-install.txt"
 grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; exit 15; }
+if [ "$office_base" = 1 ]; then
+    # No shell variable, evidence file or log ever contains the password. This
+    # short script stays on remote_ps's encoded-command channel; silence even
+    # PowerShell error-source excerpts, which could otherwise expose the value.
+    if ! python3 - "$HOME/Work/safeupload-tools/secrets/office-base-20261029-t5actor.txt" <<'PY' | remote >/dev/null 2>&1
+import base64, os, stat, sys
+try:
+    fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'r', encoding='utf-8') as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600 or info.st_uid != os.getuid():
+            raise ValueError()
+        password = source.read(1024).rstrip('\r\n')
+    if not 1 <= len(password) <= 256 or any(c in password for c in '\r\n\x00'):
+        raise ValueError()
+    encoded = base64.b64encode(password.encode('utf-8')).decode('ascii')
+except Exception:
+    raise SystemExit('Office password file missing or invalid (owner-only regular UTF-8 file required)')
+print("""$ErrorActionPreference='Stop'
+try {
+ $u=Get-LocalUser -Name 't5actor' -ErrorAction Stop
+ if(-not $u.Enabled){exit 1}
+ $password=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('""" + encoded + """'))
+ $key='HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon'
+ foreach($v in @{AutoAdminLogon='1';DefaultUserName='t5actor';DefaultDomainName=$env:COMPUTERNAME;DefaultPassword=$password}.GetEnumerator()){
+  New-ItemProperty -LiteralPath $key -Name $v.Key -Value $v.Value -PropertyType String -Force | Out-Null
+ }
+ New-ItemProperty -LiteralPath $key -Name AutoLogonCount -Value 1 -PropertyType DWord -Force | Out-Null
+ $password=$null
+ exit 0
+}catch{exit 1}
+""")
+PY
+    then echo 'Office one-boot autologon setup failed (secret-channel output suppressed)'; exit 15; fi
+fi
 if [ "$stage_space" = off ]; then
     remote <<'PS' | tee "$ev/$tag-stage-space.txt"
 $ErrorActionPreference = 'Stop'
@@ -259,11 +376,13 @@ $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hour
 Register-ScheduledTask -TaskName 't5-actor' -Action $action -Principal $principal -Settings $settings -Force | Out-Null
 $system = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t5-notepad-coordinator.ps1"')
+if ('__T5_OFFICE_BASE__' -ceq '1') { $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t5-notepad-coordinator.ps1" -OfficeBase') }
 Register-ScheduledTask -TaskName 't5-coordinator' -Principal $system -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't5-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
+setup_ps=${setup_ps//__T5_OFFICE_BASE__/$office_base}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 
@@ -286,6 +405,7 @@ $ErrorActionPreference = 'Continue'
 'VERIFIER=' + ((& verifier.exe /query | Out-String) -replace '\s+', ' ')
 try { 'LIVE_DRIVER_SHA256=' + (Get-FileHash -LiteralPath 'C:\Windows\System32\drivers\SafeUpload.sys' -Algorithm SHA256).Hash.ToUpperInvariant() } catch { 'LIVE_DRIVER_SHA256=ERROR' }
 try { 'LIVE_SERVICE_EXE_SHA256=' + (Get-FileHash -LiteralPath 'C:\Program Files\SafeUpload\Agent\SafeUpload.Agent.Service.exe' -Algorithm SHA256).Hash.ToUpperInvariant() } catch { 'LIVE_SERVICE_EXE_SHA256=ERROR' }
+try { $u=Get-LocalUser -Name 't5actor' -ErrorAction Stop; 'OFFICE_ACTOR_SID='+$u.SID.Value; 'OFFICE_ACTOR_PASSWORD_LAST_SET='+$u.PasswordLastSet.ToUniversalTime().ToString('o') } catch { 'OFFICE_ACTOR_SID=ERROR' }
 try { $ring = @(& 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query deny-ring); 'RING_TOTAL=' + $ring.Count; foreach ($e in $ring | Select-Object -Last 60) { 'RING=' + ($e | ConvertTo-Json -Compress) } } catch { 'RING_ERROR=' + $_.Exception.Message }
 try { $counters = & 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1' -Query counters; 'WRITER_STATE=' + ($counters.writerState | ConvertTo-Json -Depth 6 -Compress); 'COUNTERS_AFTER=' + ($counters | ConvertTo-Json -Depth 6 -Compress) } catch { 'WRITER_STATE_ERROR=' + $_.Exception.Message }
 'AFTER_DONE=True'
@@ -319,7 +439,7 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-T5_STAGE_SPACE_EFFECTIVE="$stage_space" python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" "$ev/$tag-agent-state-list.txt" <<'PY'
+T5_OFFICE_BASE_EFFECTIVE="$office_base" T5_STAGE_SPACE_EFFECTIVE="$stage_space" python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" "$ev/$tag-agent-state-list.txt" <<'PY'
 import hashlib, json, os, re, sys
 after_path, verdict_path, result_path, raw_dir, mode, alive, elapsed, result_saved, raw_saved = sys.argv[1:10]
 after = open(after_path, encoding='utf-8', errors='replace').read()
@@ -369,6 +489,19 @@ def read_run_receipt(suffix):
     except OSError:
         return ''
 
+office_run = os.environ.get('T5_OFFICE_BASE_EFFECTIVE') == '1'
+out.append('T5RunProfile INFO ' + ('OfficeExcel' if office_run else 'BasicTasks'))
+if office_run:
+    baseline_receipt = read_run_receipt('-baseline.txt')
+    installed_receipt = read_run_receipt('-install.txt')
+    account_ok = (receipt_fields(baseline_receipt, 'BaselineClean') == ['True'] and
+                  receipt_fields(baseline_receipt, 'OfficeActorAccount') == ['True'] and
+                  receipt_fields(baseline_receipt, 'OfficeInstallation') == ['True'])
+    for baseline_field, field in (('OfficeActorSID', 'OFFICE_ACTOR_SID'), ('OfficeActorPasswordLastSet', 'OFFICE_ACTOR_PASSWORD_LAST_SET')):
+        expected = receipt_fields(baseline_receipt, baseline_field)
+        account_ok = account_ok and len(expected) == 1 and bool(expected[0]) and all(
+            receipt_fields(text, field) == expected for text in (installed_receipt, after))
+    verdict('T5OfficeAccount', 'PASS' if account_ok else 'FAIL', 'explicit Office baseline; existing actor SID and password-last-set unchanged through install and run')
 inputs = read_run_receipt('-input-hashes.txt')
 verdict('T5PairHashes', 'PASS' if artifact_hashes_match(inputs, read_run_receipt('-install.txt'), after) else 'FAIL',
         'local driver/package/service hashes equal upload, installed/extracted and post-run driver/service readback; ' +
@@ -392,7 +525,7 @@ baseline = ro.get('Baseline') or {}
 disposal = ro.get('Disposal') or {}
 raw_samples = ro.get('Samples') or []
 with open(sys.argv[10], encoding='utf-8') as case_stream:
-    required_cases = json.load(case_stream)
+    required_cases = [c for c in json.load(case_stream) if bool(c.get('Office')) == (os.environ.get('T5_OFFICE_BASE_EFFECTIVE') == '1')]
 expected_leaves = {leaf.lower() for c in required_cases for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
 scope_path = str(ro.get('ScopePath') or '').replace('/', '\\').rstrip('\\')
 expected_paths = {scope_path + '\\' + leaf for leaf in expected_leaves}
@@ -523,6 +656,7 @@ def valid_raw_sample(s):
 T5_TRANSIENT_PHASES = ('ActorRunning', 'WorkflowSettlement', 'AfterActorAcknowledgementSettlement')
 # Owner 2026-10-22 (third rule, deny-list): in these phases any capture failure is a race unless it is one of the verdict-class errors.
 T5_FATAL_OBSERVATION_ERRORS = ('CPF or unexpected nonempty fixture bytes',
+                               'Excel observation journal is invalid',
                                'differs from the independently captured baseline parent',
                                'Raw parent directory identity is incomplete',
                                'One or more raw target images or artifacts are missing/incomplete',
@@ -769,10 +903,148 @@ def journal_settled_verdict(listing_text):
     if hot:
         return 'FAIL', '%d unfinished journal entr%s remain after the run: %s' % (len(hot), 'y' if len(hot) == 1 else 'ies', '; '.join(hot[:5]))
     return 'PASS', 'the hot journal is empty after the run (every transfer completed and archived)'
+def excel_record_matches(case, record):
+    """Bind the workbook digest to retained service bytes, subject and object."""
+    import pathlib
+    try:
+        directory = pathlib.Path(raw_dir.removesuffix('-raw') + '-journal-evidence')
+        archive = record.get('ArchiveRecord')
+        artifact = (archive or {}).get('Artifact') if archive else record.get('JournalArtifact')
+        name = str(artifact or '').replace('\\', '/').rsplit('/', 1)[-1]
+        if not re.fullmatch(r'[A-F0-9]{64}\.bin', name):
+            return False
+        data = (directory / name).read_bytes()
+        if hashlib.sha256(data).hexdigest().upper() != name[:-4]:
+            return False
+        if archive:
+            if not archive_payload_matches(data, archive):
+                return False
+            data = data[archive['FrameOffset'] + 60:archive['FrameOffset'] + 60 + archive['Length']]
+        manifest = json.loads(data)
+        transfer = manifest['Transfer']
+        pairs = ('TransferId', 'DestinationPath', 'ProcessId', 'RequestorSid', 'SessionId', 'ProcessName', 'RequestorProcessCreationTime')
+        if any(transfer.get(key) != record.get(key) for key in pairs):
+            return False
+        if str(manifest['State']) != record.get('State') or str(manifest.get('HandbackState')) != record.get('HandbackState') or any(manifest.get(key) != record.get(key) for key in
+                ('Sha256Hex', 'SealedLength', 'SealedOnce', 'StageDeleted', 'StageIdentity', 'DriverInstanceId', 'DestinationGeneration')):
+            return False
+        identity = record.get('StageIdentity')
+        if (not isinstance(identity, dict) or any(type(identity.get(k)) is not int or not 0 <= identity[k] < 2**64 for k in
+                ('VolumeSerialNumber', 'FileIdHigh', 'FileIdLow')) or not record.get('DriverInstanceId') or not record.get('TransferId') or
+                type(record.get('DestinationGeneration')) is not int or record['DestinationGeneration'] <= 0):
+            return False
+        writers = [a.get('Ui') or {} for a in case.get('WorkflowAcks', []) if a.get('Op') != 'excel-read']
+        return (record.get('DestinationPath', '').lower() == (scope_path + '\\' + case['Leaf']).lower() and
+                record.get('RequestorSid') == (result or {}).get('ActorSid') and record.get('SealedOnce') is True and
+                type(record.get('SealedLength')) is int and record['SealedLength'] > 0 and
+                re.fullmatch(r'[A-F0-9]{64}', str(record.get('Sha256Hex') or '')) is not None and
+                re.fullmatch(r'excel(?:\.exe)?', str(record.get('ProcessName') or ''), re.I) is not None and
+                any(w.get('ExcelPid') == record.get('ProcessId') and w.get('ExcelSid') == record['RequestorSid'] and
+                    type(w.get('ExcelCreationTime')) is int and w['ExcelCreationTime'] > 0 and
+                    w['ExcelCreationTime'] == record.get('RequestorProcessCreationTime') and
+                    w.get('SessionId') == record.get('SessionId') and type(w.get('SessionId')) is int and w['SessionId'] > 0 for w in writers))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+def excel_releases(case):
+    return [j for j in case.get('Journal', []) if j.get('State') == '5' and j.get('StageDeleted') is True and excel_record_matches(case, j)]
+
+def excel_steps_match(case):
+    spec = workflow_spec(case)
+    ops = [spec['Op'], 'excel-read'] if spec.get('Sensitive') else [spec['Op'], 'excel-edit', 'excel-read']
+    acks = case.get('WorkflowAcks') or []
+    versions = case.get('ExcelVersions') or []
+    if (case.get('Error') or case.get('NativeStepsChecked') is not True or case.get('NativeStepsOk') is not True or
+            len(acks) != len(ops) or len(versions) != (1 if spec.get('Sensitive') else 2)):
+        return False
+    numbers = []
+    for index, (ack, op) in enumerate(zip(acks, ops)):
+        ui = ack.get('Ui') or {}
+        path = (case.get('Handback') or {}).get('Path') if spec.get('Sensitive') and op == 'excel-read' else case['Path']
+        if (ack.get('Op') != op or ack.get('Error') or ack.get('ActorSid') != (result or {}).get('ActorSid') or
+                ack.get('ActorSid') == 'S-1-5-18' or not ack.get('ActorPid') or type(ack.get('N')) is not int or
+                str(ack.get('Path') or '').lower() != str(path or '').lower() or
+                ui.get('ExcelSid') != ack.get('ActorSid') or type(ui.get('ExcelPid')) is not int or ui['ExcelPid'] <= 0 or
+                type(ui.get('ExcelCreationTime')) is not int or ui['ExcelCreationTime'] <= 0 or
+                type(ui.get('SessionId')) is not int or ui['SessionId'] <= 0 or ui.get('Version') != '16.0' or ui.get('Build') != '20326' or
+                any(ui.get(key) is not True for key in ('Saved', 'Ready', 'Closed', 'Quit', 'ExcelExited')) or
+                ui.get('ReadOnly') is not False or ui.get('ProtectedViewCount') != 0 or ui.get('WindowsAtExit') != [] or
+                not isinstance(ui.get('Windows'), list) or len(ui['Windows']) > 1 or ui.get('QuitError') or ui.get('Action') != op):
+            return False
+        final = index > 0 or spec.get('Sensitive')
+        expected_a = ('529.982.247-25' if spec.get('Sensitive') else
+                      (2 if final else 1) if case['Kind'] == 'ExcelInPlaceApprove' else 'T5 ' + case['Kind'])
+        expected_c = 'blocked' if spec.get('Sensitive') else 'edit' if final else 'prior'
+        if ui.get('A1') != expected_a or ui.get('B1') != 3 or ui.get('C1') != expected_c or (op == 'excel-edit' and ui.get('PriorCellsVerified') is not True):
+            return False
+        if op == 'excel-read':
+            read = ack.get('Read') or {}
+            if (ack.get('Steps') != 'excel=0 read-open=0 read=0 read-close=0' or read.get('Code') != 0 or
+                    read.get('Length') != versions[-1].get('SealedLength') or read.get('Sha256') != versions[-1].get('Sha256Hex')):
+                return False
+        elif ack.get('Steps') != 'excel=0':
+            return False
+        numbers.append(ack['N'])
+    return numbers == sorted(set(numbers))
+
+def excel_journal_matches(case):
+    spec = workflow_spec(case)
+    versions = case.get('ExcelVersions') or []
+    records = case.get('Journal') or []
+    if (not excel_steps_match(case) or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != [] or
+            case.get('FinalJournalOutcomeVerified') is not True or case.get('SettlementStatus') != 'PASS' or
+            len({j.get('TransferId') for j in versions}) != len(versions)):
+        return False
+    if any(not excel_record_matches(case, j) or j.get('StageDeleted') is not True or not any(
+            j.get('TransferId') == r.get('TransferId') and j.get('Sha256Hex') == r.get('Sha256Hex') and
+            j.get('SealedLength') == r.get('SealedLength') and j.get('State') == r.get('State') for r in records) for j in versions):
+        return False
+    if any(j.get('ProcessId') != case['WorkflowAcks'][i]['Ui']['ExcelPid'] or
+           j.get('RequestorProcessCreationTime') != case['WorkflowAcks'][i]['Ui']['ExcelCreationTime'] for i, j in enumerate(versions)):
+        return False
+    stages = case.get('StageEvidence')
+    if (not isinstance(stages, list) or len(stages) != len(records) or {s.get('TransferId') for s in stages} != {j.get('TransferId') for j in records} or
+            any(s.get('Exists') is not False for s in stages)):
+        return False
+    if spec.get('Sensitive'):
+        if any(j.get('State') in ('3', '4', '5') for j in records) or versions[0].get('State') != '6' or versions[0].get('HandbackState') != '2':
+            return False
+        import pathlib
+        handback = case.get('Handback') or {}
+        try:
+            name = str(handback.get('Artifact') or '').replace('\\', '/').rsplit('/', 1)[-1]
+            content = pathlib.Path(raw_dir.removesuffix('-raw') + '-handback-evidence', name).read_bytes()
+        except OSError:
+            return False
+        return (case.get('HandedBack') is True and handback.get('Status') == 'PASS' and
+                len(content) == versions[0]['SealedLength'] and hashlib.sha256(content).hexdigest().upper() == versions[0]['Sha256Hex'] and
+                case.get('ExpectedHandbackLength') == len(content) and case.get('ExpectedHandbackSha256') == versions[0]['Sha256Hex'] and
+                workflow_handback_matches(case, content))
+    return (all(j.get('State') == '5' for j in versions) and versions[1]['DestinationGeneration'] > versions[0]['DestinationGeneration'] and
+            versions[1]['Sha256Hex'] != versions[0]['Sha256Hex'] and
+            case.get('ExpectedLength') == versions[-1]['SealedLength'] and case.get('ExpectedSha256') == versions[-1]['Sha256Hex'])
+
+def excel_final_matches(case, samples):
+    spec = workflow_spec(case)
+    path = (scope_path + '\\' + spec['Leaf']).lower()
+    images = [i for i in (samples[-1].get('CurrentImages') or []) if str(i.get('Path') or '').lower() == path] if samples else []
+    if len(images) != 1:
+        return False
+    if spec.get('Sensitive'):
+        return (images[0].get('Absent') is True and images[0].get('FileId') is None and images[0].get('LogicalArtifact') is None and
+                all(i.get('Absent') is True or i.get('Length') == 0 for s in samples for i in s.get('CurrentImages', []) if str(i.get('Path') or '').lower() == path))
+    versions = excel_releases(case)
+    return (images[0].get('Absent') is False and any(j['Sha256Hex'] == images[0].get('Sha256') == case.get('ExpectedSha256') and
+            j['SealedLength'] == images[0].get('Length') == case.get('ExpectedLength') for j in versions))
+
 def approved_public_hash_map():
     approved = {}
     for spec in required_cases:
         payloads = []
+        if spec.get('Office'):
+            matches = [c for c in ((globals().get('result') or {}).get('Cases') or []) if c.get('Kind') == spec['Kind']]
+            approved[spec['Leaf'].lower()] = {j['Sha256Hex'] for c in matches for j in excel_releases(c)} if not spec.get('Sensitive') else set()
+            continue
         if spec.get('Workflow'):
             if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move', 'shell-copy-in', 'shell-move-in'):
                 payloads.append(('T5 ' + spec['Kind'] + ' published clean prior').encode('ascii'))
@@ -788,6 +1060,9 @@ def workflow_observed_bytes_match(sample):
     allowed = {}
     for spec in required_cases:
         if not spec.get('Workflow'):
+            continue
+        if spec.get('Office'):
+            allowed[spec['Leaf'].lower()] = approved_public_hash_map().get(spec['Leaf'].lower(), set())
             continue
         payloads = []
         if spec['Op'] not in ('explorer-empty', 'empty-copy', 'empty-move', 'shell-copy-in', 'shell-move-in'):
@@ -814,6 +1089,8 @@ def workflow_expected(case):
 
 def workflow_steps_match(case):
     spec = workflow_spec(case)
+    if spec and spec.get('Office'):
+        return excel_steps_match(case)
     if not spec or case.get('Error') or not case.get('NativeStepsChecked') or not case.get('NativeStepsOk'):
         return False
     save = {'open': 0, 'write': 0, 'close': 0}
@@ -979,6 +1256,8 @@ def workflow_handback_matches(case, content):
 
 def workflow_journal_matches(case):
     spec = workflow_spec(case)
+    if spec and spec.get('Office'):
+        return excel_journal_matches(case)
     records = case.get('Journal')
     if not isinstance(records, list) or (not records and spec['Op'] not in ('explorer-empty', 'shell-move-within')) or case.get('JournalParseErrors') != [] or case.get('JournalSchemaErrors') != []:
         return False
@@ -1057,6 +1336,8 @@ def raw_case_final_matches(case, samples):
     if len(images) != 1:
         return False
     image = images[0]
+    if (workflow_spec(case) or {}).get('Office'):
+        return excel_final_matches(case, samples)
     if workflow_spec(case):
         expected = workflow_expected(case)
         if expected is None:

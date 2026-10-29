@@ -196,5 +196,33 @@
     "AuxiliaryLeaves": [
       "read-existing-denied.txt"
     ]
+  },
+  {
+    "Kind": "ExcelSaveAsApprove",
+    "Op": "excel-saveas",
+    "Leaf": "excel-saveas.xlsx",
+    "Sensitive": false,
+    "Workflow": true,
+    "Office": true,
+    "Expected": "Workbook"
+  },
+  {
+    "Kind": "ExcelInPlaceApprove",
+    "Op": "excel-seed",
+    "Leaf": "excel-inplace.xlsx",
+    "Sensitive": false,
+    "Workflow": true,
+    "Office": true,
+    "Expected": "Workbook"
+  },
+  {
+    "Kind": "ExcelCpfHandBack",
+    "Op": "excel-cpf",
+    "Leaf": "excel-cpf.xlsx",
+    "Sensitive": true,
+    "Workflow": true,
+    "Office": true,
+    "Expected": "Absent",
+    "Handback": true
   }
 ]

@@ -6,7 +6,8 @@ first failing field instead of throwing so every field is always recorded.
 #>
 param(
     [string] $ExpectedOriginal = 'ADA9D05AB6AECDD2B6C521B0CE529FC06C732154ACB3EE85439FBDC8AA80DFCE',
-    [string] $ExpectedPolicy = '29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731'
+    [string] $ExpectedPolicy = '29DC8A341BD7C549996596D2477A0CCCAF19602C362A2167FB4FDD5C66663731',
+    [switch] $OfficeBase
 )
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
@@ -110,6 +111,32 @@ try {
         Where-Object { $winlogonNames -contains $_ }).Count -eq 0
 } catch { $checks['NoActorAutoLogonValues'] = $false }
 $checks['NoTestProfiles'] = (@(Get-CimInstance Win32_UserProfile | Where-Object { -not $_.Special -and $_.LocalPath -notmatch '\\vika$' }).Count -eq 0)
+if ($OfficeBase) {
+    # Explicit opt-in for the sealed Office base only. Default baseline checks
+    # above and every check below retain their original meaning.
+    try {
+        $actor = Get-LocalUser -Name 't5actor' -ErrorAction Stop
+        $profiles = @(Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object { -not $_.Special -and $_.LocalPath -notmatch '\\vika$' })
+        $groups = @(Get-LocalGroup -ErrorAction Stop | Where-Object {
+            @(Get-LocalGroupMember -Group $_ -ErrorAction Stop | Where-Object { $_.SID.Value -ceq $actor.SID.Value }).Count -gt 0
+        })
+        $checks['OfficeActorAccount'] = ($actor.Enabled -and $groups.Count -eq 1 -and $groups[0].SID.Value -ceq 'S-1-5-32-545')
+        $checks['NoTestProfiles'] = ($profiles.Count -eq 1 -and $profiles[0].SID -ceq $actor.SID.Value -and $profiles[0].LocalPath -ieq 'C:\Users\t5actor')
+        'OfficeActorSID=' + $actor.SID.Value
+        'OfficeActorPasswordLastSet=' + $actor.PasswordLastSet.ToUniversalTime().ToString('o')
+        $office = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction Stop
+        $excelPaths = @('C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE',
+            'C:\Program Files (x86)\Microsoft Office\root\Office16\EXCEL.EXE')
+        $installedExcel = @($excelPaths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+        $checks['OfficeInstallation'] = ($office.VersionToReport -ceq '16.0.20326.20232' -and
+            [string]$office.UpdatesEnabled -ieq 'False' -and
+            $installedExcel.Count -eq 1)
+        $checks['OfficeBaseIdentity'] = ($uuid -ceq 'FFCB9530-146B-43B1-8AF7-2B5CC8EDE2E3')
+    } catch {
+        $checks['NoTestProfiles'] = $false; $checks['OfficeActorAccount'] = $false; $checks['OfficeInstallation'] = $false
+        'OfficeBaselineError=' + $_.Exception.Message
+    }
+}
 $checks['NoSyntheticVolume'] = -not (Test-Path -LiteralPath 'S:\')
 $canaries = @()
 $canaryRootsRead = $true

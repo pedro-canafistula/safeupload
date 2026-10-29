@@ -24,6 +24,7 @@ def check(value, message):
 
 expected_cases = {
     'A': ('NotepadApprove', 'NotepadHandBack', 'NotepadEditApprove'),
+    'B': ('ExcelSaveAsApprove', 'ExcelInPlaceApprove', 'ExcelCpfHandBack'),
     'C': ('ShellCopyIn', 'ShellMoveIn', 'ShellMoveWithin', 'PublicDeleteExplorer'),
     'D': ('ReadExisting',),
 }
@@ -32,7 +33,7 @@ all_names = sorted({name for task in expected_cases for name in mvp.dependencies
 proofs = ('T5CanonicalNoUnapprovedByte INCONCLUSIVE canonical proof missing\n'
           'T5PublicDeleteExplorerDeleteBarrier INCONCLUSIVE barrier proof missing\n')
 positive = ''.join(name + ' PASS exact receipt\n' for name in all_names) + proofs
-outcomes, report = mvp.evaluate(positive)
+outcomes, report = mvp.evaluate(positive, tuple(expected_cases))
 check(set(outcomes.values()) == {'PASS'}, 'complete task dependencies pass with historical proofs unchanged')
 check('historical full-row verdict and its INCONCLUSIVE proof lines are unchanged' in report, 'explicit historical distinction')
 for task in expected_cases:
@@ -43,12 +44,17 @@ for name in all_names:
         line = name + ' PASS exact receipt\n'
         replacement = ('' if status == 'MISSING' else line * 2 if status == 'DUPLICATE' else
                        name + '\n' if status == 'MALFORMED' else name + ' ' + status + ' exact receipt\n')
-        results, _ = mvp.evaluate(positive.replace(line, replacement))
+        results, _ = mvp.evaluate(positive.replace(line, replacement), tuple(expected_cases))
         for task in expected_cases:
             affected = name in mvp.dependencies(task)
             expected = ('INCONCLUSIVE' if status == 'INCONCLUSIVE' else 'FAIL') if affected else 'PASS'
             check(results[task] == expected, f'{task} dependency {name} {status} stays non-green')
 check(set(mvp.evaluate('')[0].values()) == {'FAIL'}, 'empty input cannot pass')
+office = 'T5RunProfile INFO OfficeExcel\n' + ''.join(name + ' PASS exact receipt\n' for name in mvp.dependencies('B')) + proofs
+check(mvp.evaluate(office)[0] == {'B': 'PASS'}, 'Office profile evaluates only B')
+check('MVPA NOT_RUN' in mvp.evaluate(office)[1], 'Office profile never relabels absent A/C/D as PASS')
+check(mvp.evaluate(office.replace('T5OfficeBase PASS', 'T5OfficeBase FAIL'))[0] == {'B': 'FAIL'}, 'B requires Office restoration')
+check(set(mvp.evaluate(office + 'T5RunProfile INFO BasicTasks\n')[0].values()) == {'FAIL'}, 'conflicting profiles cannot pass')
 
 launcher = (root.parent / 'Invoke-StageNotepad.sh').read_text()
 names = {'receipt_fields', 'artifact_hashes_match', 'mode_readback_matches'}
@@ -86,7 +92,8 @@ check('$json.Interception.StageSpace.Enabled = $false' in launcher and
 
 # Execute the actual EXIT finalizer with a local restoration stub. This exercises
 # ordering and exit preservation without running any launcher VM/network setup.
-finish = launcher[launcher.index('finish() {'):launcher.index('\nrun_disk_begin ', launcher.index('finish() {'))]
+start = launcher.index('finish() {')
+finish = launcher[start:launcher.index('\n}\n', start)+3]
 with tempfile.TemporaryDirectory(prefix='t5-mvp-controls-') as directory:
     path = Path(directory, 'row-verdict.txt')
     for full_status, restored, expected_status in ((0, True, 0), (1, True, 1), (0, False, 22)):

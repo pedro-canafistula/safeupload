@@ -44,6 +44,7 @@ public static class T5Native {
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool SetFileInformationByHandle(IntPtr h, int informationClass, byte[] information, uint size);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr w, string l);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] static extern bool PostMessageW(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
@@ -435,6 +436,68 @@ function Invoke-NotepadEdit([string]$Path,[string]$Text,$obs) {
         if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
     }
 }
+function Invoke-T5Excel([string]$Op,[string]$Path,[string]$Kind,$obs) {
+    $x=$null;$wb=$null;$excelProcess=$null
+    # Join-Path returns a PSObject that can spin inside COM SaveAs. Pass a CLR string.
+    [string]$target=[IO.Path]::Combine([IO.Path]::GetDirectoryName($Path),[IO.Path]::GetFileName($Path))
+    $inplace=$Kind -ceq 'ExcelInPlaceApprove';$cpf=$Kind -ceq 'ExcelCpfHandBack'
+    $priorA=if($inplace){1}else{'T5 '+$Kind}
+    $finalA=if($inplace){2}elseif($cpf){'529.982.247-25'}else{$priorA}
+    try {
+        $x=New-Object -ComObject Excel.Application
+        $x.Visible=$true;$x.DisplayAlerts=$false
+        [uint32]$excelPid=0
+        [void][T5Native]::GetWindowThreadProcessId([IntPtr]$x.Hwnd,[ref]$excelPid)
+        if($excelPid -le 0){throw 'Excel process identity missing'}
+        $excelProcess=Get-Process -Id $excelPid -ErrorAction Stop
+        $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$excelPid) -ErrorAction Stop
+        $owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction Stop
+        $obs.ExcelPid=$excelPid;$obs.ExcelSid=$owner.Sid;$obs.SessionId=$excelProcess.SessionId
+        $obs.ExcelCreationTime=$excelProcess.StartTime.ToUniversalTime().ToFileTimeUtc()
+        $obs.Version=[string]$x.Version;$obs.Build=[string]$x.Build;$obs.Action=$Op
+        if($owner.ReturnValue -ne 0 -or $owner.Sid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -or
+            $excelProcess.SessionId -ne (Get-Process -Id $PID).SessionId -or $excelProcess.SessionId -le 0){throw 'Excel is not the interactive standard actor'}
+        if($Op -cin @('excel-saveas','excel-seed','excel-cpf')) {
+            $wb=$x.Workbooks.Add()
+            $wb.Worksheets.Item(1).Range('A1').Value2=$(if($cpf){$finalA}else{$priorA})
+            $wb.Worksheets.Item(1).Range('B1').Formula='=1+2'
+            $wb.Worksheets.Item(1).Range('C1').Value2=$(if($cpf){'blocked'}else{'prior'})
+            $x.Calculate()
+            $wb.SaveAs($target,51)
+        } else {
+            $wb=$x.Workbooks.Open($target)
+            if($Op -ceq 'excel-edit') {
+                if($wb.Worksheets.Item(1).Range('A1').Value2 -ne $priorA -or $wb.Worksheets.Item(1).Range('B1').Value2 -ne 3 -or
+                    $wb.Worksheets.Item(1).Range('C1').Value2 -cne 'prior'){throw 'Excel reopen did not show the published prior cells'}
+                $obs.PriorCellsVerified=$true
+                $wb.Worksheets.Item(1).Range('A1').Value2=$finalA
+                $wb.Worksheets.Item(1).Range('C1').Value2='edit'
+                $wb.Save()
+            }
+        }
+        $obs.A1=$wb.Worksheets.Item(1).Range('A1').Value2
+        $obs.B1=$wb.Worksheets.Item(1).Range('B1').Value2
+        $obs.C1=$wb.Worksheets.Item(1).Range('C1').Value2
+        $obs.Saved=[bool]$wb.Saved;$obs.ReadOnly=[bool]$wb.ReadOnly
+        $obs.ProtectedViewCount=$x.ProtectedViewWindows.Count;$obs.Ready=[bool]$x.Ready
+        $obs.Windows=@(Get-WindowTexts $excelPid)
+        if(-not $obs.Saved -or $obs.ReadOnly -or -not $obs.Ready -or $obs.ProtectedViewCount -ne 0 -or $obs.Windows.Count -gt 1){throw 'Excel reported unsaved, read-only, not Ready, Protected View or a dialog'}
+        if($Op -ceq 'excel-read' -and ($obs.A1 -ne $finalA -or $obs.B1 -ne 3 -or $obs.C1 -cne $(if($cpf){'blocked'}else{'edit'}))){throw 'Excel final reopen cell values differ'}
+        $wb.Close($false);$obs.Closed=$true
+        [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($wb);$wb=$null
+        $x.Quit();$obs.Quit=$true
+    } finally {
+        if($wb){try{$wb.Close($false)}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($wb)}}
+        if($x){
+            if(-not $obs.Quit){try{$x.Quit()}catch{$obs.QuitError=$_.Exception.Message}}
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($x)
+        }
+        [GC]::Collect();[GC]::WaitForPendingFinalizers()
+        $obs.ExcelExited=($null -ne $excelProcess -and $excelProcess.WaitForExit(10000))
+        if($excelProcess){$obs.WindowsAtExit=@(Get-WindowTexts $excelProcess.Id)}
+    }
+    if(-not $obs.ExcelExited){throw 'Excel process remained after Close/Quit'}
+}
 function Read-ActorControlText([string]$Path) {
     $deadline = [Diagnostics.Stopwatch]::GetTimestamp() + 5 * [Diagnostics.Stopwatch]::Frequency
     for (;;) {
@@ -603,6 +666,12 @@ for (;;) {
             'native-clear' { $result.Method='Native TRUNCATE_EXISTING + close (UI-independent equivalent)'; $result.Steps=[T5Native]::Save($c.Path,$bytes,5,$false) }
             'native-append' { $result.Method='Native OPEN_EXISTING + append (existing readable seeded edit)'; $result.Steps=[T5Native]::Save($c.Path,$bytes,3,$true) }
             'native-read' {$result.Read=[T5Native]::Read($c.Path);$result.Steps=$result.Read.Steps}
+            {$_ -cin @('excel-saveas','excel-seed','excel-cpf','excel-edit','excel-read')} {
+                $result.Ui=[ordered]@{}
+                Invoke-T5Excel ([string]$c.Op) ([string]$c.Path) ([string]$c.Text) $result.Ui
+                $result.Steps='excel=0'
+                if($c.Op -ceq 'excel-read'){$result.Read=[T5Native]::Read($c.Path);$result.Steps+=' '+$result.Read.Steps}
+            }
             'notepad-edit' {$result.Ui=[ordered]@{};Invoke-NotepadEdit $c.Path ([string]$c.Text) $result.Ui;$result.Steps='notepad-edit=0'}
             {$_ -cin @('shell-copy-in','shell-move-in','shell-move-within')} {
                 $move=$c.Op -ne 'shell-copy-in'

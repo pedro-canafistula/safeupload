@@ -9,7 +9,7 @@ Results: C:\T5\result.json.
 param([string]$ActorUser = 't5actor', [string]$ActorTask = 't5-actor',
     [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1',
     [string]$ObserverModule = 'C:\Users\vika\Documents\StagedInvariantObserver.psm1',
-    [string]$CasesPath = (Join-Path $PSScriptRoot 't5-notepad-cases.json'))
+    [string]$CasesPath = (Join-Path $PSScriptRoot 't5-notepad-cases.json'), [switch]$OfficeBase)
 $ErrorActionPreference = 'Stop'
 $out = 'C:\T5'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t5'
 $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
@@ -19,7 +19,7 @@ function Read-T5CaseInventory([string]$Path) {
     $parsed = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
     @($parsed)
 }
-$cases = @(Read-T5CaseInventory $CasesPath)
+$cases = @(Read-T5CaseInventory $CasesPath | Where-Object { [bool]$_.Office -eq [bool]$OfficeBase })
 $leaves = @($cases | ForEach-Object { $_.Leaf; @($_.AuxiliaryLeaves) } | Where-Object { $_ } | Sort-Object -Unique)
 $frequency = [Diagnostics.Stopwatch]::Frequency
 $rawContext = $null; $rawBaseline = $null; $script:rawSequence = 0
@@ -123,6 +123,7 @@ $script:T5TransientObservationPhases = @('ActorRunning', 'WorkflowSettlement', '
 # Owner 2026-10-22 (third rule, deny-list): in these phases any capture failure is a race unless it is one of the verdict-class errors below.
 $script:T5FatalObservationErrors = @(
     'CPF or unexpected nonempty fixture bytes',
+    'Excel observation journal is invalid',
     'differs from the independently captured baseline parent',
     'Raw parent directory identity is incomplete',
     'One or more raw target images or artifacts are missing/incomplete',
@@ -148,11 +149,13 @@ function Capture-T5Observation($Case, [string]$Phase) {
         CurrentImages = @(); ParentFileId = $null; ParentReference = $null; DirectoryEntries = @(); PublicReaders = @(); RawComplete = $false; IndependentReadersAgree = $false
         DirectoryComplete = $false; ForbiddenBytesObserved = $false; TargetAbsent = $false; Error = $null }
     try {
+        if($OfficeBase){Update-T5ExcelPublicHashes $Case}
         # Owner 2026-10-21: a sample taken while the actor runs is bracketed by public reads before and after the raw capture; the
         # raw image must match one of them, and a change between them must be approved bytes. Every other phase stays strict.
         $bracketed = ($Phase -ceq 'ActorRunning'); $before = @{}
         if ($bracketed) { foreach ($leaf in $leaves) { $p = Join-Path $root $leaf; $before[$p] = Read-Public $p } }
         $sample = Capture-InvariantSample $rawContext $rawBaseline $Phase $script:rawSequence
+        if($OfficeBase){Update-T5ExcelPublicHashes $Case}
         $entry.Status = $sample.Status; $entry.Start = $sample.Start; $entry.End = $sample.End
         if ($sample.Sequence -is [int] -or $sample.Sequence -is [long]) { $entry.ModuleSequence = $sample.Sequence }
         if ($sample.Status -cne 'OK') { throw ('Raw sample status=' + $sample.Status + '; ' + ($sample.Error | ConvertTo-Json -Depth 8 -Compress)) }
@@ -1662,6 +1665,7 @@ function Get-JournalFor([string]$Destination, [string[]]$BaselineTransferIds, [s
             continue
         }
         $projection=Get-T5Projection $entry $item.Path
+        if($OfficeBase -and $item.Storage.Artifact){$projection | Add-Member -NotePropertyName JournalArtifact -NotePropertyValue $item.Storage.Artifact}
         if($item.Storage.PhysicalPath){
             $projection | Add-Member -NotePropertyName ArchiveRecord -NotePropertyValue ([pscustomobject]@{
                 PhysicalPath=$item.Storage.PhysicalPath; FrameOffset=$item.Storage.FrameOffset; Artifact=$item.Storage.Artifact;
@@ -1716,7 +1720,8 @@ function Wait-T5WorkflowState($Record,[string]$Path,[byte[]]$Expected,[bool]$Abs
             $ok=$ok -and $unfinished.Count -eq 0
         }
         if($RequireHandback){
-            $Record.Handback=Get-Handback $HandbackDirectory $BeforeHandback $HandbackBytes
+            $pattern=if($Record.HandbackPattern){[string]$Record.HandbackPattern}else{'*.txt'}
+            $Record.Handback=Get-Handback $HandbackDirectory $BeforeHandback $HandbackBytes $pattern
             $ok=$ok -and $blocked.Count -gt 0 -and $Record.Handback.Status -ceq 'PASS'
         }
         if($ok){$Record.WorkflowJournalSnapshots+=,@($journal.Records);return $sample}
@@ -1743,7 +1748,114 @@ function Restore-T5DeleteDenyFixture($Fixture) {
     $Fixture.Restored=((Get-Acl -LiteralPath $Fixture.Path).Sddl -ceq $Fixture.FileBefore -and (Get-Acl -LiteralPath $Fixture.Parent).Sddl -ceq $Fixture.ParentBefore)
     if(-not $Fixture.Restored){throw 'Delete-denial fixture SDDL restoration failed'}
 }
+function Update-T5ExcelPublicHashes($Record) {
+    # Only inspected journal versions authorize workbook bytes. Actor cell/hash
+    # receipts never authorize public bytes. Final host checks require Release.
+    $journal=Get-JournalFor $Record.Path -BaselineTransferIds @() -RequireHistoryForNewRecords
+    if(@($journal.ParseErrors).Count -or @($journal.SchemaErrors).Count){throw 'Excel observation journal is invalid'}
+    $Record.WorkflowJournalSnapshots+=,@($journal.Records)
+    $approved=@($journal.Records | Where-Object {$_.IsV20 -and $_.State -cin @('3','4','5') -and $_.SealedOnce -eq $true -and
+        $_.RequestorSid -ceq $result.ActorSid -and $_.ProcessName -match '^(?i:excel)(?:\.exe)?$' -and
+        $_.SealedLength -gt 0 -and $_.Sha256Hex -cmatch '^[A-F0-9]{64}$'})
+    $script:T5WorkflowPublicHashes[$Record.Path]=@($approved | ForEach-Object Sha256Hex | Sort-Object -Unique)
+}
+function Wait-T5ExcelVersion($Record,[string[]]$BaselineIds,[bool]$Blocked,[string]$HandbackDirectory,[string[]]$BeforeHandback) {
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+90*$frequency
+    $empty=New-Object byte[] 0
+    do {
+        [void](Capture-T5Observation $Record 'WorkflowSettlement')
+        $journal=Get-JournalFor $Record.Path -BaselineTransferIds @() -RequireHistoryForNewRecords
+        $Record.Journal=$journal.Records;$Record.JournalParseErrors=$journal.ParseErrors;$Record.JournalSchemaErrors=$journal.SchemaErrors
+        if(@($journal.ParseErrors).Count -or @($journal.SchemaErrors).Count){throw 'Excel settlement journal is invalid'}
+        $pidExpected=$Record.WorkflowAcks[-1].Ui.ExcelPid
+        $versions=@($journal.Records | Where-Object {$BaselineIds -notcontains $_.TransferId -and $_.IsV20 -and
+            $_.ProcessId -eq $pidExpected -and $_.RequestorSid -ceq $result.ActorSid -and $_.SealedLength -gt 0 -and
+            $_.State -ceq $(if($Blocked){'6'}else{'5'}) -and $(if($Blocked){$_.HandbackState -ceq '2'}else{$_.StageDeleted -eq $true})})
+        if($versions.Count -gt 0){
+            foreach($version in $versions){
+                if($Blocked){
+                    $files=@(Get-ChildItem -LiteralPath $HandbackDirectory -Filter '*.xlsx' -File -Force -ErrorAction SilentlyContinue | Where-Object {$BeforeHandback -notcontains $_.FullName})
+                    if($files.Count -ne 1){continue}
+                    $read=Read-Public $files[0].FullName
+                }else{$read=Read-Public $Record.Path}
+                if($read.Status -cne 'OK' -or $read.Length -ne $version.SealedLength -or $read.Sha256 -cne $version.Sha256Hex){continue}
+                $Record.WorkflowJournalSnapshots+=,@($journal.Records)
+                if($Blocked){
+                    $Record.Handback=Get-Handback $HandbackDirectory $BeforeHandback $read.Bytes '*.xlsx'
+                    if($Record.Handback.Status -cne 'PASS'){continue}
+                    $Record.ExpectedHandbackLength=$read.Length;$Record.ExpectedHandbackSha256=$read.Sha256
+                    [void](Wait-T5WorkflowState $Record $Record.Path $empty $true $false $true $HandbackDirectory $BeforeHandback $read.Bytes)
+                }else{
+                    $Record.ExpectedLength=$read.Length;$Record.ExpectedSha256=$read.Sha256
+                    [void](Wait-T5WorkflowState $Record $Record.Path $read.Bytes $false $true $false '' @() $empty)
+                }
+                return $version
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    throw 'Excel version did not reach exact Release or full-content hand-back'
+}
+function Wait-T5ExcelCleanup($Record) {
+    # Retry bookkeeping only. Save/SaveAs and hand-back have already completed.
+    $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+90*$frequency
+    do {
+        [void](Capture-T5Observation $Record 'WorkflowSettlement')
+        $journal=Get-JournalFor $Record.Path -BaselineTransferIds @() -RequireHistoryForNewRecords
+        $Record.Journal=$journal.Records;$Record.JournalParseErrors=$journal.ParseErrors;$Record.JournalSchemaErrors=$journal.SchemaErrors
+        if(@($journal.ParseErrors).Count -or @($journal.SchemaErrors).Count){throw 'Excel cleanup journal is invalid'}
+        $resolved=@()
+        foreach($version in $Record.ExcelVersions){
+            $matches=@($journal.Records | Where-Object {$_.TransferId -ceq $version.TransferId -and $_.Sha256Hex -ceq $version.Sha256Hex -and
+                $_.SealedLength -eq $version.SealedLength -and $_.State -ceq $version.State -and
+                (Get-T5EntryVersionKey $_) -ceq (Get-T5EntryVersionKey $version) -and $_.StageDeleted -eq $true})
+            if($matches.Count -eq 1){$resolved+=$matches[0]}
+        }
+        if($resolved.Count -eq $Record.ExcelVersions.Count -and @($journal.Records | Where-Object {$_.StageDeleted -ne $true}).Count -eq 0){
+            $Record.ExcelVersions=$resolved;$Record.WorkflowJournalSnapshots+=,@($journal.Records);return
+        }
+        Start-Sleep -Milliseconds 100
+    }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
+    throw 'Excel completed mutation still has unresolved private cleanup; no save was retried'
+}
+function Invoke-T5ExcelWorkflow($Spec,$Record,[string]$HandbackDirectory,[string[]]$BeforeHandback) {
+    $Record.Workflow=$true;$Record.WorkflowAcks=@();$Record.WorkflowJournalSnapshots=@();$Record.WorkflowOutcome=$false
+    $Record.ExpectedPublicAbsent=[bool]$Spec.Sensitive;$Record.HandbackPattern='*.xlsx'
+    $Record.ExcelVersions=@();$Record.Method='Real interactive Excel COM; full-byte journal/NTFS comparison plus cell reopen'
+    $baseline=Get-JournalFor $Record.Path
+    if(@($baseline.ParseErrors).Count -or @($baseline.SchemaErrors).Count){throw 'Excel baseline journal invalid'}
+    $Record.WorkflowBaseline=$baseline.Records;$ids=@($baseline.Records | ForEach-Object TransferId)
+    [void](Invoke-T5WorkflowAck $Record $Spec.Op $Record.Path $Spec.Kind @{excel=0} $ids)
+    $first=Wait-T5ExcelVersion $Record $ids ([bool]$Spec.Sensitive) $HandbackDirectory $BeforeHandback
+    $Record.ExcelVersions+= $first
+    if(-not $Spec.Sensitive){
+        $ids=@($Record.Journal | ForEach-Object TransferId)
+        [void](Invoke-T5WorkflowAck $Record 'excel-edit' $Record.Path $Spec.Kind @{excel=0} $ids)
+        $newer=Wait-T5ExcelVersion $Record $ids $false '' @()
+        if($newer.TransferId -ceq $first.TransferId){throw 'Excel edit reused the seed Release'}
+        $Record.ExcelVersions+=$newer
+    }
+    $reopen=if($Spec.Sensitive){[string]$Record.Handback.Path}else{[string]$Record.Path}
+    $ack=Invoke-T5WorkflowAck $Record 'excel-read' $reopen $Spec.Kind @{excel=0;'read-open'=0;read=0;'read-close'=0} @()
+    $lastVersion=$Record.ExcelVersions[-1]
+    if($ack.Read.Code -ne 0 -or $ack.Read.Length -ne $lastVersion.SealedLength -or $ack.Read.Sha256 -cne $lastVersion.Sha256Hex){throw 'Excel actor reopen bytes differ from the inspected version'}
+    Wait-T5ExcelCleanup $Record
+    for($i=0;$i -lt 3;$i++){[void](Capture-T5Observation $Record 'WorkflowFinalBracket')}
+    $image=@($Record.RawSamples[-1].CurrentImages | Where-Object {$_.Path -ieq $Record.Path})[0]
+    $final=Read-Public $Record.Path
+    $Record.FinalRawMatches=if($Spec.Sensitive){$image.Absent -eq $true -and $final.Status -ceq 'ABSENT'}else{
+        $image.Absent -eq $false -and $image.Length -eq $Record.ExpectedLength -and $image.Sha256 -ceq $Record.ExpectedSha256 -and
+        $final.Status -ceq 'OK' -and $final.Length -eq $Record.ExpectedLength -and $final.Sha256 -ceq $Record.ExpectedSha256}
+    $Record.FinalLength=$final.Length;$Record.FinalSha256=$final.Sha256
+    $Record.StageEvidence=@($Record.Journal | ForEach-Object {[pscustomobject]@{TransferId=$_.TransferId;Exists=($_.StageDeleted -ne $true);Length=$_.SealedLength}})
+    $Record.NoStageLeftover=(@($Record.StageEvidence | Where-Object Exists).Count -eq 0)
+    $Record.NoEmptyLeftover=$Record.FinalRawMatches;$Record.HandedBack=([bool]$Spec.Sensitive -and $Record.Handback.Status -ceq 'PASS')
+    $Record.NativeStepsChecked=$true;$Record.NativeStepsOk=$true;$Record.NativeStepsReason='Every Excel COM ack and standard-actor byte read checked'
+    $Record.FinalJournalOutcomeVerified=$true;$Record.SettlementStatus='PASS';$Record.Published= -not $Spec.Sensitive
+    $Record.WorkflowOutcome=($Record.FinalRawMatches -and $Record.NoStageLeftover -and -not $Record.Leaked)
+}
 function Invoke-T5Workflow($Spec,$Record,[string]$HandbackDirectory,[string[]]$BeforeHandback) {
+    if($Spec.Office){Invoke-T5ExcelWorkflow $Spec $Record $HandbackDirectory $BeforeHandback;return}
     $Record.Workflow=$true;$Record.WorkflowAcks=@();$Record.WorkflowJournalSnapshots=@();$Record.Fixtures=@();$Record.WorkflowOutcome=$false
     $Record.ExpectedPublicAbsent=$Spec.Expected -ceq 'Absent';$Record.DeleteBarrierRequired=[bool]$Spec.DeleteBarrier
     $Record.DeleteBarrierVerified=$false;$Record.DeleteBarrierReason=$null
@@ -1910,8 +2022,8 @@ function Invoke-T5Workflow($Spec,$Record,[string]$HandbackDirectory,[string[]]$B
     $Record.FinalJournalOutcomeVerified=$true;$Record.SettlementStatus='PASS';$Record.Published= -not $Record.ExpectedPublicAbsent
     $Record.WorkflowOutcome=($Record.FinalRawMatches -and $Record.NoStageLeftover -and $Record.RawCoverageComplete -and $Record.IndependentReadersAgree -and -not $Record.Leaked)
 }
-function Get-Handback([string]$Directory, [string[]]$BeforePaths, [byte[]]$Expected) {
-    $all = @(Get-ChildItem -LiteralPath $Directory -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue)
+function Get-Handback([string]$Directory, [string[]]$BeforePaths, [byte[]]$Expected, [string]$Pattern = '*.txt') {
+    $all = @(Get-ChildItem -LiteralPath $Directory -Filter $Pattern -File -Force -ErrorAction SilentlyContinue)
     $new = @($all | Where-Object { $BeforePaths -notcontains $_.FullName })
     $receipt = [ordered]@{ Status = 'INCOMPLETE'; NewFileCount = $new.Count; Path = $null; Length = $null; Sha256 = $null; Readers = @(); Error = $null }
     if ($new.Count -ne 1) { $receipt.Error = 'Expected exactly one newly created hand-back file.'; return [pscustomobject]$receipt }
@@ -1943,6 +2055,7 @@ function Get-Handback([string]$Directory, [string[]]$BeforePaths, [byte[]]$Expec
 # lower-mutation ledger and cannot promote the canonical INCONCLUSIVE verdict.
 foreach($spec in @($cases | Where-Object {$_.Workflow})){
     $hashes=@()
+    if($spec.Office){$script:T5WorkflowPublicHashes[(Join-Path $root $spec.Leaf)]=@();continue}
     if($spec.Op -notin @('explorer-empty','empty-copy','empty-move','shell-copy-in','shell-move-in')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' published clean prior'))}
     if($spec.Op -cin @('inflight-before','inflight-after','notepad-edit','shell-copy-in','shell-move-in')){$hashes+=Sha ([Text.Encoding]::ASCII.GetBytes('T5 '+$spec.Kind+' inspected newer save'))}
     foreach($leaf in @($spec.Leaf)+@($spec.AuxiliaryLeaves)) {if($leaf){$script:T5WorkflowPublicHashes[(Join-Path $root $leaf)]=$hashes}}
@@ -2017,7 +2130,8 @@ try {
             throw 'Pre-case journal parsing/schema validation failed; the case cannot bind a trustworthy baseline.'
         }
         $beforeIds = @($beforeJournal.Records | ForEach-Object { $_.TransferId })
-        $beforeHandback = @(Get-ChildItem -LiteralPath $handback -Filter '*.txt' -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        $handbackPattern=if($case.Office){'*.xlsx'}else{'*.txt'}
+        $beforeHandback = @(Get-ChildItem -LiteralPath $handback -Filter $handbackPattern -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
         if($case.Workflow) { Invoke-T5Workflow $case $record $handback $beforeHandback; continue }
         $observe = { param($phase) Capture-T5Observation $record ([string]$phase) }.GetNewClosure()
         $record.Ack = Invoke-Actor $case.Op $path $text $observe $beforeIds $record

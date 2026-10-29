@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Derive MVP drop-1 A/C/D from exact T5 lines; never rewrite the full row.
+"""Derive MVP drop-1 A/C/D or Office B from exact T5 lines; never rewrite the full row.
 
 Usage: mvp-task-verdict.py <tag-verdict.txt>
 The launcher calls this after separate restoration, including when the full row
 exits nonzero. PASS here describes this run's tasks, not final-pair qualification
-in both modes. Excel is separate; Word is a documented drop-1 limitation.
+in both modes. T5RunProfile selects BasicTasks (A/C/D) or OfficeExcel (B).
+Legacy receipts without that line retain A/C/D. Word is a drop-1 limitation.
 """
 import argparse
 from pathlib import Path
@@ -19,6 +20,7 @@ COMMON = (
 )
 TASK_CASES = {
     'A': ('NotepadApprove', 'NotepadHandBack', 'NotepadEditApprove'),
+    'B': ('ExcelSaveAsApprove', 'ExcelInPlaceApprove', 'ExcelCpfHandBack'),
     'C': ('ShellCopyIn', 'ShellMoveIn', 'ShellMoveWithin', 'PublicDeleteExplorer'),
     'D': ('ReadExisting',),
 }
@@ -26,6 +28,8 @@ TASK_CASES = {
 
 def dependencies(task):
     names = list(COMMON)
+    if task == 'B':
+        names.extend(('T5OfficeBase', 'T5OfficeAccount'))
     for case in TASK_CASES[task]:
         names.extend(('T5' + case, 'T5' + case + 'NoEmptyLeftover'))
         # Original Save As cases fold journal checks into their task line; their
@@ -35,22 +39,32 @@ def dependencies(task):
     return tuple(names)
 
 
-def evaluate(text):
+def evaluate(text, tasks=None):
     lines = {}
     for line in text.splitlines():
         fields = line.split(maxsplit=2)
         if fields:
             lines.setdefault(fields[0], []).append(line)
     outcomes = {}
+    profiles = lines.get('T5RunProfile', [])
+    profile_ok = not profiles or profiles in (['T5RunProfile INFO BasicTasks'], ['T5RunProfile INFO OfficeExcel'])
+    if tasks is None:
+        tasks = ('B',) if profiles == ['T5RunProfile INFO OfficeExcel'] else ('A', 'C', 'D') if profile_ok else tuple(TASK_CASES)
     report = [
-        'MVPDrop1 INFO Per-run A/C/D task outcomes; final matched pair still needs ordinary and runtime Verifier runs.',
+        'MVPDrop1 INFO Per-run task outcomes; final matched pair still needs ordinary and runtime Verifier runs.',
         'HistoricalFullRow INFO The historical full-row verdict and its INCONCLUSIVE proof lines are unchanged and are not MVP task outcomes.',
         'HistoricalProof INFO T5CanonicalNoUnapprovedByte and *DeleteBarrier stay full-row requirements; sampled byte observations do not establish a canonical never-public proof.',
-        'MVPScope INFO Excel runs separately on the Office base; Word is a documented drop-1 limitation.',
+        'MVPScope INFO OfficeExcel runs only B on the Office base; BasicTasks runs A/C/D. Word is a documented drop-1 limitation.',
     ]
     for task in TASK_CASES:
+        if task not in tasks:
+            report.append(f'MVP{task} NOT_RUN outside this run profile')
+            continue
         used = []
         statuses = []
+        if not profile_ok:
+            statuses.append('FAIL')
+            used.append(f'MVP{task}Use FAIL T5RunProfile: unknown or duplicate profile')
         for name in dependencies(task):
             matches = lines.get(name, [])
             if len(matches) != 1:
