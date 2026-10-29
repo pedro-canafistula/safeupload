@@ -64,6 +64,7 @@ static NTSTATUS StageCaptureSealBasic(_In_ struct _STAGE_STREAM *Stream);
 #define STAGE_RETRY_DRAIN_MAX_MS 1000
 #define STAGE_RETRY_EXCHANGE_MAX_MS 8000
 #define STAGE_STATUS_READMIT ((NTSTATUS)0xE0535201L) /* internal: StageCreate asks its admission to run again */
+#define STAGE_STATUS_REOPEN_WAIT ((NTSTATUS)0xE0535202L) /* internal: admission asks its dispatcher to wait, then redispatch */
 #define STAGE_LEGACY_CAPACITY (16LL * 1024 * 1024) /* Compatibility without an exact T9 grant. */
 /* Storage features require their own logical inspection/reconstruction. */
 #define STAGE_BASIC_ATTRIBUTES (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | \
@@ -243,6 +244,10 @@ typedef struct _STAGE_ADMISSION_TOKEN_SLOT {
     LONG64 DirectorySequence;
     BOOLEAN DirectoryMutation;
     BOOLEAN DirectoryCollision;
+    /* M2 MVP owner reopen wait: admission pins the busy version here and completes with STAGE_STATUS_REOPEN_WAIT; the
+     * epoch dispatcher waits with no epoch token held and dispatches again. One deadline spans every retry. */
+    PSTAGE_STREAM ReopenWait;
+    ULONGLONG ReopenDeadline;
 } STAGE_ADMISSION_TOKEN_SLOT, *PSTAGE_ADMISSION_TOKEN_SLOT;
 
 /* Internal token discriminator; no wire or persisted layout changes. */
@@ -5311,6 +5316,18 @@ static VOID StageWaitHandleReceiptSettled(_In_ PSTAGE_STREAM Stream, _In_ BOOLEA
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, StageWaitHandleReceiptSettled)
 #endif
+/* Caller holds StageNamespaceResource. NamespaceReopen adds the states that refuse a reopen of the owner's own
+ * pending version at gate 6: closing but not yet sealed, and the service's reply to the owner's own rename (Word's
+ * temp -> document) still in flight. */
+static BOOLEAN StageReceiptBusy(_In_ PSTAGE_STREAM Stream, _In_ BOOLEAN NamespaceReopen)
+{
+    return Stream->HandleReceiptPending || Stream->HandleReceiptInFlight ||
+        (Stream->AnyHandleCleanupObserved && !Stream->HandleReceiptAcknowledged) ||
+        (NamespaceReopen && Stream->ReadOnly && !Stream->Sealed && !Stream->DiscardOnClose &&
+            !Stream->Discarded && !Stream->Retired && !Stream->PrivateCancellationAccepted && !StageStopping) ||
+        (NamespaceReopen && Stream->RenameExchange != NULL && !Stream->Retired && !StageStopping);
+}
+
 _Use_decl_annotations_
 static VOID StageWaitHandleReceiptSettled(PSTAGE_STREAM Stream, BOOLEAN NamespaceReopen)
 {
@@ -5323,12 +5340,7 @@ static VOID StageWaitHandleReceiptSettled(PSTAGE_STREAM Stream, BOOLEAN Namespac
     deadline = KeQueryInterruptTime() + 10ULL * 1000 * 1000 * 10; /* 10 s */
     for (;;) {
         StageAcquire(&StageNamespaceResource);
-        busy = Stream->HandleReceiptPending || Stream->HandleReceiptInFlight ||
-            (Stream->AnyHandleCleanupObserved && !Stream->HandleReceiptAcknowledged) ||
-            (NamespaceReopen && Stream->ReadOnly && !Stream->Sealed && !Stream->DiscardOnClose &&
-                !Stream->Discarded && !Stream->Retired && !Stream->PrivateCancellationAccepted && !StageStopping) ||
-            /* M2 MVP: the service's reply to the owner's own rename (Word's temp -> document) is in flight. */
-            (NamespaceReopen && Stream->RenameExchange != NULL && !Stream->Retired && !StageStopping);
+        busy = StageReceiptBusy(Stream, NamespaceReopen);
         StageRelease(&StageNamespaceResource);
         if (!busy || KeQueryInterruptTime() >= deadline) return;
         (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
@@ -9562,35 +9574,37 @@ Readmit:
     }
     if (FLT_IS_IRP_OPERATION(Data) && FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; goto Complete; }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (privateNamespace && KeGetCurrentIrql() == PASSIVE_LEVEL) {
-        /* M2 MVP (owner 2026-10-22 bounded publication-window wait, 10 s): every reopen of the owner's own pending
-         * version (Word reopens its document for writing right after its rename) first waits for the exact rename
-         * reply / seal, instead of failing at gate 6. After the bound, admission refuses exactly as before. Only the
-         * MVP read/query reopen form also drops writer routing, as it always did. */
-        BOOLEAN eligible = StageMvpNamespaceCreateEligible(Data, Objects);
+    if (privateNamespace && KeGetCurrentIrql() == PASSIVE_LEVEL && FLT_IS_IRP_OPERATION(Data) &&
+        IoGetTopLevelIrp() == NULL && AdmissionSlot != NULL && AdmissionSlot->ReopenWait == NULL &&
+        (AdmissionSlot->ReopenDeadline == 0 || KeQueryInterruptTime() < AdmissionSlot->ReopenDeadline)) {
+        /* M2 MVP (owner 2026-10-22 bounded publication-window wait, 10 s): a reopen of the owner's own pending version
+         * (Word reopens its document for writing right after its rename) waits for the exact rename reply / seal
+         * instead of failing at gate 6. Only an ordinary top-level CREATE waits, and never here: the version is pinned
+         * and handed to the epoch dispatcher, which releases its token, waits and then runs admission again from the
+         * start on the state it finds. After the deadline, admission decides exactly as before. */
         PSTAGE_VIEW pending;
         PSTAGE_STREAM reopening = NULL;
         StageAcquire(&StageNamespaceResource);
         pending = StageFindView(FltGetRequestorProcess(Data), &name->Name);
-        if (pending != NULL && pending->Generation == expectedGeneration) {
+        if (pending != NULL && pending->Generation == expectedGeneration && pending->Current != NULL &&
+            StageReceiptBusy(pending->Current, TRUE)) {
             reopening = pending->Current;
             InterlockedIncrement(&reopening->RpcReferences);
-            StageQueueStream(reopening, &StageCounters.WakeInline);
         }
         StageRelease(&StageNamespaceResource);
         if (reopening != NULL) {
-            /* An exact pin keeps the sealed/closing version through the
-             * existing bounded receipt wait. No lock spans its seal/RPC. */
-            StageWaitHandleReceiptSettled(reopening, TRUE);
-            StageAcquire(&StageNamespaceResource);
-            InterlockedDecrement(&reopening->RpcReferences);
-            StageQueueStream(reopening, &StageCounters.WakeInline);
-            StageRelease(&StageNamespaceResource);
+            if (AdmissionSlot->ReopenDeadline == 0)
+                AdmissionSlot->ReopenDeadline = KeQueryInterruptTime() + 10ULL * 1000 * 1000 * 10; /* 10 s */
+            AdmissionSlot->ReopenWait = reopening;
+            denyReason = SAFEUPLOAD_DENY_REASON_NONE;
+            handled = TRUE;
+            status = STAGE_STATUS_REOPEN_WAIT; goto Complete;
         }
-        if (eligible) {
-            expectedView = NULL;
-            writer = FALSE;
-        }
+    }
+    if (privateNamespace && KeGetCurrentIrql() == PASSIVE_LEVEL && StageMvpNamespaceCreateEligible(Data, Objects)) {
+        /* The MVP read/query reopen form never routes as a writer, as before. */
+        expectedView = NULL;
+        writer = FALSE;
     }
     /* T5: FILE_DELETE_ON_CLOSE counts as writer access (writerAccess above), so a protected name opened with it is staged: the
      * version is discarded at its last cleanup and the physical file is never touched (driver/docs/design/publication-and-namespace/T5-DELETES.md R3). */
@@ -11310,6 +11324,144 @@ static FLT_PREOP_CALLBACK_STATUS StageNamespacePostStatus(_In_ UCHAR MajorFuncti
 }
 #endif
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+/* One epoch-admitted dispatch. The caller zeroes Slot except ReopenDeadline. */
+static FLT_PREOP_CALLBACK_STATUS StageDispatchEpochOnce(PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext, PSTAGE_ADMISSION_TOKEN_SLOT Slot)
+{
+    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN token = NULL;
+    PVOID innerContext = NULL;
+    FLT_PREOP_CALLBACK_STATUS result;
+    NTSTATUS status;
+    Slot->DirectorySequence = InterlockedCompareExchange64(&StageDirectorySequence, 0, 0);
+    /* Exact native/combined disposition owns its epoch only after its shared
+     * turn arrives. Generic policy quiescence must not count a queued delete
+     * against the publication which that very delete is waiting for. */
+    if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
+        !SafeUploadStageTxfSetInformationMustRefuse(Data, Objects)) {
+        BOOLEAN handled;
+        result = SafeUploadStagePublicDispositionPre(Data, Objects, CompletionContext, &handled);
+        if (handled) return result;
+        {
+            PSTAGE_STREAM stream = StageStreamForObject(Objects->FileObject);
+            FILE_INFORMATION_CLASS information = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+            if (stream != NULL && stream->BoundAllocation && stream->Sealed &&
+                (information == FileDispositionInformation || information == FileDispositionInformationEx))
+                return StagePreOperation(Data, Objects, CompletionContext, Slot);
+        }
+    }
+    /* Boot-path invariant: the boot snapshot scopes mutation only. Reads,
+     * image loads, and executes outside it do not acquire an epoch or enter
+     * Activating denial; loss of an epoch token cannot widen the scope gate. */
+    if (!StageEpochOperation(Data)) {
+        return StageDispatchCore(Data, Objects, CompletionContext, Slot);
+    }
+    /* Fast I/O has no post-operation slot in which to retain an epoch token. */
+    if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
+    status = SafeUploadPolicyAdmissionAcquire(&token);
+    if (!NT_SUCCESS(status)) {
+        /* An epoch serializes a policy swap; it is not an authorization result.
+         * If it is unavailable, refuse only an operation that can reach the
+         * current/pending protected union. Clearly out-of-scope mutations keep
+         * flowing, including during early boot before the service connects. */
+        if (StageEpochOperationTouchesUnion(Data, Objects)) {
+            if (SafeUploadPolicyAdmissionMustRetry()) return StageCompleteEpochRetry(Data);
+            return StageCompleteAccessDenied(Data);
+        }
+        SafeUploadBoundPublicationNamespaceCoverageLost();
+        result = StageDispatchCore(Data, Objects, &innerContext, Slot);
+        *CompletionContext = innerContext;
+        return result;
+    }
+    if (SafeUploadPolicyAdmissionMustRetry() && StageEpochOperationTouchesUnion(Data, Objects)) {
+        SafeUploadPolicyAdmissionRelease(token);
+        *CompletionContext = NULL;
+        return StageCompleteEpochRetry(Data);
+    }
+    Slot->Token = token;
+    result = StageDispatchCore(Data, Objects, &innerContext, Slot);
+    if (result == FLT_PREOP_PENDING) {
+        /* Pending owners take the token before the callback returns. The
+         * attach queue additionally waits for this producer-side handoff. */
+        if (Slot->Owner == StageAdmissionTokenAttach && Slot->Transaction != NULL &&
+            Slot->Token == NULL) {
+            StageAttachCommitPreOpReturn((PSTAGE_ATTACH_TRANSACTION)Slot->Transaction);
+            Slot->Transaction = NULL;
+        } else if (Slot->Owner != StageAdmissionTokenPaging || Slot->Token != NULL) {
+            SafeUploadPolicyAdmissionRelease((PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)Slot->Token);
+            Slot->Token = NULL;
+            Data->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+            Data->IoStatus.Information = 0;
+            return FLT_PREOP_COMPLETE;
+        }
+        *CompletionContext = NULL;
+        return result;
+    }
+    if (result == FLT_PREOP_SUCCESS_NO_CALLBACK || result == FLT_PREOP_SUCCESS_WITH_CALLBACK ||
+        result == FLT_PREOP_SYNCHRONIZE) {
+        if (Slot->Token == NULL) {
+            Data->IoStatus.Status = STATUS_DEVICE_NOT_READY;
+            Data->IoStatus.Information = 0;
+            return FLT_PREOP_COMPLETE;
+        }
+        Slot->Owner = StageAdmissionTokenPostOperation;
+        token = (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)Slot->Token;
+        token->InnerCompletionContext = innerContext;
+        token->OperationKind = Data->Iopb->MajorFunction |
+            (Slot->DirectoryCollision ? STAGE_EPOCH_DIRECTORY_COLLISION : 0);
+        token->DirectoryMutation = Slot->DirectoryMutation;
+        *CompletionContext = (PVOID)((ULONG_PTR)token | 1);
+        /* Directory registry completion must rewrite descendants before this
+         * epoch releases namespace exclusion. Normal synchronized SET_INFO
+         * post is <= APC; draining may defer but keeps the fence latched. */
+        return StageNamespacePostStatus(Data->Iopb->MajorFunction, Slot->DirectoryMutation, result);
+    }
+    if (Slot->DirectoryMutation) StageDirectoryEndMutation(FALSE);
+    SafeUploadPolicyAdmissionRelease((PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)Slot->Token);
+    Slot->Token = NULL;
+    *CompletionContext = NULL;
+    return result;
+}
+
+/* Admission is closed for an ordinary CREATE, as the readiness gate in SafeUploadStageDispatch decides. */
+static BOOLEAN StageReopenAdmissionClosed(_In_ PFLT_CALLBACK_DATA Data)
+{
+    return SafeUploadStageMandatoryTeardownActive() ||
+        (InterlockedCompareExchange(&StageUnloadAdmissionClosed, 0, 0) != 0 &&
+         !(SafeUploadIsAuthenticatedClient() && FltGetRequestorProcessId(Data) == SafeUploadData.InspectorProcessId));
+}
+
+/* M2 MVP owner reopen wait (StageAdmit, STAGE_STATUS_REOPEN_WAIT). Runs with no epoch token and no stage resource held,
+ * for an ordinary top-level IRP CREATE at PASSIVE only. Polls the pinned version until it is no longer busy, the
+ * CREATE's single deadline passes, the request is cancelled or admission closes, and always releases the pin.
+ * SUCCESS (settled, changed or timed out) means: dispatch again from the start on the current state. */
+_IRQL_requires_(PASSIVE_LEVEL)
+static NTSTATUS StageWaitOwnerReopen(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Stream, _In_ ULONGLONG Deadline)
+{
+    LARGE_INTEGER interval;
+    NTSTATUS status;
+    BOOLEAN busy;
+    PAGED_CODE();
+    interval.QuadPart = -10 * 1000 * 10; /* 10 ms */
+    for (;;) {
+        if (StageReopenAdmissionClosed(Data)) { status = STATUS_DEVICE_NOT_READY; break; }
+        if (FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; break; }
+        StageAcquire(&StageNamespaceResource);
+        busy = StageReceiptBusy(Stream, TRUE);
+        StageRelease(&StageNamespaceResource);
+        if (!busy || KeQueryInterruptTime() >= Deadline) { status = STATUS_SUCCESS; break; }
+        (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
+    }
+    StageAcquire(&StageNamespaceResource);
+    if (InterlockedDecrement(&Stream->RpcReferences) == 0 && !SafeUploadStageMandatoryTeardownActive())
+        StageQueueStream(Stream, &StageCounters.WakeInline);
+    StageRelease(&StageNamespaceResource);
+    if (NT_SUCCESS(status) && StageReopenAdmissionClosed(Data)) status = STATUS_DEVICE_NOT_READY;
+    if (NT_SUCCESS(status) && FltIsIoCanceled(Data)) status = STATUS_CANCELLED;
+    return status;
+}
+#endif
+
 static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
     PCFLT_RELATED_OBJECTS Objects, PVOID *CompletionContext, SU_METADATA_DISPATCH *MetadataDispatch)
 {
@@ -11326,98 +11478,26 @@ static FLT_PREOP_CALLBACK_STATUS StageDispatchEpoch(PFLT_CALLBACK_DATA Data,
     RtlZeroMemory(&slot, sizeof(slot));
     slot.Owner = StageAdmissionTokenDispatch;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN token = NULL;
-    PVOID innerContext = NULL;
-    FLT_PREOP_CALLBACK_STATUS result;
-    NTSTATUS status;
-    slot.DirectorySequence = InterlockedCompareExchange64(&StageDirectorySequence, 0, 0);
-    /* Exact native/combined disposition owns its epoch only after its shared
-     * turn arrives. Generic policy quiescence must not count a queued delete
-     * against the publication which that very delete is waiting for. */
-    if (Data->Iopb->MajorFunction == IRP_MJ_SET_INFORMATION &&
-        !SafeUploadStageTxfSetInformationMustRefuse(Data, Objects)) {
-        BOOLEAN handled;
-        result = SafeUploadStagePublicDispositionPre(Data, Objects, CompletionContext, &handled);
-        if (handled) return result;
-        {
-            PSTAGE_STREAM stream = StageStreamForObject(Objects->FileObject);
-            FILE_INFORMATION_CLASS information = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
-            if (stream != NULL && stream->BoundAllocation && stream->Sealed &&
-                (information == FileDispositionInformation || information == FileDispositionInformationEx))
-                return StagePreOperation(Data, Objects, CompletionContext, &slot);
-        }
-    }
-    /* Boot-path invariant: the boot snapshot scopes mutation only. Reads,
-     * image loads, and executes outside it do not acquire an epoch or enter
-     * Activating denial; loss of an epoch token cannot widen the scope gate. */
-    if (!StageEpochOperation(Data)) {
-        return StageDispatchCore(Data, Objects, CompletionContext, &slot);
-    }
-    /* Fast I/O has no post-operation slot in which to retain an epoch token. */
-    if (FLT_IS_FASTIO_OPERATION(Data)) return FLT_PREOP_DISALLOW_FASTIO;
-    status = SafeUploadPolicyAdmissionAcquire(&token);
-    if (!NT_SUCCESS(status)) {
-        /* An epoch serializes a policy swap; it is not an authorization result.
-         * If it is unavailable, refuse only an operation that can reach the
-         * current/pending protected union. Clearly out-of-scope mutations keep
-         * flowing, including during early boot before the service connects. */
-        if (StageEpochOperationTouchesUnion(Data, Objects)) {
-            if (SafeUploadPolicyAdmissionMustRetry()) return StageCompleteEpochRetry(Data);
-            return StageCompleteAccessDenied(Data);
-        }
-        SafeUploadBoundPublicationNamespaceCoverageLost();
-        result = StageDispatchCore(Data, Objects, &innerContext, &slot);
-        *CompletionContext = innerContext;
-        return result;
-    }
-    if (SafeUploadPolicyAdmissionMustRetry() && StageEpochOperationTouchesUnion(Data, Objects)) {
-        SafeUploadPolicyAdmissionRelease(token);
+    for (;;) {
+        FLT_PREOP_CALLBACK_STATUS result = StageDispatchEpochOnce(Data, Objects, CompletionContext, &slot);
+        PSTAGE_STREAM reopening = slot.ReopenWait;
+        ULONGLONG deadline = slot.ReopenDeadline;
+        NTSTATUS status;
+        if (reopening == NULL) return result;
+        /* Admission completed with STAGE_STATUS_REOPEN_WAIT; its epoch token is already released. */
+        NT_ASSERT(result == FLT_PREOP_COMPLETE && Data->IoStatus.Status == STAGE_STATUS_REOPEN_WAIT);
+        status = StageWaitOwnerReopen(Data, reopening, deadline);
         *CompletionContext = NULL;
-        return StageCompleteEpochRetry(Data);
-    }
-    slot.Token = token;
-    result = StageDispatchCore(Data, Objects, &innerContext, &slot);
-    if (result == FLT_PREOP_PENDING) {
-        /* Pending owners take the token before the callback returns. The
-         * attach queue additionally waits for this producer-side handoff. */
-        if (slot.Owner == StageAdmissionTokenAttach && slot.Transaction != NULL &&
-            slot.Token == NULL) {
-            StageAttachCommitPreOpReturn((PSTAGE_ATTACH_TRANSACTION)slot.Transaction);
-            slot.Transaction = NULL;
-        } else if (slot.Owner != StageAdmissionTokenPaging || slot.Token != NULL) {
-            SafeUploadPolicyAdmissionRelease((PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)slot.Token);
-            slot.Token = NULL;
-            Data->IoStatus.Status = STATUS_DEVICE_NOT_READY;
-            Data->IoStatus.Information = 0;
+        Data->IoStatus.Information = 0;
+        if (!NT_SUCCESS(status)) {
+            Data->IoStatus.Status = status;
             return FLT_PREOP_COMPLETE;
         }
-        *CompletionContext = NULL;
-        return result;
+        Data->IoStatus.Status = STATUS_SUCCESS;
+        RtlZeroMemory(&slot, sizeof(slot));
+        slot.Owner = StageAdmissionTokenDispatch;
+        slot.ReopenDeadline = deadline;
     }
-    if (result == FLT_PREOP_SUCCESS_NO_CALLBACK || result == FLT_PREOP_SUCCESS_WITH_CALLBACK ||
-        result == FLT_PREOP_SYNCHRONIZE) {
-        if (slot.Token == NULL) {
-            Data->IoStatus.Status = STATUS_DEVICE_NOT_READY;
-            Data->IoStatus.Information = 0;
-            return FLT_PREOP_COMPLETE;
-        }
-        slot.Owner = StageAdmissionTokenPostOperation;
-        token = (PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)slot.Token;
-        token->InnerCompletionContext = innerContext;
-        token->OperationKind = Data->Iopb->MajorFunction |
-            (slot.DirectoryCollision ? STAGE_EPOCH_DIRECTORY_COLLISION : 0);
-        token->DirectoryMutation = slot.DirectoryMutation;
-        *CompletionContext = (PVOID)((ULONG_PTR)token | 1);
-        /* Directory registry completion must rewrite descendants before this
-         * epoch releases namespace exclusion. Normal synchronized SET_INFO
-         * post is <= APC; draining may defer but keeps the fence latched. */
-        return StageNamespacePostStatus(Data->Iopb->MajorFunction, slot.DirectoryMutation, result);
-    }
-    if (slot.DirectoryMutation) StageDirectoryEndMutation(FALSE);
-    SafeUploadPolicyAdmissionRelease((PSAFEUPLOAD_ADMISSION_EPOCH_TOKEN)slot.Token);
-    slot.Token = NULL;
-    *CompletionContext = NULL;
-    return result;
 #else
     return StageDispatchCore(Data, Objects, CompletionContext, &slot);
 #endif
