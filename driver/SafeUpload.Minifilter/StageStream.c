@@ -5326,7 +5326,9 @@ static VOID StageWaitHandleReceiptSettled(PSTAGE_STREAM Stream, BOOLEAN Namespac
         busy = Stream->HandleReceiptPending || Stream->HandleReceiptInFlight ||
             (Stream->AnyHandleCleanupObserved && !Stream->HandleReceiptAcknowledged) ||
             (NamespaceReopen && Stream->ReadOnly && !Stream->Sealed && !Stream->DiscardOnClose &&
-                !Stream->Discarded && !Stream->Retired && !Stream->PrivateCancellationAccepted && !StageStopping);
+                !Stream->Discarded && !Stream->Retired && !Stream->PrivateCancellationAccepted && !StageStopping) ||
+            /* M2 MVP: the service's reply to the owner's own rename (Word's temp -> document) is in flight. */
+            (NamespaceReopen && Stream->RenameExchange != NULL && !Stream->Retired && !StageStopping);
         StageRelease(&StageNamespaceResource);
         if (!busy || KeQueryInterruptTime() >= deadline) return;
         (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
@@ -6286,8 +6288,15 @@ static NTSTATUS StageDrain(PSTAGE_STREAM Stream)
     if (!MmCanFileBeTruncated(&Stream->Sections, NULL)) return STATUS_USER_MAPPED_FILE;
     status = StageFlush(Stream);
     if (!NT_SUCCESS(status)) return status;
-    if (!CcPurgeCacheSection(&Stream->Sections, NULL, 0, TRUE) ||
-        Stream->Sections.SharedCacheMap != NULL || Stream->Sections.DataSectionObject != NULL ||
+    if (!CcPurgeCacheSection(&Stream->Sections, NULL, 0, TRUE)) return STATUS_USER_MAPPED_FILE;
+    /* M2 MVP (T8 publication window): with no user mapping (checked above) a purged data or image section can still
+     * survive for minutes, the memory manager keeping its control area and file object reference until memory
+     * pressure, so a closed Word version never drained or sealed (t8-stuck-versions-1). Delete the unmapped sections
+     * now. A mapped view makes this fail and the timer retry below stays the path. Our CLOSE handler takes no stream
+     * ERESOURCE, so the synchronous CLOSE this can send under the caller's resources cannot deadlock. */
+    if (Stream->Sections.DataSectionObject != NULL || Stream->Sections.ImageSectionObject != NULL)
+        (VOID)MmForceSectionClosed(&Stream->Sections, TRUE);
+    if (Stream->Sections.SharedCacheMap != NULL || Stream->Sections.DataSectionObject != NULL ||
         Stream->Sections.ImageSectionObject != NULL) return STATUS_USER_MAPPED_FILE;
     if (InterlockedCompareExchange(&Stream->FileObjects, 0, 0) != 0) return STATUS_DEVICE_BUSY;
     /* Postoperations, including asynchronous paging and Cc AdvanceOnly, release
@@ -9553,13 +9562,18 @@ Readmit:
     }
     if (FLT_IS_IRP_OPERATION(Data) && FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; goto Complete; }
 #if SAFEUPLOAD_STAGING_PROTOTYPE
-    if (privateNamespace && KeGetCurrentIrql() == PASSIVE_LEVEL &&
-        StageMvpNamespaceCreateEligible(Data, Objects)) {
+    if (privateNamespace && KeGetCurrentIrql() == PASSIVE_LEVEL) {
+        /* M2 MVP (owner 2026-10-22 bounded publication-window wait, 10 s): every reopen of the owner's own pending
+         * version (Word reopens its document for writing right after its rename) first waits for the exact rename
+         * reply / seal, instead of failing at gate 6. After the bound, admission refuses exactly as before. Only the
+         * MVP read/query reopen form also drops writer routing, as it always did. */
+        BOOLEAN eligible = StageMvpNamespaceCreateEligible(Data, Objects);
+        PSTAGE_VIEW pending;
         PSTAGE_STREAM reopening = NULL;
         StageAcquire(&StageNamespaceResource);
-        expectedView = StageFindView(FltGetRequestorProcess(Data), &name->Name);
-        if (expectedView != NULL && expectedView->Generation == expectedGeneration) {
-            reopening = expectedView->Current;
+        pending = StageFindView(FltGetRequestorProcess(Data), &name->Name);
+        if (pending != NULL && pending->Generation == expectedGeneration) {
+            reopening = pending->Current;
             InterlockedIncrement(&reopening->RpcReferences);
             StageQueueStream(reopening, &StageCounters.WakeInline);
         }
@@ -9573,8 +9587,10 @@ Readmit:
             StageQueueStream(reopening, &StageCounters.WakeInline);
             StageRelease(&StageNamespaceResource);
         }
-        expectedView = NULL;
-        writer = FALSE;
+        if (eligible) {
+            expectedView = NULL;
+            writer = FALSE;
+        }
     }
     /* T5: FILE_DELETE_ON_CLOSE counts as writer access (writerAccess above), so a protected name opened with it is staged: the
      * version is discarded at its last cleanup and the physical file is never touched (driver/docs/design/publication-and-namespace/T5-DELETES.md R3). */
