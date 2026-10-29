@@ -48,12 +48,38 @@ internal static class StagedDestinationFile
     private const int UnbufferedAlignment = 4096;
     private const int UnbufferedChunk = 1 << 20;
 
-    public static SafeFileHandle CreateUnbuffered(string path)
+    public static SafeFileHandle CreateUnbuffered(string path) => CreateUnbuffered(path, null);
+
+    /// <summary>
+    /// A non-null descriptor is applied by the CREATE itself (MVP ownership, see <see cref="StagedPublicationOwnership"/>).
+    /// </summary>
+    public static SafeFileHandle CreateUnbuffered(string path, byte[]? securityDescriptor)
     {
         if (!OperatingSystem.IsWindows())
             return File.OpenHandle(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        if (securityDescriptor is null) return CreateUnbufferedCore(path, IntPtr.Zero);
+        IntPtr descriptor = Marshal.AllocHGlobal(securityDescriptor.Length);
+        IntPtr attributes = Marshal.AllocHGlobal(Marshal.SizeOf<SECURITY_ATTRIBUTES>());
+        try
+        {
+            Marshal.Copy(securityDescriptor, 0, descriptor, securityDescriptor.Length);
+            Marshal.StructureToPtr(new SECURITY_ATTRIBUTES
+            {
+                Length = Marshal.SizeOf<SECURITY_ATTRIBUTES>(), Descriptor = descriptor
+            }, attributes, false);
+            using var privilege = StagedPublicationOwnership.RestorePrivilegeFor(securityDescriptor);
+            return CreateUnbufferedCore(path, attributes);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(attributes);
+            Marshal.FreeHGlobal(descriptor);
+        }
+    }
 
-        var handle = CreateFile(path, 0x40010088, 0, IntPtr.Zero, 1,
+    private static SafeFileHandle CreateUnbufferedCore(string path, IntPtr security)
+    {
+        var handle = CreateFile(path, 0x40010088, 0, security, 1,
             0xA0000080, IntPtr.Zero); // GENERIC_WRITE | DELETE, CREATE_NEW, NO_BUFFERING | WRITE_THROUGH
         if (handle.IsInvalid)
         {
@@ -150,6 +176,14 @@ internal static class StagedDestinationFile
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFile(string path, uint access, uint share,
         IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SECURITY_ATTRIBUTES
+    {
+        public int Length;
+        public IntPtr Descriptor;
+        public int InheritHandle;
+    }
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

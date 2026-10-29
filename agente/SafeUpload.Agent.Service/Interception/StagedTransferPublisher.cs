@@ -440,8 +440,11 @@ public sealed partial class StagedTransferPublisher
                     transfer.TransferId.ToString("N") +
                     (publicationAttempt++ == 0 ? "" : "-" + Guid.NewGuid().ToString("N")) + ".pending");
                 _logger?.LogDebug("Requesting kernel publication permission for {TransferId}.", transfer.TransferId);
+                // MVP ownership: the saving user owns a new file; an edit keeps the existing owner and DACL.
+                byte[]? ownership = OperatingSystem.IsWindows()
+                    ? StagedPublicationOwnership.Descriptor(destinationPath, transfer.RequestorSid) : null;
                 using var permit = _publicationGate.Authorize(transfer, temporaryDestination, digest);
-                using var output = StagedDestinationFile.CreateUnbuffered(temporaryDestination);
+                using var output = StagedDestinationFile.CreateUnbuffered(temporaryDestination, ownership);
                 try
                 {
                     _ = StagedFileMetadata.Capture(output); // check actual inherited storage, not CREATE's NORMAL input
