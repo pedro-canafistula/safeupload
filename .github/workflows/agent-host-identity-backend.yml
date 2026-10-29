@@ -1,0 +1,62 @@
+name: Identidade do serviço com Java e MySQL
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/agent-host-identity-backend.yml'
+      - 'agente/scripts/Test-HostIdentityBackend.ps1'
+      - 'agente/SafeUpload.Agent.Core/Infrastructure/RegisteredHostIdentityStore.cs'
+      - 'agente/SafeUpload.Agent.Service/Dispatch/AdministrationConfiguration.cs'
+      - 'agente/SafeUpload.Agent.Service/Program.cs'
+
+permissions:
+  contents: read
+
+jobs:
+  service-host-identity:
+    name: Serviço SYSTEM, reinício e backend real
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            agente
+            web/back
+            db
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: web/back/pom.xml
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Empacotar backend existente e publicar serviço
+        shell: pwsh
+        run: |
+          mvn -B -f web/back/pom.xml -DskipTests package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj -c Release -r win-x64 --self-contained true -o artifacts/host-identity-service
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preparar MySQL 8.4.13 oficial e conferir hash
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'mysql-8.4.13-winx64.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'mysql-host-identity'
+          Invoke-WebRequest -Uri 'https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.13-winx64.zip' -OutFile $zip
+          $expected = 'E9CD98B1D23F122987B1AFCA26AD942EFEC5891481103D48AE3CDE237FA3EA54'
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expected) { throw 'Unexpected MySQL archive hash.' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $destination
+      - name: Validar identidade do serviço com banco e backend reais
+        shell: pwsh
+        run: |
+          ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend
+      - name: Preservar resultados sanitizados inclusive em falha
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-identity-backend
+          path: artifacts/host-identity-backend/
