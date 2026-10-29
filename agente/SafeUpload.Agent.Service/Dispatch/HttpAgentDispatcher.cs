@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -221,11 +222,13 @@ public sealed class HttpAgentDispatcher : BackgroundService
     }
 
     /// <summary>
-    /// Versão informada no heartbeat. Constante por enquanto: o agente ainda não
-    /// carrega versão de assembly própria, e inventar uma leitura de metadado
-    /// aqui esconderia que este número não é mantido em lugar nenhum ainda.
+    /// Versão do serviço efetivamente compilado, mesmo quando hospedado por um
+    /// utilitário ou test runner. Preserva o sufixo de revisão quando o SDK o inclui.
     /// </summary>
-    private const string AgentVersion = "1.0.0";
+    private static readonly string AgentVersion =
+        typeof(HttpAgentDispatcher).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? typeof(HttpAgentDispatcher).Assembly.GetName().Version?.ToString()
+        ?? "unknown";
 
     private sealed record HeartbeatRequest(
         string EndpointId,

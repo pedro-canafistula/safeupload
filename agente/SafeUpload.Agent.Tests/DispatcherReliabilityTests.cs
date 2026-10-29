@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,6 +12,30 @@ namespace SafeUpload.Agent.Tests;
 
 public sealed class DispatcherReliabilityTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task Heartbeat_por_endpoint_informa_versao_do_servico_e_politica_sem_mudar_contrato(int policyVersion)
+    {
+        using var workspace = new TestWorkspace();
+        var queue = new LocalQueueAuditSink(workspace.QueueFile);
+        var handler = new Handler(200, "{}");
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/agent/") };
+        using var dispatcher = new HttpAgentDispatcher(queue, new Policies(policyVersion), client, "PC-SINTETICO",
+            TimeSpan.FromSeconds(30), NullLogger<HttpAgentDispatcher>.Instance);
+        await dispatcher.RunCycleAsync(CancellationToken.None);
+        using var body = JsonDocument.Parse(handler.HeartbeatPayload!);
+        var root = body.RootElement;
+        Assert.Equal(5, root.EnumerateObject().Count());
+        Assert.Equal("PC-SINTETICO", root.GetProperty("endpointId").GetString());
+        Assert.Equal(Environment.MachineName, root.GetProperty("hostname").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("os").GetString()));
+        Assert.Equal(policyVersion, root.GetProperty("policyVersion").GetInt32());
+        Assert.Equal(typeof(HttpAgentDispatcher).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion,
+            root.GetProperty("agentVersion").GetString());
+        Assert.Null(handler.Payload); // Empty audit queue does not manufacture an events request.
+    }
+
     [Theory]
     [InlineData("{\"acceptedOverrides\":1}")]
     [InlineData("{\"acceptedEvents\":0}")]
@@ -139,9 +164,9 @@ public sealed class DispatcherReliabilityTests
         Assert.Empty(await sink.ReadPendingOverridesAsync(100, CancellationToken.None));
     }
 
-    private sealed class Policies : IPolicyStore
+    private sealed class Policies(int version = 1) : IPolicyStore
     {
-        public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(LocalPolicyStore.CreateDefault());
+        public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(LocalPolicyStore.CreateDefault() with { Version = version });
     }
 
     [Theory]
@@ -235,11 +260,13 @@ public sealed class DispatcherReliabilityTests
     {
         public TaskCompletionSource Sent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string? Payload { get; private set; }
+        public string? HeartbeatPayload { get; private set; }
         public bool FailHeartbeat { get; init; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             if (request.RequestUri!.AbsolutePath.EndsWith("heartbeat"))
             {
+                HeartbeatPayload = await request.Content!.ReadAsStringAsync(token);
                 if (FailHeartbeat) throw new HttpRequestException("Heartbeat indisponível");
                 return new HttpResponseMessage(HttpStatusCode.OK);
             }

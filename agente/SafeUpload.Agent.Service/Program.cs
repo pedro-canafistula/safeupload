@@ -140,42 +140,22 @@ public static class Program
         // maquina que ainda nao aponta para nenhum painel precisa proteger de
         // forma autonoma, e nao ficar esperando um servidor que talvez nunca
         // seja configurado.
-        string adminBaseUrl = builder.Configuration["CentroAdministracao:BaseUrl"] ?? string.Empty;
+        var administration = AdministrationConfiguration.Parse(builder.Configuration);
         string endpointId = Environment.MachineName;
-        builder.Services.AddSingleton(new CommunicationHealth(!string.IsNullOrWhiteSpace(adminBaseUrl)));
-        var heartbeatConfiguration = AgentHeartbeatConfiguration.Parse(
-            builder.Configuration["CentroAdministracao:HeartbeatProtocol"],
-            builder.Configuration["CentroAdministracao:RegisteredHostId"],
-            builder.Configuration["CentroAdministracao:RegisteredUserId"]);
-        if (heartbeatConfiguration.RegisteredHostId is not null && string.IsNullOrWhiteSpace(adminBaseUrl))
-            throw new InvalidOperationException("Heartbeat AgentApi exige CentroAdministracao:BaseUrl.");
+        builder.Services.AddSingleton(new CommunicationHealth(administration.BaseUri is not null));
+        var heartbeatConfiguration = administration.Heartbeat;
 
-        if (string.IsNullOrWhiteSpace(adminBaseUrl))
+        if (administration.BaseUri is null)
         {
             builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
         }
         else
         {
-            var adminUri = new Uri(adminBaseUrl.EndsWith('/') ? adminBaseUrl : adminBaseUrl + "/");
-
-            int timeoutSeconds =
-                int.TryParse(builder.Configuration["CentroAdministracao:TimeoutSeconds"], out int parsedTimeout)
-                    ? parsedTimeout
-                    : 5;
-
-            int intervalSeconds =
-                int.TryParse(builder.Configuration["CentroAdministracao:DispatchIntervalSeconds"], out int parsedInterval)
-                    ? parsedInterval
-                    : 30;
-
-            if (timeoutSeconds <= 0 || intervalSeconds <= 0)
-                throw new InvalidOperationException("Os prazos de conexão e despacho do Centro de Administração precisam ser positivos.");
-            if (adminUri.Scheme != Uri.UriSchemeHttp && adminUri.Scheme != Uri.UriSchemeHttps)
-                throw new InvalidOperationException("CentroAdministracao:BaseUrl precisa usar HTTP ou HTTPS.");
+            var adminUri = administration.BaseUri;
 
             // A rede só é consultada em segundo plano. Inspeções usam o último
             // snapshot validado mesmo durante timeout, falha ou reconexão.
-            ConfigureAdministrationHttpClient(builder.Services, adminUri, timeoutSeconds);
+            ConfigureAdministrationHttpClient(builder.Services, adminUri, (int)administration.Timeout.TotalSeconds);
 
             if (heartbeatConfiguration.RegisteredHostId is not null)
             {
@@ -183,7 +163,7 @@ public static class Program
                 builder.Services.AddHttpClient(HttpClientName + "AgentApi", client =>
                 {
                     client.BaseAddress = adminUri;
-                    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+                    client.Timeout = administration.Timeout;
                 })
                 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
                 .RemoveAllLoggers();
@@ -207,7 +187,7 @@ public static class Program
                     provider.GetRequiredService<IPolicyStore>(),
                     provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
                     endpointId,
-                    TimeSpan.FromSeconds(intervalSeconds),
+                    administration.DispatchInterval,
                     provider.GetRequiredService<ILogger<HttpAgentDispatcher>>(),
                     provider.GetRequiredService<CommunicationHealth>())
                 {
