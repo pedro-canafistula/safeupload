@@ -1451,13 +1451,20 @@ public sealed class GrowthArchiveContractModelTests
         { return false; }
     }
 
+    // ASCII case labels: an astral character in InlineData is displayed as "😀" in discovery but "\ud83d\ude00" in the
+    // TRX, which the exact discovery/execution gate correctly treats as a missing plus an extra case (m2mvpa1029c).
     [Theory]
-    [InlineData("a")]
-    [InlineData("é")]
-    [InlineData("😀")]
-    [InlineData("\\u0001")]
-    public void Revision9_retains_128_findings_and_512_unit_member_without_inline_ledger_overflow(string character)
+    [InlineData("ascii")]
+    [InlineData("latin")]
+    [InlineData("astral")]
+    [InlineData("escape-text")]
+    public void Revision9_retains_128_findings_and_512_unit_member_without_inline_ledger_overflow(string kind)
     {
+        string character = kind switch
+        {
+            "ascii" => "a", "latin" => "\u00e9", "astral" => "\U0001F600", "escape-text" => "\\u0001",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
         string member = string.Concat(Enumerable.Repeat(character, 512 / character.Length)).PadRight(512, 'a');
         DurableApproval a = Approval(new string('A', 64), true);
         a = a with { Inspection = a.Inspection with { Findings = Enumerable.Range(0, 128).Select(_ => new ApprovalFinding(0, "•••••••••25", member)).ToArray() } };
