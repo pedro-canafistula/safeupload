@@ -100,8 +100,15 @@ t5_office_preflight() {
     [ "$($V domstate "$dom")" = 'shut off' ] && [ "$($V domstate win10-debug2)" = 'shut off' ] || { echo 'Office mode requires both clones shut off'; return 1; }
     [ "$(_rd_vda "$dom" --inactive)" = "$t5_original_base" ] || { echo 'Office mode requires exact base-20261014 vda'; return 1; }
     local conflict
-    for conflict in "$RUN_DISK_STATE"/win10-debug[23]*; do
+    # An active run on either clone conflicts. A parked disk (run-disk.sh park) and the lifecycle lock do not: the
+    # Office repoint never touches base-20261014, which a parked overlay keeps as its base, and restores the vda.
+    for conflict in "$RUN_DISK_STATE"/win10-debug2 "$RUN_DISK_STATE"/win10-debug3; do
         [ ! -e "$conflict" ] || { echo 'Office mode refuses conflicting run/parked state'; return 1; }
+    done
+    for conflict in "$RUN_DISK_STATE"/win10-debug[23].parked-*; do
+        case "$conflict" in *.overlay|*.xml) continue ;; esac
+        [ ! -e "$conflict" ] || grep -qxF "base=$t5_original_base" "$conflict" ||
+            { echo 'Office mode refuses conflicting run/parked state'; return 1; }
     done
     [ -f "$t5_original_base" ] && [ -f "$t5_office_base" ] || return 1
     [ "$(_rd_vol "$t5_office_base" format)" = qcow2 ] && [ "$(_rd_vol "$t5_office_base" backing)" = "$t5_original_base" ] || { echo 'Unexpected Office backing chain'; return 1; }

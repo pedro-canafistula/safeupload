@@ -251,12 +251,19 @@ _rd_named_elsewhere() {{ return 1; }}
 _rd_repoint() {{ [ "$(cat "$ev/power")" = 'shut off' ] || return 1; printf '%s' "$2" > "$ev/current"; printf 'repoint:%s\\n' "$2" >> "$ev/trace"; }}
 _rd_shutdown() {{ printf 'shut off' > "$ev/power"; }}
 '''
-    for mutation in ('none', 'running', 'wrong-vda', 'parked', 'sibling-state', 'wrong-backing', 'shared'):
+    allowed = ('none', 'lifecycle-lock', 'parked-same-base')
+    for mutation in ('none', 'running', 'wrong-vda', 'parked', 'sibling-state', 'wrong-backing', 'shared',
+                     'lifecycle-lock', 'parked-same-base', 'active-run', 'sibling-parked-other-base'):
         extra = {'none':'', 'running':'echo running > "$ev/power"', 'wrong-vda':'echo other > "$ev/current"',
                  'parked':'touch "$RUN_DISK_STATE/win10-debug3.parked-other"', 'sibling-state':'touch "$RUN_DISK_STATE/win10-debug2"',
-                 'wrong-backing':'_rd_vol() { echo wrong; }', 'shared':'_rd_named_elsewhere() { return 0; }'}[mutation]
+                 'wrong-backing':'_rd_vol() { echo wrong; }', 'shared':'_rd_named_elsewhere() { return 0; }',
+                 'lifecycle-lock':'touch "$RUN_DISK_STATE/win10-debug3.lifecycle.lock"',
+                 'parked-same-base':'printf "base=%s\\noverlay=/x\\n" "$t5_original_base" > "$RUN_DISK_STATE/win10-debug3.parked-demo1"; '
+                                    'touch "$RUN_DISK_STATE/win10-debug3.parked-demo1.overlay" "$RUN_DISK_STATE/win10-debug3.parked-demo1.xml"',
+                 'active-run':'touch "$RUN_DISK_STATE/win10-debug3"',
+                 'sibling-parked-other-base':'printf "base=/other.qcow2\\n" > "$RUN_DISK_STATE/win10-debug2.parked-x"'}[mutation]
         run = subprocess.run(['bash'], input=prefix+lifecycle+'\n'+extra+'\nt5_office_preflight\n', text=True, capture_output=True)
-        check((run.returncode == 0) == (mutation == 'none'), 'preflight '+mutation+run.stderr)
+        check((run.returncode == 0) == (mutation in allowed), 'preflight '+mutation+run.stderr)
         for p in state.iterdir(): p.unlink()
     for full_status, cleanup_ok in ((0, True), (1, True), (129, True), (130, True), (143, True), (0, False)):
         (work / 'stub-verdict.txt').write_text('T5RunProfile INFO OfficeExcel\n')
