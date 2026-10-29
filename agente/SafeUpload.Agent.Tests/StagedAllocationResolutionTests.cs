@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Extensions.Configuration;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Minifilter;
 using SafeUpload.Agent.Service.Interception;
@@ -252,6 +253,74 @@ public sealed class StagedAllocationResolutionTests : IDisposable
 
     private StagedSpaceBudget Budget() => new(Root,
         new(true, 512L << 20, 128L << 20, 0), () => 2048L << 20);
+
+    [Fact]
+    public async Task Mvp_free_space_floor_refuses_before_any_backing_then_allows_at_the_exact_boundary()
+    {
+        // Owner 2026-10-29 MVP: reservations off, global free-space floor on.
+        StagedPrivateStorage.CreateDirectory(Root);
+        var journal = Journal();
+        await journal.ReconcileDriverInstanceV20Async(_driver, (uint)StageV20Capability.Required, default);
+        long available = 0;
+        var floor = new StagedSpaceFloor(1024L * 1024 * 1024, () => available);
+        var allocator = new StagedTransferAllocator(Root, journal, spaceFloor: floor);
+        var request = Request();
+        available = floor.FloorBytes + StagedTransferAllocator.MaximumSeedBytes - 1;
+        int allocations = 0;
+        var refused = await Assert.ThrowsAsync<StagedNoAllocationCommittedException>(() =>
+            allocator.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
+                async () => { allocations++; return await Allocate(allocator, request); }, default));
+        Assert.IsType<StagedSpaceException>(refused.InnerException);
+        Assert.Equal(StageV20Result.NoAllocationCommitted, MinifilterInterceptor.ClassifyAllocationFailure(refused));
+        Assert.Equal(1, allocations);
+        Assert.Empty(Directory.GetFiles(Root, "*.txt")); Assert.False(File.Exists(Destination));
+        Assert.Empty(await Journal().ReadPendingAsync(default));
+
+        available = floor.FloorBytes + StagedTransferAllocator.MaximumSeedBytes;
+        var next = Request();
+        var allocated = Assert.IsType<StagedAllocationReply>(await allocator.ResolveAllocationRequestV20Async(next,
+            Destination, DestinationKind.Cloud, () => Allocate(allocator, next), default));
+        Assert.True(File.Exists(allocated.Transfer.StagePath)); Assert.False(File.Exists(Destination));
+    }
+
+    [Fact]
+    public void Mvp_floor_rejects_unknown_space_negative_floor_and_bytes_below_the_floor()
+    {
+        var unknown = new StagedSpaceFloor(0, () => -1);
+        Assert.Throws<StagedSpaceException>(() => unknown.Require(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new StagedSpaceFloor(-1, () => 0));
+        var floor = new StagedSpaceFloor(10, () => 15);
+        floor.Require(5);
+        Assert.Throws<StagedSpaceException>(() => floor.Require(6));
+    }
+
+    [Theory]
+    [InlineData(null, null, false)]
+    [InlineData("false", null, false)]
+    [InlineData("false", "true", true)]
+    [InlineData("true", "true", false)]
+    public void Mvp_floor_only_mode_requires_disabled_reservations(string? enabled, string? floorOnly, bool expected)
+    {
+        var settings = new Dictionary<string, string?>();
+        if (enabled is not null) settings["Interception:StageSpace:Enabled"] = enabled;
+        if (floorOnly is not null) settings["Interception:StageSpace:FloorOnly"] = floorOnly;
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        Assert.Equal(expected, StagedSpaceConfiguration.IsFloorOnly(configuration));
+    }
+
+    [Fact]
+    public void Mvp_floor_defaults_to_the_budget_floor_and_honours_an_override()
+    {
+        const long gib = 1024L * 1024 * 1024;
+        var empty = new ConfigurationBuilder().Build();
+        // max(1 GiB, 5% of the volume), the existing budget default.
+        Assert.Equal(25 * gib, StagedSpaceConfiguration.ResolveFloor(empty, Root, _ => (100 * gib, 500 * gib)).FloorBytes);
+        Assert.Equal(gib, StagedSpaceConfiguration.ResolveFloor(empty, Root, _ => (5 * gib, 10 * gib)).FloorBytes);
+        var overridden = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["Interception:StageSpace:FreeSpaceFloorBytes"] = "123" }).Build();
+        Assert.Equal(123, StagedSpaceConfiguration.ResolveFloor(overridden, Root, _ => (5 * gib, 10 * gib)).FloorBytes);
+        Assert.Throws<IOException>(() => StagedSpaceConfiguration.ResolveFloor(empty, Root, _ => (11, 10)));
+    }
 
     [Fact]
     public async Task Real_budget_exhaustion_proves_no_allocation_without_losing_alert_or_prior_charge()

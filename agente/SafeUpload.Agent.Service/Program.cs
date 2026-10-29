@@ -110,7 +110,8 @@ public static class Program
         builder.Services.AddSingleton<InspectionService>(services =>
         {
             IStagedParser? parser = null;
-            if (StagedSpaceConfiguration.IsEnabled(builder.Configuration))
+            // The isolated, memory-bounded parser is independent of the reservation budget (MVP floor-only mode keeps it).
+            if (StagedSpaceConfiguration.IsEnabled(builder.Configuration) || StagedSpaceConfiguration.IsFloorOnly(builder.Configuration))
             {
                 parser = new StagedParserProcess(StagedSpaceConfiguration.ParserMemoryBytes(builder.Configuration));
             }

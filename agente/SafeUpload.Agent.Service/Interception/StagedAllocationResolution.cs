@@ -90,7 +90,8 @@ public sealed partial class StagedTransferAllocator
             }
             StagedAllocationReply? allocated;
             try { allocated = await prepare().ConfigureAwait(false); }
-            catch (StagedSpaceException spaceFailure) when (_spaceBudget is not null)
+            // A budget refusal or the MVP free-space floor (both raised before any backing exists).
+            catch (StagedSpaceException spaceFailure)
             {
                 try
                 {

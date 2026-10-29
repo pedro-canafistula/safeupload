@@ -8,6 +8,23 @@ internal static class StagedSpaceConfiguration
     internal const long DefaultParserMemoryBytes = 256L * 1024 * 1024;
     internal static bool IsEnabled(IConfiguration configuration) => configuration.GetValue<bool?>(Prefix + "Enabled") ?? true;
 
+    // M2 MVP (owner, 2026-10-29): reservations off, global free-space floor on. Only meaningful with Enabled=false.
+    internal static bool IsFloorOnly(IConfiguration configuration) =>
+        !IsEnabled(configuration) && (configuration.GetValue<bool?>(Prefix + "FloorOnly") ?? false);
+
+    internal static StagedSpaceFloor ResolveFloor(IConfiguration configuration, string stagingRoot,
+        Func<string, (long Available, long Total)>? readVolume = null)
+    {
+        var read = readVolume ?? ReadVolume;
+        string root = Path.GetFullPath(stagingRoot);
+        var volume = read(root);
+        if (volume.Available < 0 || volume.Total <= 0 || volume.Available > volume.Total)
+            throw new IOException("The staging volume returned invalid space information.");
+        long floor = configuration.GetValue<long?>(Prefix + "FreeSpaceFloorBytes") ??
+            StagedSpaceOptions.Defaults(volume.Available, volume.Total).FreeSpaceFloorBytes;
+        return new StagedSpaceFloor(floor, () => read(root).Available);
+    }
+
     internal static long ParserMemoryBytes(IConfiguration configuration)
     {
         long value = configuration.GetValue<long?>(Prefix + "ParserMemoryBytes") ?? DefaultParserMemoryBytes;

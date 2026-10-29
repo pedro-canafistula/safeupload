@@ -1736,7 +1736,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 throw new IOException("Staging-space reservations remain. Restore the large-file configuration before recovering or disabling this mode.");
             // Construct the allocator first: it establishes the protected private directory.
             _stageAllocator = new StagedTransferAllocator(root, _stageJournal,
-                requireProtectedParent: true, requireSystemIdentity: true);
+                requireProtectedParent: true, requireSystemIdentity: true,
+                spaceFloor: StagedSpaceConfiguration.IsFloorOnly(_configuration)
+                    ? StagedSpaceConfiguration.ResolveFloor(_configuration, root) : null);
             if (StagedSpaceConfiguration.IsEnabled(_configuration))
             {
                 _stageSpaceBudget ??= new StagedSpaceBudget(root, StagedSpaceConfiguration.Resolve(_configuration, root),

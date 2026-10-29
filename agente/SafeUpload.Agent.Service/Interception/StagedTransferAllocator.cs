@@ -16,6 +16,7 @@ public sealed partial class StagedTransferAllocator
     // Legacy guard until a durable exact-object space grant is issued.
     internal const long MaximumSeedBytes = 16 * 1024 * 1024;
     private readonly StagedSpaceBudget? _spaceBudget;
+    private readonly StagedSpaceFloor? _spaceFloor;
     private readonly string _root;
     private readonly StagedTransferJournal _journal;
     private readonly FileSecurity? _fileSecurity;
@@ -27,10 +28,12 @@ public sealed partial class StagedTransferAllocator
 
     public StagedTransferAllocator(string root, StagedTransferJournal journal,
         bool requireProtectedParent = false, bool requireSystemIdentity = false, StagedSpaceBudget? spaceBudget = null,
-        IStagedSeedReadAuthorityEvaluator? seedReadAuthority = null)
+        IStagedSeedReadAuthorityEvaluator? seedReadAuthority = null, StagedSpaceFloor? spaceFloor = null)
     {
         _root = Path.GetFullPath(root);
         _spaceBudget = spaceBudget;
+        // The floor replaces the budget; it never stacks on top of it.
+        _spaceFloor = spaceBudget is null ? spaceFloor : null;
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
         _seedReadAuthority = seedReadAuthority ?? new StagedSeedReadAuthorityEvaluator();
         if (_spaceBudget is not null)
@@ -229,6 +232,8 @@ public sealed partial class StagedTransferAllocator
         bool copyExisting = disposition is 1 or 3 && sourceExists;
         if (_spaceBudget is not null) await _spaceBudget.ReconcileAsync(_journal, cancellationToken, 16, (_, _) => { }).ConfigureAwait(false);
         long seedCapacity = MaximumSeedBytes;
+        // Before any backing file exists, so a refusal commits nothing.
+        _spaceFloor?.Require(seedCapacity);
         if (_spaceBudget is { } budget)
             seedCapacity = await budget.ReserveAfterPendingRefundsAsync(id,
                 requestorSid ?? throw new IOException("A capacity grant needs the exact requestor SID."),
@@ -501,6 +506,7 @@ public sealed partial class StagedTransferAllocator
         TransferJournalEntry intent = intentResult.Entry;
         if (intent.StageIdentity is null && !File.Exists(transfer.StagePath))
         {
+            _spaceFloor?.Require(MaximumSeedBytes);
             if (OperatingSystem.IsWindows())
             {
                 await StagedBackingFile.CreateAsync(null, transfer.StagePath, MaximumSeedBytes,

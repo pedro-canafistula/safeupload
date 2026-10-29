@@ -18,18 +18,22 @@ public sealed class StartupPolicyIntegrationTests : IDisposable
     public void Dispose() => _workspace.Dispose();
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
     public void Actual_service_graph_preserves_parser_configuration_and_policy_order_without_starting(
-        bool remote, bool parserEnabled)
+        bool remote, bool parserEnabled, bool floorOnly)
     {
         string origin = remote ? "http://policy.invalid/agent/" : "";
         var builder = Program.CreateConfiguredServiceBuilder([
             "--CentroAdministracao:BaseUrl=" + origin,
             "--Interception:Mode=Minifilter",
             "--Interception:StageSpace:Enabled=" + (parserEnabled ? "true" : "false"),
+            // The shipped appsettings selects the MVP floor-only mode; state it explicitly per case.
+            "--Interception:StageSpace:FloorOnly=" + (floorOnly ? "true" : "false"),
             "--InspecaoTls:Habilitada=false"]);
         builder.Services.Replace(ServiceDescriptor.Singleton<IAuditSink>(new LocalQueueAuditSink(_workspace.QueueFile)));
         var workers = builder.Services.Where(d => d.ServiceType == typeof(IHostedService)).ToArray();
@@ -57,7 +61,8 @@ public sealed class StartupPolicyIntegrationTests : IDisposable
         var engine = provider.GetRequiredService<InspectionService>();
         var parser = typeof(InspectionService).GetField("_stagedParser", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(parser);
-        if (parserEnabled) Assert.IsType<StagedParserProcess>(parser.GetValue(engine));
+        // The isolated parser follows the reservation budget or the MVP floor-only mode.
+        if (parserEnabled || floorOnly) Assert.IsType<StagedParserProcess>(parser.GetValue(engine));
         else Assert.Null(parser.GetValue(engine));
         Assert.Equal(origin, builder.Configuration["CentroAdministracao:BaseUrl"]);
     }
