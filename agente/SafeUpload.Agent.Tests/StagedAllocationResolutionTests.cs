@@ -270,7 +270,7 @@ public sealed class StagedAllocationResolutionTests : IDisposable
         var refused = await Assert.ThrowsAsync<StagedNoAllocationCommittedException>(() =>
             allocator.ResolveAllocationRequestV20Async(request, Destination, DestinationKind.Cloud,
                 async () => { allocations++; return await Allocate(allocator, request); }, default));
-        Assert.IsType<StagedSpaceException>(refused.InnerException);
+        Assert.IsType<StagedSpaceFloorException>(refused.InnerException);
         Assert.Equal(StageV20Result.NoAllocationCommitted, MinifilterInterceptor.ClassifyAllocationFailure(refused));
         Assert.Equal(1, allocations);
         Assert.Empty(Directory.GetFiles(Root, "*.txt")); Assert.False(File.Exists(Destination));
@@ -287,11 +287,26 @@ public sealed class StagedAllocationResolutionTests : IDisposable
     public void Mvp_floor_rejects_unknown_space_negative_floor_and_bytes_below_the_floor()
     {
         var unknown = new StagedSpaceFloor(0, () => -1);
-        Assert.Throws<StagedSpaceException>(() => unknown.Require(0));
+        Assert.Throws<StagedSpaceFloorException>(() => unknown.Require(0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new StagedSpaceFloor(-1, () => 0));
         var floor = new StagedSpaceFloor(10, () => 15);
         floor.Require(5);
-        Assert.Throws<StagedSpaceException>(() => floor.Require(6));
+        Assert.Throws<StagedSpaceFloorException>(() => floor.Require(6));
+    }
+
+    [Fact]
+    public async Task Mvp_floor_mode_still_treats_an_unwitnessed_space_exception_as_uncertain_and_keeps_residue()
+    {
+        // Only the floor's own refusal is a space authority's proof; a bare StagedSpaceException is not.
+        var allocator = new StagedTransferAllocator(Root, Journal(), spaceFloor: new StagedSpaceFloor(0, () => long.MaxValue));
+        var request = Request();
+        request.TryReadStagePayload<SafeUploadStageAllocateV20>(Operation.StageAllocate, out var source);
+        string path = Path.Combine(Root, source.Intent.AllocationReservationId.ToString("N") + ".txt");
+        await File.WriteAllTextAsync(path, "unknown private bytes");
+        var error = await Assert.ThrowsAsync<StagedSpaceException>(() => allocator.ResolveAllocationRequestV20Async(request,
+            Destination, DestinationKind.Cloud, () => throw new StagedSpaceException("No floor witness"), default));
+        Assert.Equal(StageV20Result.RetryableFailure, MinifilterInterceptor.ClassifyAllocationFailure(error));
+        Assert.Equal("unknown private bytes", await File.ReadAllTextAsync(path));
     }
 
     [Theory]

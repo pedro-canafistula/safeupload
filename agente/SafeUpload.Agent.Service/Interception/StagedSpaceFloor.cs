@@ -24,6 +24,13 @@ public sealed class StagedSpaceFloor
         long available = _available();
         // Unknown or nonsensical space information fails closed, like the budget's volume read.
         if (available < 0 || available - bytes < FloorBytes)
-            throw new StagedSpaceException("Not enough free disk space for this save. Free some disk space and try again.");
+            throw new StagedSpaceFloorException();
     }
 }
+
+/// <summary>
+/// The floor's own refusal, raised before any backing file exists. Only this type (or the budget's refusal) counts as
+/// a space authority's proof of non-allocation; a bare <see cref="StagedSpaceException"/> stays uncertain.
+/// </summary>
+public sealed class StagedSpaceFloorException()
+    : StagedSpaceException("Not enough free disk space for this save. Free some disk space and try again.");

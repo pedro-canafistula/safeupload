@@ -19,7 +19,7 @@ public sealed record StagedSpaceOptions(bool Enabled, long TotalBytes, long PerU
 }
 
 /// <summary>A resource refusal never grants inspection/publication authority.</summary>
-public sealed class StagedSpaceException(string message) : IOException(message)
+public class StagedSpaceException(string message) : IOException(message)
 {
     public const string Reason = "not_enough_staging_space";
 }
