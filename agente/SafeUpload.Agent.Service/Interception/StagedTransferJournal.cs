@@ -2548,7 +2548,8 @@ public sealed partial class StagedTransferJournal
                     TransferJournalState.Approved or TransferJournalState.Publishing) ||
                 current.BoundAllocation is not null && current.State == TransferJournalState.Released ||
                 (current.State == TransferJournalState.Blocked && !current.JustificationWindowClosed))
-                throw StagedRequestRefusal.Create("The staged version is busy.");
+                throw StagedRequestRefusal.Create($"The staged version is busy ({current.State}" +
+                    (current.PendingRename is { } pendingRename ? $", renaming to {Path.GetFileName(pendingRename.DestinationPath)}" : "") + ").");
             if (sealedVersion != current.SealedOnce)
                 throw StagedRequestRefusal.Create("The kernel and journal disagree about the version seal.");
             await RequireCurrentDestinationAsync(current, token).ConfigureAwait(false);
@@ -2556,8 +2557,12 @@ public sealed partial class StagedTransferJournal
             for (var name = current.NamespaceTombstones; name is not null; name = name.Previous)
                 if (++moves >= 16) throw StagedRequestRefusal.Create("The version's namespace history is full.");
             var targets = await DestinationVersionsAsync(destination, token).ConfigureAwait(false);
-            if (targets.Any(e => e.Entry.Transfer.TransferId != id && e.Reserved))
-                throw StagedRequestRefusal.Create("The rename destination is busy.");
+            var blocking = targets.Where(e => e.Entry.Transfer.TransferId != id && e.Reserved).ToList();
+            if (blocking.Count != 0)
+                throw StagedRequestRefusal.Create("The rename destination is busy: " + string.Join("; ", blocking.Select(e =>
+                    $"{e.Entry.Transfer.TransferId:N} {e.Entry.State} at {Path.GetFileName(e.Entry.Transfer.DestinationPath)}" +
+                    (e.Entry.PendingRename is { } other ? $" renaming to {Path.GetFileName(other.DestinationPath)}" : ""))) +
+                    $" (source {id:N} {current.State} at {Path.GetFileName(current.Transfer.DestinationPath)}).");
             var updated = current with
             {
                 PendingRename = pending,
