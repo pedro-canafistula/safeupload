@@ -21,6 +21,14 @@ public class AuthContracts {
         boolean existemUsuarios
     ){}
 
+    public record UsuarioSessaoResponse(
+        Integer idUsuario,
+        String nomeCompleto,
+        String username,
+        String email,
+        String role
+    ){}
+
     public record EnderecoRegister(
         @NotBlank 
         @Size(min=9, max=9)

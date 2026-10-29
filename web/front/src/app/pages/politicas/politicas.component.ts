@@ -1,6 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { finalize } from 'rxjs';
+import { ApiService } from '../../core/api.service';
 
 @Component({
   standalone: true,
@@ -9,6 +11,8 @@ import { FormsModule } from '@angular/forms';
   styleUrl: './politicas.component.css'
 })
 export class PoliticasComponent {
+  constructor(private api: ApiService) {}
+
   readonly regras = [
     { id: 'cpf', nome: 'CPF', descricao: 'Cadastro de Pessoa Física' },
     { id: 'rg', nome: 'RG', descricao: 'Registro Geral de identidade' },
@@ -26,6 +30,9 @@ export class PoliticasComponent {
   acao = 'bloquear';
   jsonGerado = '';
   jsonPronto = false;
+  enviando = false;
+  erro = '';
+  mensagem = '';
 
   alternarRegra(id: string, marcado: boolean): void {
     this.regrasSelecionadas = marcado
@@ -35,14 +42,29 @@ export class PoliticasComponent {
 
   enviarPolitica(): void {
     if (!this.nome.trim() || !this.ipValido(this.ip) || !this.regrasSelecionadas.length) return;
+    this.erro = '';
+    this.mensagem = '';
     const politica = {
       versao: '1.0', nome: this.nome.trim(), destino: { ip: this.ip.trim() }, acao: this.acao,
       regras: this.regrasSelecionadas.map(id => ({ tipo: id, nome: this.regras.find(r => r.id === id)!.nome })),
       criadaEm: new Date().toISOString(), origem: 'console-administrativo'
     };
     this.jsonGerado = JSON.stringify(politica, null, 2);
-    this.jsonPronto = true;
-    this.baixarJson();
+    this.jsonPronto = false;
+    this.enviando = true;
+    this.api.publicarPolitica(politica).pipe(
+      finalize(() => this.enviando = false)
+    ).subscribe({
+      next: response => {
+        this.mensagem = response.mensagem || 'Política enviada ao servidor.';
+        this.jsonPronto = true;
+      },
+      error: error => {
+        this.erro = error?.error?.mensagem
+          ?? error?.error?.erro
+          ?? 'Não foi possível enviar a política ao servidor.';
+      }
+    });
   }
 
   private ipValido(valor: string): boolean {
