@@ -60,8 +60,12 @@ function Wait-Value([scriptblock]$Condition, [string]$Description, [int]$Seconds
     throw "Timeout: $Description"
 }
 function Query([string]$Sql) {
-    $lines = & $mysql @dbArgs '--execute' $Sql 2>&1
-    if ($LASTEXITCODE -ne 0) { throw 'Isolated SQL query failed.' }
+    $errorFile=Join-Path $runtime 'mysql-client.private.log'
+    $lines = & $mysql @dbArgs '--execute' $Sql 2> $errorFile
+    if ($LASTEXITCODE -ne 0) {
+        $evidence.lastSqlError=Get-Content -LiteralPath $errorFile -Raw
+        throw 'Isolated SQL query failed.'
+    }
     return ($lines -join "`n").Trim()
 }
 function Stop-Owned([Diagnostics.Process]$Process) {
@@ -116,7 +120,12 @@ try {
     $mysqlProcess=Start-Process -FilePath $mysqld -ArgumentList $mysqlArgs -WindowStyle Hidden -PassThru         -RedirectStandardOutput (Join-Path $runtime 'mysql.private.log') -RedirectStandardError (Join-Path $runtime 'mysql-errors.private.log')
     Wait-Value {
         if ($mysqlProcess.HasExited) { throw 'Isolated MySQL exited.' }
-        try { return (Query 'SELECT 1;') -eq '1' } catch { return $false }
+        try {
+            $probe=Query 'SELECT 1;'
+            $evidence.mysqlProbe=$probe
+            if ($probe -eq '1') { $evidence.Remove('mysqlProbeError'); $evidence.Remove('lastSqlError') }
+            return $probe -eq '1'
+        } catch { $evidence.mysqlProbeError=$_.Exception.Message; return $false }
     } 'MySQL startup' | Out-Null
     $evidence.mysqlVersion=Query 'SELECT VERSION();'
     foreach ($file in @('01_schema_acesso.sql','02_schema_app.sql','03_job_usuarios_inativos.sql')) {
