@@ -1,0 +1,156 @@
+{
+  "DiagnosticOnly": true,
+  "Date": "2026-10-29",
+  "Status": "Proposed revision-9 delta, pending independent review; no product codec changed",
+  "StartHEAD": "cd2039d9ce6f091c76f17ecaf462da437953000d",
+  "EndHEAD": "f91ddae8e2dfbde32e6aad42117c45bee6c5f572",
+  "ConcurrentWork": "HEAD advanced through independent work; compile used task-start committed agent sources plus this model edit.",
+  "Proposal": "Count the existing full ResolutionDelta JSON value as S for validated kind 3; keep null/authority checks, exact bytes, E and remaining W. No schema, format, escaping, size, ABI or physical-accounting limit change.",
+  "MeasuredSupportedStop": {
+    "PathUtf16Units": 511,
+    "DirectoryUnits": 232,
+    "LeafUnits": 254,
+    "ResourceOnlyBaseBytes": 18531,
+    "DeltaBytes": 10441,
+    "OldWrapperBytes": 10433,
+    "OldWrapperLimit": 8192,
+    "AdapterIssues": 0,
+    "ChargeRetained": 1048576,
+    "SourceCommit": "cd2039d9"
+  },
+  "PureModelExactSpecimen": {
+    "PathUtf16Units": 511,
+    "DeltaBytes": 10441,
+    "E": 4,
+    "S": 10015,
+    "W": 422,
+    "OldWrapper": 10433
+  },
+  "DerivedConservativeBounds": {
+    "Base64Characters": [
+      1592,
+      1696,
+      96
+    ],
+    "TotalBase64Characters": 3384,
+    "DefaultEscapingBytesPerCharacter": 6,
+    "FixedDeltaBytesAtMaximumNumericWidths": 214,
+    "AckBodyBytes": 20518,
+    "AckWrapperBytes": 440,
+    "AckEnvelopeBytes": 20962,
+    "BodyLimitUnchanged": 65536,
+    "WrapperLimitUnchanged": 8192,
+    "EnvelopeLimitUnchanged": 131072,
+    "GeneralReferenceStateWrapperCeilingUnchanged": 75266
+  },
+  "SDK": "10.0.400",
+  "Runner": "In-process reflection Fact/InlineData discovery and real xUnit assertions; diagnostic only, not Windows matrix/native qualification",
+  "Counts": {
+    "debug": {
+      "discovered": 386,
+      "executed": 386,
+      "passed": 386,
+      "failed": 0,
+      "skipped": 0
+    },
+    "release": {
+      "discovered": 386,
+      "executed": 386,
+      "passed": 386,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "FinalNormalExecutions": 772,
+  "ContractCasesPerConfiguration": 316,
+  "FitCasesPerConfiguration": 70,
+  "NewCasesPerConfiguration": 16,
+  "OldPartitionMutant": {
+    "Mutation": "Use old CompletionState=null body instead of ResolutionDelta for kind 3",
+    "Counts": {
+      "discovered": 386,
+      "executed": 386,
+      "passed": 381,
+      "failed": 5,
+      "skipped": 0
+    },
+    "ExpectedFailures": [
+      "GrowthArchiveContractModelTests.Revision9_ACK_body_partition_fits_every_511_unit_destination_specimen(ascii)",
+      "GrowthArchiveContractModelTests.Revision9_ACK_body_partition_fits_every_511_unit_destination_specimen(unicode)",
+      "GrowthArchiveContractModelTests.Revision9_ACK_body_partition_fits_every_511_unit_destination_specimen(surrogate)",
+      "GrowthArchiveContractModelTests.Revision9_ACK_body_partition_fits_every_511_unit_destination_specimen(plus)",
+      "GrowthArchiveContractModelTests.Revision9_ACK_bound_covers_worst_default_escaping_of_all_fixed_carriers()"
+    ],
+    "Source": "sources/Mutant-GrowthArchiveContractModelTests.cs.txt",
+    "Results": "results/mutant-old-partition.json"
+  },
+  "AllExecutionsIncludingExpectedFailingMutant": 1158,
+  "ExpectedMutantFailures": 5,
+  "LocalCompile": {
+    "Result": "PASS six feature Debug/Release Service/App/Tests builds, warnings as errors",
+    "Input": "task-start cd2039d9ce6f091c76f17ecaf462da437953000d plus GrowthArchiveContractModelTests.cs edit",
+    "TemporarySnapshot": "/tmp/t9-rev9-wrapper.p_mgsyfq-compile-input",
+    "BaseArchiveSha256": "62006a7ff42e9b9f6340cc610e1fcb666fee7886ae40c777a0a1221f20bab30d",
+    "PersistentInputManifest": "compile-input-manifest.json"
+  },
+  "SourceSha256": {
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md": "a73ed16a251d4aa38c73248b23ab953a3ec50a7d5b11868214f0ff035c63fd1b",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs": "bc2b235023dceae312719d1cf1301a4beaa2e944bf348f87834d23ba0458fe82",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveFitModelTests.cs": "bb369dd9bb6d7d7eca680839d0289c7f47546575c53b6a721d1cb7a7ab55fb57",
+    "driver/scripts/Invoke-LocalAgentCompile.sh": "0d43b20e68b299bc120014a834ad6b530ad9a78a1fcbee5098efaaa67ed2fdfc",
+    "agente/SafeUpload.Agent.Service/Interception/StagedJournalEnvelopeV3Codec.cs": "0ccbf23b640c3dc78ceb9237c640a6983fa6617cfccd92763332bf9709e57c93",
+    "agente/SafeUpload.Agent.Service/Interception/ResourceStateCodecV4.cs": "5baf8238cd6f92d44a714ab612ab1ea4ac7fbf5486613aeec2fe547530995660",
+    "agente/SafeUpload.Agent.Service/Interception/ResourceStateV4.cs": "f2ebf3188871b3dfda173c73385ec89f7f0f7d87401e33ea0fbb07be612c093a",
+    "agente/SafeUpload.Agent.Tests/ResourceSerializationLimitsV4Tests.cs": "4c6d7de555f4324535c2b348d8c17b0db8bcec355db9868c421b69064ff81aad",
+    "agente/SafeUpload.Agent.Tests/ResourceSerializationLimitsV3Tests.cs": "9ab2c5f9fb28303d856c9d07d40e9433fa27684a2c5745cada668b8aad955c66"
+  },
+  "RetainedEvidenceSha256": {
+    "artifacts/Debug/Models.deps.json": "1ae73cf0771285b08a0198a7afcd359b5fac0b028d38ab5eef2ad4860c1ba1dc",
+    "artifacts/Debug/Models.dll": "7fe7c47fd023fd6fcbdbe0a51e81f6428844486d059599c28b9d377fe65eda68",
+    "artifacts/Debug/Models.pdb": "f5742987140bdf95201db4d616cad50fefed5f98e0c3301e5ad436e03cd04ab0",
+    "artifacts/Debug/Models.runtimeconfig.json": "f9bc8e9f0c46247078ed47309f19a7576b4b94e4300e9de0003917d6bd2d667a",
+    "artifacts/Debug/xunit.abstractions.dll": "3166dc70323fb30ccf1cedb0fe86f2ad122c46d254542342d90386efc4c9285c",
+    "artifacts/Debug/xunit.assert.dll": "bcd9711b22d227ac8cd4c1568e72433a0f576d2ec8aae64ac508081892015b1d",
+    "artifacts/Debug/xunit.core.dll": "2f7feeec8c6dec7df684c25fb80aadb292b963d09723460f03d53c5ad2088acc",
+    "artifacts/Debug/xunit.execution.dotnet.dll": "e70febe547c15f8155db3e2d95c3ba4445a59cbc21a3e7541ab22ed49d3dcf7b",
+    "artifacts/Mutant-Models.dll": "109bc87c61d9152b66e4d11419e52dc1ca39f7c83cf83c6e17c5b8f680d5ef6b",
+    "artifacts/Mutant-Models.pdb": "76409f93494ed8305d233f4daca00498aa17764ee521263bf09250a7771ae3f9",
+    "artifacts/Release/Models.deps.json": "1ae73cf0771285b08a0198a7afcd359b5fac0b028d38ab5eef2ad4860c1ba1dc",
+    "artifacts/Release/Models.dll": "686f01557e04925fd9f50b6cfea5ae0f3a9753fa86851846ecbddb42d813b674",
+    "artifacts/Release/Models.pdb": "d7fc0309487f7617d2243af262c5cc9ea38f1f81e5ffa7f03e44a7ac28c1433e",
+    "artifacts/Release/Models.runtimeconfig.json": "9950d4583cfc9a106857c0d5b8a75b53e8774852b57b80bc3823a74d44a4d87f",
+    "artifacts/Release/xunit.abstractions.dll": "3166dc70323fb30ccf1cedb0fe86f2ad122c46d254542342d90386efc4c9285c",
+    "artifacts/Release/xunit.assert.dll": "bcd9711b22d227ac8cd4c1568e72433a0f576d2ec8aae64ac508081892015b1d",
+    "artifacts/Release/xunit.core.dll": "2f7feeec8c6dec7df684c25fb80aadb292b963d09723460f03d53c5ad2088acc",
+    "artifacts/Release/xunit.execution.dotnet.dll": "e70febe547c15f8155db3e2d95c3ba4445a59cbc21a3e7541ab22ed49d3dcf7b",
+    "change.patch": "6c7705251eda34d49991fcd9d20ecaade29b7705e5778a88e6e55c981b122c4c",
+    "compile-input-manifest.json": "a892de7549431498e49851fdaa17a43b7e991c4086de68b0daf39d7e4414522f",
+    "debug.log": "0ca071707002c8130003430b39a1c135e7238ed554ed9163ddf373e817cea36f",
+    "doc-links.log": "81180df7ca30ec4887c55a8670cc28e176304f9169e95400909916637fae6d76",
+    "git-status.txt": "201944ca0fa904ed32c01e914d51e16d3999d1337ddc1192c080fca60ec80173",
+    "local-compile.log": "60bda47b2f430a72e536d3cc7398b3aefd16c909ab32988a8844f17836bb1210",
+    "mutant-old-partition.log": "4f6150dd70d546bed6c19f018603ab6d3ba657e5f9bd2a0b1ec86bf061d1248c",
+    "release.log": "5cca80060ca63b7574fbc213f9912ee7dca6f43d09822a4687d905a7fba4b8e5",
+    "results/inprocess-debug.json": "b537ea0a1a50900df1df273dbb78f69e814fe1fc879bae888954526e9386ccc3",
+    "results/inprocess-release.json": "b537ea0a1a50900df1df273dbb78f69e814fe1fc879bae888954526e9386ccc3",
+    "results/mutant-old-partition.json": "c155aaaab0d6a3df50a2b93a7802d2b4a38e1048d489bd5f47a180b7f48448a6",
+    "sources/GrowthArchiveContractModelTests.cs": "bc2b235023dceae312719d1cf1301a4beaa2e944bf348f87834d23ba0458fe82",
+    "sources/GrowthArchiveFitModelTests.cs": "bb369dd9bb6d7d7eca680839d0289c7f47546575c53b6a721d1cb7a7ab55fb57",
+    "sources/Models.csproj": "111ac6b3a860faf804e2be4e4adb5090d01b0a51671e4bbfd18d9db9a02e8846",
+    "sources/Mutant-GrowthArchiveContractModelTests.cs.txt": "6b7ea8bd766989751c1a0e87f9558cb463940b2b2e1d582914198eab705163e0",
+    "sources/Program.cs": "105b3a5340e65e12ef2163c5d878ab72c10c023d4d18111411abb004e3379103",
+    "sources/UX-LARGE-GROWTH-PROTOCOL.md": "a73ed16a251d4aa38c73248b23ab953a3ec50a7d5b11868214f0ff035c63fd1b"
+  },
+  "DocLinks": "DocLinks=PASS; broken=298; new=0; baseline=298",
+  "DiffCheck": "PASS",
+  "CheckboxesUnchanged": true,
+  "FilesEditedByThisTask": [
+    "driver/docs/design/large-files/UX-LARGE-GROWTH-PROTOCOL.md",
+    "agente/SafeUpload.Agent.Tests/GrowthArchiveContractModelTests.cs"
+  ],
+  "AdditionalEvidenceDirectory": "driver/evidence/2026-10-29/t9-rev9-wrapper-models-local",
+  "ProductSourceEditedByThisTask": false,
+  "CommitMade": false,
+  "NetworkBuilderVMUsed": false,
+  "Open": "Independent review and actual serializer/deserializer partition change, supported-path/full-shape and limit+1/native-issue-spy proof before consumer use; all delivery/native/qualification gates remain."
+}

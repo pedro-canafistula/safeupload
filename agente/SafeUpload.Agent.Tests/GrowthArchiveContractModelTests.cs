@@ -154,6 +154,164 @@ public sealed class GrowthArchiveContractModelTests
         // Synthetic maximal row spelling, not the absent product schema-3 serializer.
     }
 
+    private sealed record WrapperAck(int State, string OriginalRequest, Guid FenceId, ulong OriginCookie,
+        string KernelAckControlRequest, string KernelAckControlReply, long ResolutionRevision);
+    private sealed record WrapperEnvelope(int FormatVersion, int ResourceSchema, Guid InstallationId, int RecordKind,
+        Guid RecordId, Guid TransferId, long RecordRevision, Guid? PreviousRecordId, string? EntryReference,
+        object? ResourceClosure, object? CompletionState, object? OrdinaryDiscardDisposal, WrapperAck? ResolutionDelta, object? LegacySource);
+    private static string WrapperPath(string mode)
+    {
+        string Fill(string units, int length) => string.Concat(Enumerable.Repeat(units, (length + units.Length - 1) / units.Length))[..length];
+        string directory = mode switch { "plus" => "\ubeef\ueffb\ufbbe", "unicode" => "é", "surrogate" => "😀", _ => "a" };
+        string leaf = mode == "plus" ? "\ufbbe\ubeef\ueffb" : directory;
+        return @"\Device\HarddiskVolume3\" + Fill(directory, 232) + "\\" + Fill(leaf, 250) + ".txt";
+    }
+    private static WrapperEnvelope WrapperFixture(string path)
+    {
+        Guid driver = new("ffeeddcc-bbaa-9988-7766-554433221100"), transfer = new("11223344-5566-7788-99aa-bbccddeeff00");
+        Guid fence = new("50000000-1111-2222-3333-444444444444");
+        byte[] original = new byte[1192]; EvidenceU32(original, 0, 18); EvidenceU32(original, 4, 1192); Put64(original, 8, 7);
+        EvidenceU32(original, 16, 3); EvidenceU32(original, 20, 42); EvidenceU32(original, 24, 0x200);
+        byte[] nativePath = EvidenceUtf16.GetBytes(path); Need(nativePath.Length <= 1024);
+        EvidenceU32(original, 28, nativePath.Length); EvidenceU32(original, 32, 104); EvidenceU32(original, 36, 32); nativePath.CopyTo(original.AsSpan(40));
+        EvidenceU32(original, 1064, 32); EvidenceU32(original, 1068, 104); EvidenceGuid(original, 1072, transfer); EvidenceU32(original, 1104, 3);
+        EvidenceGuid(original, 1112, driver); Put64(original, 1128, 1234);
+        BinaryPrimitives.WriteUInt64LittleEndian(original.AsSpan(1136), ulong.MaxValue);
+        Put64(original, 1144, 100); Put64(original, 1152, 1200000100); EvidenceU32(original, 1160, 1);
+        byte[] Header(int size, int payload)
+        {
+            byte[] bytes = new byte[size]; EvidenceU32(bytes, 0, 18); EvidenceU32(bytes, 4, size); EvidenceU32(bytes, 8, 36);
+            EvidenceU32(bytes, 16, 32); EvidenceU32(bytes, 20, 6); Put64(bytes, 24, 2); Put64(bytes, 32, 9);
+            EvidenceGuid(bytes, 40, driver); EvidenceU32(bytes, 56, payload); return bytes;
+        }
+        byte[] request = Header(1272, 1208), reply = Header(72, 8); original.CopyTo(request.AsSpan(64));
+        EvidenceGuid(request, 1256, fence); EvidenceU32(reply, 64, 1);
+        return new(3, 4, new("12345678-1111-2222-3333-abcdefabcdef"), 3,
+            new("50000002-1111-2222-3333-444444444444"), transfer, 2,
+            new Guid("50000001-1111-2222-3333-444444444444"), null, null, null, null,
+            new(6, Convert.ToBase64String(original), fence, ulong.MaxValue, Convert.ToBase64String(request), Convert.ToBase64String(reply), 6), null);
+    }
+    private static void ValidateWrapperAck(WrapperEnvelope envelope)
+    {
+        Need(envelope.RecordKind == 3 && envelope.RecordRevision > 0 && envelope.PreviousRecordId is not null &&
+            envelope.PreviousRecordId != Guid.Empty && envelope.EntryReference is null && envelope.ResourceClosure is null &&
+            envelope.CompletionState is null && envelope.OrdinaryDiscardDisposal is null && envelope.LegacySource is null && envelope.ResolutionDelta is not null);
+        WrapperAck d = envelope.ResolutionDelta!; Need(d.State == 6 && d.ResolutionRevision > 0 && d.FenceId != Guid.Empty);
+        byte[] original = Decode64(d.OriginalRequest, 1192), request = Decode64(d.KernelAckControlRequest, 1272), reply = Decode64(d.KernelAckControlReply, 72);
+        Need(BinaryPrimitives.ReadUInt32LittleEndian(original) == 18 && BinaryPrimitives.ReadUInt32LittleEndian(original.AsSpan(4)) == 1192);
+        int length = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(original.AsSpan(28)));
+        Need(length is > 0 and <= 1022 && length % 2 == 0 && original.AsSpan(40 + length, 1024 - length).IndexOfAnyExcept((byte)0) < 0);
+        string path = EvidenceUtf16.GetString(original, 40, length); Need(!path.Contains('\0'));
+        Need(path.Split('\\').Skip(1).All(part => part.Length is > 0 and <= 255));
+        Need(new Guid(original.AsSpan(1072, 16)) == envelope.TransferId &&
+            BinaryPrimitives.ReadUInt64LittleEndian(original.AsSpan(1136)) == d.OriginCookie && request.AsSpan(64, 1192).SequenceEqual(original) &&
+            new Guid(request.AsSpan(1256, 16)) == d.FenceId);
+        foreach (byte[] control in new[] { request, reply })
+        {
+            Need(BinaryPrimitives.ReadUInt32LittleEndian(control) == 18 && BinaryPrimitives.ReadUInt32LittleEndian(control.AsSpan(4)) == control.Length &&
+                BinaryPrimitives.ReadUInt32LittleEndian(control.AsSpan(8)) == 36 && BinaryPrimitives.ReadUInt32LittleEndian(control.AsSpan(16)) == 32 &&
+                BinaryPrimitives.ReadUInt32LittleEndian(control.AsSpan(20)) == 6 && control.AsSpan(40, 16).SequenceEqual(original.AsSpan(1112, 16)) &&
+                BinaryPrimitives.ReadUInt32LittleEndian(control.AsSpan(56)) == control.Length - 64);
+        }
+        Need(request.AsSpan(24, 16).SequenceEqual(reply.AsSpan(24, 16)) && BinaryPrimitives.ReadUInt32LittleEndian(reply.AsSpan(64)) == 1);
+    }
+    private static (int Entry, int State, int Wrapper) WrapperCosts(byte[] bytes, bool ackIsBody = true)
+    {
+        using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 16 }); Unique(document.RootElement);
+        JsonElement root = document.RootElement;
+        Need(Integer(root.GetProperty("FormatVersion")) == 3 && Integer(root.GetProperty("ResourceSchema")) == 4);
+        int entry = Encoding.UTF8.GetByteCount(root.GetProperty("EntryReference").GetRawText());
+        string selected = ackIsBody && Integer(root.GetProperty("RecordKind")) == 3 ? "ResolutionDelta" :
+            root.GetProperty("ResourceClosure").ValueKind == JsonValueKind.Null ? "CompletionState" : "ResourceClosure";
+        int state = Encoding.UTF8.GetByteCount(root.GetProperty(selected).GetRawText());
+        return (entry, state, checked(bytes.Length - entry - state));
+    }
+    private static void CheckWrapperCosts(int entry, int state, int wrapper)
+    { Need(entry >= 0 && state is >= 0 and <= ControlLimit && wrapper is >= 0 and <= 8192 && checked(entry + state + wrapper) <= EnvelopeLimit); }
+    private static byte[] PreflightWrapper(WrapperEnvelope envelope, Action issue)
+    {
+        ValidateWrapperAck(envelope); byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(envelope);
+        var cost = WrapperCosts(bytes); CheckWrapperCosts(cost.Entry, cost.State, cost.Wrapper); issue(); return bytes;
+    }
+
+    [Theory]
+    [InlineData("ascii")]
+    [InlineData("unicode")]
+    [InlineData("surrogate")]
+    [InlineData("plus")]
+    public void Revision9_ACK_body_partition_fits_every_511_unit_destination_specimen(string mode)
+    {
+        string path = WrapperPath(mode); Assert.Equal(511, path.Length); Assert.Equal(232, path.Split('\\')[3].Length);
+        Assert.Equal(254, path.Split('\\')[4].Length);
+        var envelope = WrapperFixture(path); int issues = 0;
+        byte[] bytes = PreflightWrapper(envelope, () => issues++); var cost = WrapperCosts(bytes);
+        Assert.Equal(1, issues); Assert.Equal(4, cost.Entry); Assert.Equal(422, cost.Wrapper);
+        Assert.InRange(cost.State, 1, 20518); Assert.True(bytes.Length <= 20962);
+        if (mode == "plus")
+        {
+            Assert.Equal(10441, bytes.Length); Assert.Equal(10015, cost.State); var old = WrapperCosts(bytes, false);
+            Assert.Equal(10433, old.Wrapper); Assert.Throws<InvalidDataException>(() => CheckWrapperCosts(old.Entry, old.State, old.Wrapper));
+        }
+    }
+
+    [Fact]
+    public void Revision9_ACK_bound_covers_worst_default_escaping_of_all_fixed_carriers()
+    {
+        var envelope = WrapperFixture(WrapperPath("plus"));
+        // Conservative spelling ceiling, not a semantically valid ACK: even
+        // impossible all-plus pad bits are included in the escape bound.
+        var delta = envelope.ResolutionDelta! with { OriginalRequest = new string('+', 1592), KernelAckControlRequest = new string('+', 1696),
+            KernelAckControlReply = new string('+', 96), ResolutionRevision = long.MaxValue };
+        var worst = envelope with { RecordRevision = long.MaxValue, ResolutionDelta = delta };
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(worst); var cost = WrapperCosts(bytes);
+        Assert.Equal(214, JsonSerializer.SerializeToUtf8Bytes(delta with { OriginalRequest = "", KernelAckControlRequest = "", KernelAckControlReply = "" }).Length);
+        Assert.Equal(214 + 6 * (1592 + 1696 + 96), cost.State); Assert.Equal(20518, cost.State);
+        Assert.Equal(440, cost.Wrapper); Assert.Equal(20962, bytes.Length); CheckWrapperCosts(cost.Entry, cost.State, cost.Wrapper);
+        int issues = 0; Assert.ThrowsAny<Exception>(() => PreflightWrapper(worst, () => issues++)); Assert.Equal(0, issues);
+    }
+
+    [Theory]
+    [InlineData("path")]
+    [InlineData("original")]
+    [InlineData("request")]
+    [InlineData("reply")]
+    public void Revision9_ACK_wire_limit_plus_one_never_issues_or_changes_charge(string field)
+    {
+        var envelope = WrapperFixture(WrapperPath("plus") + (field == "path" ? "x" : "")); var delta = envelope.ResolutionDelta!;
+        delta = field switch {
+            "original" => delta with { OriginalRequest = Convert.ToBase64String(new byte[1193]) },
+            "request" => delta with { KernelAckControlRequest = Convert.ToBase64String(new byte[1273]) },
+            "reply" => delta with { KernelAckControlReply = Convert.ToBase64String(new byte[73]) }, _ => delta };
+        int issues = 0; long charge = 1048576;
+        Assert.ThrowsAny<Exception>(() => PreflightWrapper(envelope with { ResolutionDelta = delta }, () => { issues++; charge = 0; }));
+        Assert.Equal(0, issues); Assert.Equal(1048576, charge);
+    }
+
+    [Theory]
+    [InlineData("wrapper", 8192, true)]
+    [InlineData("wrapper", 8193, false)]
+    [InlineData("body", 65536, true)]
+    [InlineData("body", 65537, false)]
+    public void Revision9_ACK_partition_keeps_existing_W_and_S_limits(string dimension, int size, bool fits)
+    {
+        int state = dimension == "body" ? size : 4, wrapper = dimension == "wrapper" ? size : 440;
+        int issues = 0; void Issue() { CheckWrapperCosts(4, state, wrapper); issues++; }
+        if (fits) Issue(); else Assert.Throws<InvalidDataException>(Issue);
+        Assert.Equal(fits ? 1 : 0, issues);
+    }
+
+    [Theory]
+    [InlineData("closure")]
+    [InlineData("completion")]
+    [InlineData("missing-delta")]
+    public void Revision9_ACK_body_selection_cannot_hide_a_second_or_missing_state(string mutation)
+    {
+        var envelope = WrapperFixture(WrapperPath("plus"));
+        envelope = mutation switch { "closure" => envelope with { ResourceClosure = new { State = 6 } },
+            "completion" => envelope with { CompletionState = new { State = 6 } }, _ => envelope with { ResolutionDelta = null } };
+        int issues = 0; Assert.Throws<InvalidDataException>(() => PreflightWrapper(envelope, () => issues++)); Assert.Equal(0, issues);
+    }
+
     [Theory]
     [InlineData(4096)]
     [InlineData(8192)]
