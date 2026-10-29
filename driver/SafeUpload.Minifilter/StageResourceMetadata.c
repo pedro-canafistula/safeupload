@@ -1075,10 +1075,18 @@ static __declspec(noinline) NTSTATUS MetadataRegisterRoot(_In_ SU_METADATA_GROUP
         revoke = TRUE;
         goto Exit;
     }
+    RtlZeroMemory(capture->Scratch, node->SecurityBytes);
     status = FltQuerySecurityObject(captureNeeded ? capture->Instance : Group->Instance, original,
         OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, capture->Scratch, node->SecurityBytes, &bytes);
     if (!NT_SUCCESS(status)) { (VOID)METADATA_STATUS(status); goto Exit; }
-    if (bytes != node->SecurityBytes || !RtlEqualMemory(capture->Scratch, node->Security, node->SecurityBytes)) {
+    /* LengthNeeded is documented for the buffer-too-small case only; a
+     * successful query may leave it 0 (ux-k12 in StageSecurity.c; refused every
+     * real root in N-U5-01 nu501c7). Derive both lengths from the validated
+     * descriptors and compare exactly those bytes, so no stale tail counts. */
+    if (!RtlValidRelativeSecurityDescriptor(capture->Scratch, node->SecurityBytes,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION) ||
+        RtlLengthSecurityDescriptor(capture->Scratch) != RtlLengthSecurityDescriptor(node->Security) ||
+        !RtlEqualMemory(capture->Scratch, node->Security, RtlLengthSecurityDescriptor(node->Security))) {
         status = METADATA_STATUS(STATUS_INVALID_SECURITY_DESCR);
         revoke = TRUE;
         goto Exit;
