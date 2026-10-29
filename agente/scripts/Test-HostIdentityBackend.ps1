@@ -76,9 +76,9 @@ function Stop-Owned([Diagnostics.Process]$Process) {
 }
 function Start-Backend([string]$Label) {
     $arguments=@('-jar', ('"' + $jar + '"'), '--server.port=18080','--server.address=127.0.0.1',
-        '--app.datasource.url=jdbc:mysql://127.0.0.1:13316/app?serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false',
+        '--app.datasource.url=jdbc:mysql://127.0.0.1:13316/app?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false',
         '--app.datasource.username=root','--app.datasource.password=',
-        '--acesso.datasource.url=jdbc:mysql://127.0.0.1:13316/acesso?serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false',
+        '--acesso.datasource.url=jdbc:mysql://127.0.0.1:13316/acesso?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false',
         '--acesso.datasource.username=root','--acesso.datasource.password=','--spring.jpa.show-sql=false')
     $script:javaProcess=Start-Process -FilePath (Get-Command java).Source -ArgumentList $arguments -WindowStyle Hidden -PassThru         -RedirectStandardOutput (Join-Path $runtime "$Label-java.private.log") -RedirectStandardError (Join-Path $runtime "$Label-java-errors.private.log")
     Wait-Value {
@@ -116,7 +116,7 @@ try {
     & $mysqld @initArgs *> (Join-Path $runtime 'mysql-initialize.private.log')
     if ($LASTEXITCODE -ne 0) { throw 'Isolated MySQL initialization failed.' }
     $mysqlArgs=@('--no-defaults',('--basedir="' + $MySqlBase + '"'),('--datadir="' + (Join-Path $runtime 'data') + '"'),
-        '--bind-address=127.0.0.1','--port=13316','--mysqlx=0','--default-time-zone=+00:00','--event-scheduler=OFF','--console')
+        '--bind-address=127.0.0.1','--port=13316','--mysqlx=0','--default-time-zone=-03:00','--event-scheduler=OFF','--console')
     $mysqlProcess=Start-Process -FilePath $mysqld -ArgumentList $mysqlArgs -WindowStyle Hidden -PassThru         -RedirectStandardOutput (Join-Path $runtime 'mysql.private.log') -RedirectStandardError (Join-Path $runtime 'mysql-errors.private.log')
     Wait-Value {
         if ($mysqlProcess.HasExited) { throw 'Isolated MySQL exited.' }
@@ -128,6 +128,7 @@ try {
         } catch { $evidence.mysqlProbeError=$_.Exception.Message; return $false }
     } 'MySQL startup' | Out-Null
     $evidence.mysqlVersion=Query 'SELECT VERSION();'
+    $evidence.databaseClock=Query "SELECT CONCAT(@@global.time_zone,'|',@@session.time_zone,'|',DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:%s'),'|',DATE_FORMAT(UTC_TIMESTAMP(),'%Y-%m-%d %H:%i:%s'));"
     foreach ($file in @('01_schema_acesso.sql','02_schema_app.sql','03_job_usuarios_inativos.sql')) {
         Query (Get-Content -LiteralPath (Join-Path $repo "db/initdb/$file") -Raw) | Out-Null
     }
@@ -157,7 +158,8 @@ try {
     Check 'service persisted target identity bound to test backend' ($identity.registeredHostId -eq $targetId -and $identity.serverBaseUrl -eq "$api/agent/")
     $owner=(Get-Acl -LiteralPath $identityFile).GetOwner([Security.Principal.SecurityIdentifier]).Value
     Check 'identity file owned by SYSTEM with protected DACL' ($owner -eq 'S-1-5-18' -and (Get-Acl -LiteralPath $identityFile).AreAccessRulesProtected)
-    $evidence.snapshots.first=[ordered]@{service=$first;identityHash=$identityHash;target=(Host-Snapshot $targetId)}
+    $firstAge=[int](Query "SELECT TIMESTAMPDIFF(SECOND,visto_por_ultimo,NOW()) FROM app.hosts WHERE id_host=$targetId;")
+    $evidence.snapshots.first=[ordered]@{service=$first;identityHash=$identityHash;target=(Host-Snapshot $targetId);heartbeatAgeSeconds=$firstAge}
     Stop-Service $serviceName
     Stop-Owned $script:javaProcess
     Query "UPDATE app.hosts SET ativo=0,visto_por_ultimo='2000-01-01 00:00:00' WHERE id_host=$targetId;" | Out-Null
@@ -175,7 +177,9 @@ try {
     Check 'recovered host heartbeats without another registration' ((Counts) -eq $countsBefore)
     Check 'control host remains unchanged after recovery' ((Host-Snapshot $controlId) -eq $controlBefore)
     Check 'identity bytes remain unchanged after recovery' ((Get-FileHash -LiteralPath $identityFile -Algorithm SHA256).Hash -eq $identityHash)
-    $evidence.snapshots.recovered=[ordered]@{service=$second;target=(Host-Snapshot $targetId);control=(Host-Snapshot $controlId);counts=(Counts);identityHash=(Get-FileHash -LiteralPath $identityFile -Algorithm SHA256).Hash}
+    $secondAge=[int](Query "SELECT TIMESTAMPDIFF(SECOND,visto_por_ultimo,NOW()) FROM app.hosts WHERE id_host=$targetId;")
+    Check 'heartbeat timestamps remain fresh against database clock' ($firstAge -ge -5 -and $firstAge -le 120 -and $secondAge -ge -5 -and $secondAge -le 120)
+    $evidence.snapshots.recovered=[ordered]@{service=$second;target=(Host-Snapshot $targetId);control=(Host-Snapshot $controlId);counts=(Counts);identityHash=(Get-FileHash -LiteralPath $identityFile -Algorithm SHA256).Hash;heartbeatAgeSeconds=$secondAge}
     $evidence.status='passed'
 } catch {
     $evidence.status='failed'
