@@ -77,7 +77,6 @@ public sealed class StagedPublicationOwnershipTests : IDisposable
     public void Native_edit_keeps_the_existing_owner_and_explicit_ace_on_the_replacement()
     {
         if (!OperatingSystem.IsWindows()) return;
-        using var self = WindowsIdentity.GetCurrent();
         string parent = Path.Combine(_workspace.Root, "edit");
         Directory.CreateDirectory(parent);
         string destination = Path.Combine(parent, "doc.txt");
@@ -85,13 +84,16 @@ public sealed class StagedPublicationOwnershipTests : IDisposable
         var existing = new FileInfo(destination).GetAccessControl();
         existing.AddAccessRule(new FileSystemAccessRule(Guests, FileSystemRights.Read, AccessControlType.Allow));
         new FileInfo(destination).SetAccessControl(existing);
+        // The existing owner is whatever the creating token assigned (an elevated admin token assigns Administrators).
+        var existingOwner = new FileInfo(destination).GetAccessControl(AccessControlSections.Owner).GetOwner(typeof(SecurityIdentifier));
         byte[]? descriptor = StagedPublicationOwnership.Descriptor(destination, Users.Value);
         Assert.NotNull(descriptor);
         string replacement = Path.Combine(parent, "doc.pending");
         using (var output = StagedDestinationFile.CreateUnbuffered(replacement, descriptor)) { }
         var stored = new FileInfo(replacement).GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
         // The existing owner wins over the requestor for an edit.
-        Assert.Equal(self.User, stored.GetOwner(typeof(SecurityIdentifier)));
+        Assert.Equal(existingOwner, stored.GetOwner(typeof(SecurityIdentifier)));
+        Assert.NotEqual(Users, stored.GetOwner(typeof(SecurityIdentifier)));
         Assert.Contains(stored.GetAccessRules(true, false, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>(),
             rule => rule.IdentityReference.Equals(Guests) && (rule.FileSystemRights & FileSystemRights.Read) == FileSystemRights.Read);
     }
