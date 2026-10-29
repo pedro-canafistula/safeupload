@@ -26,3 +26,11 @@ O [Functional web 40240535973](https://github.com/pedro-canafistula/safeupload/a
 O CI acima pertence à fonte `1881e31d535904f0019a5a4c2c12030c956b65f0`. A revisão posterior apenas remove um `using System.Text.Json` duplicado e atualiza documentação: sem mudança de corpo/método/contrato, sem repetir os testes aprovados; o commit documental/limpeza usa skip ci e não tem uma nova execução própria. A revisão não encontrou outro impedimento no recorte, mas não substitui revisão independente/aprovação.
 
 Os resultados anteriores do #49 não concedem aceite automático a este recorte. A main já tem falhas de backend no Functional web; não ocultar falhas nem dispensar checks implicitamente. O merge aguarda revisão, aprovação explícita do usuário e decisão alinhada sobre o CI funcional reprovado. Sem alteração Java/Angular/banco/driver, instalação, VM ou homologação repetida. Não executar merge nesta tarefa de organização.
+
+## Revisão e tratamento de CI
+
+A revisão adicional conferiu o diff contra main, nomes escapados/comparação sem caixa, duplicatas, contagens ausentes/textuais, objeto principal, confirmação após HTTP válido e preservação de bytes/reenvio. Nenhum outro defeito bloqueante foi identificado nesse recorte. Isso é revisão técnica local, não aprovação independente ou autorização de merge.
+
+O PR acrescenta `.github/workflows/agent-receipts.yml`, exclusivo do agente: check `Recibos e cache (Release)` em Windows, limitado aos três grupos de testes reproduzidos acima. Exige ao menos os 23 casos de recibo com resultado Passed, evitando um filtro vazio/skip silencioso, e preserva TRX/log inclusive em falha. Não instala serviço, usa API/Java/banco, driver ou VM preservada. São quatro arquivos no PR após esse acréscimo; produto e testes permanecem iguais.
+
+O objetivo é fornecer resultado independente e explícito ao recorte; não substituir o Functional web, alterar regras de proteção ou dispensar falhas. A primeira execução deste check ainda precisa ser conferida antes de propor integração. A execução automática valida a própria configuração de CI nova; não foi feita nova rodada local ou repetida homologação aprovada.
