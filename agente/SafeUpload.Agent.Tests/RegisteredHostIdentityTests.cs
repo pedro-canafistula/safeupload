@@ -224,7 +224,7 @@ public sealed class RegisteredHostIdentityTests
         public void Write(string contents)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(File)!);
-            System.IO.File.WriteAllText(File, contents, Encoding.UTF8);
+            System.IO.File.WriteAllText(File, contents, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
         public void Dispose() => _workspace.Dispose();
     }
