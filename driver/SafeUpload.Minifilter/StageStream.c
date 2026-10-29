@@ -11436,7 +11436,12 @@ static BOOLEAN StageReopenAdmissionClosed(_In_ PFLT_CALLBACK_DATA Data)
  * CREATE's single deadline passes, the request is cancelled or admission closes, and always releases the pin.
  * SUCCESS (settled, changed or timed out) means: dispatch again from the start on the current state. */
 _IRQL_requires_(PASSIVE_LEVEL)
-static NTSTATUS StageWaitOwnerReopen(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Stream, _In_ ULONGLONG Deadline)
+static NTSTATUS StageWaitOwnerReopen(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Stream, _In_ ULONGLONG Deadline);
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, StageWaitOwnerReopen)
+#endif
+_Use_decl_annotations_
+static NTSTATUS StageWaitOwnerReopen(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stream, ULONGLONG Deadline)
 {
     LARGE_INTEGER interval;
     NTSTATUS status;
