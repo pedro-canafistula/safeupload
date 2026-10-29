@@ -2112,7 +2112,12 @@ try {
     $actorPid = [int]$actorMatch.Groups[1].Value
     if ($actorPid -eq $rawContext.ObserverPid -or $rawContext.ObserverSid -ceq $sid) { throw 'Actor and raw observer are not independent processes/principals.' }
     $profile = @(Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -eq $sid })
-    if ($profile.Count -ne 1) { throw 'Exactly one actor profile must bind to the actor SID.' }
+    if ($profile.Count -ne 1) {
+        # Status flags: 1 temporary, 2 roaming, 4 mandatory, 8 corrupted.
+        $seen = @(Get-CimInstance Win32_UserProfile | Where-Object { $_.SID -eq $sid -or $_.LocalPath -match '\\(t5actor|TEMP)' } |
+            ForEach-Object { $_.SID + ' ' + $_.LocalPath + ' status=' + $_.Status + ' loaded=' + $_.Loaded + ' special=' + $_.Special })
+        throw ('Exactly one actor profile must bind to the actor SID. sid=' + $sid + ' profiles=[' + ($seen -join '; ') + ']')
+    }
     $handback = Join-Path $profile[0].LocalPath 'SafeUpload\_bloqueados'
     $result.HandbackDirectory=$handback;$result.ActorSid=$sid
     foreach ($case in $cases) {

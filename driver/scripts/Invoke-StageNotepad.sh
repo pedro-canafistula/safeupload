@@ -113,8 +113,10 @@ t5_office_preflight() {
     [ -f "$t5_original_base" ] && [ -f "$t5_office_base" ] || return 1
     [ "$(_rd_vol "$t5_office_base" format)" = qcow2 ] && [ "$(_rd_vol "$t5_office_base" backing)" = "$t5_original_base" ] || { echo 'Unexpected Office backing chain'; return 1; }
     _rd_named_elsewhere "$dom" "$t5_office_base" && { echo 'Another domain names the Office base'; return 1; }
-    t5_original_stat=$(stat -c '%d:%i:%s:%Y:%Z' "$t5_original_base") || return 1
-    t5_office_stat=$(stat -c '%d:%i:%s:%Y:%Z' "$t5_office_base") || return 1
+    # Device, inode, size and mtime, like run-disk.sh's base check: libvirt relabels the overlay's backing file when
+    # the guest starts, which changes ctime but never content (mvpBWdiag3).
+    t5_original_stat=$(stat -c '%d:%i:%s:%Y' "$t5_original_base") || return 1
+    t5_office_stat=$(stat -c '%d:%i:%s:%Y' "$t5_office_base") || return 1
     $V dumpxml --inactive "$dom" > "$ev/$tag-pre-office.xml" || return 1
 }
 t5_office_return() {
@@ -134,8 +136,8 @@ t5_office_return() {
     _rd_repoint "$dom" "$t5_original_base" || return 1
     [ "$(_rd_vda "$dom" --inactive)" = "$t5_original_base" ] &&
         cmp -s "$ev/$tag-pre-office.xml" <($V dumpxml --inactive "$dom") &&
-        [ "$(stat -c '%d:%i:%s:%Y:%Z' "$t5_original_base")" = "$t5_original_stat" ] &&
-        [ "$(stat -c '%d:%i:%s:%Y:%Z' "$t5_office_base")" = "$t5_office_stat" ] || return 1
+        [ "$(stat -c '%d:%i:%s:%Y' "$t5_original_base")" = "$t5_original_stat" ] &&
+        [ "$(stat -c '%d:%i:%s:%Y' "$t5_office_base")" = "$t5_office_stat" ] || { echo 'Office base chain, XML or base stat changed'; return 1; }
     echo 'T5OfficeOriginalVdaAndXmlRestored=True'
     echo 'T5OfficeBothBasesUntouched=True'
 }
