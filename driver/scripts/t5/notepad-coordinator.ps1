@@ -315,8 +315,13 @@ function Stop-T5WordDiagTrace([string]$Op) {
         if (Test-Path -LiteralPath $csv) {
             'etl-bytes=' + (Get-Item -LiteralPath $etl -ErrorAction SilentlyContinue).Length + ' csv-bytes=' + (Get-Item -LiteralPath $csv).Length | Set-Content -LiteralPath ($prefix + 'sizes.txt')
             $head = Get-Content -LiteralPath $csv -TotalCount 2
-            $hit = Select-String -LiteralPath $csv -Pattern 'word-overwrite|word-saveas|~WRD|~WRL|wd-native' | ForEach-Object { $_.Line }
-            @($head) + @($hit) | Set-Content -LiteralPath ('C:\T5\word-diag\' + $name + '-filtered.csv')
+            $hit = @(Select-String -LiteralPath $csv -Pattern 'word-overwrite|word-saveas|~WRD|~WRL|wd-native' | ForEach-Object { $_.Line })
+            # Create results are separate OperationEnd events (IrpPtr, ExtraInfo, NtStatus) without a path: keep those of the matched IRPs.
+            $irps = New-Object 'System.Collections.Generic.HashSet[string]'
+            foreach ($line in $hit) { if ($line -match '^\s*FileIo,\s*(Create|SetInfo|Rename|Delete|Cleanup|Close)\b.*?,\s*(0x[0-9A-F]{16}),\s*0x[0-9A-F]{16},') { [void]$irps.Add($Matches[2]) } }
+            $ends = @(Select-String -LiteralPath $csv -Pattern 'OperationEnd' -SimpleMatch | ForEach-Object { $_.Line } |
+                Where-Object { $_ -match ',\s*(0x[0-9A-F]{16}),\s*[^,]+,\s*[^,]+$' -and $irps.Contains($Matches[1]) })
+            @($head) + $hit + $ends | Set-Content -LiteralPath ('C:\T5\word-diag\' + $name + '-filtered.csv')
             Remove-Item -LiteralPath $csv -Force; Remove-Item -LiteralPath $etl -Force -ErrorAction SilentlyContinue
         }
     } catch { $_.Exception.ToString() | Set-Content -LiteralPath ($prefix + 'trace-error.txt') }

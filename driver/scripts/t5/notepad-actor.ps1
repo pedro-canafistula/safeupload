@@ -668,7 +668,7 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
                 if($state.Error -or $state.TimedOut){throw 'Word alert monitor failed to start'}
                 if($state.Ready -eq $true){return $state}
             };$null
-        } 15
+        } $(if([IO.File]::Exists('C:\T5\word-diag.flag')){60}else{15}) # a WPR trace slows the monitor's start (diagnostic only, mvpWdiagG1)
         if($null -eq $ready -or $ready.MonitorSid -cne $obs.WordSid -or $ready.SessionId -ne $obs.SessionId){throw 'Word alert monitor is not in the interactive actor session'}
         if($Op -ceq 'word-overwrite'){
             $obs.OverwritePriorRead=[T5Native]::Read($target)
