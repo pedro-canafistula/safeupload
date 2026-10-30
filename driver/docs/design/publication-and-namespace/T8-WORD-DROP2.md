@@ -1,5 +1,9 @@
 # T8: Word drop 2 — plan
 
+**Status 2026-10-30:** W0 and W1/W3 done. Kernel `7f7d6b62` (m2w1k1030b) fixes Save As over an existing name. Word remains intermittent after a save (a Retained
+superseded version, a rename roll-back meeting a pending prepare, a Read-Only reopen). Rows are stopped pending an owner decision; see
+[the drop 2 record](../../../evidence/2026-10-30/m2mvp-word-drop2.md).
+
 2026-10-29. **Plan, no implementation.** The owner chose to ship MVP drop 1 without Word and to deliver Word as drop 2. Drop 1 was qualified on
 kernel/agent `8d6e8737` ([record](../../../evidence/2026-10-29/m2mvp-rows.md)). This plan uses
 [T8-PUBLICATION-WINDOW.md](T8-PUBLICATION-WINDOW.md) (Increments 0/A/B/C) and the 2026-10-22 [discovery](../../../evidence/2026-10-22/t8-discovery-1.md).
