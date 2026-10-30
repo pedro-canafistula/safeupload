@@ -24,7 +24,7 @@ $cases = @(Read-T5CaseInventory $CasesPath | Where-Object { [bool]$_.Office -eq 
 $leaves = @($cases | ForEach-Object { $_.Leaf; @($_.AuxiliaryLeaves) } | Where-Object { $_ } | Sort-Object -Unique)
 $frequency = [Diagnostics.Stopwatch]::Frequency
 $rawContext = $null; $rawBaseline = $null; $script:rawSequence = 0
-$script:T5WordDiagActive = $false; $script:T5LastStreams = [long]0
+$script:T5WordDiagActive = $false; $script:T5LastStreams = [long]0; $script:T5RingSeen = [long]-1
 $script:T5WorkflowPublicHashes = @{}
 $probeControlPhase = 'ControlProbeAfterTestCreateCloseBeforeDeleteOrSave'
 $cpfText = 'T5 notepad CPF: 529.982.247-25'
@@ -301,6 +301,16 @@ function Save-T5DiagStreams {
         $json = (& $Diagnostics -Query stage-streams | ConvertTo-Json -Depth 8 -Compress)
         if ($json -match 'word-overwrite|word-saveas|WRD|WRL') { Add-Content -LiteralPath 'C:\T5\word-diag\streams.ndjson' -Value ((Get-Date).ToUniversalTime().ToString('o') + ' ' + $json) }
     } catch { Add-Content -LiteralPath 'C:\T5\word-diag\streams-error.txt' -Value $_.Exception.Message }
+    # The 256-entry deny ring wraps under the object-ID FSCTL refusals: keep every newer non-FSCTL refusal in the folder (mvpWdiagG2).
+    try {
+        foreach ($e in @(& $Diagnostics -Query deny-ring)) {
+            if ([long]$e.sequence -le $script:T5RingSeen) { continue }
+            $script:T5RingSeen = [long]$e.sequence
+            if ([string]$e.name -match 'Protected' -and [string]$e.major -cne 'FILE_SYSTEM_CONTROL') {
+                Add-Content -LiteralPath 'C:\T5\word-diag\ring.ndjson' -Value ($e | ConvertTo-Json -Compress)
+            }
+        }
+    } catch { Add-Content -LiteralPath 'C:\T5\word-diag\ring-error.txt' -Value $_.Exception.Message }
 }
 function Stop-T5WordDiagTrace([string]$Op) {
     # One final snapshot after the actor returns: a version that stays live after the save shows up here (mvpWordOrdG1).
@@ -328,7 +338,7 @@ function Stop-T5WordDiagTrace([string]$Op) {
 }
 function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$Observe,
     [string[]]$BaselineTransferIds, [System.Collections.IDictionary]$CaseRecord) {
-    if (-not ($Op -cin @('word-overwrite', 'word-seed', 'word-saveas') -and [IO.File]::Exists('C:\T5\word-diag.flag'))) { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord }
+    if (-not ($Op -cin @('word-overwrite', 'word-seed', 'word-saveas', 'word-edit') -and [IO.File]::Exists('C:\T5\word-diag.flag'))) { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord }
     Start-T5WordDiagTrace
     try { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord } finally { Stop-T5WordDiagTrace $Op }
 }
