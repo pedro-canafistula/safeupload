@@ -1,27 +1,25 @@
 name: Identidade do serviço com Java e MySQL
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/agent-host-identity-backend.yml'
-      - 'agente/scripts/Test-HostIdentityBackend.ps1'
-      - 'agente/SafeUpload.Agent.Core/Infrastructure/RegisteredHostIdentityStore.cs'
-      - 'agente/SafeUpload.Agent.Service/Dispatch/AdministrationConfiguration.cs'
-      - 'agente/SafeUpload.Agent.Service/Program.cs'
+  workflow_call:
+    inputs:
+      contract-only:
+        type: boolean
+        default: false
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   service-host-identity:
-    name: Serviço SYSTEM, reinício e backend real
+    name: ${{ inputs.contract-only && 'Contrato atual CSharp Java MySQL' || 'Serviço SYSTEM, reinício e backend real' }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           sparse-checkout: |
             agente
             web/back
@@ -40,7 +38,24 @@ jobs:
         run: |
           mvn -B -f web/back/pom.xml -DskipTests package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publicar serviço para o aceite LocalSystem
+        if: ${{ !inputs.contract-only }}
+        shell: pwsh
+        run: |
           dotnet publish agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj -c Release -r win-x64 --self-contained true -o artifacts/host-identity-service
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Executar suíte do agente e compilar contrato atual
+        if: inputs.contract-only
+        shell: pwsh
+        env:
+          SAFEUPLOAD_MACHINE_TESTS: '0'
+        run: |
+          New-Item -ItemType Directory -Path artifacts/host-identity-backend -Force | Out-Null
+          dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj --verbosity minimal --logger 'trx;LogFileName=agent.trx' --results-directory artifacts/host-identity-backend *> artifacts/host-identity-backend/agent-tests.log
+          $testExit = $LASTEXITCODE
+          Get-Content artifacts/host-identity-backend/agent-tests.log -Tail 25
+          if ($testExit -ne 0) { exit $testExit }
+          dotnet build agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Preparar MySQL 8.4.13 oficial e conferir hash
         shell: pwsh
@@ -52,12 +67,18 @@ jobs:
           if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expected) { throw 'Unexpected MySQL archive hash.' }
           Expand-Archive -LiteralPath $zip -DestinationPath $destination
       - name: Validar identidade do serviço com banco e backend reais
+        if: ${{ !inputs.contract-only }}
         shell: pwsh
         run: |
           ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend
+      - name: Validar contrato C# com banco e backend reais
+        if: inputs.contract-only
+        shell: pwsh
+        run: |
+          ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend -ContractOnly
       - name: Preservar resultados sanitizados inclusive em falha
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: host-identity-backend
+          name: ${{ inputs.contract-only && 'agent-current-contract' || 'host-identity-backend' }}
           path: artifacts/host-identity-backend/

@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$MySqlBase,
-    [string]$ResultsDirectory = (Join-Path $PSScriptRoot '../../artifacts/host-identity-backend')
+    [string]$ResultsDirectory = (Join-Path $PSScriptRoot '../../artifacts/host-identity-backend'),
+    [switch]$ContractOnly
 )
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
@@ -18,6 +19,7 @@ $agentRoot = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) '
 $workRoot = Join-Path ([IO.Path]::GetPathRoot([Environment]::GetFolderPath('Windows'))) 'SafeUpload'
 $identityFile = Join-Path $agentRoot 'identity/host-registration.json'
 $serviceExe = Join-Path $repo 'artifacts/host-identity-service/SafeUpload.Agent.Service.exe'
+$contractDll = Join-Path $repo 'agente/SafeUpload.Agent.ContractSmoke/bin/Release/net10.0-windows/SafeUpload.Agent.ContractSmoke.dll'
 $jar = Join-Path $repo 'web/back/target/backend-0.1.0.jar'
 $mysql = Join-Path $MySqlBase 'bin/mysql.exe'
 $mysqlAdmin = Join-Path $MySqlBase 'bin/mysqladmin.exe'
@@ -30,7 +32,8 @@ if ((Get-Service $serviceName -ErrorAction SilentlyContinue) -or
 foreach ($port in @(18080,13316)) {
     if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw 'Test port occupied.' }
 }
-foreach ($file in @($serviceExe,$jar,$mysql,$mysqld,$mysqlAdmin)) {
+$testedBinary = if ($ContractOnly) { $contractDll } else { $serviceExe }
+foreach ($file in @($testedBinary,$jar,$mysql,$mysqld,$mysqlAdmin)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Required test binary missing.' }
 }
 New-Item -ItemType Directory -Path $results -Force | Out-Null
@@ -43,8 +46,8 @@ $mysqlProcess = $null
 $createdService = $false
 $started = Get-Date
 $evidence = [ordered]@{
-    status='running'; agentCommit=(& git -C $repo rev-parse HEAD); backendChanged=$false
-    mode='Installed LocalSystem service, FileSystemWatcher; no driver, UI or real file inspection qualified'
+    status='running'; agentCommit=(& git -C $repo rev-parse HEAD); backendSource='same checkout as agent'
+    mode=$(if ($ContractOnly) { 'Current C# API contract and real MySQL; remote policy application remains pending' } else { 'Installed LocalSystem service, FileSystemWatcher; no driver, UI or real file inspection qualified' })
     mysqlVersion=$null; checks=@(); snapshots=[ordered]@{}; cleanup=[ordered]@{}
 }
 function Check([string]$Name, [bool]$Passed) {
@@ -130,10 +133,19 @@ try {
     } 'MySQL startup' | Out-Null
     $evidence.mysqlVersion=Query 'SELECT VERSION();'
     $evidence.databaseClock=Query "SELECT CONCAT(@@global.time_zone,'|',@@session.time_zone,'|',DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:%s'),'|',DATE_FORMAT(UTC_TIMESTAMP(),'%Y-%m-%d %H:%i:%s'));"
-    foreach ($file in @('01_schema_acesso.sql','02_schema_app.sql','03_job_usuarios_inativos.sql')) {
+    foreach ($file in @('01_schema_acesso.sql','02_schema_app.sql','03_job_usuarios_inativos.sql','05_agent_audit_ingest.sql')) {
         Query (Get-Content -LiteralPath (Join-Path $repo "db/initdb/$file") -Raw) | Out-Null
     }
     Start-Backend 'initial'
+    if ($ContractOnly) {
+        & dotnet $contractDll --current-api *> (Join-Path $results 'current-api-contract.log')
+        $contractExit = $LASTEXITCODE
+        Get-Content -LiteralPath (Join-Path $results 'current-api-contract.log') -Tail 40
+        Check 'current C# API acceptance completed successfully' ($contractExit -eq 0)
+        $contractText = Get-Content -LiteralPath (Join-Path $results 'current-api-contract.log') -Raw
+        Check 'current API result retains policy and driver qualification limits' ($contractText.Contains('CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByAgent=Pending;RemotePolicyCacheQualification=Pending;DriverQualified=False'))
+        $evidence.status='passed'
+    } else {
     $control=Register-Host 'CONTROLE-IDENTIDADE'
     $target=Register-Host 'ALVO-IDENTIDADE'
     $controlId=[int]$control.id_host
@@ -182,6 +194,7 @@ try {
     Check 'heartbeat timestamps remain fresh against database clock' ($firstAge -ge -5 -and $firstAge -le 120 -and $secondAge -ge -5 -and $secondAge -le 120)
     $evidence.snapshots.recovered=[ordered]@{service=$second;target=(Host-Snapshot $targetId);control=(Host-Snapshot $controlId);counts=(Counts);identityHash=(Get-FileHash -LiteralPath $identityFile -Algorithm SHA256).Hash;heartbeatAgeSeconds=$secondAge}
     $evidence.status='passed'
+    }
 } catch {
     $evidence.status='failed'
     $evidence.error=$_.Exception.Message
@@ -194,7 +207,7 @@ try {
     }
     if ($null -ne $mysqlProcess) {
         try {
-            & $mysqlAdmin --no-defaults --protocol=TCP --host=127.0.0.1 --port=13316 --user=root --skip-password shutdown +                *> (Join-Path $runtime 'mysql-shutdown.private.log')
+            & $mysqlAdmin --no-defaults --protocol=TCP --host=127.0.0.1 --port=13316 --user=root --skip-password shutdown *> (Join-Path $runtime 'mysql-shutdown.private.log')
             $mysqlProcess.WaitForExit(10000) | Out-Null
         } catch { $evidence.cleanup.mysqlShutdownAttemptFailed=$true }
     }

@@ -15,13 +15,13 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.context.SecurityContextRepository;
 
 
-@Configuration 
-@EnableWebSecurity 
+@Configuration
+@EnableWebSecurity
 public class SecurityConfig {
 
     public SecurityConfig() {}
 
-     
+
     @Bean
     public PasswordEncoder passwordEncoder(){
         return new BCryptPasswordEncoder();
@@ -52,6 +52,7 @@ public class SecurityConfig {
                     "/agent/api/**"
                 ).permitAll()
                 .requestMatchers("/auth/me", "/auth/logout").authenticated()
+                .requestMatchers("/painel", "/auditoria", "/endpoints").hasAnyRole("ADMIN", "ROOT")
                 .anyRequest().permitAll()
             )
             .formLogin(form -> form.disable())
@@ -64,7 +65,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /* 
+    /*
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
