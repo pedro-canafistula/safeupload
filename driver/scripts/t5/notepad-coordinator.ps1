@@ -227,7 +227,11 @@ function Capture-T5Observation($Case, [string]$Phase) {
                 $expectedEntryKeys[$key] = $true
             }
         }
+        # Office writes its owner lock file (~$name.docx and its 8.3 alias) next to an open document; it is inspected and published like any
+        # other new file (mvpBWdiag12: Released), so it is an expected companion of an Office case, not an unexpected reference.
+        $officeCase = ([string]$Case.Kind) -cmatch '^(Word|Excel)'
         foreach ($directoryEntry in $entries) {
+            if ($officeCase -and ([string]$directoryEntry.Name).StartsWith('~$', [StringComparison]::Ordinal)) { continue }
             $key = ([string]$directoryEntry.Name).ToLowerInvariant() + '|' + [string]$directoryEntry.Namespace + '|' + [string]$directoryEntry.Reference
             if ($actualEntryKeys.ContainsKey($key) -or -not $expectedEntryKeys.ContainsKey($key)) { $unexpected += $directoryEntry }
             $actualEntryKeys[$key] = $true
