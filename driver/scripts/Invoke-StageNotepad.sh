@@ -263,6 +263,12 @@ Set-Content -LiteralPath "$data\policy.json" -Value $policy -Encoding UTF8
 & "$d\Protect-SafeUploadPolicy.ps1"
 & "$d\Install-SafeUploadAgent.ps1" -ServiceExecutablePath "$agentDir\SafeUpload.Agent.Service.exe"
 'DriverStart=' + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload').Start
+if ('__T5_WORD_DIAG__' -ceq '1') {
+    # Diagnostic only: the agent's Information events (e.g. "Allocation ... refused before backing creation") reach the Application
+    # log, which the run collects; the event-log provider otherwise keeps its Warning default (mvpWordOrdG2).
+    New-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent' -Name Environment -PropertyType MultiString -Value @('Logging__EventLog__LogLevel__Default=Information') -Force | Out-Null
+    'AgentEventLogInformation=True'
+}
 'INSTALL_DONE=True'
 PS
 )
@@ -270,6 +276,7 @@ install_ps=${install_ps//__T5_EXPECTED_DRIVER_SHA__/$driver_sha}
 install_ps=${install_ps//__T5_EXPECTED_AGENT_ZIP_SHA__/$agent_zip_sha}
 install_ps=${install_ps//__T5_EXPECTED_SERVICE_SHA__/$agent_service_sha}
 install_ps=${install_ps//__T5_OFFICE_BASE__/$office_base}
+install_ps=${install_ps//__T5_WORD_DIAG__/$word_diag}
 printf '%s\n' "$install_ps" | remote | tee "$ev/$tag-install.txt"
 grep -qx 'INSTALL_DONE=True' "$ev/$tag-install.txt" || { echo 'install failed'; exit 15; }
 if [ "$office_base" = 1 ]; then
