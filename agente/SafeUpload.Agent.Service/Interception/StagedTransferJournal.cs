@@ -166,7 +166,7 @@ public sealed partial class StagedTransferJournal
     {
         bool absent = StagedStageFile.TryConfirmAbsent(entry.Transfer.StagePath, out _);
         if (!absent) return false;
-        if (entry.UnboundCancellation is not null) return entry.StageDeleted;
+        if (entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null) return entry.StageDeleted;
         if (entry.State == TransferJournalState.DiscardPending)
             return entry.DiscardAcknowledgedAtUtc is not null;
         if (entry.State == TransferJournalState.Discarded) return true;
@@ -1711,6 +1711,12 @@ public sealed partial class StagedTransferJournal
              cancellation.Version != VersionIdentity(entry) || cancellation.Generation <= entry.DestinationGeneration ||
              !entry.SealedOnce || entry.PendingRename is not null || entry.State != TransferJournalState.Retained))
             throw new InvalidDataException("Invalid unbound cancellation receipt.");
+        if (entry.SupersededByFollowup is { } successor &&
+            (entry.State != TransferJournalState.Retained || !entry.SealedOnce || entry.StageIdentity is null ||
+             entry.BoundAllocation is not null || entry.UnboundCancellation is not null || entry.PendingRename is not null ||
+             entry.StageCleanupStarted || entry.HandbackState != StagedHandbackState.NotAttempted ||
+             successor.TransferId == transfer.TransferId || successor.DestinationGeneration <= entry.DestinationGeneration))
+            throw new InvalidDataException("Invalid superseded-version receipt.");
         bool requiresSeal = entry.State is TransferJournalState.SealPending or TransferJournalState.LegacyEmptyHeld or
             TransferJournalState.Sealed or TransferJournalState.Inspecting or
             TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released or
@@ -1920,7 +1926,7 @@ public sealed partial class StagedTransferJournal
             (entry.StageCleanupStarted && (entry.HandbackState != StagedHandbackState.Verified ||
                 !entry.JustificationWindowClosed)) ||
             (entry.StageDeleted && !(
-                entry.UnboundCancellation is not null ||
+                entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null ||
                 (entry.State == TransferJournalState.Released &&
                  entry.HandbackState == StagedHandbackState.NotAttempted && entry.SealedOnce &&
                  entry.SealedLength is >= 0 && entry.Sha256Hex is not null && !entry.StageCleanupStarted) ||
@@ -2136,7 +2142,7 @@ public sealed partial class StagedTransferJournal
         try
         {
             var current = await ReadCoreAsync(transferId, cancellationToken).ConfigureAwait(false);
-            if (current.UnboundCancellation is not null ||
+            if (current.UnboundCancellation is not null || current.SupersededByFollowup is not null ||
                 (current.StageSpaceFailed && next is (TransferJournalState.Approved or TransferJournalState.Publishing or TransferJournalState.Released)) ||
                 (expectedGeneration is not null && current.DestinationGeneration != expectedGeneration))
                 throw new IOException("The staged version was cancelled or retargeted.");
@@ -2540,7 +2546,7 @@ public sealed partial class StagedTransferJournal
             // Legacy callers must wait for inspection/publication to finish.
             // A durable Released version may retarget its retained stage, even
             // if the release acknowledgement failed after replacing the journal.
-            if (current.UnboundCancellation is not null ||
+            if (current.UnboundCancellation is not null || current.SupersededByFollowup is not null ||
                 _unboundCommitted.Contains(id) && current.State != TransferJournalState.Released ||
                 current.State == TransferJournalState.Publishing && !_unboundPublicationAttempts.Contains(id) ||
                 current.PendingRename is not null || current.LastRenameTransactionId == transactionId ||
@@ -2733,7 +2739,7 @@ public sealed partial class StagedTransferJournal
     }
 
     internal static bool PendingDispatchRequired(TransferJournalEntry entry) =>
-        entry.UnboundCancellation is not null ? !entry.StageDeleted :
+        entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null ? !entry.StageDeleted :
         entry.PendingRename is not null ||
         !BlockedCleanupComplete(entry) && entry.State is not (TransferJournalState.Released or TransferJournalState.Discarded) ||
         entry.State == TransferJournalState.Released && entry.HandbackState == StagedHandbackState.Verified &&
@@ -2811,7 +2817,7 @@ public sealed partial class StagedTransferJournal
                 !(e.BoundAllocation is null && e.DriverInstanceId is not null &&
                   e.State == TransferJournalState.Released && !e.StageDeleted) &&
                 e.PendingRename is null && e.UpdatedAtUtc < cutoffUtc && !PathExists(e.Transfer.StagePath) &&
-                (e.UnboundCancellation is not null && e.StageDeleted ||
+                ((e.UnboundCancellation is not null || e.SupersededByFollowup is not null) && e.StageDeleted ||
                  e.State == TransferJournalState.Discarded ||
                  (e.State == TransferJournalState.DiscardPending && e.DiscardAcknowledgedAtUtc is not null) ||
                  (e.State == TransferJournalState.LegacyEmptyHeld && e.DiscardAcknowledgedAtUtc is not null) ||
@@ -3317,7 +3323,7 @@ public sealed partial class StagedTransferJournal
     private async Task<bool> IsCurrentDestinationAsync(TransferJournalEntry current, CancellationToken token,
         bool includeRetiredAllocations = false)
     {
-        if (current.UnboundCancellation is not null) return false;
+        if (current.UnboundCancellation is not null || current.SupersededByFollowup is not null) return false;
 #if SAFEUPLOAD_ADMISSION_EVIDENCE
         if (current.BoundAllocation is { } bound)
         {
@@ -3707,6 +3713,12 @@ public sealed record TransferJournalEntry(
     public StagedNameTombstone? NamespaceTombstones { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public StagedUnboundCancellation? UnboundCancellation { get; init; }
+    /// <summary>
+    /// T8 Word drop 2 (owner, 2026-10-30): this never-public sealed version was superseded by its own follow-up save,
+    /// which is now published. Its stage only awaits disposal; it is never inspected or published again.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public StagedVersionIdentity? SupersededByFollowup { get; init; }
     public StagedRename? PendingRename { get; init; }
     public ulong LastRenameTransactionId { get; init; }
     public string? LastRenameDestination { get; init; }
@@ -3731,7 +3743,8 @@ public sealed record TransferJournalEntry(
     public bool Equals(TransferJournalEntry? other)
     {
         if (ReferenceEquals(this, other)) return true;
-        return other is not null && UnboundCancellation == other.UnboundCancellation && Transfer == other.Transfer && State == other.State &&
+        return other is not null && UnboundCancellation == other.UnboundCancellation &&
+            SupersededByFollowup == other.SupersededByFollowup && Transfer == other.Transfer && State == other.State &&
             Sha256Hex == other.Sha256Hex && UpdatedAtUtc == other.UpdatedAtUtc &&
             StateHistory.SequenceEqual(other.StateHistory) && SealedOnce == other.SealedOnce && StageSpaceFailed == other.StageSpaceFailed &&
             StageIdentity == other.StageIdentity && SealedLength == other.SealedLength && FileMetadata == other.FileMetadata &&
@@ -3784,6 +3797,7 @@ public sealed record TransferJournalEntry(
         hash.Add(UpdatedAtUtc);
         foreach (TransferJournalStateChange change in StateHistory) hash.Add(change);
         hash.Add(UnboundCancellation);
+        hash.Add(SupersededByFollowup);
         hash.Add(SealedOnce);
         hash.Add(StageIdentity);
         hash.Add(SealedLength);

@@ -120,7 +120,8 @@ public sealed partial class StagedTransferPublisher
                 .ConfigureAwait(false);
             if (journalEntry.State == TransferJournalState.LegacyEmptyHeld) return StagedTransferOutcome.Retained;
         }
-        if (journalEntry.UnboundCancellation is not null) return StagedTransferOutcome.Retained;
+        if (journalEntry.UnboundCancellation is not null || journalEntry.SupersededByFollowup is not null)
+            return StagedTransferOutcome.Retained;
         if (journalEntry.PendingRename is not null || journalEntry.Transfer != transfer || !journalEntry.SealedOnce ||
             journalEntry.SealedLength is not >= 0 || journalEntry.StageIdentity is null ||
             (justified is null

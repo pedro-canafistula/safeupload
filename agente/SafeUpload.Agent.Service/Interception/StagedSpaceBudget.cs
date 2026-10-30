@@ -622,7 +622,7 @@ public sealed partial class StagedSpaceBudget
                         Persist(next); AdoptReservation(next);
                     }
                     bool disposalComplete = entry.StageDeleted &&
-                        (entry.UnboundCancellation is not null || entry.State is
+                        (entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null || entry.State is
                             (TransferJournalState.Released or TransferJournalState.Discarded or TransferJournalState.Blocked));
                     // Kind-5 (and ordinary private discard) ACK is its own exact
                     // deletion receipt; DiscardPending deliberately has no StageDeleted.

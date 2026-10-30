@@ -89,7 +89,7 @@ public sealed partial class StagedTransferJournal
         e.BoundAllocation is null && e.AllocationSecurity is null && e.SeedProvenance is null &&
         e.PendingRename is null && !e.StageCleanupStarted &&
         (e.DiscardRequestedAtUtc is null || e.DiscardAcknowledgedAtUtc is not null) &&
-        (e.UnboundCancellation is not null ? e.StageDeleted :
+        (e.UnboundCancellation is not null || e.SupersededByFollowup is not null ? e.StageDeleted :
          e.State == TransferJournalState.Released && e.StageDeleted &&
              e.HandbackState == StagedHandbackState.NotAttempted ||
          BlockedCleanupComplete(e) && StagedSeedExport.Failure(e) is null ||

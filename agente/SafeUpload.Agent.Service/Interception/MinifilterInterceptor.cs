@@ -1575,7 +1575,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             {
                 if (entry.PendingRename is not null) continue;
                 if (entry.State == TransferJournalState.LegacyEmptyHeld) continue; // guarded startup migration only
-                if (entry.UnboundCancellation is not null ||
+                if (entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null && !entry.StageDeleted ||
                     entry.State is (TransferJournalState.Publishing or TransferJournalState.Blocked) ||
                     entry.State == TransferJournalState.Released &&
                     entry.HandbackState == StagedHandbackState.Verified && entry.JustificationWindowClosed && !entry.StageDeleted)
@@ -1612,6 +1612,9 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                             await _stageJournal.TransitionAsync(entry.Transfer.TransferId,
                                 current.State, TransferJournalState.Retained,
                                 null, cancellationToken, entry.Transfer).ConfigureAwait(false);
+                            // T8 Word drop 2: its own follow-up may already be published (superseded, never public).
+                            await _stagePublisher.RetireSupersededAsync(entry.Transfer.TransferId, cancellationToken)
+                                .ConfigureAwait(false);
                         }
                         catch (Exception changed) when (changed is IOException or InvalidOperationException)
                         {
@@ -1797,7 +1800,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
             foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
-                if (entry.UnboundCancellation is not null || entry.State == TransferJournalState.Publishing ||
+                if (entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null ||
+                    entry.State == TransferJournalState.Publishing ||
                     entry.State == TransferJournalState.Blocked &&
                     entry.HandbackState is StagedHandbackState.NotAttempted or StagedHandbackState.Copying)
                     _stagePublisher.RecoverPendingTransferAsync(entry, stoppingToken).GetAwaiter().GetResult();

@@ -5759,6 +5759,10 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
         if (Stream->RenameExchange != NULL)
             StageSetRenameOperation(Stream->RenameExchange, SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT);
         StageFinishRename(Stream);
+        /* Like the COMMIT below: Word answers a failed rename at once by renaming its backup back onto the name, and that
+         * rename must not meet this prepare still reserving the name in the journal (mvpWdiagG2, "The rename destination
+         * is busy"). A failed send leaves the ABORT pending for the worker's unchanged retry. */
+        StageSendRenameRpcNow(Stream);
         StageQueueStream(Stream, &StageCounters.WakeInline);
         status = STATUS_SHARING_VIOLATION;
         goto Exit;

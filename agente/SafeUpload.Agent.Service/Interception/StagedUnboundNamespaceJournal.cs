@@ -89,4 +89,58 @@ public sealed partial class StagedTransferJournal
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// T8 Word drop 2 (owner, 2026-10-30). Word can reopen a document for writing right after a save, before the service
+    /// starts inspecting the version it just sealed. The follow-up version seeded from it then supersedes it, so it is
+    /// Retained and was kept for ever (mvpWdiagG4). Once that exact follow-up is published, the superseded version is
+    /// retired: it never became public, is never inspected or published again, and its stage is disposed of like a
+    /// released one. Returns the retired entry, or null while the version or its follow-up does not qualify.
+    /// </summary>
+    internal async Task<TransferJournalEntry?> RetireSupersededByFollowupAsync(Guid predecessorId, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(predecessorId, token).ConfigureAwait(false);
+            if (current.SupersededByFollowup is not null) return current;
+            if (current.State != TransferJournalState.Retained || !current.SealedOnce || current.StageIdentity is null ||
+                current.BoundAllocation is not null || current.UnboundCancellation is not null ||
+                current.PendingRename is not null || current.StageCleanupStarted || current.StageDeleted ||
+                current.HandbackState != StagedHandbackState.NotAttempted || current.DiscardKind is not null ||
+                current.StateHistory.Any(change => change.State is TransferJournalState.Publishing or
+                    TransferJournalState.Released or TransferJournalState.Blocked))
+                return null;
+            var version = VersionIdentity(current);
+            var claims = await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false);
+            var followup = claims.Select(claim => claim.Entry).FirstOrDefault(child =>
+                child.ParentVersionIdentity == version && child.State == TransferJournalState.Released &&
+                child.SealedOnce && child.BoundAllocation is null && child.PendingRename is null &&
+                child.DestinationGeneration > current.DestinationGeneration &&
+                string.Equals(child.Transfer.DestinationPath, current.Transfer.DestinationPath, StringComparison.OrdinalIgnoreCase));
+            if (followup is null) return null;
+            var retired = current with { SupersededByFollowup = VersionIdentity(followup), UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await ReplaceAsync(ManifestPath(predecessorId), retired, token).ConfigureAwait(false);
+            return retired;
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task<TransferJournalEntry> CompleteSupersededStageDisposalAsync(TransferJournalEntry expected,
+        CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            var current = await ReadCoreAsync(expected.Transfer.TransferId, token).ConfigureAwait(false);
+            if (current.SupersededByFollowup is null || current.SupersededByFollowup != expected.SupersededByFollowup ||
+                VersionIdentity(current) != VersionIdentity(expected) ||
+                !StagedStageFile.TryConfirmAbsent(current.Transfer.StagePath, out _))
+                throw new IOException("The superseded exact stage has no absence receipt.");
+            if (current.StageDeleted) return current; // immutable exact completion replay
+            var disposed = current with { StageDeleted = true, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            await ReplaceAsync(ManifestPath(current.Transfer.TransferId), disposed, token).ConfigureAwait(false);
+            return disposed;
+        }
+        finally { _gate.Release(); }
+    }
 }

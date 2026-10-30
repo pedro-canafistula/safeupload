@@ -45,6 +45,25 @@ public sealed partial class StagedTransferPublisher
             await ProcessBlockedCleanupAsync(released, token).ConfigureAwait(false);
         else await DisposeReleasedStageAsync(id, token).ConfigureAwait(false);
         lock (_confirmedPublications) _confirmedPublications.Remove(id);
+        if (released.ParentVersionIdentity is { } parent)
+            await RetireSupersededAsync(parent.TransferId, token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// T8 Word drop 2 (owner, 2026-10-30): a Retained version whose own follow-up save is now published is recorded as
+    /// superseded (StagedTransferJournal.RetireSupersededByFollowupAsync). Called when the follow-up is released and when
+    /// the predecessor becomes Retained, whichever comes last. Only records: this can run under the recovery gate, and the
+    /// live pending scan disposes of the stage on its next pass.
+    /// </summary>
+    internal async Task RetireSupersededAsync(Guid predecessorId, CancellationToken token)
+    {
+        try { await _journal.RetireSupersededByFollowupAsync(predecessorId, token).ConfigureAwait(false); }
+        catch (Exception ex) when (!token.IsCancellationRequested &&
+            ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            // The version stays Retained, as before this rule; nothing was published or deleted.
+            _logger?.LogDebug(ex, "Superseded version {TransferId} stays retained for now.", predecessorId);
+        }
     }
 
     private bool HasUnfinishedCallerWork(Guid id)
@@ -145,6 +164,28 @@ public sealed partial class StagedTransferPublisher
                 return;
             }
 #endif
+            if (entry.SupersededByFollowup is not null)
+            {
+                // Like a released stage (DisposeReleasedStageAsync): a driver that still holds the version deletes the stage
+                // once nothing references it; otherwise the service deletes the exact stage. Its bytes were never public.
+                if (!entry.StageDeleted)
+                {
+                    if (_publicationGate.DisposeStage(id, SafeUpload.Agent.Minifilter.StageDisposeOutcome.Released,
+                            CommittedRenames(entry)))
+                    {
+                        ScheduleRecoveryRetry(id); // confirms the driver's deletion later; no hold to report
+                        return;
+                    }
+                    RequirePrivateStagePath(entry.Transfer.StagePath, allowAbsentLeaf: true);
+                    if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(entry.Transfer.StagePath,
+                            entry.StageIdentity, out Exception? supersededFailure))
+                        throw new IOException("The superseded stage identity did not match or absence was not confirmed.",
+                            supersededFailure);
+                    entry = await _journal.CompleteSupersededStageDisposalAsync(entry, token).ConfigureAwait(false);
+                }
+                await _journal.ArchiveCompletedAsync(entry, token).ConfigureAwait(false);
+                return;
+            }
             if (entry.UnboundCancellation is not null)
             {
                 if (!StagedDiscardCleanup.TryDeleteExactAndConfirmAbsent(entry.Transfer.StagePath,
