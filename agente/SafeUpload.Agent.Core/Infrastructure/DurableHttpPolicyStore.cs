@@ -25,6 +25,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
     private readonly bool _enforceProtectedAcl;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Policy? _lastGood;
+    private readonly ICommunicationObserver? _observer;
 
     /// <summary>Origem da última carga concluída, para diagnóstico operacional.</summary>
     public string? LastSource { get; private set; }
@@ -32,9 +33,12 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
     public DurableHttpPolicyStore(HttpClient http, string endpointId, string cacheFile)
         : this(http, endpointId, cacheFile, enforceProtectedAcl: true) { }
 
+    public DurableHttpPolicyStore(HttpClient http, string endpointId, string cacheFile, ICommunicationObserver observer)
+        : this(http, endpointId, cacheFile, enforceProtectedAcl: true, observer) { }
+
     // Suíte isolada usa diretórios temporários sem privilégios administrativos.
     internal DurableHttpPolicyStore(HttpClient http, string endpointId, string cacheFile,
-        bool enforceProtectedAcl)
+        bool enforceProtectedAcl, ICommunicationObserver? observer = null)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         ArgumentException.ThrowIfNullOrWhiteSpace(endpointId);
@@ -42,18 +46,23 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         _endpointId = endpointId;
         _cacheFile = cacheFile;
         _enforceProtectedAcl = enforceProtectedAcl;
+        _observer = observer;
     }
 
     public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Policy);
         try
         {
+            CommunicationFailure? failure = null;
+            int? failedStatus = null;
             try
             {
                 using var response = await _http.GetAsync(
                     $"policy?endpointId={Uri.EscapeDataString(_endpointId)}", cancellationToken)
                     .ConfigureAwait(false);
+                failedStatus = (int)response.StatusCode;
                 response.EnsureSuccessStatusCode();
 
                 await using var content = await response.Content
@@ -68,9 +77,11 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                 // A política publicada pode ser usada nesta execução mesmo quando
                 // o disco não permite atualizar o cache; a falha fica diagnosticada.
                 _lastGood = policy;
+                bool persisted = false;
                 try
                 {
                     await SaveAsync(document, cancellationToken).ConfigureAwait(false);
+                    persisted = true;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -82,19 +93,38 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                         ex.GetType().Name);
                 }
                 LastSource = "remote";
+                observation.Success((int)response.StatusCode, PolicyLoadSource.Remote, persisted);
                 return policy;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                observation.Exception(new OperationCanceledException(), cancellationToken);
                 throw;
             }
             catch (Exception ex)
             {
+                failure = CommunicationObservation.Classify(ex);
+                if (ex is HttpRequestException request && request.StatusCode is { } status) failedStatus = (int)status;
                 Trace.TraceWarning("SafeUpload: política remota indisponível/inválida: {0}",
                     ex.GetType().Name);
             }
 
-            return await RestoreUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var restored = await RestoreUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
+                PolicyLoadSource? source = LastSource switch
+                {
+                    "memory" => PolicyLoadSource.Memory, "disk" => PolicyLoadSource.Disk,
+                    "default" => PolicyLoadSource.Default, _ => null
+                };
+                observation.Failure(failure ?? CommunicationFailure.UnexpectedError, failedStatus, source);
+                return restored;
+            }
+            catch (Exception exception)
+            {
+                observation.Exception(exception, cancellationToken);
+                throw;
+            }
         }
         finally
         {

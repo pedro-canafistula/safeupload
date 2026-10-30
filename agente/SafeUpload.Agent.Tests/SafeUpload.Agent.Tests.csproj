@@ -26,6 +26,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Pure presentation logic; no WPF runtime or reference to the interactive app. -->
+    <Compile Include="..\SafeUpload.Agent.App\Mvvm\ObservableObject.cs" Link="Presentation\ObservableObject.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\CommunicationViewModel.cs" Link="Presentation\CommunicationViewModel.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
     <ProjectReference Include="..\SafeUpload.Agent.Network\SafeUpload.Agent.Network.csproj" />
     <ProjectReference Include="..\SafeUpload.Agent.Service\SafeUpload.Agent.Service.csproj" />

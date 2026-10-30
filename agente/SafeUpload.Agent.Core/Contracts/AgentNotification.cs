@@ -80,7 +80,8 @@ public sealed record StatusNotification(
     bool AuditOnly = false,
     AdmissionCoverageStatus AdmissionCoverage = AdmissionCoverageStatus.NotAvailable,
     string? AdmissionCoverageReason = null,
-    uint? NativePolicyGeneration = null) : AgentNotification
+    uint? NativePolicyGeneration = null,
+    AdministrationCommunicationStatus? Communication = null) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "status";

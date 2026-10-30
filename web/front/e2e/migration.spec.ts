@@ -9,8 +9,22 @@ test('cadastro, login e estado vazio sem indicadores fictícios', async ({ page 
   await page.goto('/cadastro');
   await page.getByLabel('Nome completo').fill('Teste Migração');
   await page.getByLabel('Nome de usuário').fill('migration-e2e');
-  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('E-mail', { exact: true }).fill(email);
   await page.getByLabel('CPF').fill('52998224725');
+  await page.getByLabel('Data de nascimento').fill('1990-01-01');
+  await page.getByLabel('Razão social').fill('Empresa Sintetica E2E');
+  await page.getByLabel('Nome fantasia').fill('Teste E2E');
+  await page.getByLabel('CNPJ (14 dígitos)').fill('11222333000181');
+  await page.getByLabel('E-mail de contato').fill('empresa-e2e@example.com');
+  await page.getByLabel('Telefone de contato').fill('61999999999');
+  for (const suffix of ['Empresa', 'Usuario']) {
+    await page.locator('#cep' + suffix).fill('70000-000');
+    await page.locator('#logradouro' + suffix).fill('Rua Sintetica');
+    await page.locator('#numero' + suffix).fill('1');
+    await page.locator('#bairro' + suffix).fill('Teste');
+    await page.locator('#cidade' + suffix).fill('Brasilia');
+    await page.locator('#estado' + suffix).fill('DF');
+  }
   await page.getByLabel('Senha', { exact: true }).fill(password);
   await page.getByLabel('Confirmar senha').fill(password);
   await page.getByRole('button', { name: /cadastrar|criar conta/i }).click();
@@ -28,8 +42,14 @@ test('cadastro, login e estado vazio sem indicadores fictícios', async ({ page 
 
 test('heartbeat e três eventos reais aparecem no painel, endpoints e auditoria', async ({ page, request }) => {
   const api = 'http://127.0.0.1:8080';
+  const registration = await request.post(api + '/agent/synchronize', { data: {
+    host: { ip: '10.90.0.31', mascara: 24, hostname: endpointId, sistema_operacional: 'Windows', versao_so: '11 Pro' },
+    usuarioSo: { sid: 'S-E2E-FINANCEIRO', usuario_so: 'teste', dominio: 'SYNTHETIC', admin: 0 }
+  } });
+  expect(registration.status()).toBe(201);
+  const { id_host } = await registration.json();
   expect((await request.post(api + '/agent/heartbeat', { data: {
-    endpointId, hostname: endpointId, os: 'Windows 11 Pro', agentVersion: '1.0.0', policyVersion: 1
+    id_host
   } })).ok()).toBeTruthy();
   const events = ['Blocked', 'Approved', 'AllowedWithoutInspection'].map((verdict, index) => ({
     eventId: crypto.randomUUID(), occurredAtUtc: new Date(Date.now() - index * 1000).toISOString(),
@@ -46,7 +66,7 @@ test('heartbeat e três eventos reais aparecem no painel, endpoints e auditoria'
   await page.getByRole('button', { name: /entrar/i }).click();
   const inspections = page.locator('.metrics section').filter({ has: page.getByRole('heading', { name: 'Inspeções', exact: true }) });
   await expect(inspections.locator('strong')).toHaveText('3');
-  await page.getByRole('link', { name: 'Endpoints e agentes', exact: true }).click();
+  await page.goto('/endpoints');
   await expect(page.getByRole('cell', { name: 'Online', exact: true })).toBeVisible();
   await page.getByLabel('Buscar máquina').fill('INEXISTENTE');
   await page.getByRole('button', { name: 'Aplicar', exact: true }).click();
@@ -144,11 +164,17 @@ test('clipboard recebido pelo Java aparece no navegador sem duplicar no reenvio'
   await expect(page.getByText('TRECHO_CLIPBOARD_NAO_EXIBIR')).toHaveCount(0);
 });
 
-test('política publicada pelo painel chega ao endpoint correto e informa recebimento pendente', async ({ page, request }, testInfo) => {
+test('política da console é persistida pelo IP correto; nova publicação não altera o controle', async ({ page, request }, testInfo) => {
   const api = 'http://127.0.0.1:8080';
-  expect((await request.post(api + '/agent/heartbeat', { data: {
-    endpointId: 'E2E-POLITICA', hostname: 'Computador de política', os: 'Windows 11', agentVersion: '1.0', policyVersion: 1
-  } })).ok()).toBeTruthy();
+  const hosts: Record<string, number> = {};
+  for (const [name, ip] of [['E2E-POLITICA', '10.90.0.41'], ['E2E-CONTROLE', '10.90.0.42']]) {
+    const registered = await request.post(api + '/agent/synchronize', { data: {
+      host: { ip, mascara: 24, hostname: name, sistema_operacional: 'Windows', versao_so: '11' },
+      usuarioSo: { sid: 'S-TEST-' + name, usuario_so: 'teste', dominio: 'SYNTHETIC', admin: 0 }
+    } });
+    expect(registered.status()).toBe(201);
+    hosts[ip] = (await registered.json()).id_host;
+  }
   await page.goto('/login');
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Senha', { exact: true }).fill(password);
@@ -156,28 +182,32 @@ test('política publicada pelo painel chega ao endpoint correto e informa recebi
   await expect(page).toHaveURL(/painel/);
   await page.goto('/politicas');
   await page.getByLabel('Nome da política').fill('Proteção integrada');
-  await page.getByLabel('Computador que receberá a política').selectOption('E2E-POLITICA');
-  await expect(page.locator('.rule').filter({ hasText: 'Dados de saúde' }).locator('input')).toBeDisabled();
+  await page.getByLabel('IP da máquina').fill('10.90.0.41');
   await page.locator('.rule').filter({ has: page.getByText('CNPJ', { exact: true }) }).click();
-  await expect(page.getByRole('radio', { name: /Alertar/ })).toBeDisabled();
-  await page.getByRole('button', { name: 'Publicar política' }).click();
-  await expect(page.getByRole('heading', { name: 'Política publicada — versão 2' })).toBeVisible();
-  await expect(page.getByText(/O agente consultará a política na próxima atualização/)).toBeVisible();
-  const policy = await (await request.get(api + '/agent/policy?endpointId=E2E-POLITICA')).json();
-  expect(policy.version).toBe(2);
-  expect(policy.activeCategories).toEqual(['Cnpj']);
-  expect(policy.auditOnly).toBe(false);
-  const other = await (await request.get(api + '/agent/policy?endpointId=OUTRO')).json();
-  expect(other.version).toBe(1);
+  await page.getByRole('radio', { name: /Alertar/ }).check();
+  const firstPublication = page.waitForResponse(r => r.url().endsWith('/api/politicas') && r.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Enviar política' }).click();
+  expect((await firstPublication).status()).toBe(201);
+  await expect(page.locator('.json-result')).toBeVisible();
+  const policy = await (await request.get(api + '/agent/api/policy?ip=10.90.0.41')).json();
+  expect(policy.idPolitica).toBeGreaterThan(0);
+  expect(policy.destino).toEqual({ idHost: hosts['10.90.0.41'], ip: '10.90.0.41' });
+  expect(policy.regras).toEqual([{ tipo: 'cnpj', nome: 'CNPJ' }]);
+  expect(policy.acao).toBe('alertar');
+  expect((await request.get(api + '/agent/api/policy?ip=10.90.0.42')).status()).toBe(404);
   await page.getByRole('radio', { name: /Bloquear/ }).check();
-  await page.getByRole('button', { name: 'Publicar política' }).click();
-  await expect(page.getByRole('heading', { name: 'Política publicada — versão 3' })).toBeVisible();
-  expect((await (await request.get(api + '/agent/policy?endpointId=E2E-POLITICA')).json()).auditOnly).toBe(false);
+  const secondPublication = page.waitForResponse(r => r.url().endsWith('/api/politicas') && r.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Enviar política' }).click();
+  expect((await secondPublication).status()).toBe(201);
+  await expect(page.locator('.json-result')).toBeVisible();
+  const second = await (await request.get(api + '/agent/api/policy?ip=10.90.0.41')).json();
+  expect(second.idPolitica).toBeGreaterThan(policy.idPolitica);
+  expect(second.acao).toBe('bloquear');
+  expect(second.destino.idHost).toBe(hosts['10.90.0.41']);
   await page.reload();
-  const saved = page.getByRole('region', { name: 'Políticas salvas no servidor' });
-  await expect(saved).toContainText('Proteção integrada');
-  await expect(saved).toContainText('Publicada: v3');
-  await expect(saved).toContainText('Versão informada pelo agente: 1');
+  const persisted = await (await request.get(api + '/agent/api/policy?ip=10.90.0.41')).json();
+  expect(persisted).toEqual(second);
+  expect((await request.get(api + '/agent/api/policy?ip=10.90.0.42')).status()).toBe(404);
   await page.screenshot({ path: testInfo.outputPath('politicas-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();

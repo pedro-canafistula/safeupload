@@ -38,6 +38,7 @@ public sealed class NotificationHub
     private readonly ILogger<NotificationHub> _logger;
 
     private StatusNotification? _currentStatus;
+    private AdministrationCommunicationStatus? _communication;
 
     public NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger)
         : this(record, logger, TimeProvider.System) { }
@@ -139,6 +140,8 @@ public sealed class NotificationHub
 
         lock (_gate)
         {
+            if (notification is StatusNotification current)
+                notification = current with { Communication = _communication };
             if (!TryRecord(notification, targetSessionId)) return;
 
             if (notification is StatusNotification status)
@@ -171,6 +174,18 @@ public sealed class NotificationHub
         lock (_gate)
         {
             return _currentStatus is { } status && TryRecord(status, null) ? status : null;
+        }
+    }
+
+    /// <summary>Retains coarse machine-wide state; never adds it to the event replay window.</summary>
+    public void UpdateCommunication(AdministrationCommunicationStatus communication)
+    {
+        ArgumentNullException.ThrowIfNull(communication);
+        lock (_gate)
+        {
+            _communication = communication;
+            if (_currentStatus is { } status && status.Communication != communication)
+                Publish(status with { Communication = communication });
         }
     }
 

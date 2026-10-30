@@ -1,9 +1,11 @@
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Service.Diagnostics;
 
 namespace SafeUpload.Agent.Service.Dispatch;
 
@@ -42,6 +44,10 @@ public sealed class HttpAgentDispatcher : BackgroundService
     private readonly string _endpointId;
     private readonly TimeSpan _interval;
     private readonly ILogger<HttpAgentDispatcher> _logger;
+    private readonly ICommunicationObserver? _observer;
+
+    /// <summary>Seleção explícita de heartbeat. Nulo mantém o contrato anterior.</summary>
+    public IAgentHeartbeat? HeartbeatSender { get; init; }
 
     /// <summary>Monta o despachante.</summary>
     public HttpAgentDispatcher(
@@ -50,7 +56,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         HttpClient client,
         string endpointId,
         TimeSpan interval,
-        ILogger<HttpAgentDispatcher> logger)
+        ILogger<HttpAgentDispatcher> logger, ICommunicationObserver? observer = null)
     {
         ArgumentNullException.ThrowIfNull(auditSink);
         ArgumentNullException.ThrowIfNull(policyStore);
@@ -65,16 +71,15 @@ public sealed class HttpAgentDispatcher : BackgroundService
         _endpointId = endpointId;
         _interval = interval;
         _logger = logger;
+        _observer = observer;
     }
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "Despachante ativo: {BaseAddress}, a cada {Seconds:F0} s, como {EndpointId}.",
-            _client.BaseAddress,
-            _interval.TotalSeconds,
-            _endpointId);
+            "Despachante ativo; intervalo de {Seconds:F0} s. Consultar communication-health para resultados.",
+            _interval.TotalSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -91,7 +96,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
                 // Servidor fora do ar é estado esperado, não incidente: o que
                 // não pode acontecer é o laço morrer e o endpoint parar de
                 // tentar para sempre.
-                _logger.LogWarning(ex, "Ciclo de despacho falhou. Nova tentativa na próxima volta.");
+                CommunicationLog.Warning(_logger, CommunicationLogStage.DispatchCycle, ex);
             }
 
             try
@@ -107,6 +112,12 @@ public sealed class HttpAgentDispatcher : BackgroundService
 
     private async Task SendHeartbeatAsync(CancellationToken cancellationToken)
     {
+        if (HeartbeatSender is {} sender)
+        {
+            await sender.SendAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
         var heartbeat = new HeartbeatRequest(
@@ -116,14 +127,23 @@ public sealed class HttpAgentDispatcher : BackgroundService
             AgentVersion,
             policy.Version);
 
-        using var response = await _client
-            .PostAsJsonAsync("heartbeat", heartbeat, SendOptions, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
+        int? receivedStatus = null;
+        try
         {
-            _logger.LogWarning("Heartbeat recusado pelo servidor: {Status}.", (int)response.StatusCode);
+            using var response = await _client
+                .PostAsJsonAsync("heartbeat", heartbeat, SendOptions, cancellationToken)
+                .ConfigureAwait(false);
+            receivedStatus = (int)response.StatusCode;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                observation.Failure(CommunicationFailure.HttpRejected, (int)response.StatusCode);
+                _logger.LogWarning("Heartbeat recusado pelo servidor: {Status}.", (int)response.StatusCode);
+            }
+            else observation.Success((int)response.StatusCode);
         }
+        catch (Exception exception) { observation.Exception(exception, cancellationToken, receivedStatus); throw; }
     }
 
     internal async Task RunCycleAsync(CancellationToken cancellationToken)
@@ -132,7 +152,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Heartbeat falhou; o envio da auditoria será tentado independentemente.");
+            CommunicationLog.Warning(_logger, CommunicationLogStage.Heartbeat, exception);
         }
         await DispatchPendingAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -151,51 +171,64 @@ public sealed class HttpAgentDispatcher : BackgroundService
 
         var payload = new SubmitEventsRequest(pending, overrides);
 
-        using var response = await _client
-            .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Audit);
+        int? receivedStatus = null;
+        try
         {
-            _logger.LogWarning(
-                "Servidor recusou {Count} evento(s): {Status}. Continuam pendentes.",
-                pending.Count,
-                (int)response.StatusCode);
-            return;
+            using var response = await _client
+                .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
+                .ConfigureAwait(false);
+            receivedStatus = (int)response.StatusCode;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                observation.Failure(CommunicationFailure.HttpRejected, (int)response.StatusCode);
+                _logger.LogWarning(
+                    "Servidor recusou {Count} evento(s): {Status}. Continuam pendentes.",
+                    pending.Count,
+                    (int)response.StatusCode);
+                return;
+            }
+
+            var acknowledgement = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsCompleteAcknowledgement(acknowledgement, pending.Count, overrides.Count))
+            {
+                observation.Failure(CommunicationFailure.InvalidResponse, (int)response.StatusCode);
+                _logger.LogWarning("Confirmação inválida ou incompleta do lote. Registros continuam pendentes.");
+                return;
+            }
+
+            // A valid receipt is communication success, independent of local queue confirmation.
+            observation.Success((int)response.StatusCode);
+
+            // Só marca como entregue o que o servidor confirmou ter aceitado. Marcar
+            // antes do 2xx trocaria uma falha de rede por perda silenciosa de
+            // trilha, que é o erro caro: o evento sumiria da fila sem nunca ter
+            // chegado ao painel.
+            var dispatched = new List<Guid>(pending.Count);
+            foreach (var auditEvent in pending)
+            {
+                dispatched.Add(auditEvent.EventId);
+            }
+
+            await _auditSink.MarkDispatchedAsync(dispatched, cancellationToken).ConfigureAwait(false);
+            if (_auditSink is IOverrideQueue overrideQueue)
+                await overrideQueue.MarkOverridesDispatchedAsync(overrides, cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation("{Count} evento(s) entregues ao Centro de Administração.", dispatched.Count);
         }
-
-        var acknowledgement = await response.Content.ReadFromJsonAsync<SubmitResponse>(cancellationToken)
-            .ConfigureAwait(false);
-        if (acknowledgement?.AcceptedEvents != pending.Count ||
-            acknowledgement.AcceptedOverrides != overrides.Count)
-        {
-            _logger.LogWarning("Confirmação incompleta do lote. Registros continuam pendentes.");
-            return;
-        }
-
-        // Só marca como entregue o que o servidor confirmou ter aceitado. Marcar
-        // antes do 2xx trocaria uma falha de rede por perda silenciosa de
-        // trilha, que é o erro caro: o evento sumiria da fila sem nunca ter
-        // chegado ao painel.
-        var dispatched = new List<Guid>(pending.Count);
-        foreach (var auditEvent in pending)
-        {
-            dispatched.Add(auditEvent.EventId);
-        }
-
-        await _auditSink.MarkDispatchedAsync(dispatched, cancellationToken).ConfigureAwait(false);
-        if (_auditSink is IOverrideQueue overrideQueue)
-            await overrideQueue.MarkOverridesDispatchedAsync(overrides, cancellationToken).ConfigureAwait(false);
-
-        _logger.LogInformation("{Count} evento(s) entregues ao Centro de Administração.", dispatched.Count);
+        catch (Exception exception) { observation.Exception(exception, cancellationToken, receivedStatus); throw; }
     }
 
     /// <summary>
-    /// Versão informada no heartbeat. Constante por enquanto: o agente ainda não
-    /// carrega versão de assembly própria, e inventar uma leitura de metadado
-    /// aqui esconderia que este número não é mantido em lugar nenhum ainda.
+    /// Versão do serviço efetivamente compilado, mesmo quando hospedado por um
+    /// utilitário ou test runner. Preserva o sufixo de revisão quando o SDK o inclui.
     /// </summary>
-    private const string AgentVersion = "1.0.0";
+    private static readonly string AgentVersion =
+        typeof(HttpAgentDispatcher).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? typeof(HttpAgentDispatcher).Assembly.GetName().Version?.ToString()
+        ?? "unknown";
 
     private sealed record HeartbeatRequest(
         string EndpointId,
@@ -211,5 +244,27 @@ public sealed class HttpAgentDispatcher : BackgroundService
         IReadOnlyList<AuditEvent> Events,
         IReadOnlyList<AuditOverride> Overrides);
 
-    private sealed record SubmitResponse(int AcceptedEvents, int AcceptedOverrides);
+    private static bool IsCompleteAcknowledgement(JsonElement receipt, int events, int overrides)
+    {
+        if (receipt.ValueKind != JsonValueKind.Object) return false;
+        bool sawEvents = false, sawOverrides = false;
+        foreach (var property in receipt.EnumerateObject())
+        {
+            // Decode escaped names and preserve case-insensitive matching, while rejecting duplicate counts.
+            if (property.Name.Equals("acceptedEvents", StringComparison.OrdinalIgnoreCase))
+            {
+                if (sawEvents || property.Value.ValueKind != JsonValueKind.Number ||
+                    !property.Value.TryGetInt32(out int count) || count != events) return false;
+                sawEvents = true;
+            }
+            else if (property.Name.Equals("acceptedOverrides", StringComparison.OrdinalIgnoreCase))
+            {
+                if (sawOverrides || property.Value.ValueKind != JsonValueKind.Number ||
+                    !property.Value.TryGetInt32(out int count) || count != overrides) return false;
+                sawOverrides = true;
+            }
+        }
+        // Both top-level counts must exist, even when the corresponding batch is empty.
+        return sawEvents && sawOverrides;
+    }
 }

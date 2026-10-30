@@ -13,6 +13,15 @@ jobs:
   migration:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: synthetic-ci-password
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -psynthetic-ci-password"
+          --health-interval=10s --health-timeout=5s --health-retries=12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -27,6 +36,14 @@ jobs:
           cache-dependency-path: web/front/package-lock.json
       - name: Backend tests and package
         run: mvn -B -f web/back/pom.xml clean package
+      - name: Initialize the actual isolated MySQL schemas
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+        run: |
+          docker exec -e MYSQL_PWD=synthetic-ci-password "$MYSQL_CONTAINER" mysql -uroot -e "SET GLOBAL time_zone='-03:00'; SET GLOBAL event_scheduler=OFF;"
+          for ddl in 01_schema_acesso.sql 02_schema_app.sql 03_job_usuarios_inativos.sql 05_agent_audit_ingest.sql; do
+            docker exec -i -e MYSQL_PWD=synthetic-ci-password "$MYSQL_CONTAINER" mysql -uroot < "db/initdb/$ddl"
+          done
       - name: Frontend dependencies and build
         working-directory: web/front
         run: |
@@ -35,9 +52,14 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Start isolated backend
         run: |
-          java -jar web/back/target/backend-0.1.0.jar '--spring.datasource.url=jdbc:h2:mem:e2e' '--spring.jpa.hibernate.ddl-auto=create-drop' > backend-e2e.log 2>&1 &
+          java -Duser.timezone=America/Sao_Paulo -jar web/back/target/backend-0.1.0.jar \
+            '--server.address=127.0.0.1' \
+            '--app.datasource.url=jdbc:mysql://127.0.0.1:3306/app?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false' \
+            '--app.datasource.username=root' '--app.datasource.password=synthetic-ci-password' \
+            '--acesso.datasource.url=jdbc:mysql://127.0.0.1:3306/acesso?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false' \
+            '--acesso.datasource.username=root' '--acesso.datasource.password=synthetic-ci-password' > backend-e2e.log 2>&1 &
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8080/agent/policy > /dev/null; then exit 0; fi
+            if curl --fail --silent http://127.0.0.1:8080/auth/decision > /dev/null; then exit 0; fi
             sleep 1
           done
           cat backend-e2e.log
@@ -56,82 +78,11 @@ jobs:
             web/front/test-results/
 
   agent-contract:
-    runs-on: windows-latest
-    timeout-minutes: 20
-    env:
-      SAFEUPLOAD_MACHINE_TESTS: '0'
-    steps:
-      # O repositorio tem caminhos acima de 260 caracteres (evidencias do
-      # driver em driver/recovery-dispositioned). Sem isto o checkout no
-      # Windows falha com "cannot create directory".
-      - name: Enable long paths
-        run: git config --system core.longpaths true
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: Agent tests
-        run: dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj --verbosity minimal --logger "trx;LogFileName=agent.trx" --results-directory artifacts/agent
-      - name: Agent test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: agent-test-diagnostics
-          path: artifacts/agent/
-      - name: Package backend
-        run: mvn -B -f web/back/pom.xml clean package -DskipTests
-      - name: C# to Java contract
-        shell: pwsh
-        run: |
-          $server = Start-Process java -WindowStyle Hidden -PassThru -ArgumentList @('-jar', 'web/back/target/backend-0.1.0.jar', '--server.port=18080', '--spring.datasource.url=jdbc:h2:mem:contract', '--spring.jpa.hibernate.ddl-auto=create-drop')
-          try {
-            $ready = $false
-            for ($attempt = 0; $attempt -lt 30; $attempt++) {
-              try {
-                Invoke-RestMethod http://127.0.0.1:18080/agent/policy | Out-Null
-                $ready = $true
-                break
-              } catch { Start-Sleep -Seconds 1 }
-            }
-            if (-not $ready) { throw 'Backend não iniciou.' }
-            dotnet run --project agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj
-            if ($LASTEXITCODE -ne 0) { throw 'Contrato C# → Java falhou.' }
-          } finally {
-            Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
-          }
+    uses: ./.github/workflows/agent-host-identity-backend.yml
+    with:
+      contract-only: true
 
   installed-service:
-    runs-on: windows-latest
-    timeout-minutes: 20
-    env:
-      SAFEUPLOAD_MACHINE_TESTS: '0'
-    steps:
-      - name: Enable long paths
-        run: git config --system core.longpaths true
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: Build isolated backend
-        run: mvn -B -f web/back/pom.xml clean package -DskipTests
-      - name: Publish service for disposable runner
-        run: dotnet publish agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj -c Release -r win-x64 --self-contained true -o artifacts/service --verbosity minimal
-      - name: Verify installed LocalSystem service and offline cache
-        shell: pwsh
-        run: ./agente/scripts/Test-InstalledServiceCi.ps1
-      - name: Installed service diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installed-service-diagnostics
-          path: artifacts/installed-service/
+    uses: ./.github/workflows/agent-host-identity-backend.yml
+    with:
+      contract-only: false

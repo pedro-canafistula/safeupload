@@ -13,7 +13,7 @@ test('envia a política ao backend e permite baixar uma cópia do JSON', async (
   await page.locator('input[name="acao"][value="alertar"]').check();
   await page.locator('.rule').filter({ has: page.getByText('RG', { exact: true }) }).click();
   await page.getByRole('button', { name: 'Enviar política' }).click();
-  await expect(page.getByRole('heading', { name: 'Política enviada' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'JSON gerado e baixado' })).toBeVisible();
   expect(payload).toMatchObject({
     destino: { ip: '192.168.1.20' },
     acao: 'alertar',

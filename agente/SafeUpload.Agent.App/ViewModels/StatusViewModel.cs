@@ -35,6 +35,7 @@ public sealed class StatusViewModel : ObservableObject
 
     /// <summary>As operações recentes, da mais nova para a mais antiga.</summary>
     public ObservableCollection<ActivityRowViewModel> RecentActivity { get; } = [];
+    public CommunicationViewModel Communication { get; } = new();
 
     /// <summary>Valor em destaque do cartão de segurança.</summary>
     public string SecurityState
@@ -108,6 +109,7 @@ public sealed class StatusViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(status);
 
         Connected = true;
+        Communication.Apply(status.Communication);
         PolicyVersion = $"v{status.PolicyVersion}";
         ActiveCategoriesCaption = $"{status.ActiveCategories} CATEGORIAS ATIVAS";
 
@@ -162,6 +164,7 @@ public sealed class StatusViewModel : ObservableObject
     public void SetDisconnected()
     {
         Connected = false;
+        Communication.SetDisconnected();
         SecurityState = "Serviço indisponível";
         SecurityCaption = "SEM COMUNICAÇÃO COM O SERVIÇO";
         PolicyVersion = "—";

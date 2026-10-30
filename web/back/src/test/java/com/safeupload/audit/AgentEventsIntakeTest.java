@@ -3,6 +3,8 @@ package com.safeupload.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.safeupload.application.AgentService;
+import com.safeupload.application.AdminService;
+import com.safeupload.infrastructure.repository.acesso.EmpresaRepository;
 import com.safeupload.presentation.config.SecurityConfig;
 import com.safeupload.presentation.controller.AgentController;
 import com.safeupload.presentation.exception.ApiExceptionHandler;
@@ -53,6 +55,8 @@ class AgentEventsIntakeTest {
     }
 
     @MockBean AgentService currentService;
+    @MockBean AdminService currentAdminService;
+    @MockBean EmpresaRepository currentEmpresaRepository;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired DataSource dataSource;
@@ -156,9 +160,9 @@ class AgentEventsIntakeTest {
     }
 
     @Test void keepsTheExistingThiagoRoutesRegistered() throws Exception {
-        mvc.perform(post("/agent/api/synchronize").contentType("application/json").content("{}"))
+        mvc.perform(post("/agent/synchronize").contentType("application/json").content("{}"))
             .andExpect(status().isBadRequest());
-        mvc.perform(post("/agent/api/heartbeat").contentType("application/json").content("{}"))
+        mvc.perform(post("/agent/heartbeat").contentType("application/json").content("{}"))
             .andExpect(status().isBadRequest());
     }
 }
