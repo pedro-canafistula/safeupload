@@ -1587,7 +1587,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                 if (entry.State == TransferJournalState.Retained)
                 {
                     // T8 Word drop 2: a version superseded by its own published follow-up; disposed of on the next pass.
-                    await _stagePublisher.ReconcileSupersededAsync(entry, cancellationToken).ConfigureAwait(false);
+                    await _stagePublisher.ReconcileSupersededAsync(entry, pending!, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
                 if (entry.State != TransferJournalState.Sealed) continue;
@@ -1619,7 +1619,8 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                                 current.State, TransferJournalState.Retained,
                                 null, cancellationToken, entry.Transfer).ConfigureAwait(false);
                             // T8 Word drop 2: its own follow-up may already be published (superseded, never public).
-                            await _stagePublisher.RetireSupersededAsync(entry.Transfer.TransferId, cancellationToken)
+                            await _stagePublisher.RetireSupersededAsync(entry.Transfer.TransferId,
+                                StagedTransferPublisher.HotFollowups(entry.Transfer.TransferId, pending!), cancellationToken)
                                 .ConfigureAwait(false);
                         }
                         catch (Exception changed) when (changed is IOException or InvalidOperationException)
@@ -1632,6 +1633,7 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                     }
                 }
             }
+            _stagePublisher.PruneSupersededChecks(pending!);
             await Task.Delay(250, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -1803,11 +1805,11 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 #else
             _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
 #endif
-            foreach (TransferJournalEntry pendingEntry in _stageJournal.ReadPendingAsync(stoppingToken)
-                         .GetAwaiter().GetResult())
+            var startupPending = _stageJournal.ReadPendingAsync(stoppingToken).GetAwaiter().GetResult();
+            foreach (TransferJournalEntry pendingEntry in startupPending)
             {
                 // T8 Word drop 2: a restart between a follow-up's release and its predecessor's retirement loses nothing.
-                TransferJournalEntry entry = _stagePublisher.ReconcileSupersededAsync(pendingEntry, stoppingToken)
+                TransferJournalEntry entry = _stagePublisher.ReconcileSupersededAsync(pendingEntry, startupPending, stoppingToken)
                     .GetAwaiter().GetResult() ?? pendingEntry;
                 if (entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null ||
                     entry.State == TransferJournalState.Publishing ||

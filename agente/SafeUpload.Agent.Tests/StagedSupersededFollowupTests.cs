@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Service.Interception;
 
 namespace SafeUpload.Agent.Tests;
@@ -13,12 +15,14 @@ public sealed partial class StagedAttachmentV20Tests
     public async Task Superseded_retained_version_is_retired_by_its_published_followup_and_disposed_by_recovery()
     {
         var parent = await UnboundSealedAsync();
+        MonitorDestination(parent); // inspection and publication only for a monitored destination
         var child = await FollowupFixtureAsync(parent, "follow-up bytes");
         await Assert.ThrowsAsync<IOException>(() => parent.Journal.TransitionAsync(parent.Transfer.TransferId,
             TransferJournalState.Sealed, TransferJournalState.Inspecting, null, default));
         await parent.Journal.TransitionAsync(parent.Transfer.TransferId, TransferJournalState.Sealed,
             TransferJournalState.Retained, null, default);
-        Assert.Null(await parent.Journal.RetireSupersededByFollowupAsync(parent.Transfer.TransferId, default)); // unpublished
+        Assert.Null(await parent.Journal.RetireSupersededByFollowupAsync(parent.Transfer.TransferId,
+            [child.Transfer.TransferId], default)); // unpublished
 
         await CompleteAttachmentAsync(child, 17501);
         await ObserveAndSealAsync(child, 17504);
@@ -29,7 +33,8 @@ public sealed partial class StagedAttachmentV20Tests
         Assert.Equal(child.Version, retired.SupersededByFollowup);
         Assert.Equal(TransferJournalState.Retained, retired.State);
         Assert.True(StagedTransferJournal.PendingDispatchRequired(retired));
-        Assert.Equal(retired, await parent.Journal.RetireSupersededByFollowupAsync(parent.Transfer.TransferId, default));
+        Assert.Equal(retired, await parent.Journal.RetireSupersededByFollowupAsync(parent.Transfer.TransferId,
+            [child.Transfer.TransferId], default));
         await Assert.ThrowsAsync<IOException>(() => parent.Journal.TransitionAsync(parent.Transfer.TransferId,
             TransferJournalState.Retained, TransferJournalState.Inspecting, null, default));
         await Assert.ThrowsAsync<IOException>(() => CancelUnboundAsync(parent, Guid.NewGuid()));
@@ -68,6 +73,7 @@ public sealed partial class StagedAttachmentV20Tests
     public async Task Superseded_reconciliation_after_restart_finds_a_followup_hidden_by_a_newer_archived_save()
     {
         var parent = await UnboundSealedAsync();
+        MonitorDestination(parent); // inspection and publication only for a monitored destination
         var child = await FollowupFixtureAsync(parent, "follow-up bytes");
         await CompleteAttachmentAsync(child, 17601);
         await ObserveAndSealAsync(child, 17604);
@@ -85,7 +91,7 @@ public sealed partial class StagedAttachmentV20Tests
         var restarted = new StagedTransferJournal(parent.JournalDirectory);
         var recovery = RecoveryPublisher(parent, new SupersededStageGate(parent.Transfer.TransferId, held: false), restarted);
         var retired = await recovery.ReconcileSupersededAsync(
-            await restarted.ReadAsync(parent.Transfer.TransferId, default), default);
+            await restarted.ReadAsync(parent.Transfer.TransferId, default), await restarted.ReadPendingAsync(default), default);
         Assert.NotNull(retired);
         Assert.Equal(child.Version, retired.SupersededByFollowup);
         Assert.Equal("a newer unrelated save", await File.ReadAllTextAsync(parent.Transfer.DestinationPath));
@@ -101,6 +107,7 @@ public sealed partial class StagedAttachmentV20Tests
     public async Task Superseded_retirement_refuses_without_exact_evidence(string shape)
     {
         var parent = await UnboundSealedAsync();
+        MonitorDestination(parent); // inspection and publication only for a monitored destination
         var child = await FollowupFixtureAsync(parent,
             shape == "blocked-child" ? "CPF: 529.982.247-25" : "follow-up bytes");
         if (shape is "unpublished-child" or "blocked-child")
@@ -121,10 +128,18 @@ public sealed partial class StagedAttachmentV20Tests
             await File.WriteAllTextAsync(manifest, json.ToJsonString());
             journal = new StagedTransferJournal(parent.JournalDirectory);
         }
-        Assert.Null(await journal.RetireSupersededByFollowupAsync(parent.Transfer.TransferId, default));
+        Assert.Null(await journal.RetireSupersededByFollowupAsync(parent.Transfer.TransferId,
+            [child.Transfer.TransferId], default));
         Assert.True(File.Exists(parent.Transfer.StagePath));
         Assert.Null((await journal.ReadAsync(parent.Transfer.TransferId, default)).SupersededByFollowup);
     }
+
+    private void MonitorDestination(Fixture f) =>
+        _workspace.WritePolicy(JsonSerializer.Serialize(PolicyDocument.Default with
+        {
+            MonitoredScopes = MonitoredScopesDocument.Default with
+            { DestinationPaths = [Path.GetDirectoryName(f.Transfer.DestinationPath)!] }
+        }));
 
     private static async Task<Fixture> FollowupFixtureAsync(Fixture parent, string content)
     {

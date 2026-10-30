@@ -46,7 +46,7 @@ public sealed partial class StagedTransferPublisher
         else await DisposeReleasedStageAsync(id, token).ConfigureAwait(false);
         lock (_confirmedPublications) _confirmedPublications.Remove(id);
         if (released.ParentVersionIdentity is { } parent)
-            await RetireSupersededAsync(parent.TransferId, token).ConfigureAwait(false);
+            await RetireSupersededAsync(parent.TransferId, [id], token).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -56,9 +56,15 @@ public sealed partial class StagedTransferPublisher
     /// so a crash or failed write between the two never loses the obligation. Only records: this can run under the
     /// recovery gate, and the pending scan disposes of the stage.
     /// </summary>
-    internal async Task<TransferJournalEntry?> RetireSupersededAsync(Guid predecessorId, CancellationToken token)
+    internal async Task<TransferJournalEntry?> RetireSupersededAsync(Guid predecessorId, IReadOnlyCollection<Guid> hotFollowups,
+        CancellationToken token)
     {
-        try { return await _journal.RetireSupersededByFollowupAsync(predecessorId, token).ConfigureAwait(false); }
+        try
+        {
+            var retired = await _journal.RetireSupersededByFollowupAsync(predecessorId, hotFollowups, token).ConfigureAwait(false);
+            if (retired is not null) lock (_supersededChecks) _supersededChecks.Remove(predecessorId);
+            return retired;
+        }
         catch (Exception ex) when (!token.IsCancellationRequested &&
             ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -70,8 +76,12 @@ public sealed partial class StagedTransferPublisher
 
     private readonly Dictionary<Guid, long> _supersededChecks = new();
 
-    /// <summary>A cheap snapshot test, then at most one journal check per entry every five seconds.</summary>
-    internal async Task<TransferJournalEntry?> ReconcileSupersededAsync(TransferJournalEntry entry, CancellationToken token)
+    /// <summary>
+    /// A cheap snapshot test, then at most one journal check per entry every five seconds. The caller's pending snapshot
+    /// supplies the hot follow-ups (entries whose parent is this version); the journal adds archived ones.
+    /// </summary>
+    internal async Task<TransferJournalEntry?> ReconcileSupersededAsync(TransferJournalEntry entry,
+        IReadOnlyList<TransferJournalEntry> pending, CancellationToken token)
     {
         if (entry.State != TransferJournalState.Retained || entry.SupersededByFollowup is not null ||
             entry.UnboundCancellation is not null || entry.BoundAllocation is not null || !entry.SealedOnce ||
@@ -84,9 +94,18 @@ public sealed partial class StagedTransferPublisher
             if (_supersededChecks.TryGetValue(id, out long next) && now < next) return null;
             _supersededChecks[id] = now + 5 * Stopwatch.Frequency;
         }
-        var retired = await RetireSupersededAsync(id, token).ConfigureAwait(false);
-        if (retired is not null) lock (_supersededChecks) _supersededChecks.Remove(id);
-        return retired;
+        return await RetireSupersededAsync(id, HotFollowups(id, pending), token).ConfigureAwait(false);
+    }
+
+    internal static Guid[] HotFollowups(Guid predecessorId, IEnumerable<TransferJournalEntry> pending) =>
+        pending.Where(e => e.ParentVersionIdentity?.TransferId == predecessorId).Select(e => e.Transfer.TransferId).ToArray();
+
+    /// <summary>Keeps throttle state only for versions still in the pending snapshot.</summary>
+    internal void PruneSupersededChecks(IEnumerable<TransferJournalEntry> pending)
+    {
+        var live = pending.Select(e => e.Transfer.TransferId).ToHashSet();
+        lock (_supersededChecks)
+            foreach (Guid id in _supersededChecks.Keys.Where(id => !live.Contains(id)).ToList()) _supersededChecks.Remove(id);
     }
 
     private bool HasUnfinishedCallerWork(Guid id)

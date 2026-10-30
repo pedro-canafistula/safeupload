@@ -98,7 +98,8 @@ public sealed partial class StagedTransferJournal
     /// retired: it never became public, is never inspected or published again, and its stage is disposed of like a
     /// released one. Returns the retired entry, or null while the version or its follow-up does not qualify.
     /// </summary>
-    internal async Task<TransferJournalEntry?> RetireSupersededByFollowupAsync(Guid predecessorId, CancellationToken token)
+    internal async Task<TransferJournalEntry?> RetireSupersededByFollowupAsync(Guid predecessorId,
+        IReadOnlyCollection<Guid> hotFollowups, CancellationToken token)
     {
         await _gate.WaitAsync(token).ConfigureAwait(false);
         try
@@ -115,17 +116,16 @@ public sealed partial class StagedTransferJournal
                     TransferJournalState.Released or TransferJournalState.Blocked))
                 return null;
             var version = VersionIdentity(current);
-            // Direct follow-ups only, found by their durable parent link in the hot journal and the archive index (a
-            // newer archived save can hide a published follow-up from the destination's claims).
+            // Direct follow-ups only, by their durable parent link: hot candidates named by the caller (from its pending
+            // snapshot, or the follow-up just released), each reread here, and the archive index (a newer archived save can
+            // hide a published follow-up from the destination's claims). No directory-wide scan per predecessor.
             await EnsureArchiveLoadedCoreAsync(token).ConfigureAwait(false);
             var children = new List<TransferJournalEntry>();
-            foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+            foreach (Guid id in hotFollowups.Distinct())
             {
-                if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
-                    throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
-                if (id == predecessorId) continue;
-                var entry = await ReadScannedAsync(file, id, token).ConfigureAwait(false);
-                if (entry.ParentVersionIdentity == version) children.Add(entry);
+                if (id == predecessorId || _archived.ContainsKey(id)) continue;
+                try { children.Add(await ReadCoreAsync(id, token).ConfigureAwait(false)); }
+                catch (FileNotFoundException) { } // archived meanwhile: the index below has it
             }
             if (_archivedFollowups.TryGetValue(predecessorId, out var archivedIds))
                 foreach (Guid id in archivedIds)
