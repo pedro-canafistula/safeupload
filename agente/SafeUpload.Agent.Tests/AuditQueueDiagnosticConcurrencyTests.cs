@@ -12,6 +12,43 @@ namespace SafeUpload.Agent.Tests;
 
 public sealed class AuditQueueDiagnosticConcurrencyTests
 {
+    [Fact]
+    public async Task Leitura_capturada_libera_gravacao_e_confirmacao_e_nao_inclui_append_posterior()
+    {
+        using var workspace = new TestWorkspace();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var first = Event(0);
+        await sink.WriteAsync(first, deadline.Token);
+        var original = await File.ReadAllTextAsync(workspace.QueueFile, deadline.Token);
+        await using var window = await sink.OpenIntegritySnapshotAsync(deadline.Token);
+        Assert.NotNull(window);
+        // Both operations complete while the original read handle remains open.
+        await sink.WriteAsync(Event(1), deadline.Token);
+        await sink.MarkDispatchedAsync([first.EventId], deadline.Token);
+        using var reader = new StreamReader(window, leaveOpen: true);
+        Assert.Equal(original, reader.ReadToEnd());
+        Assert.Equal(Encoding.UTF8.GetByteCount(original), window.CapturedLength);
+        var current = await sink.InspectIntegrityAsync(deadline.Token);
+        Assert.Equal(2, current.ValidEvents);
+        Assert.Equal(1, current.PendingEvents);
+        Assert.Equal(1, current.DispatchedEvents);
+    }
+
+    [Fact]
+    public async Task Truncamento_externo_nao_e_apresentado_como_leitura_completa()
+    {
+        using var workspace = new TestWorkspace();
+        await File.WriteAllTextAsync(workspace.QueueFile, new string('x', 8192));
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        await using var window = await sink.OpenIntegritySnapshotAsync(CancellationToken.None);
+        Assert.NotNull(window);
+        using (var external = new FileStream(workspace.QueueFile, FileMode.Open, FileAccess.Write,
+            FileShare.ReadWrite | FileShare.Delete)) external.SetLength(2);
+        var buffer = new byte[16];
+        Assert.Equal(2, await window.ReadAsync(buffer.AsMemory(), CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(async () => { await window.ReadAsync(buffer.AsMemory(), CancellationToken.None); });
+    }
 
     [Fact]
     public async Task Consultas_com_gravacao_e_confirmacao_preservam_conjuntos_apos_reabertura()

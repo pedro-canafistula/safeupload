@@ -239,7 +239,9 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
                 }
                 // Não publicar antes de fechar todos os streams nem após cancelar.
                 cancellationToken.ThrowIfCancellationRequested();
-                File.Move(temporary, _queueFile, overwrite: true);
+                // Replace the existing queue while shared diagnostic readers retain
+                // their old handle. Keep metadata merge errors visible to the caller.
+                File.Replace(temporary, _queueFile, destinationBackupFileName: null);
             }
             finally
             {
