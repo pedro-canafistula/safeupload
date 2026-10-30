@@ -9,7 +9,8 @@ Results: C:\T5\result.json.
 param([string]$ActorUser = 't5actor', [string]$ActorTask = 't5-actor',
     [string]$Diagnostics = 'C:\Users\vika\Documents\Get-SafeUploadDiagnostics.ps1',
     [string]$ObserverModule = 'C:\Users\vika\Documents\StagedInvariantObserver.psm1',
-    [string]$CasesPath = (Join-Path $PSScriptRoot 't5-notepad-cases.json'), [switch]$OfficeBase)
+    [string]$CasesPath = (Join-Path $PSScriptRoot 't5-notepad-cases.json'), [switch]$OfficeBase,
+    [ValidateSet('', 'Excel', 'Word')][string]$OfficeApp = '')
 $ErrorActionPreference = 'Stop'
 $out = 'C:\T5'; $control = Join-Path $out 'control'; $root = 'C:\Protected\t5'
 $journalDir = 'C:\ProgramData\SafeUpload\staging-journal'
@@ -19,7 +20,7 @@ function Read-T5CaseInventory([string]$Path) {
     $parsed = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
     @($parsed)
 }
-$cases = @(Read-T5CaseInventory $CasesPath | Where-Object { [bool]$_.Office -eq [bool]$OfficeBase })
+$cases = @(Read-T5CaseInventory $CasesPath | Where-Object { [bool]$_.Office -eq [bool]$OfficeBase -and ($OfficeApp -ceq '' -or ([string]$_.Kind).StartsWith($OfficeApp, [StringComparison]::Ordinal)) })
 $leaves = @($cases | ForEach-Object { $_.Leaf; @($_.AuxiliaryLeaves) } | Where-Object { $_ } | Sort-Object -Unique)
 $frequency = [Diagnostics.Stopwatch]::Frequency
 $rawContext = $null; $rawBaseline = $null; $script:rawSequence = 0

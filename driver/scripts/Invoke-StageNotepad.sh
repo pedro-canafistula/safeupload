@@ -30,6 +30,9 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{2,29}$ ]] || { echo 'Invalid tag'; exit 2; }
 case "$mode" in ordinary|runtime-verifier|boot-verifier) ;; *) echo 'Unknown mode'; exit 2;; esac
 office_base=${T5_OFFICE_BASE:-0}
+office_apps=${T5_OFFICE_APPS:-}
+case "$office_apps" in ''|Excel|Word) ;; *) echo 'T5_OFFICE_APPS must be empty, Excel or Word'; exit 2;; esac
+[ -z "$office_apps" ] || [ "$office_base" = 1 ] || { echo 'T5_OFFICE_APPS needs T5_OFFICE_BASE=1'; exit 2; }
 case "$office_base" in 0|1) ;; *) echo 'T5_OFFICE_BASE must be 0 or 1'; exit 2;; esac
 if [ "$office_base" = 1 ]; then
     [ "$dom" = win10-debug3 ] && [ "$mode" != boot-verifier ] || { echo 'Office mode requires win10-debug3 and ordinary/runtime-verifier'; exit 2; }
@@ -385,13 +388,14 @@ $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hour
 Register-ScheduledTask -TaskName 't5-actor' -Action $action -Principal $principal -Settings $settings -Force | Out-Null
 $system = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t5-notepad-coordinator.ps1"')
-if ('__T5_OFFICE_BASE__' -ceq '1') { $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t5-notepad-coordinator.ps1" -OfficeBase') }
+if ('__T5_OFFICE_BASE__' -ceq '1') { $coordinator = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $d + '\t5-notepad-coordinator.ps1" -OfficeBase' + $(if ('__T5_OFFICE_APPS__' -cne '') { ' -OfficeApp __T5_OFFICE_APPS__' } else { '' })) }
 Register-ScheduledTask -TaskName 't5-coordinator' -Principal $system -Action $coordinator -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 't5-coordinator'
 'COORDINATOR_STARTED=True'
 PS
 )
 setup_ps=${setup_ps//__T5_OFFICE_BASE__/$office_base}
+setup_ps=${setup_ps//__T5_OFFICE_APPS__/$office_apps}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 
@@ -450,7 +454,7 @@ else
     : > "$ev/$tag-after.txt"
 fi
 
-T5_OFFICE_BASE_EFFECTIVE="$office_base" T5_STAGE_SPACE_EFFECTIVE="$stage_space" python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" "$ev/$tag-agent-state-list.txt" <<'PY'
+T5_OFFICE_BASE_EFFECTIVE="$office_base" T5_OFFICE_APPS_EFFECTIVE="$office_apps" T5_STAGE_SPACE_EFFECTIVE="$stage_space" python3 - "$ev/$tag-after.txt" "$ev/$tag-verdict.txt" "$ev/$tag-result.json" "$ev/$tag-raw" "$mode" "$alive" "$(( $(date +%s) - started ))" "${result_saved:-no}" "${raw_saved:-no}" "$code_scripts/t5/notepad-cases.json" "$ev/$tag-agent-state-list.txt" <<'PY'
 import hashlib, json, os, re, sys
 after_path, verdict_path, result_path, raw_dir, mode, alive, elapsed, result_saved, raw_saved = sys.argv[1:10]
 after = open(after_path, encoding='utf-8', errors='replace').read()
@@ -501,7 +505,7 @@ def read_run_receipt(suffix):
         return ''
 
 office_run = os.environ.get('T5_OFFICE_BASE_EFFECTIVE') == '1'
-out.append('T5RunProfile INFO ' + ('OfficeApps' if office_run else 'BasicTasks'))
+out.append('T5RunProfile INFO ' + (('OfficeExcel' if os.environ.get('T5_OFFICE_APPS_EFFECTIVE') == 'Excel' else 'OfficeApps') if office_run else 'BasicTasks'))
 if office_run:
     baseline_receipt = read_run_receipt('-baseline.txt')
     installed_receipt = read_run_receipt('-install.txt')
@@ -536,7 +540,8 @@ baseline = ro.get('Baseline') or {}
 disposal = ro.get('Disposal') or {}
 raw_samples = ro.get('Samples') or []
 with open(sys.argv[10], encoding='utf-8') as case_stream:
-    required_cases = [c for c in json.load(case_stream) if bool(c.get('Office')) == (os.environ.get('T5_OFFICE_BASE_EFFECTIVE') == '1')]
+    required_cases = [c for c in json.load(case_stream) if bool(c.get('Office')) == (os.environ.get('T5_OFFICE_BASE_EFFECTIVE') == '1') and
+                      c['Kind'].startswith(os.environ.get('T5_OFFICE_APPS_EFFECTIVE', ''))]
 expected_leaves = {leaf.lower() for c in required_cases for leaf in [c['Leaf'], *c.get('AuxiliaryLeaves', [])]}
 scope_path = str(ro.get('ScopePath') or '').replace('/', '\\').rstrip('\\')
 expected_paths = {scope_path + '\\' + leaf for leaf in expected_leaves}
