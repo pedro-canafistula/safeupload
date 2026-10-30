@@ -579,7 +579,9 @@ function Add-T5WatchType {
     if ('T5D.Watch' -as [type]) { return }
     # -MemberDefinition (not -TypeDefinition): the actor's single native-type definition is pinned by notepad-actor.SelfCheck.ps1.
     $members = @'
-    [StructLayout(LayoutKind.Sequential)] struct BHFI { public uint Attr; public long C, A, W; public uint Vol, SzH, SzL, Links, IdH, IdL; }
+#pragma warning disable 0649
+    [StructLayout(LayoutKind.Sequential)] struct BHFI { public uint Attr, CL, CH, AL, AH, WL, WH, Vol, SzH, SzL, Links, IdH, IdL; }
+#pragma warning restore 0649
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetFileInformationByHandle(IntPtr h, out BHFI i);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
