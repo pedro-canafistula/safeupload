@@ -44,17 +44,19 @@ public interface IAuditSink
     /// Últimos eventos registrados, do mais recente para o mais antigo. É o que
     /// alimenta a grade do simulador.
     /// </summary>
+    /// <param name="maxEvents">Limite de registros; zero ou negativo mantém a consulta completa legada.</param>
     Task<IReadOnlyList<AuditEvent>> ReadRecentAsync(int maxEvents, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Eventos ainda não entregues ao servidor central. Existe para o
-    /// despachante da HU-10, que ainda não foi implementado.
+    /// Eventos ainda não entregues ao servidor central, na ordem em que foram
+    /// registrados. O despachante usa esta leitura para preparar o próximo lote.
     /// </summary>
+    /// <param name="maxEvents">Limite de registros; zero ou negativo mantém a consulta completa legada.</param>
     Task<IReadOnlyList<AuditEvent>> ReadPendingAsync(int maxEvents, CancellationToken cancellationToken);
 
     /// <summary>
     /// Marca como entregues os eventos que o servidor confirmou. Contraparte de
-    /// ReadPendingAsync, também à espera da HU-10.
+    /// ReadPendingAsync, chamada somente após o recibo de entrega.
     /// </summary>
     Task MarkDispatchedAsync(IReadOnlyCollection<Guid> eventIds, CancellationToken cancellationToken);
 }
