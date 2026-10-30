@@ -291,7 +291,7 @@ function Write-ActorCommand([string]$Op, [string]$Path, [string]$Text, [int]$N) 
     [IO.File]::Move($part, (Join-Path $control ('cmd-' + $N + '.json')))
 }
 function Start-T5WordDiagTrace {
-    # Diagnostic only (T5_WORD_DIAG=1): file-I/O trace and driver stream snapshots around the Word overwrite save (T8 Word drop 2, W0).
+    # Diagnostic only (T5_WORD_DIAG=1): file-I/O trace and driver stream snapshots around each Word Save As (T8 Word drop 2, W0/W2).
     $script:T5WordDiagActive = $true; $script:T5LastStreams = [long]0
     try { (& wpr.exe -start FileIO 2>&1 | Out-String) | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-start.txt' } catch { $_.Exception.Message | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-start.txt' }
 }
@@ -299,29 +299,33 @@ function Save-T5DiagStreams {
     $script:T5LastStreams = [Diagnostics.Stopwatch]::GetTimestamp()
     try {
         $json = (& $Diagnostics -Query stage-streams | ConvertTo-Json -Depth 8 -Compress)
-        if ($json -match 'word-overwrite|WRD|WRL') { Add-Content -LiteralPath 'C:\T5\word-diag\streams.ndjson' -Value ((Get-Date).ToUniversalTime().ToString('o') + ' ' + $json) }
+        if ($json -match 'word-overwrite|word-saveas|WRD|WRL') { Add-Content -LiteralPath 'C:\T5\word-diag\streams.ndjson' -Value ((Get-Date).ToUniversalTime().ToString('o') + ' ' + $json) }
     } catch { Add-Content -LiteralPath 'C:\T5\word-diag\streams-error.txt' -Value $_.Exception.Message }
 }
-function Stop-T5WordDiagTrace {
+function Stop-T5WordDiagTrace([string]$Op) {
+    # One final snapshot after the actor returns: a version that stays live after the save shows up here (mvpWordOrdG1).
+    Save-T5DiagStreams
     $script:T5WordDiagActive = $false
-    $etl = 'C:\T5\word-diag\overwrite.etl'; $csv = 'C:\T5\word-diag\overwrite.csv'
+    $name = $Op -replace '^word-', ''
+    if ($name -ceq 'overwrite') { $prefix = 'C:\T5\word-diag\' } else { $prefix = 'C:\T5\word-diag\' + $name + '-' }
+    $etl = 'C:\T5\word-diag\' + $name + '.etl'; $csv = 'C:\T5\word-diag\' + $name + '.csv'
     try {
-        (& wpr.exe -stop $etl 'T5 word overwrite' 2>&1 | Out-String) | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-stop.txt'
-        (& tracerpt.exe $etl -of CSV -o $csv -summary 'C:\T5\word-diag\overwrite-summary.txt' -y 2>&1 | Out-String) | Set-Content -LiteralPath 'C:\T5\word-diag\tracerpt.txt'
+        (& wpr.exe -stop $etl ('T5 word ' + $name) 2>&1 | Out-String) | Set-Content -LiteralPath ($prefix + 'wpr-stop.txt')
+        (& tracerpt.exe $etl -of CSV -o $csv -summary ('C:\T5\word-diag\' + $name + '-summary.txt') -y 2>&1 | Out-String) | Set-Content -LiteralPath ($prefix + 'tracerpt.txt')
         if (Test-Path -LiteralPath $csv) {
-            'etl-bytes=' + (Get-Item -LiteralPath $etl -ErrorAction SilentlyContinue).Length + ' csv-bytes=' + (Get-Item -LiteralPath $csv).Length | Set-Content -LiteralPath 'C:\T5\word-diag\sizes.txt'
+            'etl-bytes=' + (Get-Item -LiteralPath $etl -ErrorAction SilentlyContinue).Length + ' csv-bytes=' + (Get-Item -LiteralPath $csv).Length | Set-Content -LiteralPath ($prefix + 'sizes.txt')
             $head = Get-Content -LiteralPath $csv -TotalCount 2
-            $hit = Select-String -LiteralPath $csv -Pattern 'word-overwrite|~WRD|~WRL|wd-native' | ForEach-Object { $_.Line }
-            @($head) + @($hit) | Set-Content -LiteralPath 'C:\T5\word-diag\overwrite-filtered.csv'
+            $hit = Select-String -LiteralPath $csv -Pattern 'word-overwrite|word-saveas|~WRD|~WRL|wd-native' | ForEach-Object { $_.Line }
+            @($head) + @($hit) | Set-Content -LiteralPath ('C:\T5\word-diag\' + $name + '-filtered.csv')
             Remove-Item -LiteralPath $csv -Force; Remove-Item -LiteralPath $etl -Force -ErrorAction SilentlyContinue
         }
-    } catch { $_.Exception.ToString() | Set-Content -LiteralPath 'C:\T5\word-diag\trace-error.txt' }
+    } catch { $_.Exception.ToString() | Set-Content -LiteralPath ($prefix + 'trace-error.txt') }
 }
 function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$Observe,
     [string[]]$BaselineTransferIds, [System.Collections.IDictionary]$CaseRecord) {
-    if (-not ($Op -ceq 'word-overwrite' -and [IO.File]::Exists('C:\T5\word-diag.flag'))) { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord }
+    if (-not ($Op -cin @('word-overwrite', 'word-seed', 'word-saveas') -and [IO.File]::Exists('C:\T5\word-diag.flag'))) { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord }
     Start-T5WordDiagTrace
-    try { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord } finally { Stop-T5WordDiagTrace }
+    try { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord } finally { Stop-T5WordDiagTrace $Op }
 }
 function Invoke-ActorCore([string]$Op, [string]$Path, [string]$Text, [scriptblock]$Observe,
     [string[]]$BaselineTransferIds, [System.Collections.IDictionary]$CaseRecord) {
