@@ -438,6 +438,11 @@ function Invoke-NotepadEdit([string]$Path,[string]$Text,$obs) {
         if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
     }
 }
+function Set-T5ExcelCell($Range,$Value) {
+    # mvpBWdiag7: assigning an Int32 to Value2 fails in the COM binder (InvalidCastException to String). A numeric
+    # formula stores the same number; Value2 reads it back as 1/2.
+    if($Value -is [int]){$Range.Formula=[string]$Value}else{$Range.Value2=$Value}
+}
 function Invoke-T5Excel([string]$Op,[string]$Path,[string]$Kind,$obs) {
     $x=$null;$wb=$null;$excelProcess=$null
     # Join-Path returns a PSObject that can spin inside COM SaveAs. Pass a CLR string.
@@ -461,7 +466,7 @@ function Invoke-T5Excel([string]$Op,[string]$Path,[string]$Kind,$obs) {
             $excelProcess.SessionId -ne (Get-Process -Id $PID).SessionId -or $excelProcess.SessionId -le 0){throw 'Excel is not the interactive standard actor'}
         if($Op -cin @('excel-saveas','excel-seed','excel-cpf')) {
             $wb=$x.Workbooks.Add()
-            $wb.Worksheets.Item(1).Range('A1').Value2=$(if($cpf){$finalA}else{$priorA})
+            Set-T5ExcelCell $wb.Worksheets.Item(1).Range('A1') $(if($cpf){$finalA}else{$priorA})
             $wb.Worksheets.Item(1).Range('B1').Formula='=1+2'
             $wb.Worksheets.Item(1).Range('C1').Value2=$(if($cpf){'blocked'}else{'prior'})
             $x.Calculate()
@@ -472,7 +477,7 @@ function Invoke-T5Excel([string]$Op,[string]$Path,[string]$Kind,$obs) {
                 if($wb.Worksheets.Item(1).Range('A1').Value2 -ne $priorA -or $wb.Worksheets.Item(1).Range('B1').Value2 -ne 3 -or
                     $wb.Worksheets.Item(1).Range('C1').Value2 -cne 'prior'){throw 'Excel reopen did not show the published prior cells'}
                 $obs.PriorCellsVerified=$true
-                $wb.Worksheets.Item(1).Range('A1').Value2=$finalA
+                Set-T5ExcelCell $wb.Worksheets.Item(1).Range('A1') $finalA
                 $wb.Worksheets.Item(1).Range('C1').Value2='edit'
                 $wb.Save()
             }
@@ -483,7 +488,10 @@ function Invoke-T5Excel([string]$Op,[string]$Path,[string]$Kind,$obs) {
         $obs.Saved=[bool]$wb.Saved;$obs.ReadOnly=[bool]$wb.ReadOnly
         $obs.ProtectedViewCount=$x.ProtectedViewWindows.Count;$obs.Ready=[bool]$x.Ready
         $obs.Windows=@(Get-WindowTexts $excelPid)
-        if(-not $obs.Saved -or $obs.ReadOnly -or -not $obs.Ready -or $obs.ProtectedViewCount -ne 0 -or $obs.Windows.Count -gt 1){throw 'Excel reported unsaved, read-only, not Ready, Protected View or a dialog'}
+        # The CPF hand-back copy grants the user read only (StagedHandbackCopier), so its reopen is read-only; after the
+        # blocked save itself the workbook may be either. Every clean save, edit and reopen stays writable.
+        $readOnlyOk=if($cpf -and $Op -ceq 'excel-read'){$obs.ReadOnly}elseif($cpf){$true}else{-not $obs.ReadOnly}
+        if(-not $obs.Saved -or -not $readOnlyOk -or -not $obs.Ready -or $obs.ProtectedViewCount -ne 0 -or $obs.Windows.Count -gt 1){throw 'Excel reported unsaved, read-only, not Ready, Protected View or a dialog'}
         if($Op -ceq 'excel-read' -and ($obs.A1 -ne $finalA -or $obs.B1 -ne 3 -or $obs.C1 -cne $(if($cpf){'blocked'}else{'edit'}))){throw 'Excel final reopen cell values differ'}
         $wb.Close($false);$obs.Closed=$true
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($wb);$wb=$null
@@ -592,7 +600,7 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
         }else{
             $doc.Close(0);[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc);$doc=$null
             $doc=$w.Documents.Open($target,$false,$false)
-            if($doc.ReadOnly){throw 'Word reopened the document read-only'}
+            if($doc.ReadOnly -and -not $cpf){throw 'Word reopened the document read-only'}
             if($Op -ceq 'word-edit'){
                 if(([string]$doc.Content.Text).TrimEnd([char[]]@(13,10)) -cne $prior){throw 'Word reopen did not show the published prior text'}
                 $obs.PriorTextVerified=$true
@@ -605,11 +613,13 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
         $obs.Text=([string]$doc.Content.Text).TrimEnd([char[]]@(13,10))
         $obs.Saved=[bool]$doc.Saved;$obs.ReadOnly=[bool]$doc.ReadOnly;$obs.ProtectedViewCount=$w.ProtectedViewWindows.Count
         $obs.Windows=@(Get-WindowTexts $wordPid)
-        if($obs.Text -cne $expected -or -not $obs.Ready -or -not $obs.Saved -or $obs.ReadOnly -or
+        # Same read-only rule as Excel: the CPF hand-back copy is read-only by design; the blocked save may be either.
+        $readOnlyOk=if($cpf -and $Op -ceq 'word-read'){$obs.ReadOnly}elseif($cpf){$true}else{-not $obs.ReadOnly}
+        if($obs.Text -cne $expected -or -not $obs.Ready -or -not $obs.Saved -or -not $readOnlyOk -or
             $obs.ProtectedViewCount -ne 0 -or $obs.Windows.Count -gt 1){throw ('Word save/reopen failed: '+($obs.Windows -join ' | '))}
         $doc.Close(0);$obs.Closed=$true
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc);$doc=$null
-        $w.Quit(0);$obs.Quit=$true
+        $w.Quit();$obs.Quit=$true # Quit's optional arguments are by-reference; none needed with the document closed
     }catch{
         $obs.ErrorText=$_.Exception.ToString()
         if($wordProcess){$obs.WindowsOnFailure=@(Get-WindowTexts $wordProcess.Id)}
@@ -617,7 +627,7 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
     }finally{
         if($doc){try{$doc.Close(0)}catch{$obs.QuitError=$_.Exception.Message}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc)}}
         if($w){
-            if(-not $obs.Quit){try{$w.Quit(0)}catch{$obs.QuitError=$_.Exception.Message}}
+            if(-not $obs.Quit){try{$w.Quit()}catch{$obs.QuitError=$_.Exception.Message}}
             [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($w)
         }
         [GC]::Collect();[GC]::WaitForPendingFinalizers()

@@ -1013,7 +1013,11 @@ def office_steps_match(case):
                 type(ui.get('SessionId')) is not int or ui['SessionId'] <= 0 or ui.get('Version') != '16.0' or
                 (re.fullmatch(r'(?:16\.0\.)?20326(?:\.20232)?', str(ui.get('Build') or '')) is None if app == 'Word' else ui.get('Build') != '20326') or
                 any(ui.get(key) is not True for key in ('Saved', 'Ready', 'Closed', 'Quit', app + 'Exited')) or
-                ui.get('ReadOnly') is not False or ui.get('ProtectedViewCount') != 0 or ui.get('WindowsAtExit') != [] or
+                # The CPF hand-back copy grants read only, so its reopen is read-only; after the blocked save itself
+                # the document may be either. Every clean save, edit and reopen must stay writable.
+                (ui.get('ReadOnly') is not True if spec.get('Sensitive') and op == prefix + '-read' else
+                 ui.get('ReadOnly') not in (True, False) if spec.get('Sensitive') else
+                 ui.get('ReadOnly') is not False) or ui.get('ProtectedViewCount') != 0 or ui.get('WindowsAtExit') != [] or
                 not isinstance(ui.get('Windows'), list) or len(ui['Windows']) > 1 or ui.get('QuitError') or ui.get('Action') != op):
             return False
         final = index > 0 or spec.get('Sensitive')

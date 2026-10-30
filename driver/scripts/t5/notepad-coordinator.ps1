@@ -1751,8 +1751,14 @@ function Restore-T5DeleteDenyFixture($Fixture) {
 function Update-T5OfficePublicHashes($Record) {
     # Only inspected journal versions authorize workbook bytes. Actor cell/hash
     # receipts never authorize public bytes. Final host checks require Release.
-    $journal=Get-JournalFor $Record.Path -BaselineTransferIds @() -RequireHistoryForNewRecords
-    if(@($journal.ParseErrors).Count -or @($journal.SchemaErrors).Count){throw 'Office observation journal is invalid'}
+    # The service replaces manifests atomically while the application saves; a read can land mid-replace (mvpBWdiag7).
+    # Retry briefly; a journal that stays unparsable or off-schema is still fatal.
+    for($attempt=0;;$attempt++){
+        $journal=Get-JournalFor $Record.Path -BaselineTransferIds @() -RequireHistoryForNewRecords
+        if(-not (@($journal.ParseErrors).Count -or @($journal.SchemaErrors).Count)){break}
+        if($attempt -ge 20){throw ('Office observation journal is invalid: ' + ((@($journal.ParseErrors)+@($journal.SchemaErrors)) -join '; '))}
+        Start-Sleep -Milliseconds 50
+    }
     $Record.WorkflowJournalSnapshots+=,@($journal.Records)
     $processPattern=if($Record.OfficeApp -ceq 'Word'){'^(?i:winword)(?:\.exe)?$'}else{'^(?i:excel)(?:\.exe)?$'}
     $approved=@($journal.Records | Where-Object {$_.IsV20 -and $_.State -cin @('3','4','5') -and $_.SealedOnce -eq $true -and

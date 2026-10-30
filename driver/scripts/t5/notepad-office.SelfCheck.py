@@ -120,8 +120,14 @@ with tempfile.TemporaryDirectory(prefix='t5-office-controls-') as temp:
                         Handback=dict(Status='PASS', NewFileCount=1, Path=handback_path, Length=len(payloads[0]),
                                       Sha256=digest, Artifact=digest+'.bin', Readers=[dict(Unbuffered=u, Status='OK',
                                       Length=len(payloads[0]), Sha256=digest) for u in (False, True)]))
+        if sensitive:
+            # The hand-back copy grants read only, so its reopen is read-only by design.
+            case['WorkflowAcks'][-1]['Ui']['ReadOnly'] = True
         env['result']['Cases'] = [case]
         check(env['workflow_steps_match'](case), spec['Kind']+' COM/cell/byte receipts')
+        for index, value, accepted in ((0, True, sensitive), (-1, False, not sensitive)):
+            alt = copy.deepcopy(case); alt['WorkflowAcks'][index]['Ui']['ReadOnly'] = value
+            check(env['workflow_steps_match'](alt) == accepted, spec['Kind']+' read-only rule ack %d=%s' % (index, value))
         check(env['workflow_journal_matches'](case), spec['Kind']+' retained exact journal bytes')
         allowed = env['approved_public_hash_map']()
         check(allowed[spec['Leaf']] == (set() if sensitive else {j['Sha256Hex'] for j in versions}), 'only released clean hashes public')
@@ -142,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix='t5-office-controls-') as temp:
         for mutation in ('cell', 'readonly', 'dialog', 'actor', 'excel-subject', 'live-excel', 'wrong-read', 'missing-ack', 'missing-creation'):
             bad = copy.deepcopy(case); last = bad['WorkflowAcks'][-1]
             if mutation == 'cell': last['Ui']['Text' if app == 'Word' else 'A1'] = 'wrong text/cell'
-            if mutation == 'readonly': last['Ui']['ReadOnly'] = True
+            if mutation == 'readonly': last['Ui']['ReadOnly'] = not sensitive # the wrong state for this reopen
             if mutation == 'dialog': last['Ui']['Windows'].append('Error dialog')
             if mutation == 'actor': last['ActorSid'] = 'S-1-5-18'
             if mutation == 'excel-subject': last['Ui'][app+'Sid'] = 'S-1-5-18'
