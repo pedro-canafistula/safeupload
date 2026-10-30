@@ -48,6 +48,9 @@ public sealed record InspectionResult(
     /// <summary>The event whose write completed for this invocation; never a cached decision or delivery receipt.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public AuditEvent? RecordedEvent { get; init; }
+    // Somente memória: não altera payload de auditoria, notificação ou protocolo do driver.
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal string? PolicyEvaluationKey { get; init; }
 
     /// <summary>
     /// Categorias distintas encontradas, na ordem em que apareceram. É o que a

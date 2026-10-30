@@ -58,7 +58,7 @@ public sealed class VerdictCache
     /// </param>
     /// <param name="result">Veredito encontrado, se houver.</param>
     public bool TryGet(FileOperation operation, int policyVersion, out InspectionResult? result,
-        string? contentFingerprint = null)
+        string? contentFingerprint = null, string? policyEvaluationKey = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
@@ -69,7 +69,8 @@ public sealed class VerdictCache
         {
             if (_entries.TryGetValue(key, out var entry))
             {
-                if (entry.ExpiresAt > now && entry.Result.PolicyVersion == policyVersion)
+                if (entry.ExpiresAt > now && entry.Result.PolicyVersion == policyVersion &&
+                    (policyEvaluationKey is null || entry.Result.PolicyEvaluationKey == policyEvaluationKey))
                 {
                     result = entry.Result;
                     return true;

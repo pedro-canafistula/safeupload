@@ -5,7 +5,8 @@ namespace SafeUpload.Agent.Service.Dispatch;
 
 /// <summary>Validate the service configuration before creating clients or starting network work.</summary>
 internal sealed record AdministrationConfiguration(
-    Uri? BaseUri, TimeSpan Timeout, TimeSpan DispatchInterval, AgentHeartbeatConfiguration Heartbeat)
+    Uri? BaseUri, TimeSpan Timeout, TimeSpan DispatchInterval, AgentHeartbeatConfiguration Heartbeat,
+    ConsolePolicyOptions? ConsolePolicy = null)
 {
     internal static AdministrationConfiguration Parse(IConfiguration configuration, RegisteredHostIdentityStore? identities = null)
     {
@@ -13,6 +14,7 @@ internal sealed record AdministrationConfiguration(
         if (string.IsNullOrWhiteSpace(address))
         {
             var heartbeat = ReadHeartbeat(configuration, null, identities);
+            ReadConsolePolicy(configuration, null, heartbeat);
             if (heartbeat.RegisteredHostId is not null)
                 throw new InvalidOperationException("Heartbeat AgentApi exige CentroAdministracao:BaseUrl.");
             return new(null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30), heartbeat);
@@ -34,7 +36,31 @@ internal sealed record AdministrationConfiguration(
             throw new InvalidOperationException("CentroAdministracao:TimeoutSeconds excede o limite do cliente HTTP.");
         if (interval.TotalMilliseconds > uint.MaxValue - 1)
             throw new InvalidOperationException("CentroAdministracao:DispatchIntervalSeconds excede o limite do temporizador.");
-        return new(uri, timeout, interval, ReadHeartbeat(configuration, uri, identities));
+        var configuredHeartbeat = ReadHeartbeat(configuration, uri, identities);
+        return new(uri, timeout, interval, configuredHeartbeat,
+            ReadConsolePolicy(configuration, uri, configuredHeartbeat));
+    }
+
+    private static ConsolePolicyOptions? ReadConsolePolicy(IConfiguration configuration, Uri? server,
+        AgentHeartbeatConfiguration heartbeat)
+    {
+        string? protocol = configuration["CentroAdministracao:PolicyProtocol"];
+        string? ip = configuration["CentroAdministracao:PolicyHostIp"];
+        if (string.IsNullOrWhiteSpace(protocol) || protocol == "Legacy")
+        {
+            if (!string.IsNullOrWhiteSpace(ip))
+                throw new InvalidOperationException("PolicyHostIp exige PolicyProtocol=ConsoleByIp.");
+            return null;
+        }
+        if (protocol != "ConsoleByIp")
+            throw new InvalidOperationException("PolicyProtocol deve ser Legacy ou ConsoleByIp.");
+        if (server is null || heartbeat.RegisteredHostId is not { } hostId)
+            throw new InvalidOperationException("ConsoleByIp exige BaseUrl e identidade HeartbeatProtocol=AgentApi.");
+        try { return new ConsolePolicyOptions(hostId, ip ?? ""); }
+        catch (ArgumentException)
+        {
+            throw new InvalidOperationException("PolicyHostIp exige IPv4 canônico do host provisionado.");
+        }
     }
 
     private static AgentHeartbeatConfiguration ReadHeartbeat(IConfiguration configuration, Uri? server,
