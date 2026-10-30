@@ -290,16 +290,18 @@ function Write-ActorCommand([string]$Op, [string]$Path, [string]$Text, [int]$N) 
     $part = Join-Path $control ('next-' + $N + '.part'); [IO.File]::WriteAllText($part, $json)
     [IO.File]::Move($part, (Join-Path $control ('cmd-' + $N + '.json')))
 }
-function Start-T5WordDiagTrace {
-    # Diagnostic only (T5_WORD_DIAG=1): file-I/O trace and driver stream snapshots around each Word Save As (T8 Word drop 2, W0/W2).
+function Start-T5WordDiagTrace([string]$Op) {
+    # Diagnostic only (T5_WORD_DIAG=1): driver stream snapshots and folder refusals around each Word save (T8 Word drop 2, W0/W2);
+    # a file-I/O trace only for the overwrite (one trace per run keeps the coordinator inside its bound, mvpWdiagG3).
     $script:T5WordDiagActive = $true; $script:T5LastStreams = [long]0
+    if ($Op -cne 'word-overwrite') { return }
     try { (& wpr.exe -start FileIO 2>&1 | Out-String) | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-start.txt' } catch { $_.Exception.Message | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-start.txt' }
 }
 function Save-T5DiagStreams {
     $script:T5LastStreams = [Diagnostics.Stopwatch]::GetTimestamp()
     try {
         $json = (& $Diagnostics -Query stage-streams | ConvertTo-Json -Depth 8 -Compress)
-        if ($json -match 'word-overwrite|word-saveas|WRD|WRL') { Add-Content -LiteralPath 'C:\T5\word-diag\streams.ndjson' -Value ((Get-Date).ToUniversalTime().ToString('o') + ' ' + $json) }
+        if ($json -match 'word-overwrite|word-saveas|word-inplace|WRD|WRL') { Add-Content -LiteralPath 'C:\T5\word-diag\streams.ndjson' -Value ((Get-Date).ToUniversalTime().ToString('o') + ' ' + $json) }
     } catch { Add-Content -LiteralPath 'C:\T5\word-diag\streams-error.txt' -Value $_.Exception.Message }
     # The 256-entry deny ring wraps under the object-ID FSCTL refusals: keep every newer non-FSCTL refusal in the folder (mvpWdiagG2).
     try {
@@ -316,6 +318,7 @@ function Stop-T5WordDiagTrace([string]$Op) {
     # One final snapshot after the actor returns: a version that stays live after the save shows up here (mvpWordOrdG1).
     Save-T5DiagStreams
     $script:T5WordDiagActive = $false
+    if ($Op -cne 'word-overwrite') { return }
     $name = $Op -replace '^word-', ''
     if ($name -ceq 'overwrite') { $prefix = 'C:\T5\word-diag\' } else { $prefix = 'C:\T5\word-diag\' + $name + '-' }
     $etl = 'C:\T5\word-diag\' + $name + '.etl'; $csv = 'C:\T5\word-diag\' + $name + '.csv'
@@ -326,12 +329,9 @@ function Stop-T5WordDiagTrace([string]$Op) {
             'etl-bytes=' + (Get-Item -LiteralPath $etl -ErrorAction SilentlyContinue).Length + ' csv-bytes=' + (Get-Item -LiteralPath $csv).Length | Set-Content -LiteralPath ($prefix + 'sizes.txt')
             $head = Get-Content -LiteralPath $csv -TotalCount 2
             $hit = @(Select-String -LiteralPath $csv -Pattern 'word-overwrite|word-saveas|~WRD|~WRL|wd-native' | ForEach-Object { $_.Line })
-            # Create results are separate OperationEnd events (IrpPtr, ExtraInfo, NtStatus) without a path: keep those of the matched IRPs.
-            $irps = New-Object 'System.Collections.Generic.HashSet[string]'
-            foreach ($line in $hit) { if ($line -match '^\s*FileIo,\s*(Create|SetInfo|Rename|Delete|Cleanup|Close)\b.*?,\s*(0x[0-9A-F]{16}),\s*0x[0-9A-F]{16},') { [void]$irps.Add($Matches[2]) } }
-            $ends = @(Select-String -LiteralPath $csv -Pattern 'OperationEnd' -SimpleMatch | ForEach-Object { $_.Line } |
-                Where-Object { $_ -match ',\s*(0x[0-9A-F]{16}),\s*[^,]+,\s*[^,]+$' -and $irps.Contains($Matches[1]) })
-            @($head) + $hit + $ends | Set-Content -LiteralPath ('C:\T5\word-diag\' + $name + '-filtered.csv')
+            # No OperationEnd pass: two scans of an ~800 MB CSV per case outlasted the coordinator's bound (mvpWdiagG3). The folder's
+            # refusals come from ring.ndjson instead.
+            @($head) + $hit | Set-Content -LiteralPath ('C:\T5\word-diag\' + $name + '-filtered.csv')
             Remove-Item -LiteralPath $csv -Force; Remove-Item -LiteralPath $etl -Force -ErrorAction SilentlyContinue
         }
     } catch { $_.Exception.ToString() | Set-Content -LiteralPath ($prefix + 'trace-error.txt') }
@@ -339,7 +339,7 @@ function Stop-T5WordDiagTrace([string]$Op) {
 function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$Observe,
     [string[]]$BaselineTransferIds, [System.Collections.IDictionary]$CaseRecord) {
     if (-not ($Op -cin @('word-overwrite', 'word-seed', 'word-saveas', 'word-edit') -and [IO.File]::Exists('C:\T5\word-diag.flag'))) { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord }
-    Start-T5WordDiagTrace
+    Start-T5WordDiagTrace $Op
     try { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord } finally { Stop-T5WordDiagTrace $Op }
 }
 function Invoke-ActorCore([string]$Op, [string]$Path, [string]$Text, [scriptblock]$Observe,
