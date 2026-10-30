@@ -39,3 +39,10 @@ Target win10-debug3 only; serial chain `~/Work/safeupload-tools/session-scratch/
 - **mvpACDordF1 (ordinary): MVP A, C and D PASS** (25/25 cases, staging and hot journal empty, restoration PASS). Only FAIL lines are the carried non-MVP `T5DeleteNewerPublished*` probe cases (flaky; passed in other runs on the same pair family).
 - **mvpACDrvF1 (runtime Verifier, flags 0x13B): MVP A, C and D PASS** (25/25, staging and journal empty, restoration PASS, no FAIL line).
 - Raw: `mvpACDordF1-*`, `mvpACDrvF1-*` (local, ignored); logs `~/Work/safeupload-tools/session-scratch/mvp-rows-final.log`.
+
+## Excel (B) on the final pair, Excel cases alone (`T5_OFFICE_APPS=Excel`, profile OfficeExcel, harness `f8423384`)
+
+- **mvpBordF1 (ordinary): MVP B PASS** — ExcelSaveAsApprove, ExcelInPlaceApprove, ExcelCpfHandBack; all dependencies PASS (pair hashes, mode readback, raw observer, staging and journal empty, Office base and account, restoration). MVP W NOT_RUN by profile.
+- **mvpBrvF1 (runtime Verifier): MVP B PASS**, same cases and dependencies.
+- PS 5.1 harness gate m2mvph1029n PASS on `f8423384`.
+- Word (W) is not part of drop 1 (owner, 2026-10-29): Save As over an existing name fails deterministically and a Save As to a new name once left a Retained rename version. Drop 2.
