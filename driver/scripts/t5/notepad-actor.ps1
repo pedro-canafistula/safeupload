@@ -522,12 +522,18 @@ function Start-T5WordAlertMonitor([int]$WordPid,[string]$Directory) {
         function Write-Monitor {
             # The actor reads this file while the monitor runs; a replace that meets its open handle fails with a
             # sharing violation (mvpBWdiag8). Retry briefly instead of ending the monitor.
-            [IO.File]::WriteAllText(($File+'.tmp'),($record | ConvertTo-Json -Depth 6 -Compress))
+            $json=$record | ConvertTo-Json -Depth 6 -Compress
+            [IO.File]::WriteAllText(($File+'.tmp'),$json)
             for($try=0;;$try++){
                 try{
                     if([IO.File]::Exists($File)){[IO.File]::Replace(($File+'.tmp'),$File,$null)}else{[IO.File]::Move(($File+'.tmp'),$File)}
                     break
-                }catch [IO.IOException]{if($try -ge 100){throw};Start-Sleep -Milliseconds 10}
+                }catch{
+                    # mvpBWdiag10: the final replace kept failing and the job ended Failed. Nothing else writes this file, and the
+                    # actor reads it only after the job ends, so fall back to writing it in place.
+                    if($try -ge 20){[IO.File]::WriteAllText($File,$json);break}
+                    Start-Sleep -Milliseconds 10
+                }
             }
         }
         try {
@@ -651,7 +657,7 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
             [IO.File]::WriteAllText($monitor.Stop,'stop')
             try{
                 [void]($monitor.Job | Wait-Job -Timeout 30)
-                if($monitor.Job.State -cne 'Completed'){throw 'Word alert monitor did not finish'}
+                if($monitor.Job.State -cne 'Completed'){throw ('Word alert monitor did not finish: state='+$monitor.Job.State+'; reason='+$monitor.Job.ChildJobs[0].JobStateInfo.Reason)}
                 $monitor.Job | Receive-Job -ErrorAction Stop | Out-Null
                 $obs.AlertMonitor=(Read-ActorControlText $monitor.File) | ConvertFrom-Json
                 $obs.AlertMonitor | Add-Member -NotePropertyName Artifact -NotePropertyValue $monitor.File
