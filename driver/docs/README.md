@@ -47,6 +47,7 @@ Seal, publish, delete, rename, folders and outside-scope behavior (T5, T6).
 
 | Document | What it covers |
 |---|---|
+| [T8-WORD-DROP2.md](design/publication-and-namespace/T8-WORD-DROP2.md) — T8: Word drop 2 plan | Capture-first plan for the Word overwrite and Retained-rename failures after MVP drop 1. |
 | [T5-BOUND-PUBLICATION.md](design/publication-and-namespace/T5-BOUND-PUBLICATION.md) — T5 bound publication: concrete integration contract | Bound-profile publication contract. The bound line is post-M2. |
 | [T5-DELETES.md](design/publication-and-namespace/T5-DELETES.md) — T5/T8 design: private discard, public delete, and in-folder rename | Private discard, public delete and in-folder rename; section 8 lists the required qualification rows. |
 | [T5-NATIVE-PUBLIC-OPENS.md](design/publication-and-namespace/T5-NATIVE-PUBLIC-OPENS.md) — T5 native public opens and delete lifetime | Native public opens, delete lifetime, descriptor controls and the unreadable-seed owner choice. |
