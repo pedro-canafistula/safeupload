@@ -616,7 +616,7 @@ function Add-T5WatchType {
     }
     public static string[] Stop() { stop = true; if (worker != null) worker.Join(2000); lock (log) { return log.ToArray(); } }
 '@
-    Add-Type -MemberDefinition $members -Name Watch -Namespace T5D -UsingNamespace 'System.Collections.Generic','System.Diagnostics','System.IO','System.Runtime.InteropServices','System.Threading'
+    Add-Type -MemberDefinition $members -Name Watch -Namespace T5D -UsingNamespace 'System.Collections.Generic','System.Diagnostics','System.IO','System.Threading'
 }
 function Invoke-T5WordNativeControl($w,$obs) {
     # Diagnostic only (T5_WORD_DIAG=1): the same Save As-over-existing sequence in an unprotected folder on the same volume.
