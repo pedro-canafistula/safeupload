@@ -5474,6 +5474,9 @@ __declspec(noinline) static VOID StageInstallRenameExchange(_Inout_ PSTAGE_STREA
     StageStreamReleaseSpinLock(&StageListLock, irql);
 }
 
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+static VOID StageSendRenameRpcNow(_Inout_ PSTAGE_STREAM Stream);
+#endif
 _IRQL_requires_(PASSIVE_LEVEL)
 static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Stream);
 #ifdef ALLOC_PRAGMA
@@ -5764,6 +5767,9 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
     if (target != NULL) StageQueueStream(target->Current, &StageCounters.WakeInline);
     StageSetRenameOperation(Stream->RenameExchange, SAFEUPLOAD_OPERATION_STAGE_RENAME_COMMIT);
     StageFinishRename(Stream);
+#if SAFEUPLOAD_STAGING_PROTOTYPE
+    StageSendRenameRpcNow(Stream);
+#endif
     if (Stream->RenameExchange != NULL) KeSetEvent(&StageWorkEvent, IO_NO_INCREMENT, FALSE); /* arm the retry */
     (VOID)FltPurgeFileNameInformationCache(Stream->OriginalInstance, NULL);
     status = STATUS_SUCCESS;
@@ -6740,27 +6746,31 @@ static VOID StageProcessStream(PSTAGE_STREAM Stream, PLIST_ENTRY Released)
 /* Caller owns NamespaceResource. A rename exchange remains attached to its
  * stream, but only the worker may collect and send it after dropping the
  * namespace lock. The exchange itself and stream are pinned by RpcReferences. */
+static BOOLEAN StageTakeRenameRpc(_Inout_ PSTAGE_STREAM Stream, _Inout_ PLIST_ENTRY Rpcs)
+{
+    if (!Stream->RenameRpcPending || Stream->RenameRpcInFlight ||
+        Stream->RenameExchange == NULL || Stream->View == NULL || Stream->RenameWait == STAGE_WAIT_SERVICE ||
+        (Stream->RenameRetryAfter != 0 && KeQueryInterruptTime() < Stream->RenameRetryAfter)) return FALSE;
+    Stream->RenameRpcPending = FALSE;
+    Stream->RenameRpcInFlight = TRUE;
+    Stream->RenameWait = STAGE_WAIT_EXCHANGE;
+    Stream->Wait = STAGE_WAIT_EXCHANGE;
+    Stream->RpcRenameExchangeSnapshot = Stream->RenameExchange;
+    Stream->RpcProcessIdSnapshot = Stream->View->OwnerProcessId;
+    Stream->RpcViewGenerationSnapshot = Stream->View->Generation;
+    Stream->RpcTransferIdSnapshot = Stream->TransferId;
+    Stream->RpcGenerationSnapshot = Stream->DestinationGeneration;
+    Stream->RpcIdentitySnapshot = Stream->StageIdentity;
+    InterlockedIncrement(&Stream->RpcReferences);
+    InsertTailList(Rpcs, &Stream->RpcLink);
+    return TRUE;
+}
+
 static VOID StageCollectRenameRpcs(PLIST_ENTRY Rpcs)
 {
     PLIST_ENTRY link;
-    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink) {
-        PSTAGE_STREAM stream = CONTAINING_RECORD(link, STAGE_STREAM, Link);
-        if (!stream->RenameRpcPending || stream->RenameRpcInFlight ||
-            stream->RenameExchange == NULL || stream->View == NULL || stream->RenameWait == STAGE_WAIT_SERVICE ||
-            (stream->RenameRetryAfter != 0 && KeQueryInterruptTime() < stream->RenameRetryAfter)) continue;
-        stream->RenameRpcPending = FALSE;
-        stream->RenameRpcInFlight = TRUE;
-        stream->RenameWait = STAGE_WAIT_EXCHANGE;
-        stream->Wait = STAGE_WAIT_EXCHANGE;
-        stream->RpcRenameExchangeSnapshot = stream->RenameExchange;
-        stream->RpcProcessIdSnapshot = stream->View->OwnerProcessId;
-        stream->RpcViewGenerationSnapshot = stream->View->Generation;
-        stream->RpcTransferIdSnapshot = stream->TransferId;
-        stream->RpcGenerationSnapshot = stream->DestinationGeneration;
-        stream->RpcIdentitySnapshot = stream->StageIdentity;
-        InterlockedIncrement(&stream->RpcReferences);
-        InsertTailList(Rpcs, &stream->RpcLink);
-    }
+    for (link = StageStreams.Flink; link != &StageStreams; link = link->Flink)
+        (VOID)StageTakeRenameRpc(CONTAINING_RECORD(link, STAGE_STREAM, Link), Rpcs);
 }
 
 /* Caller owns NamespaceResource. */
@@ -7252,6 +7262,21 @@ static VOID StagePerformRenameRpcs(PLIST_ENTRY Rpcs)
             stream->RenameRetryAfter = StageRetryDueTime;
         StageRelease(&StageNamespaceResource);
     }
+}
+
+/* Caller owns NamespaceResource once, at PASSIVE, with no stream resource held (StageRename after its local commit).
+ * M2 MVP (Excel save swap, mvpBWdiag6): the application renames the old document away and at once renames its new temp
+ * onto that name. The second rename reached the journal before the worker had sent the first rename's commit, so the
+ * journal still reserved the name and refused it. Send the commit now, dropping the namespace lock exactly as the rename
+ * request itself does; any failure leaves the exchange pending for the worker's unchanged retry. */
+static VOID StageSendRenameRpcNow(_Inout_ PSTAGE_STREAM Stream)
+{
+    LIST_ENTRY rpcs;
+    InitializeListHead(&rpcs);
+    if (SafeUploadStageMandatoryTeardownActive() || !StageTakeRenameRpc(Stream, &rpcs)) return;
+    StageRelease(&StageNamespaceResource);
+    StagePerformRenameRpcs(&rpcs);
+    StageAcquire(&StageNamespaceResource);
 }
 #endif
 
