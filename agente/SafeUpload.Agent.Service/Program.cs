@@ -144,6 +144,7 @@ public static class Program
             new RegisteredHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "identity", "host-registration.json")));
         string endpointId = Environment.MachineName;
         builder.Services.AddSingleton(new CommunicationHealth(administration.BaseUri is not null));
+        builder.Services.AddHostedService<CommunicationStatusPublisher>();
         var heartbeatConfiguration = administration.Heartbeat;
 
         if (administration.BaseUri is null)

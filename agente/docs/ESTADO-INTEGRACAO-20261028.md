@@ -34,10 +34,12 @@ A revisão local da composição aprovou 152 testes nos oito grupos de cliente, 
 ## Próximos contratos e aceites
 
 1. Política consultável e versionada: a main ainda não disponibiliza a rota que o agente precisa. Aguardar definição conjunta antes de adaptar o consumo.
-2. Cadastro repetível com segurança, identidade durável e autenticação individual: ainda pendentes. Não cadastrar automaticamente após timeout.
+2. Identidade durável implementada por id_host; o [aceite com serviço instalado, Java e MySQL](ACEITE-IDENTIDADE-BACKEND-20261029.md) cobre reinício offline e recuperação sem novo cadastro. Cadastro repetível com segurança e autenticação individual continuam pendentes. Não cadastrar automaticamente após timeout.
 3. Painel de auditoria e sessão administrativa: ingestão persistida não comprova disponibilidade das consultas ou visualização.
 4. Demonstrar interface do agente, inspeção real e ações permitidas/bloqueadas, com evidência do fluxo real. A ferramenta de ensaio não substitui essa demonstração.
-5. Validar serviço Windows instalado, driver correspondente e migração de banco existente em aceites separados.
+5. Identidade/heartbeat do serviço instalado têm aceite próprio; driver correspondente e migração de banco existente conservam aceites separados.
 6. Receber os materiais do TC e confirmar o sentido/contrato do heartbeat mencionado na reunião. O heartbeat agente → backend já implementado não resolve automaticamente outro canal.
 
 A tela de políticas permanece dependente da entrega do Luiz; assumir frontend/backend exige confirmar a situação da equipe e tratar o trabalho em recorte separado.
+
+O incremento de [comunicação na tela](COMUNICACAO-NA-TELA-20261029.md) leva os resultados de heartbeat, auditoria e consulta de políticas à interface usando o canal de status. Não substitui o aceite visual nem demonstra inspeção ou bloqueio real.

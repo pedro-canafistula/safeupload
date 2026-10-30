@@ -53,6 +53,21 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="28,24,28,28">
 
+            <Border Style="{StaticResource PanelCard}" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Text="Comunicação com a central" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource Text}" />
+                    <TextBlock Text="Resultados das últimas tentativas do serviço. A proteção local é indicada no cartão de segurança."
+                               Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,6,0,14" />
+                    <TextBlock Text="Identificação da máquina (heartbeat)" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Communication.Heartbeat}" TextWrapping="Wrap" Margin="0,3,0,10" />
+                    <TextBlock Text="Envio de auditoria" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Communication.Audit}" TextWrapping="Wrap" Margin="0,3,0,10" />
+                    <TextBlock Text="Consulta de políticas" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Communication.Policy}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                </StackPanel>
+            </Border>
+
             <!-- Três cartões lado a lado, de larguras iguais. -->
             <Grid>
                 <Grid.ColumnDefinitions>
