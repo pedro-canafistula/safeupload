@@ -31,6 +31,9 @@ dom="${1:?debuggee domain}"; tag="${2:?tag}"; sys="${3:?driver.sys}"; zip="${4:?
 case "$mode" in ordinary|runtime-verifier|boot-verifier) ;; *) echo 'Unknown mode'; exit 2;; esac
 office_base=${T5_OFFICE_BASE:-0}
 office_apps=${T5_OFFICE_APPS:-}
+word_diag=${T5_WORD_DIAG:-0}
+case "$word_diag" in 0|1) ;; *) echo 'T5_WORD_DIAG must be 0 or 1'; exit 2;; esac
+[ "$word_diag" = 0 ] || [ "$office_base" = 1 ] || { echo 'T5_WORD_DIAG needs T5_OFFICE_BASE=1'; exit 2; }
 case "$office_apps" in ''|Excel|Word) ;; *) echo 'T5_OFFICE_APPS must be empty, Excel or Word'; exit 2;; esac
 [ -z "$office_apps" ] || [ "$office_base" = 1 ] || { echo 'T5_OFFICE_APPS needs T5_OFFICE_BASE=1'; exit 2; }
 case "$office_base" in 0|1) ;; *) echo 'T5_OFFICE_BASE must be 0 or 1'; exit 2;; esac
@@ -379,6 +382,12 @@ $d = 'C:\Users\vika\Documents'
 New-Item -ItemType Directory -Force -Path C:\T5\control | Out-Null
 [string](Get-WinEvent -LogName Application -MaxEvents 1).RecordId | Set-Content -LiteralPath 'C:\T5\event-baseline.txt'
 & icacls.exe 'C:\T5\control' /grant 'BUILTIN\Users:(OI)(CI)M' | Out-Null
+if ('__T5_WORD_DIAG__' -ceq '1') {
+    New-Item -ItemType Directory -Force -Path C:\T5\word-diag | Out-Null
+    & icacls.exe 'C:\T5\word-diag' /grant 'BUILTIN\Users:(OI)(CI)M' | Out-Null
+    Set-Content -LiteralPath 'C:\T5\word-diag.flag' -Value 'diag' -Encoding ASCII
+    & icacls.exe 'C:\T5\word-diag.flag' /grant 'BUILTIN\Users:(R)' | Out-Null
+}
 Copy-Item -LiteralPath "$d\t5-notepad-actor.ps1" -Destination 'C:\T5\notepad-actor.ps1' -Force
 & icacls.exe 'C:\T5\notepad-actor.ps1' /grant 'BUILTIN\Users:(R)' | Out-Null
 $name = 't5actor'
@@ -396,6 +405,7 @@ PS
 )
 setup_ps=${setup_ps//__T5_OFFICE_BASE__/$office_base}
 setup_ps=${setup_ps//__T5_OFFICE_APPS__/$office_apps}
+setup_ps=${setup_ps//__T5_WORD_DIAG__/$word_diag}
 printf '%s\n' "$setup_ps" | remote | tee "$ev/$tag-setup.txt"
 grep -qx 'COORDINATOR_STARTED=True' "$ev/$tag-setup.txt" || { echo 'coordinator did not start'; exit 20; }
 
@@ -430,6 +440,7 @@ PS
     scp "${opts[@]}" "vika@$host:C:/T5/control/actor-error.txt" "$ev/$tag-actor-error.txt" >/dev/null 2>&1 || true
     # Independent interactive monitor logs survive even if Word blocks inside COM on an alert.
     scp -r "${opts[@]}" "vika@$host:C:/T5/control/word-alerts" "$ev/$tag-word-alerts" >/dev/null 2>&1 || true
+    [ "$word_diag" = 0 ] || scp -r "${opts[@]}" "vika@$host:C:/T5/word-diag" "$ev/$tag-word-diag" >/dev/null 2>&1 || true
     # The agent's own warnings and errors explain slow or refused publications (record IDs survive the guest clock step).
     remote <<'PS' > "$ev/$tag-service-events.txt"
 $base = [long](Get-Content -LiteralPath 'C:\T5\event-baseline.txt')

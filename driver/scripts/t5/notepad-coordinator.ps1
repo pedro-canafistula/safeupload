@@ -24,6 +24,7 @@ $cases = @(Read-T5CaseInventory $CasesPath | Where-Object { [bool]$_.Office -eq 
 $leaves = @($cases | ForEach-Object { $_.Leaf; @($_.AuxiliaryLeaves) } | Where-Object { $_ } | Sort-Object -Unique)
 $frequency = [Diagnostics.Stopwatch]::Frequency
 $rawContext = $null; $rawBaseline = $null; $script:rawSequence = 0
+$script:T5WordDiagActive = $false; $script:T5LastStreams = [long]0
 $script:T5WorkflowPublicHashes = @{}
 $probeControlPhase = 'ControlProbeAfterTestCreateCloseBeforeDeleteOrSave'
 $cpfText = 'T5 notepad CPF: 529.982.247-25'
@@ -289,7 +290,40 @@ function Write-ActorCommand([string]$Op, [string]$Path, [string]$Text, [int]$N) 
     $part = Join-Path $control ('next-' + $N + '.part'); [IO.File]::WriteAllText($part, $json)
     [IO.File]::Move($part, (Join-Path $control ('cmd-' + $N + '.json')))
 }
+function Start-T5WordDiagTrace {
+    # Diagnostic only (T5_WORD_DIAG=1): file-I/O trace and driver stream snapshots around the Word overwrite save (T8 Word drop 2, W0).
+    $script:T5WordDiagActive = $true; $script:T5LastStreams = [long]0
+    try { (& wpr.exe -start FileIO 2>&1 | Out-String) | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-start.txt' } catch { $_.Exception.Message | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-start.txt' }
+}
+function Save-T5DiagStreams {
+    $script:T5LastStreams = [Diagnostics.Stopwatch]::GetTimestamp()
+    try {
+        $json = (& $Diagnostics -Query stage-streams | ConvertTo-Json -Depth 8 -Compress)
+        if ($json -match 'word-overwrite|WRD|WRL') { Add-Content -LiteralPath 'C:\T5\word-diag\streams.ndjson' -Value ((Get-Date).ToUniversalTime().ToString('o') + ' ' + $json) }
+    } catch { Add-Content -LiteralPath 'C:\T5\word-diag\streams-error.txt' -Value $_.Exception.Message }
+}
+function Stop-T5WordDiagTrace {
+    $script:T5WordDiagActive = $false
+    $etl = 'C:\T5\word-diag\overwrite.etl'; $csv = 'C:\T5\word-diag\overwrite.csv'
+    try {
+        (& wpr.exe -stop $etl 'T5 word overwrite' 2>&1 | Out-String) | Set-Content -LiteralPath 'C:\T5\word-diag\wpr-stop.txt'
+        (& tracerpt.exe $etl -of CSV -o $csv -summary 'C:\T5\word-diag\overwrite-summary.txt' -y 2>&1 | Out-String) | Set-Content -LiteralPath 'C:\T5\word-diag\tracerpt.txt'
+        if (Test-Path -LiteralPath $csv) {
+            'etl-bytes=' + (Get-Item -LiteralPath $etl -ErrorAction SilentlyContinue).Length + ' csv-bytes=' + (Get-Item -LiteralPath $csv).Length | Set-Content -LiteralPath 'C:\T5\word-diag\sizes.txt'
+            $head = Get-Content -LiteralPath $csv -TotalCount 2
+            $hit = Select-String -LiteralPath $csv -Pattern 'word-overwrite|~WRD|~WRL|wd-native' | ForEach-Object { $_.Line }
+            @($head) + @($hit) | Set-Content -LiteralPath 'C:\T5\word-diag\overwrite-filtered.csv'
+            Remove-Item -LiteralPath $csv -Force; Remove-Item -LiteralPath $etl -Force -ErrorAction SilentlyContinue
+        }
+    } catch { $_.Exception.ToString() | Set-Content -LiteralPath 'C:\T5\word-diag\trace-error.txt' }
+}
 function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$Observe,
+    [string[]]$BaselineTransferIds, [System.Collections.IDictionary]$CaseRecord) {
+    if (-not ($Op -ceq 'word-overwrite' -and [IO.File]::Exists('C:\T5\word-diag.flag'))) { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord }
+    Start-T5WordDiagTrace
+    try { return Invoke-ActorCore $Op $Path $Text $Observe $BaselineTransferIds $CaseRecord } finally { Stop-T5WordDiagTrace }
+}
+function Invoke-ActorCore([string]$Op, [string]$Path, [string]$Text, [scriptblock]$Observe,
     [string[]]$BaselineTransferIds, [System.Collections.IDictionary]$CaseRecord) {
     $script:n++
     Write-ActorCommand $Op $Path $Text $script:n
@@ -376,6 +410,7 @@ function Invoke-Actor([string]$Op, [string]$Path, [string]$Text, [scriptblock]$O
             $probeGateHandled = $true
         }
         $now = [Diagnostics.Stopwatch]::GetTimestamp()
+        if ($script:T5WordDiagActive -and $now - $script:T5LastStreams -ge [long]([Diagnostics.Stopwatch]::Frequency / 5)) { Save-T5DiagStreams }
         if ($null -ne $Observe -and ($lastObserve -eq 0 -or $now - $lastObserve -ge [long]([Diagnostics.Stopwatch]::Frequency / 2))) {
             [void](& $Observe 'ActorRunning'); $lastObserve = [Diagnostics.Stopwatch]::GetTimestamp()
         }

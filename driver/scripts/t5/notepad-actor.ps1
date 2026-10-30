@@ -575,6 +575,71 @@ function Start-T5WordAlertMonitor([int]$WordPid,[string]$Directory) {
     }
     return [pscustomobject]@{Job=$job;File=$file;Stop=$stop}
 }
+function Add-T5WatchType {
+    if ('T5Watch' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
+public static class T5Watch {
+    [StructLayout(LayoutKind.Sequential)] struct BHFI { public uint Attr; public long C, A, W; public uint Vol, SzH, SzL, Links, IdH, IdL; }
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);
+    [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetFileInformationByHandle(IntPtr h, out BHFI i);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    static Thread worker; static volatile bool stop; static readonly List<string> log = new List<string>(); static Stopwatch sw;
+    public static void Start(string target, string dir) {
+        lock (log) { log.Clear(); }
+        stop = false; sw = Stopwatch.StartNew();
+        worker = new Thread(delegate() { Run(target, dir); }); worker.IsBackground = true; worker.Start();
+    }
+    static void Add(string s) { lock (log) { if (log.Count < 4000) log.Add(string.Format("{0,9:F3}s {1}", sw.Elapsed.TotalSeconds, s)); } }
+    static void Run(string target, string dir) {
+        string lastT = null, lastD = null;
+        while (!stop) {
+            string t;
+            IntPtr h = CreateFileW(target, 0x80, 7, IntPtr.Zero, 3, 0, IntPtr.Zero);
+            if (h == new IntPtr(-1)) { t = "err=" + Marshal.GetLastWin32Error(); }
+            else {
+                BHFI i;
+                t = GetFileInformationByHandle(h, out i) ? ("ok id=" + i.IdH.ToString("X8") + i.IdL.ToString("X8") + " len=" + (((long)i.SzH << 32) | i.SzL) + " links=" + i.Links) : "ok(info-fail)";
+                CloseHandle(h);
+            }
+            if (t != lastT) { Add("target " + t); lastT = t; }
+            string d;
+            try {
+                List<string> names = new List<string>();
+                foreach (FileSystemInfo f in new DirectoryInfo(dir).GetFileSystemInfos()) names.Add(f.Name + ":" + ((f is FileInfo) ? ((FileInfo)f).Length : -1));
+                names.Sort(StringComparer.OrdinalIgnoreCase); d = string.Join(" | ", names.ToArray());
+            } catch (Exception e) { d = "dir-err " + e.Message; }
+            if (d != lastD) { Add("dir " + d); lastD = d; }
+            Thread.Sleep(5);
+        }
+    }
+    public static string[] Stop() { stop = true; if (worker != null) worker.Join(2000); lock (log) { return log.ToArray(); } }
+}
+'@
+}
+function Invoke-T5WordNativeControl($w,$obs) {
+    # Diagnostic only (T5_WORD_DIAG=1): the same Save As-over-existing sequence in an unprotected folder on the same volume.
+    $result=[ordered]@{Dir='C:\T5\wd-native';Steps=@()}
+    try{
+        $dir='C:\T5\wd-native';[void][IO.Directory]::CreateDirectory($dir)
+        [string]$path=[IO.Path]::Combine($dir,'wd-native.docx')
+        $d1=$w.Documents.Add();$d1.Content.Text='native seed';$d1.SaveAs2($path,16);$d1.Close(0);[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($d1)
+        $result.Steps+='seeded'
+        Start-Sleep -Seconds 8
+        $d2=$w.Documents.Add();$d2.Content.Text='native new'
+        [T5Watch]::Start($path,$dir)
+        try{$d2.SaveAs2($path,16);$result.Steps+='overwrite-ok'}catch{$result.Steps+=('overwrite-error '+$_.Exception.Message)}
+        finally{$result.Watch=@([T5Watch]::Stop())}
+        try{$d2.Close(0)}catch{}
+        [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($d2)
+    }catch{$result.Error=$_.Exception.Message}
+    $obs.NativeControl=$result
+}
 function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
     $w=$null;$doc=$null;$wordProcess=$null;$monitor=$null
     [string]$target=[IO.Path]::Combine([IO.Path]::GetDirectoryName($Path),[IO.Path]::GetFileName($Path))
@@ -616,23 +681,13 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
         }
         if($Op -cin @('word-saveas','word-seed','word-cpf','word-overwrite')){
             $doc.Content.Text=$expected
-            $watch=$null
-            if($Op -ceq 'word-overwrite'){
-                # Diagnostic only (mvpBWdiag13): timeline of the target's openability while Word replaces it.
-                $watch=Start-Job -ArgumentList $target -ScriptBlock {
-                    param($t)
-                    $sw=[Diagnostics.Stopwatch]::StartNew();$last=$null;$log=@()
-                    while($sw.Elapsed.TotalSeconds -lt 12){
-                        $st='open-ok'
-                        try{$f=[IO.File]::Open($t,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete);$len=$f.Length;$f.Dispose();$st='open-ok:'+$len}catch{$st=$_.Exception.GetType().Name+':'+$_.Exception.Message}
-                        if($st -cne $last){$log+=('{0:N3}s {1}' -f $sw.Elapsed.TotalSeconds,$st);$last=$st}
-                        Start-Sleep -Milliseconds 15
-                    }
-                    $log
-                }
-            }
-            try{$doc.SaveAs2($target,16)}finally{ # wdFormatDocumentDefault: .docx, including replacement of the published prior.
-                if($watch){[void]($watch | Wait-Job -Timeout 20);$obs.TargetTimeline=@($watch | Receive-Job -ErrorAction SilentlyContinue);$watch | Remove-Job -Force -ErrorAction SilentlyContinue}
+            $diag=($Op -ceq 'word-overwrite' -and [IO.File]::Exists('C:\T5\word-diag.flag'))
+            $diagError=$null
+            if($diag){Add-T5WatchType;[T5Watch]::Start($target,[IO.Path]::GetDirectoryName($target))}
+            try{$doc.SaveAs2($target,16)} # wdFormatDocumentDefault: .docx, including replacement of the published prior.
+            catch{$diagError=$_.Exception.Message;throw}
+            finally{
+                if($diag){$obs.DiagProtected=@([T5Watch]::Stop());$obs.DiagProtectedError=$diagError;Invoke-T5WordNativeControl $w $obs}
             }
         }else{
             $doc.Close(0);[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc);$doc=$null
@@ -661,7 +716,7 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
         $obs.ErrorText=$_.Exception.ToString()
         if($wordProcess){$obs.WindowsOnFailure=@(Get-WindowTexts $wordProcess.Id)}
         # Diagnostic only (mvpBWdiag11): which processes exist and how long the target stays unopenable after a failed save.
-        try{
+        if([IO.File]::Exists('C:\T5\word-diag.flag')) { try{
             $obs.ProcessSnapshot=@(Get-Process | ForEach-Object{('{0}:{1}:{2}' -f $_.Id,$_.ProcessName,$_.SessionId)})
             $probe=@();$sw=[Diagnostics.Stopwatch]::StartNew()
             while($sw.Elapsed.TotalSeconds -lt 20){
@@ -672,7 +727,7 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
                 Start-Sleep -Milliseconds 1000
             }
             $obs.TargetProbe=$probe
-        }catch{$obs.ProbeError=$_.Exception.Message}
+        }catch{$obs.ProbeError=$_.Exception.Message} }
         throw
     }finally{
         if($doc){try{$doc.Close(0)}catch{$obs.QuitError=$_.Exception.Message}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc)}}
