@@ -19,6 +19,8 @@ A associação entre endpointId da auditoria e hostname só é feita para nome �
 
 As listas retornam no máximo mil registros e informam limit/truncated. Os filtros do inventário são aplicados antes do limite; o resumo mantém os totais globais. Estatísticas completas da janela são calculadas por páginas de 500 metadados, sem carregar todos os eventos de uma vez. Não há exclusão, retenção automática ou reconhecimento de fila nessas consultas. A UI ainda não oferece paginação dessas listas.
 
+O painel apresenta sete dias de calendário UTC, seis eventos recentes e as categorias observadas nos bloqueios. Não infere a política vigente a partir de eventos: categoriasAtivas permanece vazia e politicaEfetivaConfirmada=false até existir esse contrato. Esse limite evita apresentar uma publicação ou detecção antiga como aplicação atual.
+
 ## Testes e CI
 
 AgentEventsIntakeTest passa a fornecer os dois colaboradores exigidos pelo controller (EmpresaRepository e AdminService), preservando persistência/recibos reais e os sete testes. O teste de rotas agora usa /agent/synchronize e /agent/heartbeat, conforme o controller atual; não foram adicionados aliases falsos de /agent/api/heartbeat.

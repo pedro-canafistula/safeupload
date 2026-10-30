@@ -46,7 +46,8 @@ public class AgentAdminQueries {
     }
 
     private <T> T read(Supplier<T> action) { return snapshot.execute(ignored -> action.get()); }
-    private Timestamp since() { return Timestamp.from(clock.instant().minus(Duration.ofDays(7))); }
+    private Timestamp since() { return Timestamp.from(LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC)
+        .minusDays(6).atStartOfDay(ZoneOffset.UTC).toInstant()); }
     private JsonNode document(String text) {
         try { return mapper.readTree(text); }
         catch (JsonProcessingException ex) {
@@ -68,7 +69,6 @@ public class AgentAdminQueries {
     private final class Totals {
         long total, blocked, approved, uninspected, retained;
         final Map<String, Long> categories = new LinkedHashMap<>();
-        final Map<String, Long> active = new LinkedHashMap<>();
         final Map<String, Long> days = new LinkedHashMap<>();
         Totals() {
             var today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
@@ -85,7 +85,6 @@ public class AgentAdminQueries {
                 default -> throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Resultado de auditoria inválido.");
             }
             for (var category : event.path("categories")) {
-                active.merge(category.asText(), 1L, Long::sum);
                 if (verdict.equals("Blocked")) categories.merge(category.asText(), 1L, Long::sum);
             }
             var day = Instant.parse(event.path("occurredAtUtc").asText()).atOffset(ZoneOffset.UTC).toLocalDate().toString();
@@ -124,8 +123,9 @@ public class AgentAdminQueries {
         var trend = totals.days.entrySet().stream().map(e -> Map.of("data", e.getKey(), "quantidade", e.getValue())).toList();
         var categories = totals.categories.entrySet().stream().map(e -> Map.of(
             "codigo", e.getKey(), "nome", categoryName(e.getKey()), "quantidade", e.getValue())).toList();
-        return Map.of("periodo", "Últimos 7 dias", "resumo", totals.summary(), "tendencia", trend,
-            "categoriasBloqueadas", categories, "recentes", events("", 20), "categoriasAtivas", totals.active.keySet());
+        // Observed categories are not proof of the policy currently applied by an agent.
+        return Map.of("periodo", "Últimos 7 dias (UTC)", "resumo", totals.summary(), "tendencia", trend,
+            "categoriasBloqueadas", categories, "recentes", events("", 6), "categoriasAtivas", List.of(), "politicaEfetivaConfirmada", false);
     }); }
     public Map<String, Object> audit(String endpoint) {
         bounded(endpoint);

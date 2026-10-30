@@ -101,10 +101,12 @@ class AgentAdminQueriesTest {
     @Test void readsPersistedVerdictsChannelsAndDeduplicatedEventsWithoutSnippets() throws Exception {
         var blocked=event("ALVO","Blocked","File"); send(blocked); send(blocked);
         send(event("ALVO","Approved","File")); send(event("ALVO","AllowedWithoutInspection","Clipboard")); send(event("ALVO","Retained","Web"));
+        var old=event("ALVO","Blocked","File"); old.put("occurredAtUtc","2026-10-23T23:59:00Z"); send(old);
         mvc.perform(get("/painel").session(session("ADMIN"))).andExpect(status().isOk())
             .andExpect(jsonPath("$.resumo.total").value(4)).andExpect(jsonPath("$.resumo.bloqueados").value(1))
             .andExpect(jsonPath("$.resumo.aprovados").value(1)).andExpect(jsonPath("$.resumo.liberadosSemInspecao").value(1))
-            .andExpect(jsonPath("$.resumo.retidos").value(1)).andExpect(jsonPath("$.categoriasBloqueadas[0].quantidade").value(1));
+            .andExpect(jsonPath("$.resumo.retidos").value(1)).andExpect(jsonPath("$.categoriasBloqueadas[0].quantidade").value(1))
+            .andExpect(jsonPath("$.categoriasAtivas").isEmpty()).andExpect(jsonPath("$.politicaEfetivaConfirmada").value(false));
         String body=mvc.perform(get("/auditoria").session(session("ADMIN"))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         assertThat(body).doesNotContain("maskedSnippets","SENSITIVE-CONTENT-MUST-NOT-RETURN");
         assertThat(mapper.readTree(body).path("eventos")).hasSize(4);

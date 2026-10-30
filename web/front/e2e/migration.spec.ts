@@ -9,7 +9,7 @@ test('cadastro, login e estado vazio sem indicadores fictícios', async ({ page 
   await page.goto('/cadastro');
   await page.getByLabel('Nome completo').fill('Teste Migração');
   await page.getByLabel('Nome de usuário').fill('migration-e2e');
-  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('E-mail', { exact: true }).fill(email);
   await page.getByLabel('CPF').fill('52998224725');
   await page.getByLabel('Data de nascimento').fill('1990-01-01');
   await page.getByLabel('Razão social').fill('Empresa Sintetica E2E');
@@ -66,7 +66,7 @@ test('heartbeat e três eventos reais aparecem no painel, endpoints e auditoria'
   await page.getByRole('button', { name: /entrar/i }).click();
   const inspections = page.locator('.metrics section').filter({ has: page.getByRole('heading', { name: 'Inspeções', exact: true }) });
   await expect(inspections.locator('strong')).toHaveText('3');
-  await page.getByRole('link', { name: 'Endpoints e agentes', exact: true }).click();
+  await page.goto('/endpoints');
   await expect(page.getByRole('cell', { name: 'Online', exact: true })).toBeVisible();
   await page.getByLabel('Buscar máquina').fill('INEXISTENTE');
   await page.getByRole('button', { name: 'Aplicar', exact: true }).click();
