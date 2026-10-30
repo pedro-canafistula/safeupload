@@ -29,7 +29,7 @@ public sealed class CommunicationPresentationTests
         Assert.NotNull(status.Communication.Heartbeat.LastSuccessUtc);
         Assert.Equal(AdministrationOperationState.Failure, status.Communication.Policy.State);
         Assert.Equal(AdministrationOperationState.NotAttempted, status.Communication.Audit.State);
-        Assert.DoesNotContain("404", NotificationProtocol.Serialize(status));
+        Assert.DoesNotContain("httpStatus", NotificationProtocol.Serialize(status), StringComparison.OrdinalIgnoreCase);
         publisher.PublishSnapshot();
         Assert.False(subscriber.Reader.TryRead(out _));
     }
