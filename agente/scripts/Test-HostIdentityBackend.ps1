@@ -20,6 +20,7 @@ $identityFile = Join-Path $agentRoot 'identity/host-registration.json'
 $serviceExe = Join-Path $repo 'artifacts/host-identity-service/SafeUpload.Agent.Service.exe'
 $jar = Join-Path $repo 'web/back/target/backend-0.1.0.jar'
 $mysql = Join-Path $MySqlBase 'bin/mysql.exe'
+$mysqlAdmin = Join-Path $MySqlBase 'bin/mysqladmin.exe'
 $mysqld = Join-Path $MySqlBase 'bin/mysqld.exe'
 $api = 'http://127.0.0.1:18080'
 if ((Get-Service $serviceName -ErrorAction SilentlyContinue) -or
@@ -29,7 +30,7 @@ if ((Get-Service $serviceName -ErrorAction SilentlyContinue) -or
 foreach ($port in @(18080,13316)) {
     if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw 'Test port occupied.' }
 }
-foreach ($file in @($serviceExe,$jar,$mysql,$mysqld)) {
+foreach ($file in @($serviceExe,$jar,$mysql,$mysqld,$mysqlAdmin)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Required test binary missing.' }
 }
 New-Item -ItemType Directory -Path $results -Force | Out-Null
@@ -70,12 +71,12 @@ function Query([string]$Sql) {
 }
 function Stop-Owned([Diagnostics.Process]$Process) {
     if ($null -ne $Process -and -not $Process.HasExited) {
-        $Process.Kill()
+        $Process.Kill($true)
         if (-not $Process.WaitForExit(10000)) { throw 'Owned process did not exit.' }
     }
 }
 function Start-Backend([string]$Label) {
-    $arguments=@('-jar', ('"' + $jar + '"'), '--server.port=18080','--server.address=127.0.0.1',
+    $arguments=@('-Duser.timezone=America/Sao_Paulo','-jar', ('"' + $jar + '"'), '--server.port=18080','--server.address=127.0.0.1',
         '--app.datasource.url=jdbc:mysql://127.0.0.1:13316/app?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false',
         '--app.datasource.username=root','--app.datasource.password=',
         '--acesso.datasource.url=jdbc:mysql://127.0.0.1:13316/acesso?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false',
@@ -191,13 +192,22 @@ try {
         & sc.exe delete $serviceName | Out-Null
         $evidence.cleanup.serviceDeleteExit=$LASTEXITCODE
     }
+    if ($null -ne $mysqlProcess) {
+        try {
+            & $mysqlAdmin --no-defaults --protocol=TCP --host=127.0.0.1 --port=13316 --user=root --skip-password shutdown +                *> (Join-Path $runtime 'mysql-shutdown.private.log')
+            $mysqlProcess.WaitForExit(10000) | Out-Null
+        } catch { $evidence.cleanup.mysqlShutdownAttemptFailed=$true }
+    }
     foreach ($process in @($script:javaProcess,$mysqlProcess)) {
         try { Stop-Owned $process } catch { $evidence.cleanup.processCleanupError=$true }
     }
     $evidence.cleanup.javaExited=($null -eq $script:javaProcess -or $script:javaProcess.HasExited)
     $evidence.cleanup.mysqlExited=($null -eq $mysqlProcess -or $mysqlProcess.HasExited)
+    $evidence.cleanup.mysqlPortClosed=(-not (Get-NetTCPConnection -LocalPort 13316 -State Listen -ErrorAction SilentlyContinue))
+    $evidence.cleanup.javaPortClosed=(-not (Get-NetTCPConnection -LocalPort 18080 -State Listen -ErrorAction SilentlyContinue))
     if (($createdService -and $evidence.cleanup.serviceDeleteExit -ne 0) -or
-        $evidence.cleanup.processCleanupError -or -not $evidence.cleanup.javaExited -or -not $evidence.cleanup.mysqlExited) {
+        $evidence.cleanup.processCleanupError -or -not $evidence.cleanup.javaExited -or -not $evidence.cleanup.mysqlExited -or
+        -not $evidence.cleanup.mysqlPortClosed -or -not $evidence.cleanup.javaPortClosed) {
         $evidence.status='failed'
     }
     Get-ChildItem -LiteralPath $runtime -Filter '*.log' -File | ForEach-Object {

@@ -11,7 +11,7 @@ O ensaio fica em runner Windows descartável. Não executar sobre instalação/e
 - Serviço self-contained da fonte do PR, via SCM/LocalSystem, modo FileSystemWatcher e TLS desligado.
 - Backend Java da mesma árvore, sem alteração, empacotado com skipTests. A fixture Java existente ainda tem falhas próprias; empacotamento não é aprovação desses testes.
 - MySQL Community 8.4.13 Windows, ZIP oficial com SHA-256 conferido, banco novo e bind somente em loopback. Inicialização efêmera sem senha, restrita ao runner isolado; não é configuração de produção.
-- Scripts SQL existentes 01/02/03; fuso SQL/JDBC São Paulo, como Docker/ClockConfig do projeto. A idade do último heartbeat é conferida pelo relógio do banco. Event scheduler desligado no ensaio; não qualifica a rotina temporal de offline.
+- Scripts SQL existentes 01/02/03; fuso SQL/JDBC/JVM São Paulo, como Docker/ClockConfig do projeto. A JVM recebe user.timezone explicitamente, pois o runner usa UTC. A idade do último heartbeat é conferida pelo relógio do banco. Event scheduler desligado no ensaio; não qualifica a rotina temporal de offline.
 - Dois cadastros sintéticos explícitos: alvo e controle. Só esses preparos chamam synchronize.
 
 Sequência de aceite:
