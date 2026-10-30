@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SafeUpload.Agent.Service.Notifications;
+using SafeUpload.Agent.Core.Infrastructure;
 
 namespace SafeUpload.Agent.Service.Diagnostics;
 
@@ -32,15 +33,17 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private readonly ILogger<DiagnosticsPipeServer> _logger;
     private readonly string _pipeName;
     private readonly CommunicationHealth? _communicationHealth;
+    private readonly LocalQueueAuditSink? _auditQueue;
 
     /// <param name="pipeName">Only tests pass a name; the service always uses <see cref="PipeName"/>.</param>
     public DiagnosticsPipeServer(DriverDiagnosticsSource source, ILogger<DiagnosticsPipeServer> logger,
-        string pipeName = PipeName, CommunicationHealth? communicationHealth = null)
+        string pipeName = PipeName, CommunicationHealth? communicationHealth = null, LocalQueueAuditSink? auditQueue = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName;
         _communicationHealth = communicationHealth;
+        _auditQueue = auditQueue;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -81,13 +84,13 @@ public sealed class DiagnosticsPipeServer : BackgroundService
             bufferSize: 1024, leaveOpen: true);
         string? line = await BoundedPipeLine.ReadAsync(reader, deadline.Token).ConfigureAwait(false);
 
-        JsonObject reply = Handle(line);
+        JsonObject reply = await HandleAsync(line, deadline.Token).ConfigureAwait(false);
         byte[] payload = Utf8.GetBytes(reply.ToJsonString() + "\n");
         await pipe.WriteAsync(payload, deadline.Token).ConfigureAwait(false);
         await pipe.FlushAsync(deadline.Token).ConfigureAwait(false);
     }
 
-    private JsonObject Handle(string? line)
+    private async Task<JsonObject> HandleAsync(string? line, CancellationToken cancellationToken)
     {
         string query = "";
         try
@@ -98,6 +101,26 @@ public sealed class DiagnosticsPipeServer : BackgroundService
 
             switch (query)
             {
+                case "audit-integrity":
+                    if (_auditQueue is null) return Error(query, "Audit storage is unavailable.");
+                    try
+                    {
+                        var snapshot = await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false);
+                        return Ok(query, JsonSerializer.SerializeToNode(snapshot, new JsonSerializerOptions
+                        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                    catch (Exception exception)
+                    {
+                        // Storage exceptions may contain paths or record text. Never relay them.
+                        var kind = exception switch
+                        {
+                            UnauthorizedAccessException => "access_denied",
+                            IOException => "io_error",
+                            _ => "unexpected_error"
+                        };
+                        return Error(query, "Audit scan failed (" + kind + ").");
+                    }
                 case "communication-health":
                     return _communicationHealth is null ? Error(query, "Communication monitoring is unavailable.") :
                         Ok(query, JsonSerializer.SerializeToNode(_communicationHealth.Read(), new JsonSerializerOptions
@@ -110,7 +133,8 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "audit-integrity", "help"),
+                        ["auditIntegrity"] = "explicit read-only full scan; line counts include duplicate IDs; deadline expiry returns no partial inventory; no repair, deletion or proof of delivery",
                         ["communicationHealth"] = "process-local communication results; counters reset on restart; no proof of API persistence or protection",
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
                         ["connected"] = _source.IsConnected,

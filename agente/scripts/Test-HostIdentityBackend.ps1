@@ -54,6 +54,21 @@ function Check([string]$Name, [bool]$Passed) {
     $evidence.checks += [ordered]@{name=$Name;passed=$Passed}
     if (-not $Passed) { throw "Acceptance failed: $Name" }
 }
+function Read-AuditIntegrity([string]$Phase) {
+    $queueFile = Join-Path $agentRoot 'queue.jsonl'
+    $beforeExists = Test-Path -LiteralPath $queueFile -PathType Leaf
+    $beforeHash = if ($beforeExists) { (Get-FileHash -LiteralPath $queueFile -Algorithm SHA256).Hash } else { $null }
+    $scan = & (Join-Path $PSScriptRoot 'Get-SafeUploadDiagnostics.ps1') -Query audit-integrity
+    Check "${Phase}: installed service serves complete audit integrity" ($null -ne $scan -and
+        ($scan.PSObject.Properties.Name -contains 'linesScanned') -and
+        $scan.linesScanned -eq ($scan.validEvents + $scan.validOverrides + $scan.invalidLines + $scan.unknownRecords + $scan.blankLines) -and
+        $scan.validEvents -eq ($scan.pendingEvents + $scan.dispatchedEvents) -and
+        $scan.validOverrides -eq ($scan.pendingOverrides + $scan.dispatchedOverrides) -and @($scan.issues).Count -le 20)
+    $afterExists = Test-Path -LiteralPath $queueFile -PathType Leaf
+    $afterHash = if ($afterExists) { (Get-FileHash -LiteralPath $queueFile -Algorithm SHA256).Hash } else { $null }
+    Check "${Phase}: diagnostic preserves queue existence and bytes" ($beforeExists -eq $afterExists -and $beforeHash -eq $afterHash)
+    return $scan
+}
 function Wait-Value([scriptblock]$Condition, [string]$Description, [int]$Seconds=60) {
     $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
     do {
@@ -173,6 +188,7 @@ try {
     Check 'identity file owned by SYSTEM with protected DACL' ($owner -eq 'S-1-5-18' -and (Get-Acl -LiteralPath $identityFile).AreAccessRulesProtected)
     $firstAge=[int](Query "SELECT TIMESTAMPDIFF(SECOND,visto_por_ultimo,NOW()) FROM app.hosts WHERE id_host=$targetId;")
     $evidence.snapshots.first=[ordered]@{service=$first;identityHash=$identityHash;target=(Host-Snapshot $targetId);heartbeatAgeSeconds=$firstAge}
+    $evidence.snapshots.auditIntegrityFirst = Read-AuditIntegrity 'first startup'
     Stop-Service $serviceName
     Stop-Owned $script:javaProcess
     Query "UPDATE app.hosts SET ativo=0,visto_por_ultimo='2000-01-01 00:00:00' WHERE id_host=$targetId;" | Out-Null
@@ -185,6 +201,7 @@ try {
     Check 'service restarts as LocalSystem in a new process while backend is offline'         ($second.account -eq 'LocalSystem' -and $second.state -eq 'Running' -and $second.startedUtc -ne $first.startedUtc)
     Check 'offline restart preserves identity and does not update database'         ((Get-FileHash -LiteralPath $identityFile -Algorithm SHA256).Hash -eq $identityHash -and
         (Query "SELECT ativo FROM app.hosts WHERE id_host=$targetId;") -eq '0' -and (Counts) -eq $countsBefore)
+    $evidence.snapshots.auditIntegrityOffline = Read-AuditIntegrity 'offline restart'
     Start-Backend 'recovered'
     Wait-Heartbeat $targetId
     Check 'recovered host heartbeats without another registration' ((Counts) -eq $countsBefore)
