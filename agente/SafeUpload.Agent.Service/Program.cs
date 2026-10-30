@@ -90,7 +90,8 @@ public static class Program
         // Administração configurado: é ela que deixa o endpoint continuar
         // registrando com a rede fora do ar. O envio ao painel é uma etapa
         // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
-        builder.Services.AddSingleton<IAuditSink, LocalQueueAuditSink>();
+        builder.Services.AddSingleton<LocalQueueAuditSink>();
+        builder.Services.AddSingleton<IAuditSink>(provider => provider.GetRequiredService<LocalQueueAuditSink>());
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
@@ -235,7 +236,8 @@ public static class Program
         builder.Services.AddHostedService(provider => new DiagnosticsPipeServer(
             provider.GetRequiredService<DriverDiagnosticsSource>(),
             provider.GetRequiredService<ILogger<DiagnosticsPipeServer>>(),
-            communicationHealth: provider.GetRequiredService<CommunicationHealth>()));
+            communicationHealth: provider.GetRequiredService<CommunicationHealth>(),
+            auditQueue: provider.GetRequiredService<LocalQueueAuditSink>()));
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();

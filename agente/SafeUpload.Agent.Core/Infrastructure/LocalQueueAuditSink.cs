@@ -21,7 +21,7 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 /// Todo evento nasce com dispatched igual a falso. O despachante marca
 /// verdadeiro depois da confirmação do servidor, preservando a trilha local.
 /// </summary>
-public sealed class LocalQueueAuditSink : IAuditSink, IOverrideQueue
+public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
 {
     private static readonly JsonSerializerOptions Options = new()
     {

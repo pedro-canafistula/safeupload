@@ -13,6 +13,10 @@ driver while the product runs. The service exposes read-only queries over the SY
                         No network/driver access is performed by this query. Counters reset on restart.
                         Success is not proof of central persistence, applied policy or protection.
 
+  audit-integrity      explicit read-only scan: line counts, pending/confirmed records, oldest pending UTC,
+                       and up to 20 line numbers/reasons; no event content, IDs or paths.
+                       A scan exceeding the service deadline returns no partial inventory. No repair/deletion.
+
   counters   refusal counters, how often a path that could not resolve a name answered "the whole volume may be in
              scope", and the writer-state status (registry entries and capacity, reclaim-worker passes, sections,
              stage streams).
@@ -28,7 +32,7 @@ driver while the product runs. The service exposes read-only queries over the SY
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'communication-health', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'communication-health', 'audit-integrity', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
@@ -62,6 +66,7 @@ function Invoke-DiagnosticsQuery([hashtable] $Request) {
 }
 
 switch ($Query) {
+    'audit-integrity' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'communication-health' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'counters' { Invoke-DiagnosticsQuery @{ query = 'counters' } }
     'help' { Invoke-DiagnosticsQuery @{ query = 'help' } }
