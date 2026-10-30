@@ -616,7 +616,24 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
         }
         if($Op -cin @('word-saveas','word-seed','word-cpf','word-overwrite')){
             $doc.Content.Text=$expected
-            $doc.SaveAs2($target,16) # wdFormatDocumentDefault: .docx, including replacement of the published prior.
+            $watch=$null
+            if($Op -ceq 'word-overwrite'){
+                # Diagnostic only (mvpBWdiag13): timeline of the target's openability while Word replaces it.
+                $watch=Start-Job -ArgumentList $target -ScriptBlock {
+                    param($t)
+                    $sw=[Diagnostics.Stopwatch]::StartNew();$last=$null;$log=@()
+                    while($sw.Elapsed.TotalSeconds -lt 12){
+                        $st='open-ok'
+                        try{$f=[IO.File]::Open($t,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete);$len=$f.Length;$f.Dispose();$st='open-ok:'+$len}catch{$st=$_.Exception.GetType().Name+':'+$_.Exception.Message}
+                        if($st -cne $last){$log+=('{0:N3}s {1}' -f $sw.Elapsed.TotalSeconds,$st);$last=$st}
+                        Start-Sleep -Milliseconds 15
+                    }
+                    $log
+                }
+            }
+            try{$doc.SaveAs2($target,16)}finally{ # wdFormatDocumentDefault: .docx, including replacement of the published prior.
+                if($watch){[void]($watch | Wait-Job -Timeout 20);$obs.TargetTimeline=@($watch | Receive-Job -ErrorAction SilentlyContinue);$watch | Remove-Job -Force -ErrorAction SilentlyContinue}
+            }
         }else{
             $doc.Close(0);[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc);$doc=$null
             $doc=$w.Documents.Open($target,$false,$false)

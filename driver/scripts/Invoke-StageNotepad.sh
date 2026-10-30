@@ -614,7 +614,9 @@ def valid_raw_sample(s):
         if not any(str(f.get('Name', '')).lower() == leaf and str(f.get('Namespace')) != '2' for f in named_in_parent):
             return False
         expected_entries.extend(directory_key(f) for f in named_in_parent)
-    actual_entries = [directory_key(d) for d in s.get('DirectoryEntries')]
+    # Office's owner lock file (~$name and its 8.3 alias) is published like any new file and is an expected companion (mvpBWdiag13);
+    # the coordinator skips it the same way.
+    actual_entries = [directory_key(d) for d in s.get('DirectoryEntries') if not (globals().get('office_run', False) and str(d.get('Name', '')).startswith('~$'))]
     if len(actual_entries) != len(set(actual_entries)) or set(actual_entries) != set(expected_entries) or len(actual_entries) != len(expected_entries):
         return False
     # Owner 2026-10-21: a sample taken while the actor runs carries public reads from before the raw capture too; the raw image must
