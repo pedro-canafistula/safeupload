@@ -49,6 +49,8 @@ public sealed partial class StagedTransferJournal
                     throw new IOException("private_cancellation_replay_changed");
                 return (false, receipt.Generation);
             }
+            if (current.SupersededByFollowup is not null)
+                throw new IOException("private_cancellation_version_unresolved"); // retired; only its stage disposal remains
             if (_unboundCommitted.Contains(version.TransferId) || current.State == TransferJournalState.Released)
                 return (true, 0);
             if (current.PendingRename is not null || current.StageCleanupStarted ||
@@ -107,12 +109,28 @@ public sealed partial class StagedTransferJournal
                 current.BoundAllocation is not null || current.UnboundCancellation is not null ||
                 current.PendingRename is not null || current.StageCleanupStarted || current.StageDeleted ||
                 current.HandbackState != StagedHandbackState.NotAttempted || current.DiscardKind is not null ||
+                // An empty (legacy) history cannot show that the version was never public; it stays Retained.
+                !current.StateHistory.Any() ||
                 current.StateHistory.Any(change => change.State is TransferJournalState.Publishing or
                     TransferJournalState.Released or TransferJournalState.Blocked))
                 return null;
             var version = VersionIdentity(current);
-            var claims = await DestinationVersionsAsync(current.Transfer.DestinationPath, token).ConfigureAwait(false);
-            var followup = claims.Select(claim => claim.Entry).FirstOrDefault(child =>
+            // Direct follow-ups only, found by their durable parent link in the hot journal and the archive index (a
+            // newer archived save can hide a published follow-up from the destination's claims).
+            await EnsureArchiveLoadedCoreAsync(token).ConfigureAwait(false);
+            var children = new List<TransferJournalEntry>();
+            foreach (FileInfo file in new DirectoryInfo(_directory).EnumerateFiles("*.json"))
+            {
+                if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), "N", out Guid id))
+                    throw new InvalidDataException($"Unexpected journal file: {file.FullName}");
+                if (id == predecessorId) continue;
+                var entry = await ReadScannedAsync(file, id, token).ConfigureAwait(false);
+                if (entry.ParentVersionIdentity == version) children.Add(entry);
+            }
+            if (_archivedFollowups.TryGetValue(predecessorId, out var archivedIds))
+                foreach (Guid id in archivedIds)
+                    children.Add(await ReadArchivedCoreAsync(id, token).ConfigureAwait(false));
+            var followup = children.FirstOrDefault(child =>
                 child.ParentVersionIdentity == version && child.State == TransferJournalState.Released &&
                 child.SealedOnce && child.BoundAllocation is null && child.PendingRename is null &&
                 child.DestinationGeneration > current.DestinationGeneration &&

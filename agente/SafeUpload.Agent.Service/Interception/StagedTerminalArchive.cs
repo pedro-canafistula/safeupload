@@ -21,6 +21,9 @@ public sealed partial class StagedTransferJournal
     private readonly Dictionary<Guid, ArchiveLocation> _archived = new();
     private readonly Dictionary<string, ArchiveMaximum> _archivedClaims = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ArchiveMaximum> _archivedEffectiveClaims = new(StringComparer.OrdinalIgnoreCase);
+    // T8 Word drop 2: archived follow-ups by their predecessor's transfer ID. A published follow-up stays findable after a
+    // newer archived save takes the destination's maximum claim (RetireSupersededByFollowupAsync).
+    private readonly Dictionary<Guid, List<Guid>> _archivedFollowups = new();
     private bool _archiveLoaded;
     private string? _archiveAppendPath;
     private int _archiveSegmentCount;
@@ -270,7 +273,7 @@ public sealed partial class StagedTransferJournal
 
     private async Task LoadArchiveCoreAsync(CancellationToken token)
     {
-        _archived.Clear(); _archivedClaims.Clear(); _archivedEffectiveClaims.Clear(); _archiveAuditIds.Clear();
+        _archived.Clear(); _archivedClaims.Clear(); _archivedEffectiveClaims.Clear(); _archivedFollowups.Clear(); _archiveAuditIds.Clear();
         _archiveAuditCursor = 0; _archiveAppendPath = null; _archiveSegmentCount = 0;
         if (Directory.Exists(_completedDirectory))
         {
@@ -377,6 +380,12 @@ public sealed partial class StagedTransferJournal
 
     private void AddArchivedClaims(TransferJournalEntry entry)
     {
+        if (entry.ParentVersionIdentity is { } parent)
+        {
+            if (!_archivedFollowups.TryGetValue(parent.TransferId, out var followups))
+                _archivedFollowups[parent.TransferId] = followups = [];
+            followups.Add(entry.Transfer.TransferId);
+        }
         Add(_archivedClaims, entry.Transfer.DestinationPath, Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0));
         if (!RetiredUnattachedAllocation(entry))
             Add(_archivedEffectiveClaims, entry.Transfer.DestinationPath, Math.Max(entry.DestinationGeneration, entry.UnboundCancellation?.Generation ?? 0));

@@ -51,19 +51,42 @@ public sealed partial class StagedTransferPublisher
 
     /// <summary>
     /// T8 Word drop 2 (owner, 2026-10-30): a Retained version whose own follow-up save is now published is recorded as
-    /// superseded (StagedTransferJournal.RetireSupersededByFollowupAsync). Called when the follow-up is released and when
-    /// the predecessor becomes Retained, whichever comes last. Only records: this can run under the recovery gate, and the
-    /// live pending scan disposes of the stage on its next pass.
+    /// superseded (StagedTransferJournal.RetireSupersededByFollowupAsync). Prompt triggers: the follow-up's release and the
+    /// predecessor becoming Retained. ReconcileSupersededAsync repeats the check from the live pending scan and at startup,
+    /// so a crash or failed write between the two never loses the obligation. Only records: this can run under the
+    /// recovery gate, and the pending scan disposes of the stage.
     /// </summary>
-    internal async Task RetireSupersededAsync(Guid predecessorId, CancellationToken token)
+    internal async Task<TransferJournalEntry?> RetireSupersededAsync(Guid predecessorId, CancellationToken token)
     {
-        try { await _journal.RetireSupersededByFollowupAsync(predecessorId, token).ConfigureAwait(false); }
+        try { return await _journal.RetireSupersededByFollowupAsync(predecessorId, token).ConfigureAwait(false); }
         catch (Exception ex) when (!token.IsCancellationRequested &&
             ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
-            // The version stays Retained, as before this rule; nothing was published or deleted.
+            // The version stays Retained, as before this rule; nothing was published or deleted. Reconciliation retries.
             _logger?.LogDebug(ex, "Superseded version {TransferId} stays retained for now.", predecessorId);
+            return null;
         }
+    }
+
+    private readonly Dictionary<Guid, long> _supersededChecks = new();
+
+    /// <summary>A cheap snapshot test, then at most one journal check per entry every five seconds.</summary>
+    internal async Task<TransferJournalEntry?> ReconcileSupersededAsync(TransferJournalEntry entry, CancellationToken token)
+    {
+        if (entry.State != TransferJournalState.Retained || entry.SupersededByFollowup is not null ||
+            entry.UnboundCancellation is not null || entry.BoundAllocation is not null || !entry.SealedOnce ||
+            entry.PendingRename is not null || entry.StageCleanupStarted || entry.StageDeleted)
+            return null;
+        Guid id = entry.Transfer.TransferId;
+        long now = RecoveryTimestamp();
+        lock (_supersededChecks)
+        {
+            if (_supersededChecks.TryGetValue(id, out long next) && now < next) return null;
+            _supersededChecks[id] = now + 5 * Stopwatch.Frequency;
+        }
+        var retired = await RetireSupersededAsync(id, token).ConfigureAwait(false);
+        if (retired is not null) lock (_supersededChecks) _supersededChecks.Remove(id);
+        return retired;
     }
 
     private bool HasUnfinishedCallerWork(Guid id)

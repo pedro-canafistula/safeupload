@@ -1584,6 +1584,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
                         cleanupOnly: entry.HandbackState == StagedHandbackState.Verified).ConfigureAwait(false);
                     continue;
                 }
+                if (entry.State == TransferJournalState.Retained)
+                {
+                    // T8 Word drop 2: a version superseded by its own published follow-up; disposed of on the next pass.
+                    await _stagePublisher.ReconcileSupersededAsync(entry, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
                 if (entry.State != TransferJournalState.Sealed) continue;
 
                 try
@@ -1797,9 +1803,12 @@ public sealed partial class MinifilterInterceptor : BackgroundService
 #else
             _stageJournal.ReconcilePublishingAsync(stoppingToken).GetAwaiter().GetResult();
 #endif
-            foreach (TransferJournalEntry entry in _stageJournal.ReadPendingAsync(stoppingToken)
+            foreach (TransferJournalEntry pendingEntry in _stageJournal.ReadPendingAsync(stoppingToken)
                          .GetAwaiter().GetResult())
             {
+                // T8 Word drop 2: a restart between a follow-up's release and its predecessor's retirement loses nothing.
+                TransferJournalEntry entry = _stagePublisher.ReconcileSupersededAsync(pendingEntry, stoppingToken)
+                    .GetAwaiter().GetResult() ?? pendingEntry;
                 if (entry.UnboundCancellation is not null || entry.SupersededByFollowup is not null ||
                     entry.State == TransferJournalState.Publishing ||
                     entry.State == TransferJournalState.Blocked &&
