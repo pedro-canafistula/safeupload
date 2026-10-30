@@ -520,14 +520,22 @@ function Start-T5WordAlertMonitor([int]$WordPid,[string]$Directory) {
             SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId;WordCreationTime=$null;SawWordWindow=$false;
             Ready=$false;Stopped=$false;TimedOut=$false;PollCount=0;AlertTexts=@();Error=$null}
         function Write-Monitor {
+            # The actor reads this file while the monitor runs; a replace that meets its open handle fails with a
+            # sharing violation (mvpBWdiag8). Retry briefly instead of ending the monitor.
             [IO.File]::WriteAllText(($File+'.tmp'),($record | ConvertTo-Json -Depth 6 -Compress))
-            if([IO.File]::Exists($File)){[IO.File]::Replace(($File+'.tmp'),$File,$null)}else{[IO.File]::Move(($File+'.tmp'),$File)}
+            for($try=0;;$try++){
+                try{
+                    if([IO.File]::Exists($File)){[IO.File]::Replace(($File+'.tmp'),$File,$null)}else{[IO.File]::Move(($File+'.tmp'),$File)}
+                    break
+                }catch [IO.IOException]{if($try -ge 100){throw};Start-Sleep -Milliseconds 10}
+            }
         }
         try {
             Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
             $record.WordCreationTime=(Get-Process -Id $WordPid -ErrorAction Stop).StartTime.ToUniversalTime().ToFileTimeUtc()
             Set-Item Function:\Get-WindowTexts -Value ([scriptblock]::Create($TextFunction))
             $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+210*[Diagnostics.Stopwatch]::Frequency
+            $lastAlerts=0
             do {
                 $byPid=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,([int]$WordPid))
                 $root=[Windows.Automation.AutomationElement]::RootElement
@@ -545,7 +553,10 @@ function Start-T5WordAlertMonitor([int]$WordPid,[string]$Directory) {
                 }
                 if($alert){$record.AlertTexts=@(@($record.AlertTexts)+@(Get-WindowTexts ([int]$WordPid)) | Sort-Object -Unique)}
                 if($record.AlertTexts.Count -gt 32){throw 'Word alert evidence exceeded 32 distinct windows'}
-                $record.PollCount++;$record.Ready=$true;Write-Monitor
+                $record.PollCount++
+                $changed=(-not $record.Ready) -or ($record.AlertTexts.Count -ne $lastAlerts)
+                $record.Ready=$true;$lastAlerts=$record.AlertTexts.Count
+                if($changed){Write-Monitor} # the final state is written once more in finally
                 if([IO.File]::Exists($Stop)){$record.Stopped=$true;break}
                 Start-Sleep -Milliseconds 100
             }while([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline)
