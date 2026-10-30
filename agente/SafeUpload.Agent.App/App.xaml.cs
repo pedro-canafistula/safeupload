@@ -63,6 +63,8 @@ public partial class App : System.Windows.Application
         _clipboard.Start();
 
         _tray.ShowBalloon("SafeUpload", "Painel do agente ativo na bandeja do sistema.");
+        if (e.Args.Contains("--show", StringComparer.OrdinalIgnoreCase))
+            OpenPanel();
     }
 
     /// <inheritdoc />

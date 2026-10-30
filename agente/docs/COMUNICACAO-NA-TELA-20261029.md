@@ -25,7 +25,7 @@ Um aplicativo antigo ignora o campo adicional. O novo aplicativo aceita ausênci
 
 ## Demonstração para Thiago
 
-1. Abrir o aplicativo de bandeja da mesma compilação do serviço e selecionar Status.
+1. Abrir o aplicativo de bandeja da mesma compilação do serviço e selecionar Status. Para abrir diretamente a janela ao iniciar, executar `SafeUpload.Agent.App.exe --show`; sem essa opção o início continua pela bandeja.
 2. Observar os três resultados e horários. Confirmar o heartbeat no banco usando o roteiro de integração; a tela sozinha não substitui essa consulta.
 3. Parar somente o backend de teste. Após o próximo ciclo configurado do despachante e até cinco segundos de amostragem, mostrar falha e a última confirmação anterior. O cartão de proteção local conserva o estado informado pelo interceptador.
 4. Retornar o backend. Esperar o próximo ciclo; mostrar nova confirmação de heartbeat. Auditoria só muda se houver lote; consulta de políticas pode continuar falhando enquanto a rota não estiver disponível.
