@@ -537,6 +537,9 @@ function Start-T5WordAlertMonitor([int]$WordPid,[string]$Directory) {
             $deadline=[Diagnostics.Stopwatch]::GetTimestamp()+210*[Diagnostics.Stopwatch]::Frequency
             $lastAlerts=0
             do {
+                # The actor writes the stop file only after Word has exited; no window can exist then, and a UI Automation
+                # search over a closing process can block for seconds (mvpBWdiag9).
+                if($record.Ready -and [IO.File]::Exists($Stop)){$record.Stopped=$true;break}
                 $byPid=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty,([int]$WordPid))
                 $root=[Windows.Automation.AutomationElement]::RootElement
                 $top=@($root.FindAll([Windows.Automation.TreeScope]::Children,$byPid))
@@ -647,7 +650,7 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
         if($monitor){
             [IO.File]::WriteAllText($monitor.Stop,'stop')
             try{
-                [void]($monitor.Job | Wait-Job -Timeout 5)
+                [void]($monitor.Job | Wait-Job -Timeout 30)
                 if($monitor.Job.State -cne 'Completed'){throw 'Word alert monitor did not finish'}
                 $monitor.Job | Receive-Job -ErrorAction Stop | Out-Null
                 $obs.AlertMonitor=(Read-ActorControlText $monitor.File) | ConvertFrom-Json
