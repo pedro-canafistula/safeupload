@@ -1448,6 +1448,8 @@ typedef struct _STAGE_TOMBSTONE {
     WCHAR TransferId[32];      /* the renamed version's stage GUID: the service's durable tombstone owner */
     UNICODE_STRING TransferName;
     UNICODE_STRING Name;
+    FILE_ID_INFORMATION PublicIdentity; /* the public file the owner vacated; a different file now at the name is not hidden */
+    BOOLEAN PublicIdentityValid;
 } STAGE_TOMBSTONE, *PSTAGE_TOMBSTONE;
 
 typedef struct _STAGE_VIEW {
@@ -2298,6 +2300,20 @@ static PSTAGE_TOMBSTONE StageHiddenTombstone(PEPROCESS Owner, PUNICODE_STRING Na
 static BOOLEAN StageHiddenName(PEPROCESS Owner, PUNICODE_STRING Name)
 {
     return StageHiddenTombstone(Owner, Name) != NULL;
+}
+
+/* Caller holds NamespaceResource. TRUE only when the public file now at Name is exactly the file Owner vacated (its hidden
+ * tombstone's recorded identity). A stale tombstone over a different file that took the name later never counts. */
+static BOOLEAN StageVacatedPublicFile(PFLT_INSTANCE Instance, PEPROCESS Owner, PUNICODE_STRING Name, LONG64 *Sequence)
+{
+    PSTAGE_TOMBSTONE tombstone = StageHiddenTombstone(Owner, Name);
+    FILE_ID_INFORMATION current;
+    if (tombstone == NULL || !tombstone->PublicIdentityValid) return FALSE;
+    if (!NT_SUCCESS(SafeUploadStageQueryIdentity(Instance, Name, FALSE, &current))) return FALSE;
+    if (current.VolumeSerialNumber != tombstone->PublicIdentity.VolumeSerialNumber ||
+        !RtlEqualMemory(&current.FileId, &tombstone->PublicIdentity.FileId, sizeof(current.FileId))) return FALSE;
+    *Sequence = tombstone->Sequence;
+    return TRUE;
 }
 
 /* Caller holds NamespaceResource. */
@@ -5498,6 +5514,10 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
 #endif
     BOOLEAN extended = Data->Iopb->Parameters.SetFileInformation.FileInformationClass == FileRenameInformationEx;
     BOOLEAN replace = FALSE, posix = FALSE;
+    BOOLEAN vacatedByOwner = FALSE;
+    LONG64 vacatedSequence = 0, vacatedSequenceNow = 0;
+    FILE_ID_INFORMATION publicIdentity = {0};
+    NTSTATUS publicStatus = STATUS_OBJECT_NAME_NOT_FOUND;
 #if SAFEUPLOAD_STAGING_PROTOTYPE
     BOOLEAN targetPinned = FALSE;
     LONG64 viewGeneration = 0, targetGeneration = 0, namespaceSequence = 0;
@@ -5635,13 +5655,13 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
         StageRelease(&replaced->Resource);
         if (!NT_SUCCESS(status)) goto Exit;
     }
-    /* A public file the owner itself renamed or deleted away stays hidden for it (tombstone) until the service has applied that
-     * move. Word renames the old document to its backup name first and then renames its temporary file onto the original name
+    /* A public file the owner itself renamed away stays hidden for it (tombstone, bound to that file's identity) until the service
+     * has applied that move. Word renames the old document to its backup name first and then renames its temporary file onto the original name
      * without the replace flag: for the owner that name is absent, so the public file must not make this a collision. The check
      * then runs as a replacement, which still requires DELETE on that file (the owner already needed it for the first rename)
      * and the parent's add-file access. T8 Word drop 2, W1. */
-    status = SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance, &destination->Name,
-        (BOOLEAN)(replace || StageHiddenTombstone(view->Owner, &destination->Name) != NULL));
+    vacatedByOwner = StageVacatedPublicFile(Stream->OriginalInstance, view->Owner, &destination->Name, &vacatedSequence);
+    status = SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance, &destination->Name, (BOOLEAN)(replace || vacatedByOwner));
     if (!NT_SUCCESS(status)) goto Exit;
     /* The name being left stays logically absent for the owner while a public file has it (the service publishes the move
      * later). One record per owner and name: an existing one is reused. Allocated before the exchange so that the commit
@@ -5649,8 +5669,7 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
      * application's private temporary names would otherwise fill the table for the life of the process. */
     reused = StageHiddenTombstone(view->Owner, &view->Name);
     if (reused == NULL) {
-        FILE_ID_INFORMATION publicIdentity;
-        NTSTATUS publicStatus = SafeUploadStageQueryIdentity(Stream->OriginalInstance, &view->Name, FALSE, &publicIdentity);
+        publicStatus = SafeUploadStageQueryIdentity(Stream->OriginalInstance, &view->Name, FALSE, &publicIdentity);
         hidePublic = publicStatus != STATUS_OBJECT_NAME_NOT_FOUND && publicStatus != STATUS_OBJECT_PATH_NOT_FOUND;
     }
     if (reused == NULL && hidePublic) {
@@ -5663,6 +5682,8 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
         old->Name.Buffer = (PWCH)(old + 1);
         old->Name.Length = old->Name.MaximumLength = view->Name.Length;
         RtlCopyMemory(old->Name.Buffer, view->Name.Buffer, view->Name.Length);
+        old->PublicIdentity = publicIdentity;
+        old->PublicIdentityValid = NT_SUCCESS(publicStatus);
     }
     exchange = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*exchange), STAGE_TAG);
     if (exchange == NULL) { status = STATUS_INSUFFICIENT_RESOURCES; goto Exit; }
@@ -5731,8 +5752,10 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
             target->Current != targetStream || target->Detached || target->Generation != targetGeneration)) ||
         (target == NULL && StageFindView(view->Owner, &destination->Name) != NULL) ||
         !NT_SUCCESS(status) ||
+        (vacatedByOwner && (!StageVacatedPublicFile(Stream->OriginalInstance, view->Owner, &destination->Name, &vacatedSequenceNow) ||
+            vacatedSequenceNow != vacatedSequence)) ||
         !NT_SUCCESS(SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance,
-            &destination->Name, replace))) {
+            &destination->Name, (BOOLEAN)(replace || vacatedByOwner)))) {
         if (Stream->RenameExchange != NULL)
             StageSetRenameOperation(Stream->RenameExchange, SAFEUPLOAD_OPERATION_STAGE_RENAME_ABORT);
         StageFinishRename(Stream);
