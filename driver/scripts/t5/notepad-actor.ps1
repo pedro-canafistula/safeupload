@@ -643,6 +643,19 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
     }catch{
         $obs.ErrorText=$_.Exception.ToString()
         if($wordProcess){$obs.WindowsOnFailure=@(Get-WindowTexts $wordProcess.Id)}
+        # Diagnostic only (mvpBWdiag11): which processes exist and how long the target stays unopenable after a failed save.
+        try{
+            $obs.ProcessSnapshot=@(Get-Process | ForEach-Object{('{0}:{1}:{2}' -f $_.Id,$_.ProcessName,$_.SessionId)})
+            $probe=@();$sw=[Diagnostics.Stopwatch]::StartNew()
+            while($sw.Elapsed.TotalSeconds -lt 20){
+                $state='open-ok'
+                try{$f=[IO.File]::Open($target,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete);$f.Dispose()}catch{$state=$_.Exception.GetType().Name+':'+$_.Exception.Message}
+                $probe+=('{0:N1}s {1}' -f $sw.Elapsed.TotalSeconds,$state)
+                if($state -ceq 'open-ok'){break}
+                Start-Sleep -Milliseconds 1000
+            }
+            $obs.TargetProbe=$probe
+        }catch{$obs.ProbeError=$_.Exception.Message}
         throw
     }finally{
         if($doc){try{$doc.Close(0)}catch{$obs.QuitError=$_.Exception.Message}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc)}}
