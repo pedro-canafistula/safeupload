@@ -84,8 +84,9 @@ internal static class CurrentBackendContract
         var events = new List<AuditEvent>();
         foreach (var verdict in new[] { Verdict.Blocked, Verdict.Approved, Verdict.AllowedWithoutInspection, Verdict.Retained })
         {
-            var item = new AuditEvent(Guid.NewGuid(), DateTimeOffset.UtcNow, endpoint, "teste-contrato", "sintetico.txt", ".txt", 128,
-                verdict, verdict == Verdict.Blocked ? [Category.Cpf, Category.Secret] : [], [], "contract-smoke", 1, @"C:\synthetic",
+            var item = new AuditEvent(Guid.NewGuid(), DateTimeOffset.UtcNow, endpoint, "teste-contrato",
+                verdict == Verdict.Blocked ? @"C:\legacy\synthetic.txt" : "sintetico.txt", ".txt", 128,
+                verdict, verdict == Verdict.Blocked ? [Category.Cpf, Category.Secret] : [], ["SYNTHETIC-LOCAL-ONLY-AUDIT"], "contract-smoke", 1, @"C:\synthetic",
                 verdict == Verdict.Retained ? "publication_failed" : verdict == Verdict.AllowedWithoutInspection ? "inspection_timeout" : null,
                 local.Version, 5, false, PublishedSha256Hex: verdict == Verdict.Approved ? new string('a', 64) : null);
             events.Add(item); await queue.WriteAsync(item, token);
@@ -98,13 +99,18 @@ internal static class CurrentBackendContract
         Check("real clipboard component produces an observation", clipboardEvent.Verdict == Verdict.AllowedWithoutInspection && clipboardEvent.Categories.Contains(Category.Cpf));
         events.Add(clipboardEvent);
         var web = new AuditEvent(Guid.NewGuid(), DateTimeOffset.UtcNow, endpoint, "teste-contrato", "", "", 18,
-            Verdict.Blocked, [Category.Cpf], [], "chrome", 42, "https://example.test/upload", null, local.Version, 2, false, Channel: AuditChannel.Web);
+            Verdict.Blocked, [Category.Cpf], [], "chrome", 42, "https://example.test/legacy/path?synthetic=value#fragment", null, local.Version, 2, false, Channel: AuditChannel.Web);
         events.Add(web); await queue.WriteAsync(web, token);
         var justification = new AuditOverride(web.EventId, "Literal <b>justificativa</b>", DateTimeOffset.UtcNow, "teste-contrato", endpoint);
         await queue.RecordOverrideAsync(justification, token);
         string queueText = await File.ReadAllTextAsync(queue.QueueFilePath, token);
         Check("clipboard content is not stored", !queueText.Contains("529.982.247-25") && !queueText.Contains("52998224725"));
         Check("queue reopens with the original event identities", (await new LocalQueueAuditSink(queue.QueueFilePath).ReadPendingAsync(100, token)).Select(e => e.EventId).ToHashSet().SetEquals(events.Select(e => e.EventId)));
+        // An older agent may have committed this exact batch but lost the response.
+        // Seed its wire shape without confirming the local queue, then retry with the current dispatcher.
+        var legacyReceipt = await Post("agent/events", new { events, overrides = new[] { justification } });
+        Check("legacy request was accepted while the local batch remains pending", legacyReceipt.GetProperty("acceptedEvents").GetInt32() == 6 &&
+            legacyReceipt.GetProperty("acceptedOverrides").GetInt32() == 1 && (await queue.ReadPendingAsync(100, token)).Count == 6);
         using (var dispatcher = new HttpAgentDispatcher(queue, new FixturePolicy(local), agent, endpoint, TimeSpan.FromSeconds(30), NullLogger<HttpAgentDispatcher>.Instance) { HeartbeatSender = heartbeat })
         {
             await dispatcher.StartAsync(token);
@@ -128,6 +134,8 @@ internal static class CurrentBackendContract
         Check("published hash and retained reason survive SQL", persisted.Single(e => e.GetProperty("verdict").GetString() == "Approved").GetProperty("publishedSha256Hex").GetString() == new string('a',64) &&
             persisted.Single(e => e.GetProperty("verdict").GetString() == "Retained").GetProperty("notInspectedReason").GetString() == "publication_failed");
         Check("read API never includes inspected snippets", !audit.GetRawText().Contains("maskedSnippets"));
+        Check("legacy filename and Web destination remain replay-compatible", persisted.Single(e => e.GetProperty("eventId").GetGuid() == events[0].EventId).GetProperty("fileName").GetString() == events[0].FileName &&
+            persisted.Single(e => e.GetProperty("eventId").GetGuid() == web.EventId).GetProperty("destinationPath").GetString() == web.DestinationPath);
         var justifications = audit.GetProperty("justificativas").EnumerateArray().ToArray();
         Check("justification is deduplicated and preserves literal text", justifications.Length == 1 && justifications[0].GetProperty("eventId").GetGuid() == web.EventId && justifications[0].GetProperty("justification").GetString() == justification.Justification);
         Check("endpoint filter does not return another endpoint", (await Get("auditoria?endpoint=OTHER")).GetProperty("eventos").GetArrayLength() == 0);

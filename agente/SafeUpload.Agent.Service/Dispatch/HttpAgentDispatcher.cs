@@ -31,9 +31,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
 
     private static readonly JsonSerializerOptions SendOptions = new()
     {
-        // Mesmas opções que a LocalQueueAuditSink usa para gravar o
-        // queue.jsonl: o corpo do POST é o mesmo objeto, no mesmo formato que o
-        // Centro de Administração já espera receber.
+        // Compatible JSON naming/enums, with a separate explicit network projection.
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Converters = { new JsonStringEnumConverter() }
     };
@@ -169,7 +167,9 @@ public sealed class HttpAgentDispatcher : BackgroundService
             return;
         }
 
-        var payload = new SubmitEventsRequest(pending, overrides);
+        var payload = new AgentAuditPayload(1, Environment.MachineName, AgentVersion,
+            pending.Select(AgentAuditEvent.FromLocal).ToArray(),
+            overrides.Select(AgentAuditOverride.FromLocal).ToArray());
 
         using var observation = new CommunicationObservation(_observer, CommunicationOperation.Audit);
         int? receivedStatus = null;
@@ -236,13 +236,6 @@ public sealed class HttpAgentDispatcher : BackgroundService
         string Os,
         string AgentVersion,
         int PolicyVersion);
-
-    /// <summary>
-    /// O corpo já aceito por POST /agent/events, incluindo justificativas pendentes.
-    /// </summary>
-    private sealed record SubmitEventsRequest(
-        IReadOnlyList<AuditEvent> Events,
-        IReadOnlyList<AuditOverride> Overrides);
 
     private static bool IsCompleteAcknowledgement(JsonElement receipt, int events, int overrides)
     {

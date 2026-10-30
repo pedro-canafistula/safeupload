@@ -3,12 +3,10 @@ namespace SafeUpload.Agent.Core.Domain;
 /// <summary>
 /// O registro de auditoria de uma operação julgada — a HU-04.
 ///
-/// Este é o único artefato que sairia do endpoint rumo ao Centro de
-/// Administração. Ele é feito só de metadados e de trechos já mascarados:
-/// nenhum arquivo trafega, e não há campo capaz de carregar conteúdo. Se um
-/// dia o despachante HTTP for implementado, é este objeto que ele envia, e a
-/// garantia de que nada sensível vaza está na forma do tipo, não na disciplina
-/// de quem o preenche.
+/// Este é o registro local, que pode conter trechos mascarados para a experiência
+/// no endpoint. O despachante usa um contrato de rede separado, com campos
+/// explícitos e sem esses trechos; arquivos inspecionados não são anexados.
+/// Metadados e justificativas conservam os valores previstos no contrato.
 /// </summary>
 /// <param name="EventId">Identificador único do evento.</param>
 /// <param name="OccurredAtUtc">Quando a operação foi julgada, em UTC.</param>
@@ -32,10 +30,8 @@ namespace SafeUpload.Agent.Core.Domain;
 /// <param name="PolicyVersion">Versão da política aplicada.</param>
 /// <param name="ElapsedMs">Duração da decisão, em milissegundos.</param>
 /// <param name="Dispatched">
-/// Se o evento já foi entregue ao servidor central. Nasce falso e assim
-/// permanece nesta entrega, porque o despachante ainda não existe. O campo
-/// existe desde já para que a fila local seja a mesma antes e depois da
-/// integração.
+/// Se o evento já foi confirmado pelo servidor central. Nasce falso; a fila
+/// só o confirma após o despachante validar o recibo completo do lote.
 /// </param>
 public sealed record AuditEvent(
     Guid EventId,
