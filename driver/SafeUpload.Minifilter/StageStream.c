@@ -5635,7 +5635,13 @@ static NTSTATUS StageRename(_In_ PFLT_CALLBACK_DATA Data, _In_ PSTAGE_STREAM Str
         StageRelease(&replaced->Resource);
         if (!NT_SUCCESS(status)) goto Exit;
     }
-    status = SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance, &destination->Name, replace);
+    /* A public file the owner itself renamed or deleted away stays hidden for it (tombstone) until the service has applied that
+     * move. Word renames the old document to its backup name first and then renames its temporary file onto the original name
+     * without the replace flag: for the owner that name is absent, so the public file must not make this a collision. The check
+     * then runs as a replacement, which still requires DELETE on that file (the owner already needed it for the first rename)
+     * and the parent's add-file access. T8 Word drop 2, W1. */
+    status = SafeUploadStageCheckRenameAccess(Data, Stream->OriginalInstance, &destination->Name,
+        (BOOLEAN)(replace || StageHiddenTombstone(view->Owner, &destination->Name) != NULL));
     if (!NT_SUCCESS(status)) goto Exit;
     /* The name being left stays logically absent for the owner while a public file has it (the service publishes the move
      * later). One record per owner and name: an existing one is reused. Allocated before the exchange so that the commit
@@ -11478,12 +11484,19 @@ static NTSTATUS StageWaitOwnerReopen(PFLT_CALLBACK_DATA Data, PSTAGE_STREAM Stre
         if (FltIsIoCanceled(Data)) { status = STATUS_CANCELLED; break; }
         StageAcquire(&StageNamespaceResource);
         busy = StageReceiptBusy(Stream, TRUE);
+        /* Waiting cannot help when the version is already gone from its view, or when the blocking obligation is waiting for the
+         * service to reconnect (the next service connect retries it, not this thread). */
+        if (busy && (Stream->View == NULL || Stream->View->Detached || Stream->View->Current != Stream ||
+                Stream->RenameWait == STAGE_WAIT_SERVICE || Stream->HandleReceiptWait == STAGE_WAIT_SERVICE))
+            busy = FALSE;
         StageRelease(&StageNamespaceResource);
         if (!busy || KeQueryInterruptTime() >= Deadline) { status = STATUS_SUCCESS; break; }
         (VOID)KeDelayExecutionThread(KernelMode, FALSE, &interval);
     }
     StageAcquire(&StageNamespaceResource);
-    if (InterlockedDecrement(&Stream->RpcReferences) == 0 && !SafeUploadStageMandatoryTeardownActive())
+    /* Queue after every unpin: another pin holder may drop the last reference without queueing the stream. */
+    (VOID)InterlockedDecrement(&Stream->RpcReferences);
+    if (!SafeUploadStageMandatoryTeardownActive())
         StageQueueStream(Stream, &StageCounters.WakeInline);
     StageRelease(&StageNamespaceResource);
     if (NT_SUCCESS(status) && StageReopenAdmissionClosed(Data)) status = STATUS_DEVICE_NOT_READY;

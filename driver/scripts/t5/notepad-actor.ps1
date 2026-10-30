@@ -576,15 +576,9 @@ function Start-T5WordAlertMonitor([int]$WordPid,[string]$Directory) {
     return [pscustomobject]@{Job=$job;File=$file;Stop=$stop}
 }
 function Add-T5WatchType {
-    if ('T5Watch' -as [type]) { return }
-    Add-Type -TypeDefinition @'
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Threading;
-public static class T5Watch {
+    if ('T5D.Watch' -as [type]) { return }
+    # -MemberDefinition (not -TypeDefinition): the actor's single native-type definition is pinned by notepad-actor.SelfCheck.ps1.
+    $members = @'
     [StructLayout(LayoutKind.Sequential)] struct BHFI { public uint Attr; public long C, A, W; public uint Vol, SzH, SzL, Links, IdH, IdL; }
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetFileInformationByHandle(IntPtr h, out BHFI i);
@@ -619,8 +613,8 @@ public static class T5Watch {
         }
     }
     public static string[] Stop() { stop = true; if (worker != null) worker.Join(2000); lock (log) { return log.ToArray(); } }
-}
 '@
+    Add-Type -MemberDefinition $members -Name Watch -Namespace T5D -UsingNamespace 'System.Collections.Generic','System.Diagnostics','System.IO','System.Runtime.InteropServices','System.Threading'
 }
 function Invoke-T5WordNativeControl($w,$obs) {
     # Diagnostic only (T5_WORD_DIAG=1): the same Save As-over-existing sequence in an unprotected folder on the same volume.
@@ -632,9 +626,9 @@ function Invoke-T5WordNativeControl($w,$obs) {
         $result.Steps+='seeded'
         Start-Sleep -Seconds 8
         $d2=$w.Documents.Add();$d2.Content.Text='native new'
-        [T5Watch]::Start($path,$dir)
+        [T5D.Watch]::Start($path,$dir)
         try{$d2.SaveAs2($path,16);$result.Steps+='overwrite-ok'}catch{$result.Steps+=('overwrite-error '+$_.Exception.Message)}
-        finally{$result.Watch=@([T5Watch]::Stop())}
+        finally{$result.Watch=@([T5D.Watch]::Stop())}
         try{$d2.Close(0)}catch{}
         [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($d2)
     }catch{$result.Error=$_.Exception.Message}
@@ -683,11 +677,11 @@ function Invoke-T5Word([string]$Op,[string]$Path,[string]$Kind,$obs) {
             $doc.Content.Text=$expected
             $diag=($Op -ceq 'word-overwrite' -and [IO.File]::Exists('C:\T5\word-diag.flag'))
             $diagError=$null
-            if($diag){Add-T5WatchType;[T5Watch]::Start($target,[IO.Path]::GetDirectoryName($target))}
+            if($diag){Add-T5WatchType;[T5D.Watch]::Start($target,[IO.Path]::GetDirectoryName($target))}
             try{$doc.SaveAs2($target,16)} # wdFormatDocumentDefault: .docx, including replacement of the published prior.
             catch{$diagError=$_.Exception.Message;throw}
             finally{
-                if($diag){$obs.DiagProtected=@([T5Watch]::Stop());$obs.DiagProtectedError=$diagError;Invoke-T5WordNativeControl $w $obs}
+                if($diag){$obs.DiagProtected=@([T5D.Watch]::Stop());$obs.DiagProtectedError=$diagError;Invoke-T5WordNativeControl $w $obs}
             }
         }else{
             $doc.Close(0);[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($doc);$doc=$null
