@@ -73,6 +73,34 @@ internal sealed record PolicyDocument
         Clipboard = ClipboardDocument.Default
     };
 
+    // Snapshot operacional local: a console atual não configura escopos, limites ou canais.
+    internal static PolicyDocument FromPolicy(Policy policy) => new()
+    {
+        Version = policy.Version,
+        ActiveCategories = policy.ActiveCategories.Order().Select(c => c.ToString()).ToArray(),
+        MonitoredScopes = new MonitoredScopesDocument
+        {
+            Extensions = policy.MonitoredScopes.Extensions.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+            DestinationPaths = policy.MonitoredScopes.DestinationPaths.ToArray(),
+            RemovableDrives = policy.MonitoredScopes.RemovableDrives,
+            NetworkPaths = policy.MonitoredScopes.NetworkPaths
+        },
+        MaxFileSizeMb = policy.MaxFileSizeMb,
+        InspectionTimeoutSeconds = policy.InspectionTimeoutSeconds,
+        FailOpen = policy.FailOpen,
+        ExcludedProcesses = policy.ExcludedProcesses.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+        AuditOnly = policy.AuditOnly,
+        OverrideAllowed = policy.OverrideAllowed,
+        Clipboard = policy.Clipboard is { } clipboard ? new ClipboardDocument
+        {
+            Mode = clipboard.Mode.ToString(),
+            EgressDestinations = clipboard.EgressDestinations.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+            ExcludedSources = clipboard.ExcludedSources.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+            MaxTextLength = clipboard.MaxTextLength,
+            OversizedTextIsDirty = clipboard.OversizedTextIsDirty
+        } : null
+    };
+
     /// <summary>
     /// Converte para o objeto de domínio. Não valida: quem chama decide quando
     /// aplicar a RN-009, e as duas IPolicyStore fazem isso no carregamento.
