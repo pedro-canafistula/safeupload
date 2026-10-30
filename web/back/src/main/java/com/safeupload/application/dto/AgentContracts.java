@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
 import org.springframework.http.HttpStatus;
+import java.time.LocalDateTime;
+import java.util.List;
 
 
 public final class AgentContracts {
@@ -96,7 +98,20 @@ public final class AgentContracts {
         Integer id_host
     ){}
 
-    public record PolicyResponse(){}
+    public record PolicyResponse(
+        Integer idPolitica,
+        String versao,
+        String nome,
+        PolicyDestination destino,
+        String acao,
+        List<PolicyRule> regras,
+        LocalDateTime criadaEm,
+        String origem
+    ) {}
+
+    public record PolicyDestination(Integer idHost, String ip) {}
+
+    public record PolicyRule(String tipo, String nome) {}
 
     
     

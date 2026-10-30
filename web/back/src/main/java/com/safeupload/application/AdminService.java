@@ -3,13 +3,19 @@ package com.safeupload.application;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Optional;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 
 import com.safeupload.application.dto.AdminContracts.DefaultPostResponse;
 import com.safeupload.application.dto.AdminContracts.SetPolicyRequest;
+import com.safeupload.application.dto.AgentContracts.PolicyDestination;
+import com.safeupload.application.dto.AgentContracts.PolicyResponse;
+import com.safeupload.application.dto.AgentContracts.PolicyRule;
 import com.safeupload.domain.entity.app.Host;
 import com.safeupload.domain.entity.app.Politica;
 import com.safeupload.domain.entity.app.Regras;
@@ -39,6 +45,7 @@ public class AdminService {
         this.restClient = restClient;
     }
 
+    @Transactional(transactionManager = "appTransactionManager")
     public DefaultPostResponse setPolicy(SetPolicyRequest request){
 
         Regras regras = convertRules(request.regras());
@@ -74,6 +81,49 @@ public class AdminService {
             HttpStatus.CREATED, 
             "Política salva com sucesso."
         );
+    }
+
+    @Transactional(transactionManager = "appTransactionManager", readOnly = true)
+    public Optional<PolicyResponse> latestPolicyForIp(String ip) {
+        return hostRepository.findByIp(ip)
+            .flatMap(host -> politicaRepository
+                .findFirstByFkIdHost_IdHostOrderByIdPoliticaDesc(host.getIdHost()))
+            .map(this::toPolicyResponse);
+    }
+
+    private PolicyResponse toPolicyResponse(Politica politica) {
+        Host host = politica.getFkIdHost();
+        Regras regras = politica.getFkIdRegras();
+        List<PolicyRule> regrasAtivas = new ArrayList<>();
+
+        if (regras != null) {
+            addRule(regrasAtivas, "cpf", "CPF", regras.getBloquearCpf());
+            addRule(regrasAtivas, "cnpj", "CNPJ", regras.getBloquearCnpj());
+            addRule(regrasAtivas, "rg", "RG", regras.getBloquearRg());
+            addRule(regrasAtivas, "cartao_credito", "Número de cartão", regras.getBloquearCartaoCredito());
+            addRule(regrasAtivas, "dados_bancarios", "Dados bancários", regras.getBloquearDadosBancarios());
+            addRule(regrasAtivas, "credenciais", "Credenciais e segredos", regras.getBloquearCredenciais());
+            addRule(regrasAtivas, "dados_saude", "Dados de saúde", regras.getBloquearDadosSaude());
+            addRule(regrasAtivas, "documentos_confidenciais", "Documentos confidenciais", regras.getBloquearDocumentosConfidenciais());
+            addRule(regrasAtivas, "dados_pessoais", "Dados pessoais", regras.getBloquearDadosPessoais());
+        }
+
+        return new PolicyResponse(
+            politica.getIdPolitica(),
+            politica.getVersao(),
+            politica.getNome(),
+            new PolicyDestination(host.getIdHost(), host.getIp()),
+            politica.getAcao(),
+            List.copyOf(regrasAtivas),
+            politica.getCriadaEm(),
+            politica.getOrigem()
+        );
+    }
+
+    private void addRule(List<PolicyRule> result, String type, String name, Integer enabled) {
+        if (enabled != null && enabled == 1) {
+            result.add(new PolicyRule(type, name));
+        }
     }
 
 

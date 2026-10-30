@@ -1,6 +1,7 @@
 package com.safeupload.presentation.controller;
 
 import com.safeupload.application.AgentService;
+import com.safeupload.application.AdminService;
 import com.safeupload.application.dto.AgentContracts.*;
 import com.safeupload.application.dto.AuthContracts.ListEmpresaResponse;
 //import com.safeupload.domain.entity.app.Politica;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.http.HttpStatus;
 
@@ -19,15 +21,18 @@ import org.springframework.http.HttpStatus;
 @RequestMapping("/agent")
 public class AgentController {
     private final AgentService service;
+    private final AdminService adminService;
     private final EmpresaRepository empresaRepository;
     //private final PoliticaRepository politicaRepository;
 
     public AgentController(
         AgentService service,
+        AdminService adminService,
         EmpresaRepository empresaRepository
         //PoliticaRepository politicaRepository
     ) {
         this.service = service; 
+        this.adminService = adminService;
         this.empresaRepository = empresaRepository;
         //this.politicaRepository = politicaRepository;
     }
@@ -66,6 +71,13 @@ public class AgentController {
         return ResponseEntity
                 .status(HttpStatus.OK.value())
                 .body(response);
+    }
+
+    @GetMapping("/api/policy")
+    public ResponseEntity<PolicyResponse> policy(@RequestParam("ip") String ip) {
+        return adminService.latestPolicyForIp(ip)
+            .map(ResponseEntity::ok)
+            .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     // @GetMapping ("/policies")

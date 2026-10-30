@@ -151,7 +151,7 @@ public class AuthService {
             "Usuário cadastrado com sucesso."); 
     }
 
-    public void login(LoginRequest request){
+    public Usuario login(LoginRequest request){
         Usuario usuario = usuarioRepository
             .findByEmail(request.email())
             .orElseThrow(() -> new AuthErrorException(
@@ -170,6 +170,7 @@ public class AuthService {
             throw new AuthErrorException("Usuário bloqueado.");
         }
 
+        return usuario;
     }
 }
 

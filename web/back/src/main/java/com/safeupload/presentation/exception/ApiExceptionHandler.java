@@ -94,5 +94,16 @@ public class ApiExceptionHandler {
             ));
     }
 
+    @ExceptionHandler(AuthErrorException.class)
+    public ResponseEntity<Map<String, Object>> handleAuthError(AuthErrorException e) {
+        return ResponseEntity
+            .status(HttpStatus.UNAUTHORIZED)
+            .body(Map.of(
+                "status", HttpStatus.UNAUTHORIZED.value(),
+                "erro", "ERRO_AUTENTICACAO",
+                "mensagem", e.getMessage()
+            ));
+    }
+
 
 }

@@ -1,16 +1,16 @@
 <header class="page-title">
   <div><p class="eyebrow">GERENCIAMENTO DLP</p><h1>Publicar política</h1>
-    <p class="subtitle">Defina as regras e gere o arquivo JSON para envio à máquina.</p></div>
+    <p class="subtitle">Defina as regras e envie a política ao servidor para persistência.</p></div>
 </header>
 <section class="policy-panel" aria-labelledby="policy-form-title">
   <div class="panel-heading"><div class="heading-icon">⌁</div><div>
     <h2 id="policy-form-title">Nova política de proteção</h2>
-    <p>O arquivo JSON será baixado ao clicar em gerar, pronto para ser enviado à máquina informada.</p>
+    <p>A política será enviada ao servidor e associada à máquina informada.</p>
   </div></div>
   <form (ngSubmit)="enviarPolitica()">
     <div class="fields-row">
       <label><span>Nome da política <b>*</b></span>
-        <input [(ngModel)]="nome" name="nome" maxlength="120" required placeholder="Ex.: Proteção de dados financeiros" /></label>
+        <input [(ngModel)]="nome" name="nome" maxlength="50" required placeholder="Ex.: Proteção de dados financeiros" /></label>
       <label><span>IP da máquina <b>*</b></span>
         <input type="text" [(ngModel)]="ip" name="ip" required inputmode="decimal" autocomplete="off"
           placeholder="Ex.: 192.168.1.20" pattern="^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
@@ -28,11 +28,12 @@
       </label></div>
     </fieldset>
     <div class="form-footer"><p><b>*</b> Campos obrigatórios</p>
-      <button type="submit" [disabled]="!nome.trim() || !ip.trim() || !regrasSelecionadas.length">Gerar JSON da política <span>→</span></button></div>
+      <button type="submit" [disabled]="enviando || !nome.trim() || !ip.trim() || !regrasSelecionadas.length">{{ enviando ? 'Enviando...' : 'Enviar política' }} <span>→</span></button></div>
+    <p *ngIf="erro" role="alert">{{ erro }}</p>
   </form>
 </section>
 <section class="json-result" *ngIf="jsonPronto" aria-live="polite">
   <div><span class="success-icon">✓</span><div><h2>JSON gerado e baixado</h2>
-    <p>Arquivo pronto para envio à máquina <strong>{{ ip }}</strong>.</p></div></div>
-  <button type="button" (click)="baixarJson()">Baixar JSON</button><pre>{{ jsonGerado }}</pre>
+    <p>{{ mensagem }} Máquina: <strong>{{ ip }}</strong>.</p></div></div>
+  <button type="button" (click)="baixarJson()">Baixar cópia JSON</button><pre>{{ jsonGerado }}</pre>
 </section>
