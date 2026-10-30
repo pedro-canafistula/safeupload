@@ -1,17 +1,27 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Diagnostics;
 using SafeUpload.Agent.Core.Infrastructure;
+using Xunit.Abstractions;
 
 namespace SafeUpload.Agent.Tests;
 
-/// <summary>Only CI's explicitly scheduled SYSTEM processes run this test.</summary>
-public sealed class RegisteredHostIdentitySystemTests
+/// <summary>Explicit SYSTEM phases, each executed in a separate process by CI or the matrix.</summary>
+public sealed class RegisteredHostIdentitySystemTests(ITestOutputHelper output)
 {
-    [IdentitySystemFact]
-    public void Arquivo_protegido_persiste_entre_processos_SYSTEM()
+    [IdentitySystemFact("provision")]
+    public void Provisiona_arquivo_protegido_SYSTEM() => VerifyPhase("provision");
+
+    [IdentitySystemFact("restore")]
+    public void Recupera_arquivo_protegido_em_outro_processo_SYSTEM() => VerifyPhase("restore");
+
+    private void VerifyPhase(string expectedPhase)
     {
         Assert.True(WindowsIdentity.GetCurrent().IsSystem);
         string phase = Environment.GetEnvironmentVariable("SAFEUPLOAD_IDENTITY_PHASE")!;
+        Assert.Equal(expectedPhase, phase);
+        using var process = Process.GetCurrentProcess();
+        output.WriteLine($"HOST_IDENTITY_PROCESS={phase}|{process.Id}|{process.StartTime.ToUniversalTime().Ticks}");
         string root = Path.GetFullPath(Environment.GetEnvironmentVariable("SAFEUPLOAD_IDENTITY_TEST_ROOT")!);
         string runnerTemp = Path.GetFullPath(Environment.GetEnvironmentVariable("RUNNER_TEMP")!);
         Assert.StartsWith(Path.TrimEndingDirectorySeparator(runnerTemp) + Path.DirectorySeparatorChar, root,
@@ -48,10 +58,10 @@ public sealed class RegisteredHostIdentitySystemTests
 
 public sealed class IdentitySystemFactAttribute : FactAttribute
 {
-    public IdentitySystemFactAttribute()
+    public IdentitySystemFactAttribute(string expectedPhase)
     {
         if (!OperatingSystem.IsWindows() || !WindowsIdentity.GetCurrent().IsSystem ||
-            Environment.GetEnvironmentVariable("SAFEUPLOAD_IDENTITY_PHASE") is not ("provision" or "restore"))
-            Skip = "Exige fase explícita e execução SYSTEM em fixture isolada de CI.";
+            Environment.GetEnvironmentVariable("SAFEUPLOAD_IDENTITY_PHASE") != expectedPhase)
+            Skip = "Exige a fase explícita correspondente e execução SYSTEM em fixture isolada.";
     }
 }
