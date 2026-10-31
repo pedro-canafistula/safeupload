@@ -225,7 +225,8 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
         AuditEvent audit = Assert.Single(await sink.ReadRecentAsync(10, CancellationToken.None));
         Assert.Equal(AuditChannel.Web, audit.Channel);
         Assert.Equal("folha.csv", audit.FileName);
-        Assert.EndsWith("/upload", audit.DestinationPath);
+        Assert.Equal(new Uri(_site.Url("/")).GetLeftPart(UriPartial.Authority), audit.DestinationPath);
+        Assert.DoesNotContain("/upload", audit.DestinationPath);
         Assert.DoesNotContain("segredo", audit.DestinationPath);
 
         using var clean = new MultipartFormDataContent

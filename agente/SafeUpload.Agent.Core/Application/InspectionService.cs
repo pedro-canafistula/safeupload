@@ -313,7 +313,9 @@ public sealed class InspectionService
             DateTimeOffset.UtcNow,
             _endpointId,
             _userName,
-            operation.FileName,
+            // Explicit IDs can refer to a persisted transfer from an older build.
+            // Preserve its canonical metadata; fresh IDs use the minimized name.
+            eventId is null ? AuditMetadata.FileNameOnly(operation.FileName) : operation.FileName,
             operation.Extension,
             operation.SizeBytes,
             result.Verdict,

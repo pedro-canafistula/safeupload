@@ -353,7 +353,7 @@ public sealed class WebInspectionService
             findings.Select(static f => f.MaskedSnippet).Distinct().ToList(),
             upload.ProcessName,
             upload.ProcessId,
-            upload.Destination,
+            AuditMetadata.WebOrigin(upload.Destination),
             reason,
             policy.Version,
             stopwatch.ElapsedMilliseconds,
@@ -374,15 +374,7 @@ public sealed class WebInspectionService
 
     /// <summary>Só o nome: o site pode mandar um caminho inteiro em "filename".</summary>
     private static string FileNameOnly(string? fileName)
-    {
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            return string.Empty;
-        }
-
-        int slash = fileName.LastIndexOfAny(['/', '\\']);
-        return slash < 0 ? fileName : fileName[(slash + 1)..];
-    }
+        => AuditMetadata.FileNameOnly(fileName);
 
     private sealed record CachedPolicy(Policy Policy, DateTimeOffset ExpiresAt);
 }
