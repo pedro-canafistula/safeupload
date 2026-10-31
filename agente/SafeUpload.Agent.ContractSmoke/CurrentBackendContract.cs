@@ -7,6 +7,7 @@ using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Core.Infrastructure.Extraction;
 using SafeUpload.Agent.Service.Clipboard;
 using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Policies;
@@ -155,6 +156,35 @@ internal static class CurrentBackendContract
         int first = await Publish("alertar"), second = await Publish("bloquear");
         Check("publication creates a newer identified policy", second > first && first > 0);
         using (var other = await client.GetAsync("agent/api/policy?ip=10.90.0.22", token)) Check("policy does not leak to the control host", other.StatusCode == HttpStatusCode.NotFound);
+
+        // New identities are minimized by the producers, before persistence. Old queued
+        // identities above remain byte-for-byte compatible with the server's canonical comparison.
+        var fixturePolicies = new FixturePolicy(local);
+        var webProducer = new WebInspectionService(fixturePolicies, queue, ExtractorRegistry.CreateDefault(), endpoint, "teste-contrato");
+        var producedWeb = await webProducer.InspectAsync(new WebUpload("https://synthetic:NEW-METADATA-SECRET@example.test/private/NEW-METADATA-SECRET?token=NEW-METADATA-SECRET#NEW-METADATA-SECRET",
+            "chrome", 42, [new WebUploadPart(@"C:\NEW-METADATA-SECRET\new-web.txt", System.Text.Encoding.UTF8.GetBytes("CPF: 529.982.247-25"), true)]), token);
+        var newWeb = producedWeb.Records.Single().Event;
+        Check("new Web producer stores only site origin and basename", newWeb.DestinationPath == "https://example.test" && newWeb.FileName == "new-web.txt");
+        string fixtureFile = Path.Combine(work, "new-file.txt");
+        await File.WriteAllTextAsync(fixtureFile, "CPF: 529.982.247-25", token);
+        var fileProducer = new InspectionService(fixturePolicies, queue, ExtractorRegistry.CreateDefault(), new VerdictCache(), endpoint, "teste-contrato");
+        await fileProducer.InspectAsync(new FileOperation(fixtureFile, @"C:\NEW-METADATA-SECRET\new-file.txt", ".txt", new FileInfo(fixtureFile).Length,
+            File.GetLastWriteTimeUtc(fixtureFile), "contract-smoke", 1, @"E:\synthetic", DestinationKind.RemovableDrive), token);
+        var fresh = await queue.ReadPendingAsync(100, token);
+        Check("new file producer minimizes name without rewriting legacy queue", fresh.Count == 2 && fresh.Single(e => e.Channel == AuditChannel.File).FileName == "new-file.txt" &&
+            !(await File.ReadAllTextAsync(queue.QueueFilePath, token)).Contains("NEW-METADATA-SECRET"));
+        var freshReceipt = await Post("agent/events", new { events = fresh, overrides = Array.Empty<AuditOverride>() });
+        Check("new producer batch accepted with lost-receipt fixture still pending", freshReceipt.GetProperty("acceptedEvents").GetInt32() == 2 && (await queue.ReadPendingAsync(100, token)).Count == 2);
+        using (var freshDispatcher = new HttpAgentDispatcher(queue, fixturePolicies, agent, endpoint, TimeSpan.FromSeconds(30), NullLogger<HttpAgentDispatcher>.Instance) { HeartbeatSender = heartbeat })
+        {
+            await freshDispatcher.StartAsync(token);
+            try { while ((await queue.ReadPendingAsync(100, token)).Count != 0) await Task.Delay(25, token); }
+            finally { await freshDispatcher.StopAsync(CancellationToken.None); }
+        }
+        var freshRead = (await Get("auditoria?endpoint=" + endpoint)).GetProperty("eventos").EnumerateArray().ToArray();
+        Check("new metadata survives SQL and replay without duplicate identities", freshRead.Length == 8 && freshRead.Count(e => fresh.Any(f => f.EventId == e.GetProperty("eventId").GetGuid())) == 2 &&
+            freshRead.Single(e => e.GetProperty("eventId").GetGuid() == newWeb.EventId).GetProperty("destinationPath").GetString() == "https://example.test" &&
+            !string.Join("", freshRead.Select(e => e.GetRawText())).Contains("NEW-METADATA-SECRET"));
         using var logout = await client.PostAsJsonAsync("auth/logout", new { }, token);
         Check("logout completes", logout.IsSuccessStatusCode);
         using (var loggedOut = await client.GetAsync("painel", token)) Check("logout revokes administrative reads", loggedOut.StatusCode == HttpStatusCode.Unauthorized);
