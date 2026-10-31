@@ -172,10 +172,10 @@ public sealed class InspectionService
                 var fromCache = inspected.Cached with
                 {
                     ElapsedMs = stopwatch.ElapsedMilliseconds,
-                    FromCache = true
+                    FromCache = true,
+                    RecordedEvent = null
                 };
-                await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false);
-                return fromCache;
+                return fromCache with { RecordedEvent = await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false) };
             }
         }
         catch (TimeoutException)
@@ -275,7 +275,7 @@ public sealed class InspectionService
         {
             if (fingerprint is not null && verdict is Verdict.Approved or Verdict.Blocked)
                 _cache.Set(operation, result, fingerprint);
-            await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false);
+            result = result with { RecordedEvent = await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false) };
         }
 
         return result;
@@ -301,7 +301,7 @@ public sealed class InspectionService
             InScope: false);
     }
 
-    private async Task AuditAsync(
+    private async Task<AuditEvent?> AuditAsync(
         FileOperation operation,
         InspectionResult result,
         CancellationToken cancellationToken,
@@ -333,11 +333,13 @@ public sealed class InspectionService
         try
         {
             await _auditSink.WriteAsync(auditEvent, cancellationToken).ConfigureAwait(false);
+            return auditEvent;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             // Falha ao registrar não pode mudar o veredito nem derrubar a
             // operação do usuário. O evento se perde; a decisão vale.
+            return null;
         }
     }
 }

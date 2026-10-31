@@ -32,7 +32,6 @@ public sealed class FileSystemInterceptor : BackgroundService
 
     private readonly InspectionService _inspection;
     private readonly IPolicyStore _policyStore;
-    private readonly IAuditSink _auditSink;
     private readonly NotificationHub _hub;
     private readonly ILogger<FileSystemInterceptor> _logger;
 
@@ -52,7 +51,7 @@ public sealed class FileSystemInterceptor : BackgroundService
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
-        _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
+        ArgumentNullException.ThrowIfNull(auditSink); // Keep the existing composition/constructor contract.
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -384,7 +383,7 @@ public sealed class FileSystemInterceptor : BackgroundService
             return;
         }
 
-        var auditEvent = await FindAuditEventAsync(operation).ConfigureAwait(false);
+        var auditEvent = result.RecordedEvent;
 
         if (auditEvent is not null)
         {
@@ -405,18 +404,4 @@ public sealed class FileSystemInterceptor : BackgroundService
             result.ElapsedMs);
     }
 
-    /// <summary>
-    /// Recupera da trilha o evento que o motor acabou de gravar.
-    ///
-    /// O <see cref="InspectionService"/> audita por dentro e devolve só o
-    /// veredito, então reconstruir o evento aqui a partir do resultado abriria
-    /// espaço para o aplicativo mostrar algo diferente do que foi registrado.
-    /// </summary>
-    private async Task<AuditEvent?> FindAuditEventAsync(FileOperation operation)
-    {
-        var recent = await _auditSink.ReadRecentAsync(5, _stopping).ConfigureAwait(false);
-
-        return recent.FirstOrDefault(e =>
-            string.Equals(e.FileName, operation.FileName, StringComparison.OrdinalIgnoreCase));
-    }
 }

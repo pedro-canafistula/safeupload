@@ -46,7 +46,6 @@ public sealed class MinifilterInterceptor : BackgroundService
 
     private readonly InspectionService _inspection;
     private readonly IPolicyStore _policyStore;
-    private readonly IAuditSink _auditSink;
     private readonly NotificationHub _hub;
     private readonly PendingOverrides _pending;
     private readonly OverrideGrantDispatcher _grants;
@@ -91,7 +90,7 @@ public sealed class MinifilterInterceptor : BackgroundService
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
-        _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
+        ArgumentNullException.ThrowIfNull(auditSink); // Keep the existing composition/constructor contract.
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _grants = grants ?? throw new ArgumentNullException(nameof(grants));
@@ -926,11 +925,7 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         try
         {
-            IReadOnlyList<AuditEvent> recent =
-                _auditSink.ReadRecentAsync(5, CancellationToken.None).GetAwaiter().GetResult();
-
-            AuditEvent? auditEvent = recent.FirstOrDefault(e =>
-                string.Equals(e.FileName, operation.FileName, StringComparison.OrdinalIgnoreCase));
+            AuditEvent? auditEvent = result.RecordedEvent;
 
             if (auditEvent is not null)
             {

@@ -30,6 +30,10 @@ public sealed record InspectionResult(
     int PolicyVersion,
     bool InScope)
 {
+    /// <summary>The event whose write completed for this invocation; never a cached decision or delivery receipt.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public AuditEvent? RecordedEvent { get; init; }
+
     /// <summary>
     /// Categorias distintas encontradas, na ordem em que apareceram. É o que a
     /// notificação de bloqueio lista para o usuário.
