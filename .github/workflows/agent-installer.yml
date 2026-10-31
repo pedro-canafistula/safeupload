@@ -46,6 +46,8 @@ jobs:
           $env:SAFEUPLOAD_MACHINE_TESTS = '0'
           dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Release --filter 'FullyQualifiedName~DispatcherReliabilityTests|FullyQualifiedName~AuditTrailTests|FullyQualifiedName~AuditQueueOverrideTests|FullyQualifiedName~QueueEncodingTests|FullyQualifiedName~InstallSafeUploadAgentScriptTests' --logger 'trx;LogFileName=audit-installer.trx' --results-directory artifacts/installer-tests
           if ($LASTEXITCODE -ne 0) { throw 'Audit dispatch contracts failed.' }
+          dotnet build agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Service peer probe build failed.' }
       - name: Install and uninstall on the disposable Windows runner
         shell: pwsh
         run: |

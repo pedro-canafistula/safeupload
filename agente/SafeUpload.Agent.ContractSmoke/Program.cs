@@ -11,6 +11,12 @@ using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
+if (args.Length == 2 && args[0] == "--verify-service-peer")
+{
+    await ServicePeerProbe.RunAsync(args[1]);
+    return;
+}
+
 if (args.Length == 1 && args[0] == "--current-api")
 {
     await CurrentBackendContract.RunAsync();

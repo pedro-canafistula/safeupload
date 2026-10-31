@@ -33,7 +33,7 @@ foreach ($port in @(18080,13316)) {
     if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw 'Test port occupied.' }
 }
 $testedBinary = if ($ContractOnly) { $contractDll } else { $serviceExe }
-foreach ($file in @($testedBinary,$jar,$mysql,$mysqld,$mysqlAdmin)) {
+foreach ($file in @($testedBinary,$contractDll,$jar,$mysql,$mysqld,$mysqlAdmin)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Required test binary missing.' }
 }
 New-Item -ItemType Directory -Path $results -Force | Out-Null
@@ -130,6 +130,13 @@ function Read-AuditMaintenance([string]$Phase) {
     $afterHash = if ($afterExists) { (Get-FileHash -LiteralPath $queueFile -Algorithm SHA256).Hash } else { $null }
     Check "${Phase}: maintenance preserves queue existence and bytes" ($beforeExists -eq $afterExists -and $beforeHash -eq $afterHash)
     return [ordered]@{inventory=$inventory;classification=$classification;preview=$preview}
+}
+function Read-TrustedServicePeer([string]$Phase, [string]$Label) {
+    $peerLog = Join-Path $results ("service-peer-$Label.log")
+    & dotnet $contractDll --verify-service-peer $serviceExe *> $peerLog
+    Check "${Phase}: restricted non-administrator verifies SCM peer and rejects another image" ($LASTEXITCODE -eq 0 -and
+        (Get-Content -LiteralPath $peerLog -Raw).Contains('PeerVerified=True;EffectiveAdministrator=False;WrongImageRejected=True;ContentSent=False'))
+    return [ordered]@{verified=$true;effectiveAdministrator=$false;wrongImageRejected=$true;contentSent=$false}
 }
 function Wait-Value([scriptblock]$Condition, [string]$Description, [int]$Seconds=60) {
     $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
@@ -254,6 +261,7 @@ try {
     $evidence.snapshots.auditHealthFirst = Read-AuditHealth 'first startup'
     $evidence.snapshots.historyFirst = Read-SessionHistory 'first startup'
     $evidence.snapshots.maintenanceFirst = Read-AuditMaintenance 'first startup'
+    $evidence.snapshots.peerFirst = Read-TrustedServicePeer 'first startup' 'first'
     Stop-Service $serviceName
     Stop-Owned $script:javaProcess
     Query "UPDATE app.hosts SET ativo=0,visto_por_ultimo='2000-01-01 00:00:00' WHERE id_host=$targetId;" | Out-Null
@@ -270,6 +278,7 @@ try {
     $evidence.snapshots.auditHealthOffline = Read-AuditHealth 'offline restart'
     $evidence.snapshots.historyOffline = Read-SessionHistory 'offline restart'
     $evidence.snapshots.maintenanceOffline = Read-AuditMaintenance 'offline restart'
+    $evidence.snapshots.peerOffline = Read-TrustedServicePeer 'offline restart' 'offline'
     Check 'audit monitoring starts a new observation period after service restart' (
         $evidence.snapshots.auditHealthFirst.sinceUtc -ne $evidence.snapshots.auditHealthOffline.sinceUtc)
     Start-Backend 'recovered'
