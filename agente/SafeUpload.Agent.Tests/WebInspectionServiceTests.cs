@@ -56,7 +56,7 @@ public sealed class WebInspectionServiceTests : IDisposable
         AuditEvent audit = Assert.Single(await EventsAsync());
         Assert.Equal(AuditChannel.Web, audit.Channel);
         Assert.Equal(Verdict.Blocked, audit.Verdict);
-        Assert.Equal(Destino, audit.DestinationPath);
+        Assert.Equal("https://drive.example", audit.DestinationPath);
         Assert.Equal("msedge", audit.ProcessName);
         Assert.Equal(string.Empty, audit.FileName);
         Assert.DoesNotContain(audit.MaskedSnippets, snippet => snippet.Contains(Cpf));
