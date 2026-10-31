@@ -26,7 +26,8 @@ $setup = Join-Path $payload 'setup'
 New-Item -ItemType Directory -Path $setup | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'support/Invoke-AgentSetup.ps1'),
     (Join-Path $PSScriptRoot 'support/SafeUpload.Setup.psm1'),
-    (Join-Path $root 'agente/scripts/Install-SafeUploadAgent.ps1') -Destination $setup
+    (Join-Path $root 'agente/scripts/Install-SafeUploadAgent.ps1'),
+    (Join-Path $root 'agente/scripts/Get-SafeUploadDiagnostics.ps1') -Destination $setup
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $payload 'LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'INSTALLATION-NOTICE.txt') -Destination (Join-Path $payload 'LEIA-ME.txt')
 $files = @(Get-ChildItem -LiteralPath $payload -File -Recurse | Sort-Object FullName | ForEach-Object {
