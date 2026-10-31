@@ -34,16 +34,19 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private readonly string _pipeName;
     private readonly CommunicationHealth? _communicationHealth;
     private readonly LocalQueueAuditSink? _auditQueue;
+    private readonly AuditQueueHealth? _auditHealth;
 
     /// <param name="pipeName">Only tests pass a name; the service always uses <see cref="PipeName"/>.</param>
     public DiagnosticsPipeServer(DriverDiagnosticsSource source, ILogger<DiagnosticsPipeServer> logger,
-        string pipeName = PipeName, CommunicationHealth? communicationHealth = null, LocalQueueAuditSink? auditQueue = null)
+        string pipeName = PipeName, CommunicationHealth? communicationHealth = null, LocalQueueAuditSink? auditQueue = null,
+        AuditQueueHealth? auditHealth = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName;
         _communicationHealth = communicationHealth;
         _auditQueue = auditQueue;
+        _auditHealth = auditHealth;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -101,6 +104,10 @@ public sealed class DiagnosticsPipeServer : BackgroundService
 
             switch (query)
             {
+                case "audit-health":
+                    return _auditHealth is null ? Error(query, "Audit monitoring is unavailable.") :
+                        Ok(query, JsonSerializer.SerializeToNode(_auditHealth.Read(), new JsonSerializerOptions
+                        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                 case "audit-integrity":
                     if (_auditQueue is null) return Error(query, "Audit storage is unavailable.");
                     try
@@ -133,7 +140,8 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "audit-integrity", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "audit-health", "audit-integrity", "help"),
+                        ["auditHealth"] = "process-local operation failures and resumptions; resets on restart; no file scan or proof that failed writes were recovered",
                         ["auditIntegrity"] = "explicit read-only full scan; line counts include duplicate IDs; deadline expiry returns no partial inventory; no repair, deletion or proof of delivery",
                         ["communicationHealth"] = "process-local communication results; counters reset on restart; no proof of API persistence or protection",
                         ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",

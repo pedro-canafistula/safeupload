@@ -69,6 +69,24 @@ function Read-AuditIntegrity([string]$Phase) {
     Check "${Phase}: diagnostic preserves queue existence and bytes" ($beforeExists -eq $afterExists -and $beforeHash -eq $afterHash)
     return $scan
 }
+function Read-AuditHealth([string]$Phase) {
+    $health = Wait-Value {
+        $candidate = & (Join-Path $PSScriptRoot 'Get-SafeUploadDiagnostics.ps1') -Query audit-health
+        if (@($candidate.operations | Where-Object { $_.operation -eq 'ReadPending' -and $_.successes -gt 0 }).Count -eq 1) {
+            return $candidate
+        }
+        return $null
+    } 'a real dispatcher read observed by audit-health' 20
+    $expected = @('WriteEvent','WriteOverride','ReadRecent','ReadPending','ReadPendingOverrides','ConfirmEvents','ConfirmOverrides')
+    Check "${Phase}: installed service exposes all monitored queue operations" (
+        $null -ne $health.sinceUtc -and @($health.operations).Count -eq 7 -and
+        (($health.operations.operation | Sort-Object) -join '|') -eq (($expected | Sort-Object) -join '|'))
+    $writeFailures = ($health.operations | Where-Object operation -eq 'WriteEvent').failures +
+        ($health.operations | Where-Object operation -eq 'WriteOverride').failures
+    Check "${Phase}: health aggregates remain consistent" ($health.failedWriteAttempts -eq $writeFailures -and
+        $health.degraded -eq (@($health.operations | Where-Object degraded).Count -gt 0))
+    return $health
+}
 function Wait-Value([scriptblock]$Condition, [string]$Description, [int]$Seconds=60) {
     $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
     do {
@@ -189,6 +207,7 @@ try {
     $firstAge=[int](Query "SELECT TIMESTAMPDIFF(SECOND,visto_por_ultimo,NOW()) FROM app.hosts WHERE id_host=$targetId;")
     $evidence.snapshots.first=[ordered]@{service=$first;identityHash=$identityHash;target=(Host-Snapshot $targetId);heartbeatAgeSeconds=$firstAge}
     $evidence.snapshots.auditIntegrityFirst = Read-AuditIntegrity 'first startup'
+    $evidence.snapshots.auditHealthFirst = Read-AuditHealth 'first startup'
     Stop-Service $serviceName
     Stop-Owned $script:javaProcess
     Query "UPDATE app.hosts SET ativo=0,visto_por_ultimo='2000-01-01 00:00:00' WHERE id_host=$targetId;" | Out-Null
@@ -202,6 +221,9 @@ try {
     Check 'offline restart preserves identity and does not update database'         ((Get-FileHash -LiteralPath $identityFile -Algorithm SHA256).Hash -eq $identityHash -and
         (Query "SELECT ativo FROM app.hosts WHERE id_host=$targetId;") -eq '0' -and (Counts) -eq $countsBefore)
     $evidence.snapshots.auditIntegrityOffline = Read-AuditIntegrity 'offline restart'
+    $evidence.snapshots.auditHealthOffline = Read-AuditHealth 'offline restart'
+    Check 'audit monitoring starts a new observation period after service restart' (
+        $evidence.snapshots.auditHealthFirst.sinceUtc -ne $evidence.snapshots.auditHealthOffline.sinceUtc)
     Start-Backend 'recovered'
     Wait-Heartbeat $targetId
     Check 'recovered host heartbeats without another registration' ((Counts) -eq $countsBefore)
