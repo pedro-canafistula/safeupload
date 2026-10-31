@@ -13,8 +13,9 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 ///
 /// O formato JSON Lines foi escolhido por ser append-only. Registrar um evento
 /// é acrescentar uma linha, sem reescrever nem reserializar o que já está lá,
-/// o que significa que uma queda de energia no meio da gravação corrompe no
-/// máximo a última linha, e a leitura simplesmente a descarta. Um array JSON
+    /// permitindo retomar após uma última linha incompleta sem reescrever as
+    /// anteriores. A leitura ignora linhas inválidas; não há garantia contra perda
+    /// de energia ou falha física do armazenamento. Um array JSON
 /// único exigiria reescrever o arquivo inteiro a cada evento e poderia perder
 /// a trilha toda.
 ///
@@ -41,7 +42,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     // Serializa as gravações dentro do processo. Não substitui um lock entre
-    // processos, mas o agente é instância única por sessão.
+    // processos; a composição do serviço registra uma única fila por processo.
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly string _queueFile;
     private readonly Func<string, FileStream>? _confirmationStreamFactory;
@@ -49,9 +50,11 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     /// <summary>Usa o caminho padrão do agente.</summary>
     public LocalQueueAuditSink() : this(AgentPaths.QueueFile)
     {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Protected service queue requires Windows.");
+        _protection = new QueueStorageProtection(AgentPaths.QueueFile);
     }
 
-    /// <summary>Usa um caminho específico. Serve aos testes.</summary>
+    /// <summary>Unprotected explicit path for isolated tests/tools; the service uses the protected default constructor.</summary>
     public LocalQueueAuditSink(string queueFile)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(queueFile);
@@ -79,12 +82,6 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var directory = Path.GetDirectoryName(_queueFile);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
             await AppendLineAsync(line, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -132,12 +129,6 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var directory = Path.GetDirectoryName(_queueFile);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
             await AppendLineAsync(line, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -150,8 +141,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
     // próximo evento diretamente, ele se perderia junto com a linha truncada.
     private async Task AppendLineAsync(string line, CancellationToken cancellationToken)
     {
-        await using var stream = new FileStream(_queueFile, FileMode.OpenOrCreate,
-            FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.Asynchronous);
+        await using var stream = OpenQueueAppend();
         if (stream.Length > 0)
         {
             stream.Seek(-1, SeekOrigin.End);
@@ -213,7 +203,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!File.Exists(_queueFile)) return;
+            if (!QueueExistsChecked()) return;
             var temporary = _queueFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
             var created = false;
             try
@@ -221,13 +211,12 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
                 // A cópia é produzida linha a linha: memória proporcional ao lote
                 // e à maior linha, sem reter o texto completo da fila. A leitura e
                 // a escrita ainda percorrem o arquivo inteiro; não é compactação.
-                await using (var output = _confirmationStreamFactory?.Invoke(temporary) ?? new FileStream(temporary, FileMode.CreateNew,
-                    FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))
+                await using (var stream = OpenQueueRead())
+                await using (var output = CreateConfirmationStream(temporary))
                 {
                     created = true;
+                    VerifyQueueHandle(output, temporary);
                     await using var writer = new StreamWriter(output, Utf8NoBom, bufferSize: 65536);
-                    await using var stream = new FileStream(_queueFile, FileMode.Open,
-                        FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     using var reader = new StreamReader(stream, Encoding.UTF8,
                         detectEncodingFromByteOrderMarks: true);
                     while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
@@ -239,9 +228,12 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
                 }
                 // Não publicar antes de fechar todos os streams nem após cancelar.
                 cancellationToken.ThrowIfCancellationRequested();
+                VerifyConfirmationBoundary(temporary);
+                cancellationToken.ThrowIfCancellationRequested();
                 // Replace the existing queue while shared diagnostic readers retain
                 // their old handle. Keep metadata merge errors visible to the caller.
                 File.Replace(temporary, _queueFile, destinationBackupFileName: null);
+                if (_protection is not null) { using var verified = OpenQueueRead(); }
             }
             finally
             {
@@ -291,9 +283,8 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         try
         {
             var records = new List<AuditOverride>();
-            if (!File.Exists(_queueFile)) return records;
-            await using var stream = new FileStream(_queueFile, FileMode.Open, FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
+            if (!QueueExistsChecked()) return records;
+            await using var stream = OpenQueueRead();
             using var reader = new StreamReader(stream, Encoding.UTF8, true);
             while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
             {
@@ -343,7 +334,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         // not timestamp order. Nonpositive limits keep the legacy unbounded query.
         Queue<AuditEvent>? recent = !pendingOnly && maxEvents > 0 ? new() : null;
 
-        if (!File.Exists(_queueFile))
+        if (!QueueExistsChecked())
         {
             return events;
         }
@@ -353,11 +344,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         // servico e quem le e o aplicativo de bandeja, ao mesmo tempo. Sem
         // permitir escrita concorrente, um dos dois lados falha: ou a leitura
         // do painel, ou — pior — a gravacao do evento de auditoria.
-        await using var stream = new FileStream(
-            _queueFile,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
+        await using var stream = OpenQueueRead();
 
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
 

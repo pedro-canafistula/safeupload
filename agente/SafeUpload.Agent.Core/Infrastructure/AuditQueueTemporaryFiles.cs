@@ -23,6 +23,7 @@ public sealed partial class LocalQueueAuditSink
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (!VerifyQueueParentReadonly()) return new(false, 0, 0, 0, 0, 0, false, false);
             var directory = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(_queueFile))!);
             try
             {

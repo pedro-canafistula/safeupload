@@ -268,7 +268,7 @@ public static class Program
 
     internal static void ConfigureAuditStorage(IServiceCollection services)
     {
-        services.AddSingleton<LocalQueueAuditSink>();
+        services.AddSingleton(_ => new LocalQueueAuditSink()); // Never select the isolated-path test constructor through DI.
         services.AddSingleton<AuditQueueHealth>();
         services.AddSingleton<MonitoredAuditSink>(provider => new MonitoredAuditSink(
             provider.GetRequiredService<LocalQueueAuditSink>(), provider.GetRequiredService<AuditQueueHealth>(),

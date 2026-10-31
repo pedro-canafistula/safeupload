@@ -140,7 +140,14 @@ instalação para e o driver fica em início sob demanda. O filtro não é inici
 Antes de ler `policy.json`, o agente exige ACL protegida e explícita, sem ACEs herdadas, com controle total somente para
 SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo. Se a ACL existente não corresponder, ele recusa o
 arquivo e mantém a última política aplicada em memória; sem uma política válida anterior, não carrega uma política mais fraca.
-A fila local de auditoria (`queue.jsonl`) ainda não é protegida por ACL.
+A fila local (`queue.jsonl`) do serviço exige proprietário confiável e acesso somente a SYSTEM e Administradores,
+com verificação da pasta e do arquivo aberto antes de ler, anexar ou confirmar eventos. Arquivos novos e temporários
+de confirmação são criados com ACL protegida. Filas antigas que herdam apenas essas permissões da pasta protegida
+continuam aceitas; permissões indevidas, links e múltiplos nomes físicos são recusados sem reparar ou apagar a fila.
+Uma recusa aparece como falha de acesso na saúde da fila, sem confirmar entrega. Isso não autentica dados alterados
+antes da validação, não recupera automaticamente cópias temporárias e não garante persistência contra perda de energia.
+O construtor de caminho explícito continua destinado a ferramentas/testes isolados, fora da composição do serviço.
+Os ensaios locais usam somente pastas temporárias próprias; o aceite instalado como SYSTEM é uma etapa separada.
 
 **Limitações do instalador encontradas no teste manual de 08/10/2026** (ver
 [`../driver/evidence/2026-10-08/manual-test-win10-debug/README.md`](../driver/evidence/2026-10-08/manual-test-win10-debug/README.md)):

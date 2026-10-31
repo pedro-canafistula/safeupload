@@ -5,10 +5,10 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 ///
 /// A pasta fica em %ProgramData%\SafeUpload, e não no perfil do usuário, pelo
 /// mesmo motivo do produto real: política e trilha de auditoria pertencem à
-/// máquina e ao administrador, não a quem está logado. No agente real a pasta
-/// seria protegida por ACL para que o usuário comum não pudesse editar a
-/// política nem apagar a fila; aqui, sem elevação nem serviço, ela é apenas
-/// gravável — o que é uma das limitações declaradas do mock.
+/// máquina e ao administrador, não a quem está logado. O serviço valida as
+/// permissões da política e da fila; arquivos existentes inseguros são
+/// recusados sem correção automática. Ferramentas/testes isolados precisam
+/// configurar seu próprio diretório e não substituem o aceite SYSTEM.
 /// </summary>
 public static class AgentPaths
 {
