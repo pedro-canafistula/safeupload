@@ -77,7 +77,7 @@ $runtimeResults = foreach ($project in $projects) {
     [pscustomobject]@{component=$project.folder;version=$version;frameworks=@($frameworks | Select-Object name,version)}
 }
 foreach ($required in @('setup/Invoke-AgentSetup.ps1','setup/SafeUpload.Setup.psm1',
-    'setup/Install-SafeUploadAgent.ps1','LICENSE.txt','LEIA-ME.txt')) {
+    'setup/Install-SafeUploadAgent.ps1','setup/Get-SafeUploadDiagnostics.ps1','LICENSE.txt','LEIA-ME.txt')) {
     Require (Test-Path -LiteralPath (Join-Path $payloadRoot $required) -PathType Leaf) "Required package support file is absent: $required"
 }
 

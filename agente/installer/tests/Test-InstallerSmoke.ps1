@@ -97,6 +97,24 @@ try {
         -not $retained[0].dispatched) 'Restart lost, changed or duplicated the pending event.'
     Require ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -eq $policyHash) 'Restart changed the local policy.'
     $result.steps += 'service restart preserved the pending event ID, timestamp and policy'
+    $installedDiagnostics = Join-Path $installRoot 'setup\Get-SafeUploadDiagnostics.ps1'
+    Require (Test-Path -LiteralPath $installedDiagnostics -PathType Leaf) 'Installed diagnostics client is missing.'
+    $diagnosticQueueHash = (Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash
+    $temporaryInventory = & $installedDiagnostics -Query audit-temporaries
+    $temporaryClassification = & $installedDiagnostics -Query audit-temporary-classification
+    $retentionPreview = & $installedDiagnostics -Query audit-retention-preview -OccurredBeforeUtc '2020-01-01T00:00:00Z'
+    Require ($temporaryInventory.complete -eq $true -and $temporaryInventory.candidateFiles -eq 0) 'Installed temporary inventory failed.'
+    Require ($temporaryClassification.complete -eq $true -and $temporaryClassification.promotionSupported -eq $false -and $temporaryClassification.deletionSupported -eq $false) 'Installed temporary classification failed.'
+    Require ($retentionPreview.previewOnly -eq $true -and $retentionPreview.deletionSupported -eq $false -and $retentionPreview.integrity.pendingEvents -ge 1) 'Installed retention preview failed.'
+    $diagnosticsLiteral = $installedDiagnostics.Replace("'", "''")
+    $legacyCommand = "& '$diagnosticsLiteral' -Query audit-retention-preview -OccurredBeforeUtc '2020-01-01T00:00:00Z' | ConvertTo-Json -Compress -Depth 10"
+    $legacyJson = & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command $legacyCommand
+    Require ($LASTEXITCODE -eq 0) 'Windows PowerShell installed diagnostics failed.'
+    $legacyPreview = ($legacyJson -join "`n") | ConvertFrom-Json
+    Require ($legacyPreview.previewOnly -eq $true -and $legacyPreview.deletionSupported -eq $false -and $legacyPreview.integrity.pendingEvents -ge 1) 'Windows PowerShell returned an invalid preview.'
+    Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $diagnosticQueueHash) 'Installed maintenance changed the queue.'
+    $result.maintenance = [ordered]@{inventory=$temporaryInventory;classification=$temporaryClassification;preview=$retentionPreview;windowsPowerShellPreview=$legacyPreview}
+    $result.steps += 'installed diagnostics queried read-only maintenance in PowerShell 7 and Windows PowerShell 5.1 without changing queue bytes'
     Require ((Run-Installer 'rejected-upgrade' @('/MODE=FileSystemWatcher')) -ne 0) 'Initial installer unexpectedly overwrote an existing service.'
     $after = Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
     Require ($after.State -eq 'Running' -and $after.PathName -eq $service.PathName) 'Refused upgrade changed the service.'

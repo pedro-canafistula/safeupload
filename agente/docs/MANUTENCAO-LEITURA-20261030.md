@@ -26,6 +26,8 @@ Como administrador, consultar o serviço:
 .\agente\scripts\Get-SafeUploadDiagnostics.ps1 -Query audit-retention-preview -OccurredBeforeUtc '2026-10-01T00:00:00Z'
 ```
 
+O instalador passa a incluir o cliente em `%ProgramFiles%\SafeUpload\Agent\setup\Get-SafeUploadDiagnostics.ps1`, sob o manifesto SHA-256 do pacote. O verificador exige sua presença e o smoke o executa do caminho instalado, incluindo consulta de preview pelo Windows PowerShell 5.1. Não depende de ter o checkout no computador de destino.
+
 Resultados não contêm conteúdo, nomes de candidatos, caminhos ou IDs. Falhas de armazenamento retornam apenas categorias sanitizadas. Ausência de fila/diretório não cria arquivo. Não executar exclusão manual apenas porque o diagnóstico encontrou um temporário.
 
 ## Critérios e validação
