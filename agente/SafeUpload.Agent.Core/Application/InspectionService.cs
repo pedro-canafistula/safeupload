@@ -312,7 +312,7 @@ public sealed class InspectionService
             eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
             _endpointId,
-            _userName,
+            operation.AuditUserName ?? _userName,
             // Explicit IDs can refer to a persisted transfer from an older build.
             // Preserve its canonical metadata; fresh IDs use the minimized name.
             eventId is null ? AuditMetadata.FileNameOnly(operation.FileName) : operation.FileName,
@@ -328,7 +328,7 @@ public sealed class InspectionService
             result.PolicyVersion,
             result.ElapsedMs,
             Dispatched: false,
-            PublishedSha256Hex: publishedSha256Hex);
+            PublishedSha256Hex: publishedSha256Hex) { OwnerSid = operation.AuditOwnerSid };
 
         try
         {

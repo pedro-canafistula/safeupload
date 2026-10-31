@@ -1,6 +1,6 @@
-# Instalador do agente Windows — preparação de recorte independente
+# Instalador do agente Windows — candidato de desenvolvimento
 
-Recorte do PR #42, com a correção de remoção com UI aberta da issue #50 e o verificador de pacote do #49, integrado à candidata de comunicação do #64. A versão candidata é 0.1.15; o manifesto de cada build identifica commit e hashes próprios. Ela não herda o aceite do pacote Windows 10 0.1.14. Consulte o resultado do workflow no commit exato antes de executar uma instalação de teste.
+Base do instalador integrada na main pelo #64, com origem nos #42/#49 e correção de remoção com UI aberta da issue #50. Recortes posteriores integraram auditoria/recibos, diagnóstico da fila, histórico e manutenção somente leitura. A versão candidata é 0.1.15; o manifesto de cada build identifica commit e hashes próprios. Ela não herda o aceite do pacote Windows 10 0.1.14. Consulte o resultado do workflow no commit exato antes de executar uma instalação de teste.
 
 Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interface WPF na bandeja, atalho e desinstalador. Os dois executáveis são publicados com runtime .NET próprio; o computador de destino não precisa do SDK. A compilação usa Inno Setup 6.7.3, obtido de uma release oficial imutável, com SHA-256 e assinatura do editor verificados.
 
@@ -10,7 +10,7 @@ Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interf
 
 Este trabalho é somente do agente Windows. Não altera o backend Java, seus endpoints ou o painel Angular. A URL escolhida precisa apontar para uma API compatível, definida com Thiago. O pacote não inclui as propostas locais de correção Java da recuperação anterior.
 
-O script técnico existente `agente/scripts/Install-SafeUploadAgent.ps1` é reaproveitado no modo minifiltro, sem alterar seu código ou a sequência de preparação do driver.
+O script técnico existente `agente/scripts/Install-SafeUploadAgent.ps1` é reaproveitado no modo minifiltro. A composição do par atual, protocolo e autoridade de política do Vitor mantêm aceite próprio; este pacote de agente não substitui essa validação.
 
 ## Instalação
 
@@ -63,7 +63,7 @@ Saídas em `artifacts/installer/`: `SafeUploadAgent-0.1.15-win-x64-setup.exe`, s
 
 Os contratos PowerShell exercitam URL, argumentos do serviço, recusa de atualização, estado do driver, hashes, adulteração, arquivos ausentes, escape de diretório, duplicidade de caminhos e junções, usando somente arquivos temporários e estados simulados. Rodam em PowerShell 5.1 e 7. Os seis testes xUnit existentes do instalador técnico devem continuar passando.
 
-O workflow `.github/workflows/agent-installer.yml` valida o HEAD exato em PR, push na main e execução manual. Confere identidade/payload do pacote e chama `Test-InstallerSmoke.ps1` somente em runner Windows hospedado e descartável do GitHub. O smoke recusa estado SafeUpload preexistente; verifica instalação silenciosa, LocalSystem/SID, runtime próprio, configuração, startup, inspeção sintética, preservação de evento no reinício, recusa de atualização e remoção com a UI aberta, preservando política e fila. Não inclui a projeção nova de auditoria do #42 ou os diagnósticos do #49. A proteção contra execução no computador de trabalho deve permanecer ativa.
+O workflow `.github/workflows/agent-installer.yml` valida o HEAD exato em PR, push na main e execução manual. Confere identidade/payload do pacote e chama `Test-InstallerSmoke.ps1` somente em runner Windows hospedado e descartável do GitHub. O smoke recusa estado SafeUpload preexistente; verifica instalação silenciosa, LocalSystem/SID, runtime próprio, configuração, startup, inspeção sintética, preservação de evento no reinício, recusa de atualização e remoção com a UI aberta, preservando política e fila. Inclui o contrato atual de auditoria e o cliente de diagnóstico em setup/Get-SafeUploadDiagnostics.ps1. O smoke valida as consultas administrativas do arquivo instalado em PowerShell 7 e Windows PowerShell 5.1, preservando a fila. A proteção contra execução no computador de trabalho deve permanecer ativa.
 
 O formulário do instalador configura modo e URL; não provisiona `RegisteredHostId`, não seleciona `HeartbeatProtocol=AgentApi` e não cadastra o host automaticamente. A integração com a API atual requer a configuração explícita descrita em [CONFIGURACAO-COMUNICACAO-20261029.md](../docs/CONFIGURACAO-COMUNICACAO-20261029.md). URL preenchida sozinha mantém o protocolo legado e não representa comunicação qualificada com o backend atual.
 

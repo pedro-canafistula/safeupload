@@ -153,6 +153,7 @@ public class ClipboardPipeTests
         var audit = Assert.Single(server.Sink.Events);
         Assert.Equal(audit.EventId.ToString(), foco.EventId);
         Assert.Contains(audit.UserName, new[] { Environment.UserName, System.Security.Principal.WindowsIdentity.GetCurrent().Name });
+        Assert.Equal(System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value, audit.OwnerSid);
         Assert.Equal("clipboard_focus_observed", audit.NotInspectedReason);
     }
 

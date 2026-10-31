@@ -154,7 +154,9 @@ public sealed class ClipboardPipeServer : BackgroundService
 
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
-        uint? sessionId = SessionResolver.TryGetClientSessionId(pipe.SafePipeHandle);
+        var clientIdentity = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        if (clientIdentity is null) { await pipe.DisposeAsync().ConfigureAwait(false); return; }
+        uint? sessionId = clientIdentity?.SessionId;
 
         try
         {
@@ -190,7 +192,7 @@ public sealed class ClipboardPipeServer : BackgroundService
 
             ClipboardLog.Write(_logger, outcome.Observation);
             ClipboardResponse response = await ClipboardAudit.WriteAsync(
-                outcome, _auditSink, _logger, userName, timeout.Token).ConfigureAwait(false);
+                outcome, _auditSink, _logger, userName, timeout.Token, ownerSid: clientIdentity?.UserSid.Value).ConfigureAwait(false);
 
             // O escritor tem escopo próprio: descartá-lo só no fim do método
             // tentaria um último Flush depois de o cliente já ter fechado, e

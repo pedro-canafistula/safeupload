@@ -68,7 +68,11 @@ public sealed class WebUploadInspectorTests : IDisposable
         Assert.Equal("https://chat.example", notification.Event.DestinationPath);
         Assert.DoesNotContain("conversa", notification.Event.DestinationPath);
         Assert.DoesNotContain("sessao", notification.Event.DestinationPath);
-        Assert.Equal(Environment.UserName, notification.Event.UserName, ignoreCase: true);
+        Assert.Equal(System.Security.Principal.WindowsIdentity.GetCurrent().Name, notification.Event.UserName, ignoreCase: true);
+        Assert.Equal(owner.UserSid.Value, notification.Event.OwnerSid);
+        var history = await new AuditHistoryReader(new LocalQueueAuditSink(_workspace.QueueFile))
+            .ReadAsync("RENAMED\\same-user", CancellationToken.None, owner.UserSid.Value);
+        Assert.Equal(notification.Event.EventId, Assert.Single(history.Events).EventId);
         Assert.NotEmpty(notification.Findings);
         Assert.False(notification.OverrideAllowed);
 

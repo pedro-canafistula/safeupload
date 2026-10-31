@@ -54,7 +54,7 @@ public sealed class WebUploadInspector(
                     processName,
                     request.ProcessId ?? 0,
                     [.. parts.Select(part => new WebUploadPart(part.FileName, part.Content, part.Kind == UploadPartKind.File))],
-                    UserNameOf(owner)),
+                    UserNameOf(owner), owner?.UserSid.Value),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -146,7 +146,7 @@ public sealed class WebUploadInspector(
         }
     }
 
-    /// <summary>Nome de usuário, sem o domínio, como no canal de arquivo.</summary>
+    /// <summary>Conta qualificada capturada do token, sem confundir usuários homônimos.</summary>
     private static string? UserNameOf(SessionResolver.ProcessIdentity? owner)
     {
         if (owner is null)
@@ -156,14 +156,12 @@ public sealed class WebUploadInspector(
 
         try
         {
-            string account = owner.UserSid.Translate(typeof(NTAccount)).Value;
-            int separator = account.LastIndexOf('\\');
-            return separator < 0 ? account : account[(separator + 1)..];
+            return owner.UserSid.Translate(typeof(NTAccount)).Value;
         }
         catch (SystemException)
         {
-            // SID sem conta correspondente (perfil removido, domínio fora do ar).
-            return null;
+            // Preserve attribution even when the domain cannot resolve a display name.
+            return owner.UserSid.Value;
         }
     }
 

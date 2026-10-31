@@ -252,7 +252,24 @@ public sealed class StagedTransferPublisherTests : IDisposable
         private sealed class NoopLease : IDisposable { public void Dispose() { } }
     }
 
-    private StagedTransfer Transfer(string name, string content, DestinationKind kind = DestinationKind.RemovableDrive)
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Audit_owner_is_persisted_for_new_transfers_without_rewriting_legacy_attribution(bool newIdentity)
+    {
+        var transfer = Transfer("owner-history.txt", "clean synthetic content", captureAuditOwner: newIdentity);
+        Assert.Equal(StagedTransferOutcome.Released, await _publisher.PublishAsync(transfer, CancellationToken.None));
+        var queue = new LocalQueueAuditSink(_workspace.QueueFile);
+        var audit = (await queue.ReadRecentAsync(10, CancellationToken.None)).Single(e => e.EventId == transfer.TransferId);
+        Assert.Equal(newIdentity ? "LAB\\owner" : Environment.UserName, audit.UserName);
+        Assert.Equal(newIdentity ? TestRequestorSid : null, audit.OwnerSid);
+        Assert.Equal(newIdentity ? "LAB\\owner" : null, (await _journal.ReadAsync(transfer.TransferId, CancellationToken.None)).Transfer.AuditAccountName);
+        var history = await new AuditHistoryReader(queue).ReadAsync("RENAMED\\owner", CancellationToken.None, TestRequestorSid);
+        Assert.Equal(newIdentity ? 1 : 0, history.Events.Count);
+    }
+
+    private StagedTransfer Transfer(string name, string content, DestinationKind kind = DestinationKind.RemovableDrive,
+        bool captureAuditOwner = false)
     {
         string stage = Path.Combine(_stagingRoot, name);
         File.WriteAllText(stage, content);
@@ -263,7 +280,8 @@ public sealed class StagedTransferPublisherTests : IDisposable
             Guid.NewGuid(), stage, destination,
             kind,
             "explorer.exe", 4242, 7)
-        { RequestorSid = TestRequestorSid };
+        { RequestorSid = TestRequestorSid, RequestorProcessCreationTime = captureAuditOwner ? 638953632000000000 : null,
+            AuditAccountName = captureAuditOwner ? "LAB\\owner" : null };
         _journal.CreateAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
         _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Allocated, TransferJournalState.Sealed,

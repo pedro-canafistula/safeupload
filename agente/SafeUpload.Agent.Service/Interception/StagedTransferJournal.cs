@@ -252,7 +252,10 @@ public sealed class StagedTransferJournal
             (transfer.RequestorSid is { } requestorSid &&
                 (requestorSid.Length > 184 || !requestorSid.StartsWith("S-", StringComparison.OrdinalIgnoreCase) ||
                  requestorSid.Any(char.IsWhiteSpace))) ||
-            (transfer.RequestorProcessCreationTime is <= 0))
+            (transfer.RequestorProcessCreationTime is <= 0) ||
+            (transfer.AuditAccountName is { } auditAccount &&
+                (string.IsNullOrWhiteSpace(auditAccount) || auditAccount.Length > 512 ||
+                 transfer.RequestorSid is null || transfer.SessionId is null || transfer.RequestorProcessCreationTime is not > 0)))
             throw new InvalidDataException("The transfer manifest has invalid identity or state.");
         RequireManifestPath(transfer.StagePath);
         RequireManifestPath(transfer.DestinationPath);

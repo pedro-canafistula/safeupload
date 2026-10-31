@@ -157,6 +157,7 @@ public sealed class NotificationPipeServer : BackgroundService
         // A sessao do aplicativo que conectou, para nao entregar a uma sessao
         // o bloqueio ocorrido em outra.
         SessionResolver.ProcessIdentity? client = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        if (client is null) { await pipe.DisposeAsync().ConfigureAwait(false); return; }
         uint? sessionId = client?.SessionId;
 
         using var subscription = _hub.Subscribe(sessionId, client?.UserSid.Value);
@@ -189,8 +190,10 @@ public sealed class NotificationPipeServer : BackgroundService
                     historyBudget.CancelAfter(TimeSpan.FromSeconds(5));
                     try
                     {
-                        string? account = client?.UserSid.Translate(typeof(NTAccount)).Value;
-                        history = await _history.ReadAsync(account, historyBudget.Token).ConfigureAwait(false);
+                        string? account = null;
+                        try { account = client?.UserSid.Translate(typeof(NTAccount)).Value; }
+                        catch (IdentityNotMappedException) { /* SID-bound history does not depend on a domain lookup. */ }
+                        history = await _history.ReadAsync(account, historyBudget.Token, client?.UserSid.Value).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                     { history = new([], Available: false); }

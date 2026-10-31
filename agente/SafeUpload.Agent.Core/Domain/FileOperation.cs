@@ -64,4 +64,9 @@ public sealed record FileOperation(
     string ProcessName,
     int ProcessId,
     string DestinationPath,
-    DestinationKind Destination);
+    DestinationKind Destination)
+{
+    /// <summary>Service-captured audit attribution, independent of inspection and publication paths.</summary>
+    public string? AuditOwnerSid { get; init; }
+    public string? AuditUserName { get; init; }
+}

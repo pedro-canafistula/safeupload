@@ -9,21 +9,29 @@ namespace SafeUpload.Agent.Service.Notifications;
 /// <summary>
 /// The service reads the private queue; the UI never receives filesystem access.
 /// Legacy watcher events belong to the endpoint and were already broadcast live.
-/// User-specific events require an exact qualified account obtained from the
-/// connected process token. Unqualified/unknown owners are not replayed.
+/// SID-bound events require the connected process token SID; legacy events
+/// require an exact qualified account. Unknown owners are not guessed.
 /// </summary>
 public sealed class AuditHistoryReader(IAuditSink sink)
 {
     private static readonly string SystemAccount = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null)
         .Translate(typeof(NTAccount)).Value;
-    public async Task<HistoryNotification> ReadAsync(string? authenticatedAccount, CancellationToken cancellationToken)
+    public async Task<HistoryNotification> ReadAsync(string? authenticatedAccount, CancellationToken cancellationToken,
+        string? authenticatedSid = null)
     {
-        if (string.IsNullOrWhiteSpace(authenticatedAccount) || !authenticatedAccount.Contains('\\'))
+        if (authenticatedSid is not null)
+        {
+            try { authenticatedSid = new SecurityIdentifier(authenticatedSid).Value; }
+            catch (ArgumentException) { return new HistoryNotification([], Available: false); }
+        }
+        if (authenticatedSid is null && (string.IsNullOrWhiteSpace(authenticatedAccount) || !authenticatedAccount.Contains('\\')))
             return new HistoryNotification([], Available: false);
+
+        if (authenticatedAccount?.Contains('\\') != true) authenticatedAccount = null;
 
         // Filter before limiting so another account's activity cannot hide this account's history.
         var recent = await sink.ReadRecentMatchingAsync(HistoryNotification.MaximumEvents + 1,
-            e => VisibleTo(e, authenticatedAccount), cancellationToken).ConfigureAwait(false);
+            e => VisibleTo(e, authenticatedAccount, authenticatedSid), cancellationToken).ConfigureAwait(false);
         var selected = new List<AuditEvent>();
         int bytes = 2048; // Conservative envelope/comma budget, measured with the actual serializer below.
         bool truncated = recent.Count > HistoryNotification.MaximumEvents;
@@ -38,11 +46,15 @@ public sealed class AuditHistoryReader(IAuditSink sink)
         return new HistoryNotification(selected.ToArray(), Truncated: truncated);
     }
 
-    internal static bool VisibleTo(AuditEvent item, string authenticatedAccount)
+    internal static bool VisibleTo(AuditEvent item, string? authenticatedAccount, string? authenticatedSid = null)
     {
         if (item.Categories is null || item.MaskedSnippets is null) return false;
         if (!string.Equals(item.EndpointId, Environment.MachineName, StringComparison.OrdinalIgnoreCase)) return false;
-        if (string.Equals(item.UserName, authenticatedAccount, StringComparison.OrdinalIgnoreCase)) return true;
+        // Once a trusted SID is present it is authoritative. Never fall back to
+        // a matching display name or endpoint-wide watcher scope for another SID.
+        if (item.OwnerSid is not null)
+            return authenticatedSid is not null && string.Equals(item.OwnerSid, authenticatedSid, StringComparison.OrdinalIgnoreCase);
+        if (authenticatedAccount is not null && string.Equals(item.UserName, authenticatedAccount, StringComparison.OrdinalIgnoreCase)) return true;
 
         // FileSystemWatcher has no trustworthy originating process/session. Keep
         // only its existing endpoint-wide scope; never broaden clipboard/web or

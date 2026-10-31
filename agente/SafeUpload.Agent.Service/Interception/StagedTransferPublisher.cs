@@ -151,7 +151,8 @@ public sealed class StagedTransferPublisher
             transfer.ProcessName,
             transfer.ProcessId,
             destinationPath,
-            transfer.Destination);
+            transfer.Destination) { AuditOwnerSid = transfer.AuditAccountName is null ? null : transfer.RequestorSid,
+                AuditUserName = transfer.AuditAccountName };
 
         InspectionResult result;
         try
@@ -683,7 +684,8 @@ public sealed class StagedTransferPublisher
         DateTimeOffset lastWriteUtc) => new(transfer.StagePath,
         Path.GetFileName(transfer.DestinationPath), Path.GetExtension(transfer.DestinationPath),
         length, lastWriteUtc, transfer.ProcessName, transfer.ProcessId,
-        transfer.DestinationPath, transfer.Destination);
+        transfer.DestinationPath, transfer.Destination) { AuditOwnerSid = transfer.AuditAccountName is null ? null : transfer.RequestorSid,
+            AuditUserName = transfer.AuditAccountName };
 
     private void RequirePrivateStagePath(string path)
     {
@@ -754,6 +756,9 @@ public sealed record StagedTransfer(
 
     /// <summary>Process creation FILETIME captured with RequestorSid to detect PID reuse.</summary>
     public long? RequestorProcessCreationTime { get; init; }
+
+    /// <summary>Captured only for new allocations; null preserves legacy canonical audit usernames.</summary>
+    public string? AuditAccountName { get; init; }
 }
 
 public enum StagedTransferOutcome

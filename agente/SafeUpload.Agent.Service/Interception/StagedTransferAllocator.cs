@@ -96,6 +96,16 @@ public sealed class StagedTransferAllocator
         else Directory.CreateDirectory(_root);
     }
 
+    private static string? AuditAccount(string? sidText)
+    {
+        if (string.IsNullOrWhiteSpace(sidText)) return null;
+        System.Security.Principal.SecurityIdentifier sid;
+        try { sid = new(sidText); }
+        catch (ArgumentException) { return null; }
+        try { return sid.Translate(typeof(System.Security.Principal.NTAccount)).Value; }
+        catch (SystemException) { return sid.Value; }
+    }
+
     public async Task<StagedTransfer> AllocateAsync(
         string destinationPath,
         DestinationKind destination,
@@ -145,7 +155,8 @@ public sealed class StagedTransferAllocator
             sessionId)
         {
             RequestorSid = requestorSid,
-            RequestorProcessCreationTime = requestorProcessCreationTime
+            RequestorProcessCreationTime = requestorProcessCreationTime,
+            AuditAccountName = sessionId is not null && requestorProcessCreationTime is > 0 ? AuditAccount(requestorSid) : null
         };
 
         if (disposition > 5)

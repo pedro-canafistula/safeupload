@@ -17,7 +17,7 @@ public sealed class AgentAuditDispatchTests
     {
         using var work = new TestWorkspace();
         var queue = new LocalQueueAuditSink(work.QueueFile);
-        var audit = Event() with { MaskedSnippets = ["SYNTHETIC-CONTENT-NEVER-SEND"] };
+        var audit = Event() with { MaskedSnippets = ["SYNTHETIC-CONTENT-NEVER-SEND"], OwnerSid = "S-1-5-21-1-2-3-1001" };
         await queue.WriteAsync(audit, CancellationToken.None);
         var wire = new Wire(); await Cycle(queue, wire);
         using var parsed = JsonDocument.Parse(wire.Body!);
@@ -28,9 +28,12 @@ public sealed class AgentAuditDispatchTests
             root.GetProperty("agentVersion").GetString());
         Assert.Empty(root.GetProperty("events")[0].GetProperty("maskedSnippets").EnumerateArray());
         Assert.DoesNotContain("SYNTHETIC-CONTENT-NEVER-SEND", wire.Body!);
+        Assert.DoesNotContain("ownerSid", wire.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(audit.OwnerSid, wire.Body!);
         var local = Assert.Single(await queue.ReadRecentAsync(5, CancellationToken.None));
         Assert.Equal(audit.MaskedSnippets, local.MaskedSnippets);
         Assert.Equal(audit.EventId, local.EventId);
+        Assert.Equal(audit.OwnerSid, local.OwnerSid);
         Assert.Equal(audit.OccurredAtUtc.Offset, local.OccurredAtUtc.Offset);
         Assert.True(local.Dispatched);
     }
