@@ -27,8 +27,8 @@ public sealed class QueueRowViewModel
             ? "—"
             : string.Join("   ", auditEvent.MaskedSnippets);
         Reason = auditEvent.NotInspectedReason ?? "—";
-        Process = auditEvent.ProcessName;
-        Destination = auditEvent.DestinationPath;
+        Process = AuditTextPrivacy.Sanitize(auditEvent.ProcessName);
+        Destination = AuditTextPrivacy.Sanitize(auditEvent.DestinationPath);
         ElapsedMs = auditEvent.ElapsedMs;
         PolicyVersion = auditEvent.PolicyVersion;
         Dispatched = auditEvent.Dispatched ? "Sim" : "Não";

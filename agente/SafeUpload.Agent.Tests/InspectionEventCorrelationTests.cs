@@ -31,6 +31,19 @@ public sealed class InspectionEventCorrelationTests : IDisposable
     }
 
     [Fact]
+    public async Task Verdict_cache_never_retains_an_operation_event()
+    {
+        var operation = TestWorkspace.Operation(_workspace.WriteText("ordinary.txt", "ordinary text"));
+        var result = await Engine(new Sink()).InspectAsync(operation, default);
+        Assert.NotNull(result.RecordedEvent);
+        var cache = new VerdictCache();
+        cache.Set(operation, result);
+        Assert.True(cache.TryGet(operation, result.PolicyVersion, out var cached));
+        Assert.Null(cached!.RecordedEvent);
+        Assert.NotNull(result.RecordedEvent);
+    }
+
+    [Fact]
     public async Task Failed_write_does_not_reuse_the_previous_successful_event()
     {
         var sink = new Sink(); var engine = Engine(sink);

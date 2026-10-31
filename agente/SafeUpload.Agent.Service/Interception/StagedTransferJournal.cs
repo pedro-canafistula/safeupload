@@ -244,6 +244,7 @@ public sealed class StagedTransferJournal
         if (id == Guid.Empty || entry?.Transfer is not { } transfer || transfer.TransferId != id ||
             !Enum.IsDefined(entry.State) || !Enum.IsDefined(transfer.Destination) ||
             transfer.ProcessId <= 0 || string.IsNullOrWhiteSpace(transfer.ProcessName) ||
+            transfer.AuditMetadataVersion is not (null or 1) ||
             transfer.ProcessName.Length > 63 || entry.DestinationGeneration < 0 ||
             entry.BlockedPolicyVersion < 0 ||
             (entry.State == TransferJournalState.Blocked && entry.BlockedPolicyVersion <= 0 &&

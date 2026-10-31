@@ -108,7 +108,8 @@ public sealed class VerdictCache
                 }
             }
 
-            _entries[key] = new Entry(result, now + _timeToLive);
+            var decision = result.RecordedEvent is null ? result : result with { RecordedEvent = null };
+            _entries[key] = new Entry(decision, now + _timeToLive);
         }
     }
 

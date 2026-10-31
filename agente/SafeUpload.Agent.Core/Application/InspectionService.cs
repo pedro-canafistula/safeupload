@@ -308,6 +308,7 @@ public sealed class InspectionService
         Guid? eventId = null,
         string? publishedSha256Hex = null)
     {
+        bool minimize = eventId is null || operation.AuditMetadataVersion == 1;
         var auditEvent = new AuditEvent(
             eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
@@ -315,15 +316,15 @@ public sealed class InspectionService
             operation.AuditUserName ?? _userName,
             // Explicit IDs can refer to a persisted transfer from an older build.
             // Preserve its canonical metadata; fresh IDs use the minimized name.
-            eventId is null ? AuditMetadata.FileNameOnly(operation.FileName) : operation.FileName,
-            operation.Extension,
+            minimize ? AuditTextPrivacy.Sanitize(AuditMetadata.FileNameOnly(operation.FileName)) : operation.FileName,
+            minimize ? AuditTextPrivacy.Sanitize(operation.Extension) : operation.Extension,
             operation.SizeBytes,
             result.Verdict,
             result.Categories,
             result.Findings.Select(static f => f.MaskedSnippet).Distinct().ToList(),
-            operation.ProcessName,
+            minimize ? AuditTextPrivacy.Sanitize(operation.ProcessName) : operation.ProcessName,
             operation.ProcessId,
-            operation.DestinationPath,
+            minimize ? AuditTextPrivacy.Sanitize(operation.DestinationPath) : operation.DestinationPath,
             result.Reason,
             result.PolicyVersion,
             result.ElapsedMs,

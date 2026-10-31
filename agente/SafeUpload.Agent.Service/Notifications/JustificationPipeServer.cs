@@ -205,14 +205,14 @@ public sealed class JustificationPipeServer : BackgroundService
 
         _logger.LogWarning(
             "Excecao concedida para {Arquivo}, processo {Pid}, justificada pelo usuario.",
-            pendente.FileName,
+            AuditTextPrivacy.Sanitize(pendente.FileName),
             pendente.ProcessId);
         return true;
     }
 
     private Task RecordJustificationAsync(JustificationRequest request, string? clientSid,
         CancellationToken cancellationToken)
-        => _auditSink.RecordOverrideAsync(new AuditOverride(Guid.Parse(request.EventId), request.Justification,
+        => _auditSink.RecordOverrideAsync(AuditOverride.FromNewSubmission(Guid.Parse(request.EventId), request.Justification,
             DateTimeOffset.UtcNow, clientSid ?? "Não identificado", Environment.MachineName), cancellationToken);
 
     /// <summary>

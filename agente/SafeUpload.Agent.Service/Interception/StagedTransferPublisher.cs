@@ -152,7 +152,7 @@ public sealed class StagedTransferPublisher
             transfer.ProcessId,
             destinationPath,
             transfer.Destination) { AuditOwnerSid = transfer.AuditAccountName is null ? null : transfer.RequestorSid,
-                AuditUserName = transfer.AuditAccountName };
+                AuditUserName = transfer.AuditAccountName, AuditMetadataVersion = transfer.AuditMetadataVersion };
 
         InspectionResult result;
         try
@@ -622,6 +622,7 @@ public sealed class StagedTransferPublisher
 
     private void PublishTransferNotification(StagedTransfer transfer, TransferNotification notification)
     {
+        notification = notification with { FileName = AuditTextPrivacy.Sanitize(notification.FileName) };
         if (TryGetBoundSession(transfer, out uint sessionId, out string sid))
             _notifications.Publish(notification, sessionId, sid);
         else if (transfer.SessionId is { } ownerSession)
@@ -685,7 +686,7 @@ public sealed class StagedTransferPublisher
         Path.GetFileName(transfer.DestinationPath), Path.GetExtension(transfer.DestinationPath),
         length, lastWriteUtc, transfer.ProcessName, transfer.ProcessId,
         transfer.DestinationPath, transfer.Destination) { AuditOwnerSid = transfer.AuditAccountName is null ? null : transfer.RequestorSid,
-            AuditUserName = transfer.AuditAccountName };
+            AuditUserName = transfer.AuditAccountName, AuditMetadataVersion = transfer.AuditMetadataVersion };
 
     private void RequirePrivateStagePath(string path)
     {
@@ -759,6 +760,10 @@ public sealed record StagedTransfer(
 
     /// <summary>Captured only for new allocations; null preserves legacy canonical audit usernames.</summary>
     public string? AuditAccountName { get; init; }
+
+    /// <summary>Audit projection selected at allocation; missing preserves legacy fixed-ID payloads after restart.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? AuditMetadataVersion { get; init; }
 }
 
 public enum StagedTransferOutcome

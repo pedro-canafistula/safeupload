@@ -26,8 +26,8 @@ namespace SafeUpload.Agent.Core.Contracts;
 /// Identificador do evento de auditoria do bloqueio, como veio na notificação.
 /// </param>
 /// <param name="Justification">
-/// O motivo de negócio, em texto livre. Vai para a trilha de auditoria como o
-/// usuário escreveu.
+/// O motivo de negócio, em texto livre. Após autorização, os novos registros
+/// omitem o campo inteiro se ele contiver um valor sensível reconhecido.
 /// </param>
 public sealed record JustificationRequest(
     [property: JsonPropertyName("eventId")] string EventId,
