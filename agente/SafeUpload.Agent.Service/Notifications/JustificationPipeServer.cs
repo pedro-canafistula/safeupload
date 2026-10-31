@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -85,7 +86,7 @@ public sealed class JustificationPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
+                _logger.LogSafeWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
                 if (pipe is not null) await pipe.DisposeAsync().ConfigureAwait(false);
                 _connections.Release();
                 continue;
@@ -130,7 +131,7 @@ public sealed class JustificationPipeServer : BackgroundService
                 {
                     // A stale generation or failed audit/publication is a
                     // rejection, not an unexplained EOF to the real client.
-                    _logger.LogWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
+                    _logger.LogSafeWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
                 }
             }
 
@@ -149,7 +150,7 @@ public sealed class JustificationPipeServer : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Falha ao atender o canal de justificativas.");
+            _logger.LogSafeWarning(ex, "Falha ao atender o canal de justificativas.");
         }
         finally
         {

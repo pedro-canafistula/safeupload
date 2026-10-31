@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -89,8 +90,7 @@ public sealed class ClipboardPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
+                _logger.LogSafeError(ex,
                     "Nao foi possivel criar o pipe do canal de clipboard. Nova tentativa em {Espera}.",
                     retryDelay);
 
@@ -114,7 +114,7 @@ public sealed class ClipboardPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de clipboard.");
+                _logger.LogSafeWarning(ex, "Falha ao aceitar conexao no canal de clipboard.");
                 await pipe.DisposeAsync().ConfigureAwait(false);
 
                 // Sem esperar, uma falha que se repete viraria um laço apertado
@@ -218,7 +218,7 @@ public sealed class ClipboardPipeServer : BackgroundService
         {
             // O log leva a exceção, que não carrega o texto: ela vem do pipe
             // ou da política, nunca do conteúdo do pedido.
-            _logger.LogWarning(ex, "Falha ao atender o canal de clipboard.");
+            _logger.LogSafeWarning(ex, "Falha ao atender o canal de clipboard.");
         }
         finally
         {

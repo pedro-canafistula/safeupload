@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using SafeUpload.Agent.Core.Application;
 
 namespace SafeUpload.Agent.Service.Clipboard;
@@ -26,13 +27,13 @@ public static class ClipboardLog
         switch (observation.Kind)
         {
             case ClipboardObservationKind.PolicyUnavailable:
-                logger.LogWarning(
+                logger.LogSafeWarning(
                     "Politica indisponivel no canal de clipboard ({Tipo}). Liberando.",
                     observation.FailureType);
                 break;
 
             case ClipboardObservationKind.DirtyCopy:
-                logger.LogInformation(
+                logger.LogSafeInformation(
                     "Clipboard sujo: motivo {Motivo}, categorias [{Categorias}], origem {Origem}. " +
                     "Copias {Copias}, sujas {Sujas}.",
                     observation.Reason,
@@ -43,7 +44,7 @@ public static class ClipboardLog
                 break;
 
             case ClipboardObservationKind.EgressFocusWhileDirty:
-                logger.LogInformation(
+                logger.LogSafeInformation(
                     "Foco em destino de saida com o clipboard sujo: {Destino} (origem {Origem}, veredito {Veredito}). " +
                     "Total {Total} de {Trocas} trocas de foco.",
                     observation.DestinationProcess ?? "(desconhecido)",
@@ -54,7 +55,7 @@ public static class ClipboardLog
                 break;
 
             case ClipboardObservationKind.EgressPasteWhileDirty:
-                logger.LogInformation(
+                logger.LogSafeInformation(
                     "Colagem em destino de saida com o clipboard sujo: {Destino} (origem {Origem}, veredito {Veredito}). " +
                     "Bloqueadas {Bloqueadas} de {Tentativas} colagens.",
                     observation.DestinationProcess ?? "(desconhecido)",

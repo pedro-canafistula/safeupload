@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
@@ -34,6 +35,8 @@ public sealed class FileSystemInterceptor : BackgroundService
     private readonly IPolicyStore _policyStore;
     private readonly NotificationHub _hub;
     private readonly ILogger<FileSystemInterceptor> _logger;
+    private readonly string _quarantineFolder;
+    private readonly string _policyFile;
 
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
@@ -48,12 +51,19 @@ public sealed class FileSystemInterceptor : BackgroundService
         IAuditSink auditSink,
         NotificationHub hub,
         ILogger<FileSystemInterceptor> logger)
+        : this(inspection, policyStore, auditSink, hub, logger, AgentPaths.QuarantineFolder, AgentPaths.PolicyFile) { }
+
+    // Isolated fixture paths; the public production constructor retains the machine defaults.
+    internal FileSystemInterceptor(InspectionService inspection, IPolicyStore policyStore, IAuditSink auditSink,
+        NotificationHub hub, ILogger<FileSystemInterceptor> logger, string quarantineFolder, string policyFile)
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         ArgumentNullException.ThrowIfNull(auditSink); // Keep the existing composition/constructor contract.
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _quarantineFolder = Path.GetFullPath(quarantineFolder);
+        _policyFile = Path.GetFullPath(policyFile);
     }
 
     /// <inheritdoc />
@@ -106,7 +116,7 @@ public sealed class FileSystemInterceptor : BackgroundService
         {
             policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
-            Directory.CreateDirectory(AgentPaths.QuarantineFolder);
+            Directory.CreateDirectory(_quarantineFolder);
 
             foreach (var folder in policy.MonitoredScopes.DestinationPaths)
             {
@@ -129,7 +139,7 @@ public sealed class FileSystemInterceptor : BackgroundService
                 watcher.EnableRaisingEvents = true;
                 _watchers.Add(watcher);
 
-                _logger.LogInformation("Vigiando {Pasta}", folder);
+                _logger.LogSafeInformation("Vigiando {Pasta}", folder);
             }
 
             _hub.Publish(new StatusNotification(
@@ -140,7 +150,7 @@ public sealed class FileSystemInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Nao foi possivel aplicar a politica; o agente nao vai interceptar");
+            _logger.LogSafeError(ex, "Nao foi possivel aplicar a politica; o agente nao vai interceptar");
 
             StopWatchers();
 
@@ -162,9 +172,9 @@ public sealed class FileSystemInterceptor : BackgroundService
     {
         try
         {
-            Directory.CreateDirectory(AgentPaths.RootDirectory);
+            Directory.CreateDirectory(Path.GetDirectoryName(_policyFile)!);
 
-            _policyWatcher = new FileSystemWatcher(AgentPaths.RootDirectory, AgentPaths.PolicyFileName)
+            _policyWatcher = new FileSystemWatcher(Path.GetDirectoryName(_policyFile)!, Path.GetFileName(_policyFile))
             {
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName
             };
@@ -177,7 +187,7 @@ public sealed class FileSystemInterceptor : BackgroundService
         {
             // Sem observar a política o serviço continua funcionando com a que
             // já leu; só perde a atualização automática.
-            _logger.LogWarning(ex, "Nao foi possivel observar mudancas na politica");
+            _logger.LogSafeWarning(ex, "Nao foi possivel observar mudancas na politica");
         }
     }
 
@@ -196,7 +206,7 @@ public sealed class FileSystemInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falha ao recarregar a politica");
+            _logger.LogSafeError(ex, "Falha ao recarregar a politica");
         }
     });
 
@@ -262,7 +272,7 @@ public sealed class FileSystemInterceptor : BackgroundService
             // Nenhuma falha do gatilho pode derrubar o serviço. Fail-open vale
             // aqui também: na dúvida, a operação do usuário segue. Mas a falha
             // vai para o log do serviço em vez de sumir.
-            _logger.LogError(ex, "Falha ao interceptar {Arquivo}", Path.GetFileName(path));
+            _logger.LogSafeError(ex, "Falha ao interceptar {Arquivo}", Path.GetFileName(path));
         }
     }
 
@@ -280,7 +290,7 @@ public sealed class FileSystemInterceptor : BackgroundService
             return true;
         }
 
-        if (path.StartsWith(AgentPaths.QuarantineFolder, StringComparison.OrdinalIgnoreCase))
+        if (path.StartsWith(_quarantineFolder, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -375,7 +385,7 @@ public sealed class FileSystemInterceptor : BackgroundService
 
         var result = await _inspection.InspectAsync(operation, _stopping).ConfigureAwait(false);
 
-        bool quarantined = result.IsBlocked && FileQuarantine.TryMove(path, AgentPaths.QuarantineFolder, _logger);
+        bool quarantined = result.IsBlocked && FileQuarantine.TryMove(path, _quarantineFolder, _logger);
 
         if (!result.InScope)
         {
@@ -397,11 +407,12 @@ public sealed class FileSystemInterceptor : BackgroundService
                 auditEvent, result.Findings, Quarantined: quarantined), sessionId);
         }
 
-        _logger.LogInformation(
-            "{Veredito} {Arquivo} em {Duracao} ms",
+        _logger.LogSafeInformation(
+            "{Veredito} {Arquivo} em {Duracao} ms; evento {EventId}",
             result.Verdict,
             operation.FileName,
-            result.ElapsedMs);
+            result.ElapsedMs,
+            result.RecordedEvent?.EventId);
     }
 
 }

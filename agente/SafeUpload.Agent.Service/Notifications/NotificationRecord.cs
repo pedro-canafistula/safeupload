@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
@@ -164,7 +165,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 Heartbeat();
             }
         }
-        catch (Exception ex) { _logger.LogError(ex, "Notification record coverage failed; notifications suppressed until recovery"); }
+        catch (Exception ex) { _logger.LogSafeError(ex, "Notification record coverage failed; notifications suppressed until recovery"); }
     }
 
     private void RequireHealthy()
@@ -382,7 +383,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         {
             if (_disposed) return;
             try { if (!_failed) Write("Stop", null, null, null, null); }
-            catch (Exception ex) { _logger.LogError(ex, "Notification record shutdown failed"); }
+            catch (Exception ex) { _logger.LogSafeError(ex, "Notification record shutdown failed"); }
             _disposed = true;
             _lease.Dispose();
         }

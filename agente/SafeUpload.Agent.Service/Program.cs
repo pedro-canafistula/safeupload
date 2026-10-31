@@ -104,7 +104,7 @@ public static class Program
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Cannot open notification record; all notifications will be suppressed");
+                logger.LogSafeError(ex, "Cannot open notification record; all notifications will be suppressed");
                 return new UnavailableNotificationRecord(ex);
             }
         });
@@ -315,7 +315,7 @@ public static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Boot policy seed failed: {ex}");
+            Console.Error.WriteLine("Boot policy seed failed: " + OperationalLog.DescribeFailure(ex));
             return 1;
         }
     }
