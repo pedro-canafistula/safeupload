@@ -11,6 +11,39 @@ namespace SafeUpload.Agent.Tests;
 
 public sealed class AuditHistoryTests : IDisposable
 {
+    [Theory]
+    [InlineData(false, 229, true)]
+    [InlineData(false, 0, false)]
+    [InlineData(false, 5, false)]
+    [InlineData(false, 6, false)]
+    [InlineData(false, 233, false)]
+    [InlineData(true, 0, false)]
+    [InlineData(true, 229, false)]
+    public void Identidade_de_processo_local_exige_transporte_local_confirmado(bool hasRemoteName, int error, bool expected) =>
+        Assert.Equal(expected, SessionResolver.IsConfirmedLocalPipe(hasRemoteName, error));
+
+    [Fact]
+    public async Task Sid_e_autoritativo_sem_fallback_para_nome_igual_ou_evento_compartilhado()
+    {
+        const string mine = "S-1-5-21-1-2-3-1001", other = "S-1-5-21-1-2-3-1002";
+        var sink = new LocalQueueAuditSink(_workspace.QueueFile);
+        var own = Event("OLD-DOMAIN\\old-name") with { OwnerSid = mine, Channel = AuditChannel.Web };
+        var sameNameOtherSid = Event("CURRENT\\alice") with { OwnerSid = other };
+        var sharedOtherSid = Event(Environment.MachineName + "$") with { OwnerSid = other };
+        foreach (var item in new[] { own, sameNameOtherSid, sharedOtherSid }) await sink.WriteAsync(item, CancellationToken.None);
+        var reader = new AuditHistoryReader(new LocalQueueAuditSink(_workspace.QueueFile));
+        var history = await reader.ReadAsync("CURRENT\\alice", CancellationToken.None, mine);
+        Assert.Equal(own.EventId, Assert.Single(history.Events).EventId);
+        // A failed account-name lookup still permits only the authenticated SID's events.
+        history = await reader.ReadAsync(null, CancellationToken.None, mine);
+        Assert.True(history.Available);
+        Assert.Equal(own.EventId, Assert.Single(history.Events).EventId);
+        var invalid = await reader.ReadAsync("CURRENT\\alice", CancellationToken.None, "invalid-sid");
+        Assert.False(invalid.Available); Assert.Empty(invalid.Events);
+        var namesOnly = await reader.ReadAsync("CURRENT\\alice", CancellationToken.None);
+        Assert.Empty(namesOnly.Events);
+    }
+
     private readonly TestWorkspace _workspace = new();
     private static AuditEvent Event(string user = "LAB\\alice") => new(Guid.NewGuid(),
         DateTimeOffset.UtcNow.AddMinutes(-5), Environment.MachineName, user, "synthetic.txt", ".txt", 29,
@@ -149,7 +182,7 @@ public sealed class AuditHistoryTests : IDisposable
     public async Task Real_pipe_sends_persisted_history_before_live_events_and_restores_it_on_reconnect()
     {
         using var identity = WindowsIdentity.GetCurrent();
-        var own = Event(identity.Name);
+        var own = Event(identity.Name) with { OwnerSid = identity.User!.Value };
         var shared = Event(Environment.MachineName + "$");
         var sink = new LocalQueueAuditSink(_workspace.QueueFile);
         foreach (var item in new[] { own, shared, Event("OTHER\\person") })

@@ -11,6 +11,14 @@ namespace SafeUpload.Agent.Tests;
 
 public sealed class StagedTransferJournalTests : IDisposable
 {
+    [Fact]
+    public async Task Audit_account_marker_without_captured_requestor_identity_is_rejected()
+    {
+        var journal = Journal();
+        var transfer = Transfer() with { AuditAccountName = "LAB\\owner" };
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.CreateAsync(transfer, CancellationToken.None));
+    }
+
     private readonly TestWorkspace _workspace = new();
 
     public void Dispose() => _workspace.Dispose();

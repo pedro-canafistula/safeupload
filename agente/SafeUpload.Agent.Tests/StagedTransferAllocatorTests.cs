@@ -35,6 +35,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var entry = await journal.ReadAsync(first.TransferId, CancellationToken.None);
         Assert.Equal(TransferJournalState.Allocated, entry.State);
         Assert.Equal(first, entry.Transfer);
+        Assert.Null(entry.Transfer.AuditAccountName); // An unbound/legacy allocation is not reattributed.
     }
 
     [Fact]
@@ -52,6 +53,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
 
         TransferJournalEntry entry = await journal.ReadAsync(transfer.TransferId, CancellationToken.None);
         Assert.Equal(sid, entry.Transfer.RequestorSid);
+        Assert.Equal(sid, entry.Transfer.AuditAccountName); // Synthetic SID cannot resolve: stable SID fallback.
         Assert.Equal<long?>(638953632000000000, entry.Transfer.RequestorProcessCreationTime);
     }
 

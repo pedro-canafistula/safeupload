@@ -26,7 +26,8 @@ public sealed record WebUpload(
     string ProcessName,
     int ProcessId,
     IReadOnlyList<WebUploadPart> Parts,
-    string? UserName = null);
+    string? UserName = null,
+    string? OwnerSid = null);
 
 /// <summary>Um evento de auditoria gravado para o envio, com os achados dele.</summary>
 /// <param name="Event">O evento, como foi para a fila.</param>
@@ -358,7 +359,7 @@ public sealed class WebInspectionService
             policy.Version,
             stopwatch.ElapsedMilliseconds,
             Dispatched: false,
-            Channel: AuditChannel.Web);
+            Channel: AuditChannel.Web) { OwnerSid = upload.OwnerSid };
 
         try
         {

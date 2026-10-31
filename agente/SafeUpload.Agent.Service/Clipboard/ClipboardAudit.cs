@@ -24,7 +24,7 @@ public static class ClipboardAudit
 
     public static async Task<ClipboardResponse> WriteAsync(ClipboardOutcome outcome,
         IAuditSink sink, ILogger logger, string? userName, CancellationToken cancellationToken,
-        string? endpointId = null)
+        string? endpointId = null, string? ownerSid = null)
     {
         if (outcome.Observation is not { Kind: ClipboardObservationKind.EgressFocusWhileDirty
                 or ClipboardObservationKind.EgressPasteWhileDirty } observation)
@@ -42,7 +42,7 @@ public static class ClipboardAudit
             "", "", observation.SizeBytes, verdict,
             observation.Categories ?? [], [], observation.SourceProcess ?? "", 0,
             observation.DestinationProcess ?? "", reason,
-            observation.PolicyVersion, 0, false, Channel: AuditChannel.Clipboard);
+            observation.PolicyVersion, 0, false, Channel: AuditChannel.Clipboard) { OwnerSid = ownerSid };
         try
         {
             await sink.WriteAsync(auditEvent, cancellationToken).ConfigureAwait(false);

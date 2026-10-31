@@ -52,7 +52,11 @@ public sealed record AuditEvent(
     long ElapsedMs,
     bool Dispatched,
     string? PublishedSha256Hex = null,
-    AuditChannel Channel = AuditChannel.File);
+    AuditChannel Channel = AuditChannel.File)
+{
+    /// <summary>Local authorization identity captured by the service; excluded from the network DTO.</summary>
+    public string? OwnerSid { get; init; }
+}
 
 /// <summary>
 /// Por onde o dado tentou sair.
