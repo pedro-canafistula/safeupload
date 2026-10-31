@@ -1,6 +1,6 @@
-# Campos livres da auditoria — candidata privada
+# Campos livres da auditoria
 
-Incremento sobre a candidata do instalador 8133bf3a, restrito ao agente. Primeiro corrige a correlação: InspectionService devolve em memória o evento cuja gravação terminou para aquela chamada. Os interceptores usam esse evento diretamente, sem procurar os cinco últimos pelo nome. Decisões em cache não conservam evento anterior; falha de gravação não produz falsa confirmação nem altera o veredito. RecordedEvent é ignorado na serialização do resultado e não é recibo do servidor ou garantia de fsync.
+Correção consolidada sobre a main 5219afb5, restrita ao agente, sem depender da política ou instalador candidatos. InspectionService devolve em memória o evento cuja gravação terminou para aquela chamada. Os interceptores usam esse evento diretamente, sem procurar os cinco últimos pelo nome. Decisões em cache não conservam evento anterior; falha de gravação não produz falsa confirmação nem altera o veredito. RecordedEvent é ignorado na serialização do resultado e não é recibo do servidor ou garantia de fsync.
 
 ## Novos registros
 
@@ -18,4 +18,4 @@ Nova alocação staged grava AuditMetadataVersion=1 no journal. Publisher projet
 
 Reprodução anterior da correlação recebeu evento de outra operação com o mesmo nome. Testes verificam resultado direto, decisão em cache, falha de fila, propriedade ausente no JSON, observador real em pasta temporária, omissão de dados sintéticos, apresentação antiga, reenvio idêntico, journal após reinício e publicação no caminho original. Não instalam serviço/driver nem usam backend real ou WPF aberto.
 
-Este recorte não é revisão completa dos logs técnicos: ainda há chamadas de logger com exceções/caminhos em outros componentes a revisar. Identidades técnicas e caminhos privados de recuperação/journal continuam sob seus controles de acesso, não são anonimizados como campos de auditoria. Não apaga registros históricos, não promete sanitização de dados não reconhecidos nem qualifica o conjunto com driver/console. Candidata sem publicação; integração conserva os aceites compartilhados.
+Logs diretos revisados do serviço são tratados em LOGS-NUCLEO-20261031.md; isso não cobre globalmente saídas de runtime/framework/Windows ou bibliotecas dos colegas. Identidades técnicas e caminhos privados de recuperação/journal continuam sob seus controles de acesso, sem anonimização como campos de auditoria. Não apaga registros históricos, não promete sanitização de dados não reconhecidos nem qualifica o conjunto com driver/console. Publicação/CI dependem dos checks do commit/PR; integração conserva os aceites compartilhados.

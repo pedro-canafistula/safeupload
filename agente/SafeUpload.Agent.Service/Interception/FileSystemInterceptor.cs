@@ -283,7 +283,7 @@ public sealed class FileSystemInterceptor : BackgroundService
     /// que bloquearia de novo e moveria de novo: o serviço entraria em laço
     /// sozinho, sem nenhuma ação do usuário.
     /// </summary>
-    private static bool ShouldIgnore(string path)
+    private bool ShouldIgnore(string path)
     {
         if (Directory.Exists(path))
         {

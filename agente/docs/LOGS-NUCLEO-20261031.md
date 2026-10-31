@@ -1,6 +1,6 @@
-# Logs operacionais do agente — candidata privada
+# Logs operacionais do agente
 
-Incremento sobre 3d06d276, restrito ao registro de diagnóstico do serviço e suas pontes. A inspeção, o veredito, os destinos operacionais, a auditoria persistida, o IPC e o protocolo do driver não mudam.
+Registro de diagnóstico do serviço e suas pontes, consolidado sobre a main 5219afb5 junto das correções de correlação/privacidade/fila. Política e instalador candidatos continuam separados. A mudança de logs não altera inspeção, veredito, destinos operacionais, auditoria persistida, IPC ou protocolo do driver.
 
 ## Proteção
 
@@ -16,7 +16,7 @@ A revisão cobre as chamadas explícitas em Agent.Service: interceptores, publis
 
 Não é filtro global de ILogger nem anonimização universal. Os templates devem ser constantes confiáveis; não passar texto do usuário como template. Logs próprios de frameworks, runtime, Windows, ferramentas e implementações dos colegas (biblioteca Network/kernel) não foram alterados ou qualificados por esta mudança. O aceite instalado deve conferir também essas fontes, inclusive falhas de inicialização do host. Não afirmar que toda saída do processo está coberta. Dados fora dos padrões reconhecidos, quando não pertencem a campos/caminhos omitidos, conservam as limitações do detector.
 
-Sem migração/limpeza de logs históricos, alteração de permissão ou política de auditoria do Windows, instalação de serviço/driver, execução do proxy ou CA, publicação ou novo instalador. O workflow inclui o grupo de testes novos, mas sua preparação não equivale a execução de CI.
+Sem migração/limpeza de logs históricos, mudança de provedor/política de auditoria do Windows, proxy ou CA. O workflow exige o grupo novo, mas sua preparação não equivale à execução. Conferir os checks do commit/PR e o manifesto do pacote para identificar a versão validada.
 
 ## Validação
 

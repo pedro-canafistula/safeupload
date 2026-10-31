@@ -84,8 +84,9 @@ public sealed class InspectionEventCorrelationTests : IDisposable
     {
         string scope = Path.Combine(_workspace.Root, "scope");
         Directory.CreateDirectory(scope);
-        var policy = LocalPolicyStore.CreateDefault() with { MonitoredScopes = new(new HashSet<string> { ".txt" }, [scope], false, false) };
-        File.WriteAllText(_workspace.PolicyFile, JsonSerializer.Serialize(PolicyDocument.FromPolicy(policy)));
+        var document = PolicyDocument.Default with { MonitoredScopes = new MonitoredScopesDocument
+            { Extensions = [".txt"], DestinationPaths = [scope], RemovableDrives = false, NetworkPaths = false } };
+        File.WriteAllText(_workspace.PolicyFile, JsonSerializer.Serialize(document));
         var policies = new LocalPolicyStore(_workspace.PolicyFile);
         var sink = new Sink();
         var hub = new NotificationHub(new Record(), NullLogger<NotificationHub>.Instance);

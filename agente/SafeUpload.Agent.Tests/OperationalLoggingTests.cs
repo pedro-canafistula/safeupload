@@ -162,8 +162,9 @@ public sealed class OperationalLoggingTests
         using var workspace = new TestWorkspace();
         string scope = Path.Combine(workspace.Root, Secret);
         Directory.CreateDirectory(scope);
-        var policy = LocalPolicyStore.CreateDefault() with { MonitoredScopes = new(new HashSet<string> { ".txt" }, [scope], false, false) };
-        File.WriteAllText(workspace.PolicyFile, JsonSerializer.Serialize(PolicyDocument.FromPolicy(policy)));
+        var document = PolicyDocument.Default with { MonitoredScopes = new MonitoredScopesDocument
+            { Extensions = [".txt"], DestinationPaths = [scope], RemovableDrives = false, NetworkPaths = false } };
+        File.WriteAllText(workspace.PolicyFile, JsonSerializer.Serialize(document));
         var policies = new LocalPolicyStore(workspace.PolicyFile);
         var queue = new LocalQueueAuditSink(workspace.QueueFile);
         var engine = new InspectionService(policies, queue, ExtractorRegistry.CreateDefault(), new VerdictCache());
