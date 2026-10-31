@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using SafeUpload.Agent.App.Mvvm;
-using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 
@@ -12,15 +11,13 @@ namespace SafeUpload.Agent.App.ViewModels;
 /// Nada aqui é descoberto pelo aplicativo. A versão da política, a contagem de
 /// categorias e o próprio fato de haver proteção ativa chegam do serviço pelo
 /// canal de notificação; a atividade recente vem dos eventos que ele anuncia.
-/// O aplicativo lê a trilha em disco uma vez, ao abrir, só para não começar
-/// vazio.
+/// A atividade anterior é recebida do serviço, sem abrir a fila privada.
 /// </summary>
 public sealed class StatusViewModel : ObservableObject
 {
     /// <summary>Quantas operações a tabela de atividade mostra.</summary>
     public const int RecentActivityCount = 8;
 
-    private readonly IAuditSink _auditSink;
 
     private string _securityState = "Aguardando o serviço";
     private string _securityCaption = "CONECTANDO";
@@ -29,9 +26,6 @@ public sealed class StatusViewModel : ObservableObject
     private string _monitoringState = "AGUARDANDO";
     private bool _connected;
 
-    /// <summary>Compõe a tela sobre a trilha de auditoria.</summary>
-    public StatusViewModel(IAuditSink auditSink) =>
-        _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
 
     /// <summary>As operações recentes, da mais nova para a mais antiga.</summary>
     public ObservableCollection<ActivityRowViewModel> RecentActivity { get; } = [];
@@ -85,15 +79,11 @@ public sealed class StatusViewModel : ObservableObject
     /// <summary>Verdadeiro quando não há nenhuma operação registrada ainda.</summary>
     public bool HasNoActivity => RecentActivity.Count == 0;
 
-    /// <summary>Carrega a atividade já registrada em disco.</summary>
-    public async Task LoadAsync()
+    /// <summary>Recebe o histórico autorizado pelo serviço, sem acessar a fila.</summary>
+    public void ApplyHistory(IReadOnlyList<AuditEvent> events)
     {
-        var events = await _auditSink
-            .ReadRecentAsync(RecentActivityCount, CancellationToken.None)
-            .ConfigureAwait(true);
-
         RecentActivity.Clear();
-        foreach (var auditEvent in events)
+        foreach (var auditEvent in events.DistinctBy(e => e.EventId).Take(RecentActivityCount))
         {
             RecentActivity.Add(new ActivityRowViewModel(auditEvent));
         }
@@ -184,6 +174,7 @@ public sealed class StatusViewModel : ObservableObject
     public void PrependActivity(AuditEvent auditEvent)
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
+        if (RecentActivity.Any(row => row.EventId == auditEvent.EventId)) return;
 
         RecentActivity.Insert(0, new ActivityRowViewModel(auditEvent));
 

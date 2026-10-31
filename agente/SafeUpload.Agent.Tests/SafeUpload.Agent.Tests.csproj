@@ -29,6 +29,12 @@
     <!-- Pure presentation logic; no WPF runtime or reference to the interactive app. -->
     <Compile Include="..\SafeUpload.Agent.App\Mvvm\ObservableObject.cs" Link="Presentation\ObservableObject.cs" />
     <Compile Include="..\SafeUpload.Agent.App\ViewModels\CommunicationViewModel.cs" Link="Presentation\CommunicationViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\AgentViewModel.cs" Link="Presentation\AgentViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\StatusViewModel.cs" Link="Presentation\StatusViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\HistoryViewModel.cs" Link="Presentation\HistoryViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\ActivityRowViewModel.cs" Link="Presentation\ActivityRowViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\QueueRowViewModel.cs" Link="Presentation\QueueRowViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\AuditSubject.cs" Link="Presentation\AuditSubject.cs" />
   </ItemGroup>
 
   <ItemGroup>

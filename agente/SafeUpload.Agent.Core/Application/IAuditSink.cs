@@ -47,6 +47,10 @@ public interface IAuditSink
     /// <param name="maxEvents">Limite de registros; zero ou negativo mantém a consulta completa legada.</param>
     Task<IReadOnlyList<AuditEvent>> ReadRecentAsync(int maxEvents, CancellationToken cancellationToken);
 
+    /// <summary>Bounded recent records after a trusted service-side visibility filter.</summary>
+    Task<IReadOnlyList<AuditEvent>> ReadRecentMatchingAsync(int maxEvents, Func<AuditEvent, bool> visible,
+        CancellationToken cancellationToken) => throw new NotSupportedException("Filtered history is unavailable.");
+
     /// <summary>
     /// Eventos ainda não entregues ao servidor central, na ordem em que foram
     /// registrados. O despachante usa esta leitura para preparar o próximo lote.

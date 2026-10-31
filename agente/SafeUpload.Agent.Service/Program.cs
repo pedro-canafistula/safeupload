@@ -240,6 +240,7 @@ public static class Program
             auditHealth: provider.GetRequiredService<AuditQueueHealth>()));
 
         // A entrega das notificacoes aos aplicativos conectados.
+        builder.Services.AddSingleton<AuditHistoryReader>();
         builder.Services.AddHostedService<NotificationPipeServer>();
 
         // O caminho de volta, e o unico: recebe justificativas do aplicativo.

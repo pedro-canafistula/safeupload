@@ -35,12 +35,17 @@ public sealed class NotificationPipeServer : BackgroundService
 
     private readonly NotificationHub _hub;
     private readonly ILogger<NotificationPipeServer> _logger;
+    private readonly AuditHistoryReader _history;
+    private readonly string _pipeName;
 
     /// <summary>Compõe o servidor.</summary>
-    public NotificationPipeServer(NotificationHub hub, ILogger<NotificationPipeServer> logger)
+    public NotificationPipeServer(NotificationHub hub, ILogger<NotificationPipeServer> logger, AuditHistoryReader history,
+        string pipeName = NotificationProtocol.PipeName)
     {
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _history = history ?? throw new ArgumentNullException(nameof(history));
+        _pipeName = pipeName;
     }
 
     /// <inheritdoc />
@@ -54,7 +59,8 @@ public sealed class NotificationPipeServer : BackgroundService
             {
                 var pipe = CreatePipe();
 
-                await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
+                try { await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false); }
+                catch { await pipe.DisposeAsync().ConfigureAwait(false); throw; }
 
                 // Cada cliente é atendido em sua própria tarefa. O laço volta
                 // imediatamente a aceitar: se ele esperasse o cliente terminar,
@@ -108,7 +114,7 @@ public sealed class NotificationPipeServer : BackgroundService
     /// que cobre tanto LocalSystem em produção quanto o usuário interativo
     /// durante a depuração em console.
     /// </summary>
-    private static NamedPipeServerStream CreatePipe()
+    private NamedPipeServerStream CreatePipe()
     {
         var security = new PipeSecurity();
 
@@ -133,7 +139,7 @@ public sealed class NotificationPipeServer : BackgroundService
         }
 
         return NamedPipeServerStreamAcl.Create(
-            NotificationProtocol.PipeName,
+            _pipeName,
             PipeDirection.Out,
             MaxServerInstances,
             PipeTransmissionMode.Byte,
@@ -176,6 +182,26 @@ public sealed class NotificationPipeServer : BackgroundService
                 {
                     return;
                 }
+
+                HistoryNotification history;
+                using (var historyBudget = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken))
+                {
+                    historyBudget.CancelAfter(TimeSpan.FromSeconds(5));
+                    try
+                    {
+                        string? account = client?.UserSid.Translate(typeof(NTAccount)).Value;
+                        history = await _history.ReadAsync(account, historyBudget.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                    { history = new([], Available: false); }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogWarning("Historico indisponivel para esta conexao ({Kind}).", ex.GetType().Name);
+                        history = new([], Available: false);
+                    }
+                }
+                if (!_hub.RecordHistory(history, sessionId) ||
+                    !await TryWriteAsync(writer, history, stoppingToken).ConfigureAwait(false)) return;
 
                 await foreach (var notification in subscription.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
                 {
