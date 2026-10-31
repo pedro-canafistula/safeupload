@@ -114,6 +114,23 @@ function Read-SessionHistory([string]$Phase) {
         $timeout.Dispose()
     }
 }
+function Read-AuditMaintenance([string]$Phase) {
+    $queueFile = Join-Path $agentRoot 'queue.jsonl'
+    $beforeExists = Test-Path -LiteralPath $queueFile -PathType Leaf
+    $beforeHash = if ($beforeExists) { (Get-FileHash -LiteralPath $queueFile -Algorithm SHA256).Hash } else { $null }
+    $inventory = & (Join-Path $PSScriptRoot 'Get-SafeUploadDiagnostics.ps1') -Query audit-temporaries
+    $classification = & (Join-Path $PSScriptRoot 'Get-SafeUploadDiagnostics.ps1') -Query audit-temporary-classification
+    $preview = & (Join-Path $PSScriptRoot 'Get-SafeUploadDiagnostics.ps1') -Query audit-retention-preview -OccurredBeforeUtc '2026-10-01T00:00:00Z'
+    Check "${Phase}: installed service inventories empty temporary scope" ($inventory.complete -eq $true -and $inventory.candidateFiles -eq 0)
+    Check "${Phase}: installed classification grants no recovery or deletion" ($classification.complete -eq $true -and $classification.candidateEntries -eq 0 -and
+        $classification.ownershipVerified -eq $false -and $classification.recoveryEligible -eq $false -and $classification.promotionSupported -eq $false -and $classification.deletionSupported -eq $false)
+    Check "${Phase}: installed retention preview is occurrence-only and read-only" ($preview.previewOnly -eq $true -and $preview.deletionSupported -eq $false -and
+        $preview.timestampBasis -eq 'record-occurrence-time' -and $preview.confirmedEventsBeforeCutoff -eq 0 -and $preview.confirmedOverridesBeforeCutoff -eq 0)
+    $afterExists = Test-Path -LiteralPath $queueFile -PathType Leaf
+    $afterHash = if ($afterExists) { (Get-FileHash -LiteralPath $queueFile -Algorithm SHA256).Hash } else { $null }
+    Check "${Phase}: maintenance preserves queue existence and bytes" ($beforeExists -eq $afterExists -and $beforeHash -eq $afterHash)
+    return [ordered]@{inventory=$inventory;classification=$classification;preview=$preview}
+}
 function Wait-Value([scriptblock]$Condition, [string]$Description, [int]$Seconds=60) {
     $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
     do {
@@ -236,6 +253,7 @@ try {
     $evidence.snapshots.auditIntegrityFirst = Read-AuditIntegrity 'first startup'
     $evidence.snapshots.auditHealthFirst = Read-AuditHealth 'first startup'
     $evidence.snapshots.historyFirst = Read-SessionHistory 'first startup'
+    $evidence.snapshots.maintenanceFirst = Read-AuditMaintenance 'first startup'
     Stop-Service $serviceName
     Stop-Owned $script:javaProcess
     Query "UPDATE app.hosts SET ativo=0,visto_por_ultimo='2000-01-01 00:00:00' WHERE id_host=$targetId;" | Out-Null
@@ -251,6 +269,7 @@ try {
     $evidence.snapshots.auditIntegrityOffline = Read-AuditIntegrity 'offline restart'
     $evidence.snapshots.auditHealthOffline = Read-AuditHealth 'offline restart'
     $evidence.snapshots.historyOffline = Read-SessionHistory 'offline restart'
+    $evidence.snapshots.maintenanceOffline = Read-AuditMaintenance 'offline restart'
     Check 'audit monitoring starts a new observation period after service restart' (
         $evidence.snapshots.auditHealthFirst.sinceUtc -ne $evidence.snapshots.auditHealthOffline.sinceUtc)
     Start-Backend 'recovered'

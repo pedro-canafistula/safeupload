@@ -17,6 +17,9 @@ public sealed record AuditQueueIntegritySnapshot(bool FileExists, long LinesScan
     public long DispatchedOverrides { get; init; }
     public DateTimeOffset? OldestPendingUtc { get; init; }
     public long PendingWithoutTimestamp { get; init; }
+    internal long ConfirmedEventsBeforeCutoff { get; init; }
+    internal long ConfirmedOverridesBeforeCutoff { get; init; }
+    internal long ConfirmedWithoutTimestamp { get; init; }
 
     // Unknown record types can belong to a newer writer; do not call them corruption.
     public bool RequiresAttention => InvalidLines > 0 || UnknownRecords > 0;
@@ -31,7 +34,11 @@ public sealed partial class LocalQueueAuditSink
     /// dispatch or change the acceptance rules of existing readers. Cancellation/I/O
     /// errors propagate: a partial scan must never be reported as complete/healthy.
     /// </summary>
-    public async Task<AuditQueueIntegritySnapshot> InspectIntegrityAsync(CancellationToken cancellationToken)
+    public Task<AuditQueueIntegritySnapshot> InspectIntegrityAsync(CancellationToken cancellationToken) =>
+        InspectIntegrityAsync(null, cancellationToken);
+
+    private async Task<AuditQueueIntegritySnapshot> InspectIntegrityAsync(DateTimeOffset? occurredBeforeUtc,
+        CancellationToken cancellationToken)
     {
         var window = await OpenIntegritySnapshotAsync(cancellationToken).ConfigureAwait(false);
         if (window is null) return Missing();
@@ -43,6 +50,12 @@ public sealed partial class LocalQueueAuditSink
             long pendingEvents = 0, dispatchedEvents = 0, pendingOverrides = 0, dispatchedOverrides = 0,
                 pendingWithoutTimestamp = 0;
             DateTimeOffset? oldestPending = null;
+            long confirmedEventsBeforeCutoff = 0, confirmedOverridesBeforeCutoff = 0, confirmedWithoutTimestamp = 0;
+            bool BeforeCutoff(DateTimeOffset timestamp)
+            {
+                if (timestamp == default) { confirmedWithoutTimestamp++; return false; }
+                return occurredBeforeUtc is { } cutoff && timestamp < cutoff;
+            }
             void ObservePending(DateTimeOffset timestamp)
             {
                 if (timestamp == default) { pendingWithoutTimestamp++; return; }
@@ -86,6 +99,7 @@ public sealed partial class LocalQueueAuditSink
                                     dispatched.ValueKind == JsonValueKind.True)
                                 {
                                     dispatchedOverrides++;
+                                    if (BeforeCutoff(record.OccurredAtUtc)) confirmedOverridesBeforeCutoff++;
                                 }
                                 else { pendingOverrides++; ObservePending(record.OccurredAtUtc); }
                             }
@@ -102,6 +116,7 @@ public sealed partial class LocalQueueAuditSink
                             if (record.Dispatched)
                             {
                                 dispatchedEvents++;
+                                if (BeforeCutoff(record.OccurredAtUtc)) confirmedEventsBeforeCutoff++;
                             }
                             else { pendingEvents++; ObservePending(record.OccurredAtUtc); }
                         }
@@ -120,7 +135,10 @@ public sealed partial class LocalQueueAuditSink
             {
                 QueueBytes = queueBytes, PendingEvents = pendingEvents, DispatchedEvents = dispatchedEvents,
                 PendingOverrides = pendingOverrides, DispatchedOverrides = dispatchedOverrides,
-                OldestPendingUtc = oldestPending, PendingWithoutTimestamp = pendingWithoutTimestamp
+                OldestPendingUtc = oldestPending, PendingWithoutTimestamp = pendingWithoutTimestamp,
+                ConfirmedEventsBeforeCutoff = confirmedEventsBeforeCutoff,
+                ConfirmedOverridesBeforeCutoff = confirmedOverridesBeforeCutoff,
+                ConfirmedWithoutTimestamp = confirmedWithoutTimestamp
             };
         }
     }

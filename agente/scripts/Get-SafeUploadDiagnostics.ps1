@@ -20,6 +20,11 @@ driver while the product runs. The service exposes read-only queries over the SY
   audit-health         process-local failures/resumptions per queue operation, since service start.
                        No file scan, content or exception messages. Resumption does not recover failed writes.
 
+  audit-temporaries     bounded metadata inventory of queue-name.GUID.tmp candidates; no content read.
+  audit-temporary-classification bounded Windows content classification; no ownership/recovery proof.
+  audit-retention-preview occurrence-age counts for confirmed lines before -OccurredBeforeUtc (explicit UTC).
+                        All three are read-only. No promotion, recovery, deletion or retention policy is applied.
+
   counters   refusal counters, how often a path that could not resolve a name answered "the whole volume may be in
              scope", and the writer-state status (registry entries and capacity, reclaim-worker passes, sections,
              stage streams).
@@ -35,11 +40,13 @@ driver while the product runs. The service exposes read-only queries over the SY
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'communication-health', 'audit-health', 'audit-integrity', 'help')]
+    [ValidateSet('counters', 'deny-ring', 'communication-health', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
     [string] $Query = 'counters',
 
     # deny-ring: return records with a sequence greater than this value.
     [uint64] $After = 0,
+
+    [string] $OccurredBeforeUtc,
 
     [int] $TimeoutSeconds = 10
 )
@@ -71,6 +78,12 @@ function Invoke-DiagnosticsQuery([hashtable] $Request) {
 switch ($Query) {
     'audit-health' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'audit-integrity' { Invoke-DiagnosticsQuery @{ query = $Query } }
+    'audit-temporaries' { Invoke-DiagnosticsQuery @{ query = $Query } }
+    'audit-temporary-classification' { Invoke-DiagnosticsQuery @{ query = $Query } }
+    'audit-retention-preview' {
+        if ([string]::IsNullOrWhiteSpace($OccurredBeforeUtc)) { throw 'Specify -OccurredBeforeUtc as an explicit ISO 8601 UTC timestamp.' }
+        Invoke-DiagnosticsQuery @{ query = $Query; occurredBeforeUtc = $OccurredBeforeUtc }
+    }
     'communication-health' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'counters' { Invoke-DiagnosticsQuery @{ query = 'counters' } }
     'help' { Invoke-DiagnosticsQuery @{ query = 'help' } }

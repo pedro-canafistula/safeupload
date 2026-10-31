@@ -4,6 +4,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Globalization;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 
@@ -109,10 +110,22 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                         Ok(query, JsonSerializer.SerializeToNode(_auditHealth.Read(), new JsonSerializerOptions
                         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                 case "audit-integrity":
+                case "audit-temporaries":
+                case "audit-temporary-classification":
+                case "audit-retention-preview":
                     if (_auditQueue is null) return Error(query, "Audit storage is unavailable.");
+                    DateTimeOffset cutoff = default;
+                    if (query == "audit-retention-preview" && !TryReadCutoff(request, out cutoff))
+                        return Error(query, "occurredBeforeUtc must be an explicit ISO 8601 UTC timestamp, excluding the default date.");
                     try
                     {
-                        var snapshot = await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false);
+                        object snapshot = query switch
+                        {
+                            "audit-temporaries" => await _auditQueue.InspectTemporaryFilesAsync(cancellationToken).ConfigureAwait(false),
+                            "audit-temporary-classification" => await _auditQueue.ClassifyTemporaryFilesAsync(cancellationToken).ConfigureAwait(false),
+                            "audit-retention-preview" => await _auditQueue.PreviewRetentionAsync(cutoff, cancellationToken).ConfigureAwait(false),
+                            _ => await _auditQueue.InspectIntegrityAsync(cancellationToken).ConfigureAwait(false)
+                        };
                         return Ok(query, JsonSerializer.SerializeToNode(snapshot, new JsonSerializerOptions
                         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                     }
@@ -140,7 +153,9 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "audit-health", "audit-integrity", "help"),
+                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
+                        ["temporaryClassification"] = "bounded Windows content scan; structural validity does not prove ownership, complete copy or recovery eligibility; no promotion or deletion",
+                        ["retentionPreview"] = "requires explicit occurredBeforeUtc in UTC; occurrence-age counts only, never deletion eligibility",
                         ["auditHealth"] = "process-local operation failures and resumptions; resets on restart; no file scan or proof that failed writes were recovered",
                         ["auditIntegrity"] = "explicit read-only full scan; line counts include duplicate IDs; deadline expiry returns no partial inventory; no repair, deletion or proof of delivery",
                         ["communicationHealth"] = "process-local communication results; counters reset on restart; no proof of API persistence or protection",
@@ -159,6 +174,17 @@ public sealed class DiagnosticsPipeServer : BackgroundService
         {
             return Error(query, ex.Message);
         }
+    }
+
+    private static bool TryReadCutoff(JsonObject request, out DateTimeOffset cutoff)
+    {
+        cutoff = default;
+        return request["occurredBeforeUtc"] is JsonValue value && value.TryGetValue<string>(out var text) &&
+            DateTimeOffset.TryParseExact(text,
+                ["yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'",
+                 "yyyy-MM-dd'T'HH:mm:sszzz", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFzzz"],
+                CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out cutoff) &&
+            cutoff.Offset == TimeSpan.Zero && cutoff != default;
     }
 
     private static JsonObject Ok(string query, JsonNode data) =>
