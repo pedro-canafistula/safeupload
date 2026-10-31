@@ -33,7 +33,7 @@ foreach ($port in @(18080,13316)) {
     if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw 'Test port occupied.' }
 }
 $testedBinary = if ($ContractOnly) { $contractDll } else { $serviceExe }
-foreach ($file in @($testedBinary,$jar,$mysql,$mysqld,$mysqlAdmin)) {
+foreach ($file in @($testedBinary,$contractDll,$jar,$mysql,$mysqld,$mysqlAdmin)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Required test binary missing.' }
 }
 New-Item -ItemType Directory -Path $results -Force | Out-Null

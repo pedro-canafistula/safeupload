@@ -9,6 +9,26 @@ namespace SafeUpload.Agent.Tests;
 public sealed class ServicePipePeerTests
 {
     [Theory]
+    [InlineData("\"C:\\Program Files\\SafeUpload\\Agent\\service\\SafeUpload.Agent.Service.exe\" --flag=value", @"C:\Program Files\SafeUpload\Agent\service\SafeUpload.Agent.Service.exe")]
+    [InlineData("\"C:\\service.exe\"", @"C:\service.exe")]
+    [InlineData("C:\\Program Files\\service.exe --flag=value", null)]
+    [InlineData("\"C:\\service.exe\"unexpected", null)]
+    [InlineData("\"service.exe\"", null)]
+    [InlineData("\"C:\\unfinished.exe", null)]
+    [InlineData("", null)]
+    public void Service_executable_is_explicitly_quoted_and_not_confused_with_arguments(string command, string? expected) =>
+        Assert.Equal(expected, ServicePipePeer.ConfiguredExecutable(command));
+
+    [Theory]
+    [InlineData("LocalSystem", true)]
+    [InlineData("NT AUTHORITY\\SYSTEM", true)]
+    [InlineData(".\\alice", false)]
+    [InlineData("LocalService", false)]
+    [InlineData(null, false)]
+    public void Service_registration_requires_LocalSystem(string? account, bool expected) =>
+        Assert.Equal(expected, ServicePipePeer.IsLocalSystemAccount(account));
+
+    [Theory]
     [InlineData(4u, 16u, 71u, 71u, @"C:\Program Files\SafeUpload\Agent\service\SafeUpload.Agent.Service.exe", true)]
     [InlineData(2u, 16u, 71u, 71u, @"C:\Program Files\SafeUpload\Agent\service\SafeUpload.Agent.Service.exe", false)]
     [InlineData(1u, 16u, 71u, 71u, @"C:\Program Files\SafeUpload\Agent\service\SafeUpload.Agent.Service.exe", false)]

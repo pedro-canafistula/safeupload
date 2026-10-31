@@ -44,6 +44,8 @@ jobs:
         run: |
           dotnet publish agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj -c Release -r win-x64 --self-contained true -o artifacts/host-identity-service
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Executar suíte do agente e compilar contrato atual
         if: inputs.contract-only
         shell: pwsh
