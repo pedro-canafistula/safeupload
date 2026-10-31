@@ -65,7 +65,9 @@ public sealed class WebUploadInspectorTests : IDisposable
         EventNotification notification = Assert.IsType<EventNotification>(received);
         Assert.Equal(AuditChannel.Web, notification.Event.Channel);
         Assert.Equal(Verdict.Blocked, notification.Event.Verdict);
-        Assert.Equal("https://chat.example/conversa", notification.Event.DestinationPath);
+        Assert.Equal("https://chat.example", notification.Event.DestinationPath);
+        Assert.DoesNotContain("conversa", notification.Event.DestinationPath);
+        Assert.DoesNotContain("sessao", notification.Event.DestinationPath);
         Assert.Equal(Environment.UserName, notification.Event.UserName, ignoreCase: true);
         Assert.NotEmpty(notification.Findings);
         Assert.False(notification.OverrideAllowed);
