@@ -90,8 +90,7 @@ public static class Program
         // Administração configurado: é ela que deixa o endpoint continuar
         // registrando com a rede fora do ar. O envio ao painel é uma etapa
         // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
-        builder.Services.AddSingleton<LocalQueueAuditSink>();
-        builder.Services.AddSingleton<IAuditSink>(provider => provider.GetRequiredService<LocalQueueAuditSink>());
+        ConfigureAuditStorage(builder.Services);
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
@@ -237,7 +236,8 @@ public static class Program
             provider.GetRequiredService<DriverDiagnosticsSource>(),
             provider.GetRequiredService<ILogger<DiagnosticsPipeServer>>(),
             communicationHealth: provider.GetRequiredService<CommunicationHealth>(),
-            auditQueue: provider.GetRequiredService<LocalQueueAuditSink>()));
+            auditQueue: provider.GetRequiredService<LocalQueueAuditSink>(),
+            auditHealth: provider.GetRequiredService<AuditQueueHealth>()));
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddHostedService<NotificationPipeServer>();
@@ -263,6 +263,16 @@ public static class Program
         }
 
         await builder.Build().RunAsync();
+    }
+
+    internal static void ConfigureAuditStorage(IServiceCollection services)
+    {
+        services.AddSingleton<LocalQueueAuditSink>();
+        services.AddSingleton<AuditQueueHealth>();
+        services.AddSingleton<MonitoredAuditSink>(provider => new MonitoredAuditSink(
+            provider.GetRequiredService<LocalQueueAuditSink>(), provider.GetRequiredService<AuditQueueHealth>(),
+            provider.GetRequiredService<ILogger<MonitoredAuditSink>>()));
+        services.AddSingleton<IAuditSink>(provider => provider.GetRequiredService<MonitoredAuditSink>());
     }
 
     private static int FailSeedModeUsage()
