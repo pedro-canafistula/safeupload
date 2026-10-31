@@ -87,6 +87,33 @@ function Read-AuditHealth([string]$Phase) {
         $health.degraded -eq (@($health.operations | Where-Object degraded).Count -gt 0))
     return $health
 }
+function Read-SessionHistory([string]$Phase) {
+    $queueFile = Join-Path $agentRoot 'queue.jsonl'
+    $beforeExists = Test-Path -LiteralPath $queueFile -PathType Leaf
+    $beforeHash = if ($beforeExists) { (Get-FileHash -LiteralPath $queueFile -Algorithm SHA256).Hash } else { $null }
+    $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', 'SafeUpload.Agent', [IO.Pipes.PipeDirection]::In, [IO.Pipes.PipeOptions]::Asynchronous)
+    $reader = $null
+    $timeout = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(15))
+    try {
+        $pipe.ConnectAsync($timeout.Token).GetAwaiter().GetResult()
+        $reader = [IO.StreamReader]::new($pipe, [Text.UTF8Encoding]::new($false), $true, 4096, $true)
+        $line = $reader.ReadLineAsync($timeout.Token).AsTask().GetAwaiter().GetResult()
+        $status = $line | ConvertFrom-Json
+        Check "${Phase}: installed service sends status first" ($status.type -eq 'status')
+        $line = $reader.ReadLineAsync($timeout.Token).AsTask().GetAwaiter().GetResult()
+        $history = $line | ConvertFrom-Json
+        Check "${Phase}: authenticated history is available and bounded" ($history.type -eq 'history' -and $history.available -eq $true -and
+            @($history.events).Count -eq 0 -and [Text.Encoding]::UTF8.GetByteCount($line) -le 524288)
+        $afterExists = Test-Path -LiteralPath $queueFile -PathType Leaf
+        $afterHash = if ($afterExists) { (Get-FileHash -LiteralPath $queueFile -Algorithm SHA256).Hash } else { $null }
+        Check "${Phase}: history preserves queue existence and bytes" ($beforeExists -eq $afterExists -and $beforeHash -eq $afterHash)
+        return [ordered]@{available=$history.available;events=@($history.events).Count;bytes=[Text.Encoding]::UTF8.GetByteCount($line)}
+    } finally {
+        if ($null -ne $reader) { $reader.Dispose() }
+        $pipe.Dispose()
+        $timeout.Dispose()
+    }
+}
 function Wait-Value([scriptblock]$Condition, [string]$Description, [int]$Seconds=60) {
     $deadline=[DateTime]::UtcNow.AddSeconds($Seconds)
     do {
@@ -208,6 +235,7 @@ try {
     $evidence.snapshots.first=[ordered]@{service=$first;identityHash=$identityHash;target=(Host-Snapshot $targetId);heartbeatAgeSeconds=$firstAge}
     $evidence.snapshots.auditIntegrityFirst = Read-AuditIntegrity 'first startup'
     $evidence.snapshots.auditHealthFirst = Read-AuditHealth 'first startup'
+    $evidence.snapshots.historyFirst = Read-SessionHistory 'first startup'
     Stop-Service $serviceName
     Stop-Owned $script:javaProcess
     Query "UPDATE app.hosts SET ativo=0,visto_por_ultimo='2000-01-01 00:00:00' WHERE id_host=$targetId;" | Out-Null
@@ -222,6 +250,7 @@ try {
         (Query "SELECT ativo FROM app.hosts WHERE id_host=$targetId;") -eq '0' -and (Counts) -eq $countsBefore)
     $evidence.snapshots.auditIntegrityOffline = Read-AuditIntegrity 'offline restart'
     $evidence.snapshots.auditHealthOffline = Read-AuditHealth 'offline restart'
+    $evidence.snapshots.historyOffline = Read-SessionHistory 'offline restart'
     Check 'audit monitoring starts a new observation period after service restart' (
         $evidence.snapshots.auditHealthFirst.sinceUtc -ne $evidence.snapshots.auditHealthOffline.sinceUtc)
     Start-Backend 'recovered'

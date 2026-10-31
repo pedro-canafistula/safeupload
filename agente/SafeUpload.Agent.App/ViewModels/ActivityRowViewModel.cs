@@ -17,6 +17,7 @@ public sealed class ActivityRowViewModel
     public ActivityRowViewModel(AuditEvent auditEvent)
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
+        EventId = auditEvent.EventId;
 
         Description = Describe(auditEvent);
         IconKey = IconFor(auditEvent.Verdict);
@@ -24,8 +25,9 @@ public sealed class ActivityRowViewModel
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM HH:mm");
     }
 
-    /// <summary>Frase da operação, como "Upload bloqueado: clientes.xlsx".</summary>
+    /// <summary>Resultado da inspeção, sem presumir envio ou bloqueio preventivo.</summary>
     public string Description { get; }
+    public Guid EventId { get; }
 
     /// <summary>Chave do ícone da linha.</summary>
     public string IconKey { get; }
@@ -36,12 +38,14 @@ public sealed class ActivityRowViewModel
     /// <summary>Momento da operação, em hora local.</summary>
     public string OccurredAt { get; }
 
+    // O histórico não registra se um arquivo foi enviado ou impedido antes da
+    // gravação. O estado atual do serviço também não descreve uma decisão antiga.
     private static string Describe(AuditEvent auditEvent) => auditEvent.Verdict switch
     {
-        Verdict.Blocked => $"Upload bloqueado: {AuditSubject.Describe(auditEvent)}",
-        Verdict.Approved => $"Arquivo enviado: {AuditSubject.Describe(auditEvent)}",
+        Verdict.Blocked => $"Restrição pela política: {AuditSubject.Describe(auditEvent)}",
+        Verdict.Approved => $"Inspeção aprovada: {AuditSubject.Describe(auditEvent)}",
         Verdict.Retained => $"Arquivo retido para análise: {AuditSubject.Describe(auditEvent)}",
-        _ => $"Arquivo não inspecionado: {AuditSubject.Describe(auditEvent)}"
+        _ => $"Conteúdo não inspecionado: {AuditSubject.Describe(auditEvent)}"
     };
 
     /// <summary>
@@ -74,8 +78,8 @@ public sealed record StatusPill(string Text, string ForegroundKey)
     /// <summary>Rótulo correspondente ao veredito.</summary>
     public static StatusPill For(Verdict verdict) => verdict switch
     {
-        Verdict.Approved => new StatusPill("PERMITIDO", "PillApprovedText"),
-        Verdict.Blocked => new StatusPill("BLOQUEADO", "PillBlockedText"),
+        Verdict.Approved => new StatusPill("APROVADO", "PillApprovedText"),
+        Verdict.Blocked => new StatusPill("RESTRITO", "PillBlockedText"),
         Verdict.Retained => new StatusPill("RETIDO", "PillNotInspectedText"),
         _ => new StatusPill("NÃO INSPECIONADO", "PillNotInspectedText")
     };

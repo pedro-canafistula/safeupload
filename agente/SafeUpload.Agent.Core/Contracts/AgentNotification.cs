@@ -18,7 +18,17 @@ namespace SafeUpload.Agent.Core.Contracts;
 [JsonDerivedType(typeof(StatusNotification), StatusNotification.TypeName)]
 [JsonDerivedType(typeof(EventNotification), EventNotification.TypeName)]
 [JsonDerivedType(typeof(TransferNotification), TransferNotification.TypeName)]
+[JsonDerivedType(typeof(HistoryNotification), HistoryNotification.TypeName)]
 public abstract record AgentNotification;
+
+/// <summary>Authorized recent history; receiving it never grants an override or raises old alerts.</summary>
+public sealed record HistoryNotification(IReadOnlyList<AuditEvent> Events, bool Available = true,
+    bool Truncated = false) : AgentNotification
+{
+    public const string TypeName = "history";
+    public const int MaximumEvents = 500;
+    public const int MaximumPayloadBytes = 512 * 1024;
+}
 
 /// <summary>Progress of a file held locally before release to a protected destination.</summary>
 public enum TransferPhase

@@ -48,7 +48,12 @@ public static class NotificationProtocol
 
         // \n e não Environment.NewLine: o delimitador é do protocolo, não do
         // sistema operacional de quem escreve.
-        return JsonSerializer.Serialize(notification, JsonOptions) + "\n";
+        if (notification is HistoryNotification history && !ValidHistory(history))
+            throw new InvalidDataException("Invalid history snapshot.");
+        string line = JsonSerializer.Serialize(notification, JsonOptions) + "\n";
+        if (notification is HistoryNotification && Encoding.GetByteCount(line) > HistoryNotification.MaximumPayloadBytes)
+            throw new InvalidDataException("History snapshot is too large.");
+        return line;
     }
 
     /// <summary>
@@ -68,11 +73,18 @@ public static class NotificationProtocol
 
         try
         {
-            return JsonSerializer.Deserialize<AgentNotification>(line, JsonOptions);
+            var notification = JsonSerializer.Deserialize<AgentNotification>(line, JsonOptions);
+            return notification is HistoryNotification history &&
+                (!ValidHistory(history) || Encoding.GetByteCount(line) > HistoryNotification.MaximumPayloadBytes)
+                ? null : notification;
         }
         catch (JsonException)
         {
             return null;
         }
     }
+
+    private static bool ValidHistory(HistoryNotification history) => history.Events is not null &&
+        history.Events.Count <= HistoryNotification.MaximumEvents && (history.Available || history.Events.Count == 0) &&
+        history.Events.All(e => e is not null && e.EventId != Guid.Empty && e.Categories is not null && e.MaskedSnippets is not null);
 }

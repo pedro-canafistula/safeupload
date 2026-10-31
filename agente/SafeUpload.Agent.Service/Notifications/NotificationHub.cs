@@ -134,6 +134,8 @@ public sealed class NotificationHub
         string? targetUserSid = null)
     {
         ArgumentNullException.ThrowIfNull(notification);
+        if (notification is HistoryNotification)
+            throw new InvalidOperationException("History is delivered only to its authenticated connection.");
         if (notification is TransferNotification { Phase: TransferPhase.Blocked } &&
             (targetSessionId is null || targetUserSid is null))
             return;
@@ -187,6 +189,11 @@ public sealed class NotificationHub
             if (_currentStatus is { } status && status.Communication != communication)
                 Publish(status with { Communication = communication });
         }
+    }
+
+    public bool RecordHistory(HistoryNotification history, uint? sessionId)
+    {
+        lock (_gate) { return TryRecord(history, sessionId); }
     }
 
     private bool TryRecord(AgentNotification notification, uint? targetSessionId)

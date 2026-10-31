@@ -49,7 +49,7 @@
                     CornerRadius="9,9,0,0"
                     Padding="16,12">
                 <StackPanel>
-                    <TextBlock Text="Envio bloqueado pelo SafeUpload"
+                    <TextBlock Text="Conteúdo restrito pela política"
                                FontFamily="{StaticResource UiFont}"
                                FontSize="15"
                                FontWeight="SemiBold"

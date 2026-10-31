@@ -87,6 +87,8 @@ public sealed class MonitoredAuditSink : IAuditSink, IOverrideQueue
         Observe(AuditQueueOperation.WriteOverride, () => _inner.RecordOverrideAsync(record, token), token);
     public Task<IReadOnlyList<AuditEvent>> ReadRecentAsync(int maxEvents, CancellationToken token) =>
         Observe(AuditQueueOperation.ReadRecent, () => _inner.ReadRecentAsync(maxEvents, token), token);
+    public Task<IReadOnlyList<AuditEvent>> ReadRecentMatchingAsync(int maxEvents, Func<AuditEvent, bool> visible, CancellationToken token) =>
+        Observe(AuditQueueOperation.ReadRecent, () => _inner.ReadRecentMatchingAsync(maxEvents, visible, token), token);
     public Task<IReadOnlyList<AuditEvent>> ReadPendingAsync(int maxEvents, CancellationToken token) =>
         Observe(AuditQueueOperation.ReadPending, () => _inner.ReadPendingAsync(maxEvents, token), token);
     public Task<IReadOnlyList<AuditOverride>> ReadPendingOverridesAsync(int maxEvents, CancellationToken token) =>

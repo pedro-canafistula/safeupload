@@ -1,12 +1,12 @@
 using System.Collections.ObjectModel;
 using SafeUpload.Agent.App.Mvvm;
-using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.App.ViewModels;
 
 /// <summary>
-/// A tela de histórico: a trilha de auditoria completa, só leitura.
+/// A tela de histórico: até 500 eventos recentes autorizados pelo serviço, só leitura.
 ///
 /// Não há filtro nem botão. A trilha é o registro do que o agente decidiu, e
 /// oferecer ao usuário meios de recortá-la ou reordená-la sugeriria que ele
@@ -15,13 +15,12 @@ namespace SafeUpload.Agent.App.ViewModels;
 /// </summary>
 public sealed class HistoryViewModel : ObservableObject
 {
-    private const int MaxEvents = 500;
-
-    private readonly IAuditSink _auditSink;
-
-    /// <summary>Compõe a tela sobre a trilha de auditoria.</summary>
-    public HistoryViewModel(IAuditSink auditSink) =>
-        _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
+    private string _emptyMessage = "Aguardando o histórico do serviço";
+    public string EmptyMessage
+    {
+        get => _emptyMessage;
+        private set => SetProperty(ref _emptyMessage, value);
+    }
 
     /// <summary>Eventos gravados, do mais recente para o mais antigo.</summary>
     public ObservableCollection<HistoryRowViewModel> Events { get; } = [];
@@ -29,18 +28,32 @@ public sealed class HistoryViewModel : ObservableObject
     /// <summary>Verdadeiro quando a trilha ainda está vazia.</summary>
     public bool IsEmpty => Events.Count == 0;
 
-    /// <summary>Carrega o histórico gravado.</summary>
-    public async Task LoadAsync()
+    /// <summary>Substitui o histórico sem produzir notificações de bloqueio.</summary>
+    public void ApplyHistory(HistoryNotification history)
     {
-        var events = await _auditSink.ReadRecentAsync(MaxEvents, CancellationToken.None).ConfigureAwait(true);
-
+        if (!history.Available) { SetUnavailable(); return; }
         Events.Clear();
-        foreach (var auditEvent in events)
+        foreach (var auditEvent in history.Events.DistinctBy(e => e.EventId).Take(HistoryNotification.MaximumEvents))
         {
             Events.Add(new HistoryRowViewModel(auditEvent));
         }
 
         OnPropertyChanged(nameof(IsEmpty));
+        EmptyMessage = history.Truncated ? "Parte do histórico não pôde ser exibida" : "Nenhuma operação disponível para esta sessão";
+        AvailabilityMessage = history.Truncated ? "Exibindo parte das operações disponíveis para esta sessão." :
+            "Operações recentes desta sessão, da mais recente para a mais antiga.";
+    }
+
+    private string _availabilityMessage = "Aguardando o histórico do serviço";
+    public string AvailabilityMessage
+    {
+        get => _availabilityMessage;
+        private set => SetProperty(ref _availabilityMessage, value);
+    }
+    public void SetUnavailable()
+    {
+        EmptyMessage = "Histórico indisponível; aguardando o serviço";
+        AvailabilityMessage = Events.Count == 0 ? EmptyMessage : "Serviço indisponível. Exibindo o último histórico recebido.";
     }
 
     /// <summary>
@@ -49,12 +62,16 @@ public sealed class HistoryViewModel : ObservableObject
     /// Precisa ser chamado na thread da interface, pelo mesmo motivo do
     /// status: quem intercepta é um FileSystemWatcher, em thread de fundo.
     /// </summary>
-    public void Prepend(AuditEvent auditEvent)
+    public bool Prepend(AuditEvent auditEvent)
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
 
+        if (Events.Any(row => row.EventId == auditEvent.EventId)) return false;
+
         Events.Insert(0, new HistoryRowViewModel(auditEvent));
+        while (Events.Count > HistoryNotification.MaximumEvents) Events.RemoveAt(Events.Count - 1);
         OnPropertyChanged(nameof(IsEmpty));
+        return true;
     }
 }
 
@@ -71,6 +88,7 @@ public sealed class HistoryRowViewModel
     public HistoryRowViewModel(AuditEvent auditEvent)
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
+        EventId = auditEvent.EventId;
 
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
         FileName = AuditSubject.Describe(auditEvent);
@@ -95,6 +113,7 @@ public sealed class HistoryRowViewModel
 
     /// <summary>Data e hora locais da decisão.</summary>
     public string OccurredAt { get; }
+    public Guid EventId { get; }
 
     /// <summary>Nome do arquivo.</summary>
     public string FileName { get; }
