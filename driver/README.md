@@ -4,8 +4,13 @@
 
 | Part | Where | Job |
 |---|---|---|
-| SafeUpload drive | `agente/SafeUpload.Agent.Drive` (user mode, WinFsp) | Each protected folder of the policy, and each USB stick when the policy protects removable media, appears as a drive (S:, T:, ...). Writes go to a private stage; when a modified file is closed, a snapshot is inspected and only clean versions are copied to the real folder. A blocked version never gets there (the folder keeps the previous version) and the user can justify it from the tray. |
+| SafeUpload drive | `agente/SafeUpload.Agent.Drive` (user mode, WinFsp) | Each protected folder of the policy (local `C:\...` or a share `\\server\share\...`), and each USB stick when the policy protects removable media, appears as a drive labeled `SafeUpload-<name>` (S:, T:, ...). Writes go to a private stage; when a modified file is closed, a snapshot is inspected and only clean versions are copied to the real folder. A blocked version never gets there (the folder keeps the previous version) and the user can justify it from the tray. |
 | Gate driver | `SafeUpload.Minifilter/Gate.c` (kernel, about 450 lines) | Refuses writes to the real places (protected folders, and removable/network volumes when the policy says so) for every process except the agent: write-intent opens, and renames or hard links into them. Reads are never refused. |
+
+Shares: the agent publishes to a share as the computer (SYSTEM), so the share must grant the computer write access
+(in a domain, the computer account; in the test VM, a loopback share). Writes keep the share's own permissions; the
+user's credentials are not used yet. With `networkPaths: true` in the policy, the gate refuses direct writes to every
+share; without it, only to the shares listed as destinations.
 
 WinFsp's own signed driver handles caching, memory mapping, locks and sharing. The gate driver only decides who may
 write where. The agent identifies itself by holding the gate's communication port (only SYSTEM and administrators may

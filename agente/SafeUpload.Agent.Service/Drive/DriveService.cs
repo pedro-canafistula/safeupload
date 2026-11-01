@@ -247,7 +247,8 @@ public sealed class DriveService : BackgroundService
     /// <summary>Volume label users see in Explorer, e.g. "SafeUpload-Envios" or "SafeUpload-USB-F".</summary>
     private static string Label(string destination, bool stick)
     {
-        var leaf = stick ? "USB-" + destination[..1] : Path.GetFileName(destination.TrimEnd('\\'));
+        var trimmed = destination.TrimEnd('\\');
+        var leaf = stick ? "USB-" + destination[..1] : trimmed[(trimmed.LastIndexOf('\\') + 1)..];   // works for \\server\share too
         return "SafeUpload-" + (string.IsNullOrEmpty(leaf) ? "Destino" : leaf);
     }
 
