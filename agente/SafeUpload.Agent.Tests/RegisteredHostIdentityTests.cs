@@ -194,6 +194,29 @@ public sealed class RegisteredHostIdentityTests
         Assert.False(File.Exists(state.File));
     }
 
+    [Theory]
+    [InlineData("ConsoleByIp", null)]
+    [InlineData("ConsoleByIp", "not-an-ip")]
+    [InlineData("Legacy", "192.0.2.10")]
+    [InlineData("Unknown", null)]
+    public void Politica_invalida_nao_provisiona_host_antes_da_correcao(string protocol, string? ip)
+    {
+        using var state = new State();
+        var configuration = Settings("23");
+        configuration["CentroAdministracao:PolicyProtocol"] = protocol;
+        configuration["CentroAdministracao:PolicyHostIp"] = ip;
+        Assert.ThrowsAny<InvalidOperationException>(() => AdministrationConfiguration.Parse(configuration, state.Store()));
+        Assert.False(File.Exists(state.File));
+        // An operator correcting the failed configuration must not inherit a binding from the rejected start.
+        configuration["CentroAdministracao:RegisteredHostId"] = "99";
+        configuration["CentroAdministracao:PolicyProtocol"] = "ConsoleByIp";
+        configuration["CentroAdministracao:PolicyHostIp"] = "192.0.2.10";
+        var corrected = AdministrationConfiguration.Parse(configuration, state.Store());
+        Assert.Equal(99, corrected.Heartbeat.RegisteredHostId);
+        Assert.Equal(99, corrected.ConsolePolicy!.RegisteredHostId);
+        Assert.Equal(99, state.Store().Resolve(Server, null));
+    }
+
     [Fact]
     public void Modo_local_ou_Legacy_nao_le_nem_altera_identidade_salva()
     {

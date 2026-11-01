@@ -37,8 +37,12 @@ internal sealed record AdministrationConfiguration(
         if (interval.TotalMilliseconds > uint.MaxValue - 1)
             throw new InvalidOperationException("CentroAdministracao:DispatchIntervalSeconds excede o limite do temporizador.");
         var configuredHeartbeat = ReadHeartbeat(configuration, uri, identities);
-        return new(uri, timeout, interval, configuredHeartbeat,
-            ReadConsolePolicy(configuration, uri, configuredHeartbeat));
+        var consolePolicy = ReadConsolePolicy(configuration, uri, configuredHeartbeat);
+        // Reject the entire configuration before committing the initial host binding.
+        // Otherwise an invalid policy option can pin an ID from a failed service start.
+        if (configuredHeartbeat.RegisteredHostId is { } hostId && identities is not null)
+            identities.Resolve(uri, hostId);
+        return new(uri, timeout, interval, configuredHeartbeat, consolePolicy);
     }
 
     private static ConsolePolicyOptions? ReadConsolePolicy(IConfiguration configuration, Uri? server,
@@ -73,10 +77,7 @@ internal sealed record AdministrationConfiguration(
             identities is not null && server is not null)
             return new(identities.Resolve(server, null));
 
-        var heartbeat = AgentHeartbeatConfiguration.Parse(protocol, host, legacyUser);
-        if (heartbeat.RegisteredHostId is { } id && server is not null && identities is not null)
-            identities.Resolve(server, id);
-        return heartbeat;
+        return AgentHeartbeatConfiguration.Parse(protocol, host, legacyUser);
     }
 
     private static TimeSpan ReadPositiveSeconds(IConfiguration configuration, string name, int fallback)
