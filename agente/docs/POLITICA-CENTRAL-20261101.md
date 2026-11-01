@@ -44,3 +44,14 @@ Executar `dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.cspro
 Validação local ampliada: 252 testes aprovados, zero falhas e zero ignorados, incluindo falha da origem operacional; build da interface sem erros/avisos. Há um aviso CA2022 preexistente no projeto de testes, fora dos arquivos modificados. O workflow de recibos inclui e exige os grupos de política. Conferir resultado final no PR.
 
 Aceite conjunto pendente: publicar A/B pelo painel no host cadastrado, observar mudança de decisão, reiniciar offline e conferir o cache; testar documento inválido/regressivo sem perder A/B; reconectar e conferir os mesmos eventIds sem duplicação. Sem ensaio de VM, pacote instalado, backend/MySQL ou proteção real nesta rodada. PR em rascunho; não é autorização de merge ou aceite de produção.
+
+## Continuação — recibos e reconexão
+
+O POST de auditoria agora lê o recibo em fluxo, com limite de 16 KiB (incluindo campos futuros), profundidade JSON 16 e o mesmo prazo HTTP até terminar o corpo. Respostas rejeitadas não precisam carregar o corpo inteiro. Um recibo excessivo, truncado, profundo demais ou interrompido não confirma a fila; eventos e justificativas mantêm os bytes originais. Na reconexão, a fila reaberta reenvia o mesmo payload e só confirma após ambas as contagens completas. O prazo de rede não limita a gravação local da confirmação.
+
+Sete casos novos cobrem tamanho anunciado/sem tamanho, limite exato com leitura fragmentada, JSON inválido/profundo, servidor silencioso e cancelamento. Recorte final: 94 testes aprovados, zero falhas/ignorados, incluindo recibos existentes, comunicação e política central. A primeira execução teve duas asserções excessivamente específicas quanto ao subtipo de exceção JSON; corrigidas sem mudar o comportamento do produto. Não substitui ensaio com backend real. O CI exige o novo grupo AuditReceiptBoundsTests.
+
+Entrega publicada no [PR #79](https://github.com/pedro-canafistula/safeupload/pull/79), em rascunho. Checks remotos devem ser conferidos no HEAD atual; nenhuma aprovação de produção ou merge é presumida.
+
+
+O provisionamento inicial agora só persiste a identidade depois de validar também PolicyProtocol e PolicyHostIp. Antes, uma inicialização recusada por política inválida podia deixar o ID gravado e impedir a correção do cadastro pelo operador. Quatro testes reproduziram o problema antes da correção e passaram depois; cada caso confere ausência de arquivo no erro e provisionamento do ID corrigido. Recorte de identidade/configuração/política/recibos: 140 aprovados, zero falhas/ignorados. Não altera o formato da identidade nem substitui vínculo existente.
