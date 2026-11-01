@@ -120,70 +120,12 @@ public sealed class PolicyServiceCompositionTests : IDisposable
         try
         {
             Assert.Equal(cached ? 7 : 1, probe.Version);
-            await Assert.ThrowsAsync<HttpRequestException>(() => DriverPolicyLoader.LoadAsync(
-                host.Services.GetRequiredService<IPolicyStore>(), CancellationToken.None));
+            await Assert.ThrowsAsync<HttpRequestException>(() => host.Services.GetRequiredService<IPolicyStore>()
+                .LoadCurrentAsync(CancellationToken.None));
             Assert.Equal(cached ? 7 : 1, (await host.Services.GetRequiredService<IPolicyStore>()
                 .LoadAsync(CancellationToken.None)).Version);
         }
         finally { await host.StopAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Configured_seed_uses_remote_strict_scope_and_preserves_prior_record_when_offline(bool offline)
-    {
-        const string prefix = @"\Device\HarddiskVolume7\RemoteProtected";
-        using var handler = new Handler
-        {
-            Offline = offline,
-            Document = """
-                {"version":9,"activeCategories":["Cpf"],"monitoredScopes":{
-                "extensions":[".txt"],"destinationPaths":["\\Device\\HarddiskVolume7\\RemoteProtected"],
-                "removableDrives":false,"networkPaths":false}}
-                """
-        };
-        var seedBuilder = Program.CreateBootPolicyBuilder(["--CentroAdministracao:BaseUrl=http://policy.invalid/agent"]);
-        var services = seedBuilder.Services;
-        services.AddHttpClient(PolicyServiceRegistration.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => handler);
-        services.Replace(ServiceDescriptor.Singleton(provider => new DurableHttpPolicyStore(
-            provider.GetRequiredService<IHttpClientFactory>().CreateClient(PolicyServiceRegistration.HttpClientName),
-            "TEST", _workspace.PolicyFile, enforceProtectedAcl: false)));
-        using var provider = services.BuildServiceProvider();
-        var backend = new RegistryReceipt();
-        var prior = backend.Committed.ToArray();
-        var seed = BootPolicySeeder.SeedAsync(provider.GetRequiredService<IPolicyStore>(),
-            new BootPolicyRegistryWriter(backend), CancellationToken.None);
-        if (offline)
-        {
-            await Assert.ThrowsAsync<HttpRequestException>(() => seed);
-            Assert.Equal(prior, backend.Committed);
-            Assert.Equal(0, backend.Writes);
-        }
-        else
-        {
-            await seed;
-            Assert.Equal([prefix], BootPolicyCodec.DecodeKnown(backend.Committed).Prefixes);
-            Assert.Equal(0u, BootPolicyCodec.DecodeKnown(backend.Committed).Flags);
-            Assert.Equal(3, backend.Writes);
-        }
-        Assert.Null(backend.Pending);
-        Assert.Empty(provider.GetServices<IHostedService>());
-        Assert.Equal(1, handler.PolicyCalls);
-    }
-
-    private sealed class RegistryReceipt : IBootPolicyRegistryBackend
-    {
-        public byte[] Committed = BootPolicyCodec.Encode(new BootPolicyScopes(
-            [@"\Device\HarddiskVolume7\Previous"], 0));
-        public byte[]? Pending;
-        public int Writes;
-        public BootPolicyScopes ReadKnownScopes() => BootPolicyCodec.DecodeKnown(Committed);
-        public void WritePending(byte[] value) { Writes++; Pending = value; }
-        public void WriteCommitted(byte[] value) { Writes++; Committed = value; }
-        public void ClearPending() { Writes++; Pending = null; }
-        public void VerifySeeded(byte[] expectedCommitted)
-        { Assert.Equal(expectedCommitted, Committed); Assert.Null(Pending); }
     }
 
     private IHost CreateHost(Handler handler, Probe probe) => new HostBuilder().ConfigureServices(services =>

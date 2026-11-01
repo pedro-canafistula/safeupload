@@ -11,6 +11,8 @@ using SafeUpload.Agent.Service;
 using SafeUpload.Agent.Service.Audit;
 using SafeUpload.Agent.Service.Notifications;
 
+using SafeUpload.Agent.Service.Drive;
+
 namespace SafeUpload.Agent.Tests;
 
 public sealed class AuditWriteFailureDiagnosticsTests : IDisposable
@@ -132,8 +134,8 @@ public sealed class AuditWriteFailureDiagnosticsTests : IDisposable
         var diagnostics = new AuditWriteFailureDiagnostics(new CaptureLogger());
         var original = new IOException("disk failure");
         var sink = new LocalQueueAuditSink(_workspace.QueueFile, _ => throw original, diagnostics);
-        using var server = new JustificationPipeServer(new PendingOverrides(), new LocalPolicyStore(_workspace.PolicyFile),
-            sink, new OverrideGrantDispatcher(), new StagedJustifications(), NullLogger<JustificationPipeServer>.Instance);
+        using var server = new JustificationPipeServer(new LocalPolicyStore(_workspace.PolicyFile),
+            sink, new DriveJustifications(), NullLogger<JustificationPipeServer>.Instance);
         var error = await Assert.ThrowsAsync<IOException>(() => server.RecordJustificationAsync(
             new JustificationRequest(Guid.NewGuid().ToString(), "private reason"), "S-1-5-21-123-456-789-1001", default));
         Assert.Same(original, error);

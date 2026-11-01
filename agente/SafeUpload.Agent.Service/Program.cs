@@ -1,14 +1,13 @@
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Service.Clipboard;
 using SafeUpload.Agent.Service.Dispatch;
+using SafeUpload.Agent.Service.Drive;
+using SafeUpload.Agent.Service.Gate;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Network;
 using SafeUpload.Agent.Service.Notifications;
 using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
-using System.Runtime.Versioning;
-using System.Security.Principal;
-using SafeUpload.Agent.Service.Diagnostics;
 using SafeUpload.Agent.Service.Policies;
 
 namespace SafeUpload.Agent.Service;
@@ -30,30 +29,6 @@ public static class Program
     /// <summary>Monta e executa o host.</summary>
     public static async Task Main(string[] args)
     {
-        if (args.Length == 1 && args[0] == "--staged-parser")
-        {
-            Environment.ExitCode = OperatingSystem.IsWindows()
-                ? await StagedParserProcess.RunWorkerAsync().ConfigureAwait(false) : 2;
-            return;
-        }
-        if (args.Contains("--seed-boot-policy", StringComparer.OrdinalIgnoreCase))
-        {
-            if (!TryGetBootPolicyConfigurationArguments(args, out var configurationArguments))
-            {
-                Environment.ExitCode = FailSeedModeUsage();
-            }
-            else if (!OperatingSystem.IsWindows())
-            {
-                Console.Error.WriteLine("--seed-boot-policy is supported only on Windows.");
-                Environment.ExitCode = 1;
-            }
-            else
-            {
-                Environment.ExitCode = await SeedBootPolicyAsync(configurationArguments).ConfigureAwait(false);
-            }
-            return;
-        }
-
         // Comandos de manutenção da CA de inspeção TLS ("ca install", "ca
         // status", "ca remove"). Rodam e encerram, sem subir o serviço.
         if (args.Length > 0 && string.Equals(args[0], "ca", StringComparison.OrdinalIgnoreCase))
@@ -108,17 +83,9 @@ public static class Program
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>(services =>
-        {
-            IStagedParser? parser = null;
-            // The isolated, memory-bounded parser is independent of the reservation budget (MVP floor-only mode keeps it).
-            if (StagedSpaceConfiguration.IsEnabled(builder.Configuration) || StagedSpaceConfiguration.IsFloorOnly(builder.Configuration))
-            {
-                parser = new StagedParserProcess(StagedSpaceConfiguration.ParserMemoryBytes(builder.Configuration));
-            }
-            return new InspectionService(services.GetRequiredService<IPolicyStore>(),
+            new InspectionService(services.GetRequiredService<IPolicyStore>(),
                 services.GetRequiredService<IAuditSink>(), services.GetRequiredService<ExtractorRegistry>(),
-                services.GetRequiredService<VerdictCache>(), stagedParser: parser);
-        });
+                services.GetRequiredService<VerdictCache>()));
         builder.Services.AddSingleton<INotificationRecord>(services =>
         {
             var logger = services.GetRequiredService<ILogger<NotificationRecord>>();
@@ -134,13 +101,8 @@ public static class Program
             }
         });
         builder.Services.AddSingleton<NotificationHub>();
-        builder.Services.AddSingleton<PendingOverrides>();
-        builder.Services.AddSingleton<StagedJustifications>();
-        builder.Services.AddSingleton<OverrideGrantDispatcher>();
-        builder.Services.AddSingleton<DriverDiagnosticsSource>();
-#if SAFEUPLOAD_ADMISSION_EVIDENCE
-        builder.Services.AddSingleton<AdmissionEvidenceEndpoint>();
-#endif
+        builder.Services.AddSingleton<DriveJustifications>();
+        builder.Services.AddSingleton<GateClient>();
         builder.Services.AddSingleton<ClipboardCopyStore>();
         builder.Services.AddSingleton<ClipboardMetrics>();
         builder.Services.AddSingleton<ClipboardService>();
@@ -158,39 +120,24 @@ public static class Program
         // seja configurado.
         builder.Services.AddAgentPolicies(builder.Configuration, Environment.MachineName);
 
-        // O gatilho. A partir daqui a protecao existe sem interface nenhuma
-        // aberta, que e o ponto de separar os dois processos.
+        // O gatilho. A partir daqui a protecao existe sem interface nenhuma aberta.
         //
-        // Sao dois, e a escolha e de configuracao porque a diferenca entre
-        // eles nao e de implementacao, e de natureza. O FileSystemWatcher
-        // reage DEPOIS que o arquivo chegou ao destino e "bloqueia" apagando;
-        // o minifiltro intercepta ANTES e a negacao impede a operacao. O
-        // primeiro roda em qualquer maquina; o segundo exige o driver
-        // carregado e assinado.
+        // "Drive" (padrao): cada pasta protegida da politica ganha uma unidade SafeUpload (WinFsp). O que o usuario
+        // grava fica privado ate ser inspecionado; so versoes aprovadas chegam a pasta real, que fica somente
+        // leitura para usuarios. O driver gate, se carregado, recusa gravacoes diretas de outros processos.
         //
-        // O padrao continua sendo o mock, de proposito: uma maquina sem o
-        // driver deve ficar protegida de forma imperfeita em vez de ficar
-        // sem protecao nenhuma. Para usar o kernel, em appsettings.json:
-        //
-        //   "Interception": { "Mode": "Minifilter" }
-        //
-        // Os dois nunca sobem juntos. Rodando em paralelo, o watcher veria os
-        // arquivos que o minifiltro deixou passar e os apagaria depois - dois
-        // vereditos sobre a mesma operacao, com o segundo desfazendo o
-        // primeiro.
-        string mode = builder.Configuration["Interception:Mode"] ?? "FileSystemWatcher";
+        // "FileSystemWatcher": o mock antigo, para maquinas sem WinFsp. Reage DEPOIS que o arquivo chegou ao
+        // destino e "bloqueia" apagando.
+        string mode = builder.Configuration["Interception:Mode"] ?? "Drive";
 
-        if (string.Equals(mode, "Minifilter", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(mode, "FileSystemWatcher", StringComparison.OrdinalIgnoreCase))
         {
-            builder.Services.AddHostedService<MinifilterInterceptor>();
-
-            // Administrator-only field diagnostics relayed over the interceptor's own filter-port connection
-            // (the port accepts a single client, so no other tool can read the driver while the service runs).
-            builder.Services.AddHostedService<DiagnosticsPipeServer>();
+            builder.Services.AddHostedService<FileSystemInterceptor>();
         }
         else
         {
-            builder.Services.AddHostedService<FileSystemInterceptor>();
+            builder.Services.AddSingleton<DriveService>();
+            builder.Services.AddHostedService(services => services.GetRequiredService<DriveService>());
         }
 
         // A entrega das notificacoes aos aplicativos conectados.
@@ -222,75 +169,4 @@ public static class Program
     internal static HostApplicationBuilder CreateServiceBuilder(string[] args) =>
         Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
         { Args = args, ContentRootPath = AppContext.BaseDirectory });
-
-    internal static HostApplicationBuilder CreateBootPolicyBuilder(string[] configurationArguments)
-    {
-        var builder = CreateServiceBuilder(configurationArguments);
-        builder.Services.AddAgentPolicies(builder.Configuration, Environment.MachineName, includeHostedServices: false);
-        return builder;
-    }
-
-    private static int FailSeedModeUsage()
-    {
-        Console.Error.WriteLine("Use --seed-boot-policy followed only by configuration switches (--key=value or --key value).");
-        return 2;
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static async Task<int> SeedBootPolicyAsync(string[] configurationArguments)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            Console.Error.WriteLine("--seed-boot-policy is supported only on Windows.");
-            return 1;
-        }
-
-        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
-        if (identity.User?.IsWellKnown(WellKnownSidType.LocalSystemSid) != true)
-        {
-            Console.Error.WriteLine("--seed-boot-policy requires the LocalSystem identity.");
-            return 1;
-        }
-
-        try
-        {
-            var builder = CreateBootPolicyBuilder(configurationArguments);
-            using var provider = builder.Services.BuildServiceProvider();
-            var writer = new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend());
-            await BootPolicySeeder.SeedAsync(provider.GetRequiredService<IPolicyStore>(), writer,
-                CancellationToken.None).ConfigureAwait(false);
-            Console.WriteLine("BootPolicySeeded=True");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Boot policy seed failed: {ex}");
-            return 1;
-        }
-    }
-
-    // The seed accepts configuration only; it never starts maintenance commands.
-    internal static bool TryGetBootPolicyConfigurationArguments(string[] args, out string[] configurationArguments)
-    {
-        configurationArguments = [];
-        if (args.Length == 0 || !string.Equals(args[0], "--seed-boot-policy", StringComparison.OrdinalIgnoreCase))
-            return false;
-        for (int index = 1; index < args.Length; index++)
-        {
-            string option = args[index];
-            if (!option.StartsWith("--", StringComparison.Ordinal) || option.Length <= 2)
-                return false;
-            string key = option[2..].Split('=', 2)[0];
-            if (string.Equals(key, "seed-boot-policy", StringComparison.OrdinalIgnoreCase)
-                || !System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z][A-Za-z0-9:_-]*$"))
-                return false;
-            if (!option.Contains('='))
-            {
-                if (++index >= args.Length || args[index].StartsWith("--", StringComparison.Ordinal))
-                    return false;
-            }
-        }
-        configurationArguments = args[1..];
-        return true;
-    }
 }

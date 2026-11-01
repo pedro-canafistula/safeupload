@@ -6,10 +6,10 @@
 ; Installed with the legacy DefaultInstall path, not as a PnP driver
 ; package:
 ;
-;   rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 <path>
+;   rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall.NTamd64 132 <path>
 ;
-; See DEPLOY.md for the full procedure, including certificate import and
-; catalog signing, which this file assumes have already been done.
+; The test VM trusts the test certificate that driver/scripts/build-driver.sh
+; signs SafeUpload.sys with.
 ;
 
 [Version]
@@ -69,13 +69,10 @@ ServiceBinary  = %12%\%DriverName%.sys
 Dependencies   = "FltMgr"
 ; SERVICE_FILE_SYSTEM_DRIVER
 ServiceType    = 2
-; SERVICE_BOOT_START. FSFilter Anti-Virus is the selected boot load-order
-; group so Filter Manager can attach before user-mode writers run.
-StartType      = 0
-; SERVICE_ERROR_NORMAL: ordinary initialization failures are recorded and
-; Windows continues booting. ErrorControl cannot recover from a driver
-; bugcheck; the boot-start VM harness takes an external disk-only checkpoint
-; before the run and restores that clean parent if the guest does not boot.
+; SERVICE_DEMAND_START: the SafeUpload agent loads the gate when it starts
+; (fltmc load SafeUpload works too). A driver bug can never block booting.
+StartType      = 3
+; SERVICE_ERROR_NORMAL
 ErrorControl   = 1
 LoadOrderGroup = "FSFilter Anti-Virus"
 AddReg         = SafeUpload.AddRegistry

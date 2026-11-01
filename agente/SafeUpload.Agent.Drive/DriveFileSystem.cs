@@ -20,7 +20,10 @@ internal sealed class Content
     public string? PublishedPath;
     public bool Deleted;
     public Node? Node;
-    public int LastWriterProcessId;
+    public DriveWriter? Writer;           // who last opened the file for writing
+    public Guid? BlockedId;               // newest blocked version, kept for a justification
+    public long BlockedVersion = -1;
+    public string? BlockedSnapshot;
     public DateTime LastModified;
     public bool CleanupSeen;              // a handle was closed since the last modification
     public bool Inspecting;
@@ -55,7 +58,7 @@ internal sealed class Handle
 /// changed files. A blocked or still-pending version leaves whatever the backing folder already has under that name.
 /// Directory operations carry no content and go to the backing folder directly.
 /// </summary>
-internal sealed class DriveFileSystem : FileSystemBase
+public sealed class DriveFileSystem : FileSystemBase
 {
     private const int AllocationUnit = 4096;
     private const string TempPrefix = ".~su-";
@@ -67,6 +70,8 @@ internal sealed class DriveFileSystem : FileSystemBase
     private readonly object _gate = new();
     private readonly string _backing, _stage, _snapshots, _mountPoint;
     private readonly ContentInspector _inspector;
+    private readonly IDriveObserver _observer;
+    private readonly Dictionary<Guid, Content> _blocked = [];
     private readonly Node _root;
     private readonly byte[] _fileSecurity, _dirSecurity;
     private ulong _nextId = 1;
@@ -74,8 +79,10 @@ internal sealed class DriveFileSystem : FileSystemBase
     private readonly HashSet<Content> _dirty = [];   // modified since their last inspection
     private readonly CancellationTokenSource _stop = new();
 
-    public DriveFileSystem(string backing, string privateRoot, string mountPoint, ContentInspector inspector)
+    internal DriveFileSystem(string backing, string privateRoot, string mountPoint, ContentInspector inspector,
+        IDriveObserver observer)
     {
+        _observer = observer;
         _backing = System.IO.Path.GetFullPath(backing).TrimEnd('\\');
         _stage = System.IO.Path.Combine(privateRoot, "stage");
         _snapshots = System.IO.Path.Combine(privateRoot, "snapshots");
@@ -183,7 +190,7 @@ internal sealed class DriveFileSystem : FileSystemBase
                     FileShare.ReadWrite | FileShare.Delete);
                 node.Attributes = (fileAttributes & ~(uint)FileAttributes.Normal) | (uint)FileAttributes.Archive;
                 node.Content = new Content { Path = stagePath, IsStage = true, Node = node };
-                node.Content.LastWriterProcessId = (int)GetOperationProcessId();
+                node.Content.Writer = _observer.IdentifyWriter((int)GetOperationProcessId());
                 handle = new Handle { Node = node, Stream = stream };
                 Modified(handle, 0);   // a new file, even an empty one, is a version to inspect
             }
@@ -210,7 +217,7 @@ internal sealed class DriveFileSystem : FileSystemBase
                 // the first real modification (WritableStream), not here.
                 handle.Stream = OpenShared(node.Content!.Path, write: false);
                 if ((grantedAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA)) != 0)
-                    node.Content.LastWriterProcessId = (int)GetOperationProcessId();
+                    node.Content.Writer = _observer.IdentifyWriter((int)GetOperationProcessId());
             }
             fileDesc = handle;
             fileInfo = Info(node);
@@ -608,6 +615,7 @@ internal sealed class DriveFileSystem : FileSystemBase
         {
             content.Deleted = true;
             _dirty.Remove(content);
+            ForgetBlocked(content);
             if (content.IsStage) TryDelete(content.Path);
             ScheduleReconcile();
         }
@@ -695,7 +703,13 @@ internal sealed class DriveFileSystem : FileSystemBase
                     if (next is null && _reconcileAfter <= now)
                     {
                         _reconcileAfter = DateTime.MaxValue;
-                        Reconcile();
+                        try { Reconcile(); }
+                        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                        {
+                            // For example the destination file is open elsewhere: nothing unapproved was written; retry.
+                            DriveLog.Write($"publish retry: {error.Message}");
+                            _reconcileAfter = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+                        }
                     }
                 }
                 if (next is not null) InspectOne(next);
@@ -713,7 +727,8 @@ internal sealed class DriveFileSystem : FileSystemBase
     {
         string snapshot, destination, name;
         long version;
-        int processId;
+        DriveWriter? writer;
+        var versionId = Guid.NewGuid();
         lock (_gate)
         {
             _dirty.Remove(content);
@@ -725,11 +740,12 @@ internal sealed class DriveFileSystem : FileSystemBase
             version = content.InspectedVersion = content.Version;
             destination = VirtualPath(content.Node);
             name = content.Node.Name;
-            processId = content.LastWriterProcessId;
+            writer = content.Writer;
             content.Inspecting = true;
         }
         var started = DateTime.UtcNow;
-        var outcome = _inspector.InspectAsync(snapshot, destination, name, processId, _stop.Token).GetAwaiter().GetResult();
+        var outcome = _inspector.InspectAsync(snapshot, destination, name, writer, _stop.Token).GetAwaiter().GetResult();
+        bool report = false;
         lock (_gate)
         {
             content.Inspecting = false;
@@ -741,14 +757,58 @@ internal sealed class DriveFileSystem : FileSystemBase
                 content.ApprovedSnapshot = snapshot;
                 DriveLog.Write($"inspect APPROVED {destination} v{version} {outcome.Summary} ({ms} ms)");
                 ScheduleReconcile();
+                report = true;
+            }
+            else if (!outcome.Publish && !content.Deleted && version > content.BlockedVersion)
+            {
+                ForgetBlocked(content);
+                content.BlockedId = versionId;
+                content.BlockedVersion = version;
+                content.BlockedSnapshot = snapshot;
+                _blocked[versionId] = content;
+                DriveLog.Write($"inspect BLOCKED {destination} v{version} {outcome.Summary} ({ms} ms)");
+                report = true;
             }
             else
             {
                 TryDelete(snapshot);
-                DriveLog.Write($"inspect {(outcome.Publish ? "SUPERSEDED" : "BLOCKED")} {destination} v{version} {outcome.Summary} ({ms} ms)");
+                DriveLog.Write($"inspect SUPERSEDED {destination} v{version} {outcome.Summary} ({ms} ms)");
             }
             // A write that arrived during inspection is inspected after its own close.
         }
+        if (report)
+            _observer.OnDecision(new DriveDecision(versionId, destination, name, writer, outcome.Operation, outcome.Result,
+                outcome.Publish, outcome.Summary));
+    }
+
+    /// <summary>
+    /// Publishes a blocked version after the user justified it. Only that exact version, and only if no newer version
+    /// has been approved since. Returns false when the version is gone or superseded.
+    /// </summary>
+    public bool Approve(Guid versionId)
+    {
+        lock (_gate)
+        {
+            if (!_blocked.TryGetValue(versionId, out var content) || content.Deleted || content.BlockedSnapshot is null ||
+                content.BlockedVersion <= content.ApprovedVersion)
+                return false;
+            if (content.ApprovedSnapshot is not null) TryDelete(content.ApprovedSnapshot);
+            content.ApprovedVersion = content.BlockedVersion;
+            content.ApprovedSnapshot = content.BlockedSnapshot;
+            content.BlockedSnapshot = null;
+            ForgetBlocked(content);
+            DriveLog.Write($"justified {(content.Node is null ? "?" : VirtualPath(content.Node))} v{content.ApprovedVersion}");
+            ScheduleReconcile();
+            return true;
+        }
+    }
+
+    private void ForgetBlocked(Content content)
+    {
+        if (content.BlockedId is { } id) _blocked.Remove(id);
+        if (content.BlockedSnapshot is not null) TryDelete(content.BlockedSnapshot);
+        content.BlockedId = null;
+        content.BlockedSnapshot = null;
     }
 
     /// <summary>Makes the backing folder match the namespace, using only approved bytes. Caller holds the lock.</summary>

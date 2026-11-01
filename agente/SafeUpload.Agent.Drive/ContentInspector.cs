@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO.Compression;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
@@ -6,16 +5,16 @@ using SafeUpload.Agent.Core.Domain;
 namespace SafeUpload.Agent.Drive;
 
 /// <summary>Outcome of inspecting one snapshot.</summary>
-internal sealed record InspectionOutcome(bool Publish, string Summary);
+internal sealed record InspectionOutcome(bool Publish, string Summary, FileOperation? Operation = null, InspectionResult? Result = null);
 
 /// <summary>
 /// Inspects a private snapshot with the agent's normal engine. The file type comes from the content, not the name:
 /// Word and Excel save through temporary names such as "~WRL0001.tmp" or "1A2B3C4D".
 /// Anything that is not clearly approved is held (fail closed).
 /// </summary>
-internal sealed class ContentInspector(InspectionService inspection)
+public sealed class ContentInspector(InspectionService inspection)
 {
-    public async Task<InspectionOutcome> InspectAsync(string snapshot, string destinationPath, string name, int processId,
+    internal async Task<InspectionOutcome> InspectAsync(string snapshot, string destinationPath, string name, DriveWriter? writer,
         CancellationToken token)
     {
         try
@@ -24,14 +23,14 @@ internal sealed class ContentInspector(InspectionService inspection)
             var extension = DetectExtension(snapshot, Path.GetExtension(name));
             var effectiveName = Path.GetFileNameWithoutExtension(name) + extension;
             var operation = new FileOperation(snapshot, effectiveName, extension, info.Length, info.LastWriteTimeUtc,
-                ProcessName(processId), processId, destinationPath, DestinationKind.Cloud);
+                writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, DestinationKind.Cloud);
             var result = await inspection.InspectStagedAsync(operation, token).ConfigureAwait(false);
             var categories = string.Join(",", result.Categories);
             var summary = $"verdict={result.Verdict} type={extension} reason={result.Reason ?? "-"} findings={result.Findings.Count}"
                 + (categories.Length > 0 ? $" categories={categories}" : "");
             bool publish = result.Verdict == Verdict.Approved ||
                 (result.Verdict == Verdict.AllowedWithoutInspection && result.Reason is "out_of_scope" or "excluded_process");
-            return new InspectionOutcome(publish, summary);
+            return new InspectionOutcome(publish, summary, operation, result);
         }
         catch (Exception error)
         {
@@ -79,11 +78,5 @@ internal sealed class ContentInspector(InspectionService inspection)
         for (int i = 0; i < read; i++)
             if (buffer[i] == 0) return false;
         return true;
-    }
-
-    private static string ProcessName(int processId)
-    {
-        try { return Process.GetProcessById(processId).ProcessName; }
-        catch (Exception) { return "unknown"; }
     }
 }

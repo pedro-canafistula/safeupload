@@ -350,7 +350,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         {
             if (Path.GetFileName(path) is not ("emissions.jsonl" or "previous.jsonl" or "head.json" or "head.tmp"))
                 throw new IOException("Unexpected notification child cannot be archived automatically: " + path, error);
-            StagedJournalFile.RequireRegularFileForPreservation(path);
+            RecordFile.RequireRegularFileForPreservation(path);
         }
         string archive = _directory + ".corrupt-" + DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffffffZ") +
             "-" + Guid.NewGuid().ToString("N");
@@ -405,7 +405,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private FileStream Open(string path, bool writable = false)
     {
         RequireDirectory();
-        var stream = StagedJournalFile.Open(path, writable: writable, maximumBytes: SegmentBytes);
+        var stream = RecordFile.Open(path, writable: writable, maximumBytes: SegmentBytes);
         try { if (OperatingSystem.IsWindows()) RequireAcl(stream.GetAccessControl(), false); return stream; }
         catch { stream.Dispose(); throw; }
     }
@@ -439,7 +439,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
 
     private void RequireParent()
     {
-        StagedTransferJournal.RequireProtectedParent(_directory);
+        RecordFile.RequireProtectedParent(_directory);
         RequireAcl(new DirectoryInfo(Path.GetDirectoryName(_directory)!).GetAccessControl(), true);
     }
 

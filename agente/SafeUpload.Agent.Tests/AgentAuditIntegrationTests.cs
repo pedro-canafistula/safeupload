@@ -10,6 +10,8 @@ using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Interception;
 using SafeUpload.Agent.Service.Notifications;
 
+using SafeUpload.Agent.Service.Drive;
+
 namespace SafeUpload.Agent.Tests;
 
 public sealed class AgentAuditIntegrationTests : IDisposable
@@ -17,70 +19,14 @@ public sealed class AgentAuditIntegrationTests : IDisposable
     private readonly TestWorkspace _workspace = new();
     public void Dispose() => _workspace.Dispose();
 
-    [Theory]
-    [InlineData("S-1-5-21-123-456-789-1001", "S-1-5-21-123-456-789-1001")]
-    [InlineData("S-1-5-18", "S-1-5-18")]
-    [InlineData(null, "Não identificado")]
-    [InlineData("", "Não identificado")]
-    [InlineData(" ", "Não identificado")]
-    [InlineData("not-a-sid", "Não identificado")]
-    public async Task Staged_caller_attribution_survives_queue_reopen_and_HTTP_without_using_the_service_account(
-        string? callerSid, string expectedUser)
-    {
-        var sink = new LocalQueueAuditSink(_workspace.QueueFile);
-        var inspection = new InspectionService(new Policies(), sink, ExtractorRegistry.CreateDefault(),
-            new VerdictCache(), "TEST", "synthetic-service-account");
-        var stageRoot = Path.Combine(_workspace.Root, "audit-only-stage");
-        var hub = NotificationTestHub.Create();
-        int sessionLookups = 0;
-        var publisher = new StagedTransferPublisher(inspection, hub,
-            new StagedTransferJournal(Path.Combine(_workspace.Root, "audit-only-journal")),
-            stageRoot, new NoPublication(), sessionUserSidResolver: _ =>
-            {
-                sessionLookups++;
-                return "S-1-5-21-999-999-999-9999";
-            });
-        var operation = TestWorkspace.Operation(_workspace.WriteText("audit-only.txt", "synthetic"));
-        var transfer = new StagedTransfer(Guid.NewGuid(), operation.FilePath, operation.DestinationPath,
-            operation.Destination, operation.ProcessName, operation.ProcessId, 7) { RequestorSid = callerSid };
-        const string hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        var result = new InspectionResult(Verdict.Approved, [], null, 1, false, 7, true);
-        await publisher.RecordTransferAuditAsync(transfer, operation, result, Verdict.Approved,
-            null, CancellationToken.None, transfer.TransferId, hash);
-
-        var reopened = new LocalQueueAuditSink(_workspace.QueueFile);
-        var queued = Assert.Single(await reopened.ReadPendingAsync(10, CancellationToken.None));
-        Assert.Equal(expectedUser, queued.UserName);
-        Assert.Equal("TEST", queued.EndpointId);
-        using var accepted = new Handler(Acknowledge);
-        await CycleAsync(reopened, accepted);
-        using var payload = JsonDocument.Parse(Assert.Single(accepted.Payloads));
-        var sent = payload.RootElement.GetProperty("events")[0];
-        Assert.Equal(expectedUser, sent.GetProperty("userName").GetString());
-        Assert.Equal(transfer.TransferId, sent.GetProperty("eventId").GetGuid());
-        Assert.Equal(hash, sent.GetProperty("publishedSha256Hex").GetString());
-        Assert.Equal(0, sessionLookups);
-        Assert.Null(hub.CurrentStatus);
-        Assert.False(Directory.Exists(stageRoot));
-        Assert.Empty(await reopened.ReadPendingAsync(10, CancellationToken.None));
-    }
-
-    private sealed class NoPublication : IStagedPublicationGate
-    {
-        public IDisposable Authorize(StagedTransfer transfer, string temporaryDestination, string digest)
-            => throw new InvalidOperationException("Attribution must never request publication.");
-        public bool DisposeStage(Guid transferId, uint outcome, uint committedRenames)
-            => throw new InvalidOperationException("Attribution must never dispose a stage.");
-    }
-
     [Fact]
     public async Task Inspected_event_and_verified_service_identity_survive_offline_restart_and_dispatch()
     {
         var sink = new LocalQueueAuditSink(_workspace.QueueFile);
         var id = await InspectAndRecordAsync(sink);
         const string sid = "S-1-5-21-123-456-789-1001";
-        using (var server = new JustificationPipeServer(new PendingOverrides(), new Policies(), sink,
-            new OverrideGrantDispatcher(), new StagedJustifications(), NullLogger<JustificationPipeServer>.Instance))
+        using (var server = new JustificationPipeServer(new Policies(), sink,
+            new DriveJustifications(), NullLogger<JustificationPipeServer>.Instance))
             await server.RecordJustificationAsync(new JustificationRequest(id.ToString(), "Finalidade autorizada"),
                 sid, CancellationToken.None);
 

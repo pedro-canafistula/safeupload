@@ -4,6 +4,7 @@ using System.Security.Principal;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Service.Drive;
 
 namespace SafeUpload.Agent.Service.Notifications;
 
@@ -30,36 +31,20 @@ public sealed class JustificationPipeServer : BackgroundService
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(5);
     private readonly SemaphoreSlim _connections = new(MaxServerInstances, MaxServerInstances);
 
-    /// <summary>
-    /// Prazo da exceção no driver.
-    ///
-    /// É o tempo entre o usuário clicar em confirmar e o programa dele tentar
-    /// a operação de novo. Não precisa ser mais que isso, e o driver limita de
-    /// qualquer forma.
-    /// </summary>
-    private static readonly TimeSpan GrantDuration = TimeSpan.FromSeconds(30);
-
-    private readonly PendingOverrides _pending;
     private readonly IPolicyStore _policyStore;
     private readonly IAuditSink _auditSink;
-    private readonly OverrideGrantDispatcher _grants;
-    private readonly StagedJustifications _staged;
+    private readonly DriveJustifications _justifications;
     private readonly ILogger<JustificationPipeServer> _logger;
 
-    /// <summary>Compõe o servidor.</summary>
     public JustificationPipeServer(
-        PendingOverrides pending,
         IPolicyStore policyStore,
         IAuditSink auditSink,
-        OverrideGrantDispatcher grants,
-        StagedJustifications staged,
+        DriveJustifications justifications,
         ILogger<JustificationPipeServer> logger)
     {
-        _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
-        _grants = grants ?? throw new ArgumentNullException(nameof(grants));
-        _staged = staged ?? throw new ArgumentNullException(nameof(staged));
+        _justifications = justifications ?? throw new ArgumentNullException(nameof(justifications));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -175,39 +160,18 @@ public sealed class JustificationPipeServer : BackgroundService
             return false;
         }
 
-        if (!_grants.IsConnected)
-        {
-            _logger.LogWarning("Justificativa recebida sem conexao com o minifiltro.");
-            return false;
-        }
-
-        if (_staged.TryConsume(request.EventId, sessionId, clientSid, out var publish))
-        {
-            if (publish is null) return false;
-            await RecordJustificationAsync(request, clientSid, cancellationToken).ConfigureAwait(false);
-            return await publish(cancellationToken).ConfigureAwait(false);
-        }
-
-        PendingOverrides.Entry? pendente = _pending.Consume(request.EventId, sessionId);
-
-        if (pendente is null)
+        if (!_justifications.TryConsume(request.EventId, sessionId, clientSid, out var approve) || approve is null)
         {
             _logger.LogWarning(
                 "Justificativa para um bloqueio que nao existe, venceu, ou e de outra sessao. Ignorada.");
             return false;
         }
 
-        // Auditar ANTES de conceder. Concedendo primeiro, uma falha aqui
-        // deixaria a excecao de pe sem registro nenhum de quem a pediu.
+        // Auditar ANTES de publicar: uma falha aqui nao pode deixar a versao publicada sem registro de quem pediu.
         await RecordJustificationAsync(request, clientSid, cancellationToken).ConfigureAwait(false);
-
-        _grants.Grant(pendente.ProcessId, pendente.NtPath, GrantDuration);
-
-        _logger.LogWarning(
-            "Excecao concedida para {Arquivo}, processo {Pid}, justificada pelo usuario.",
-            pendente.FileName,
-            pendente.ProcessId);
-        return true;
+        bool published = approve();
+        _logger.LogWarning("Versao {EventId} justificada pelo usuario; publicada={Published}.", request.EventId, published);
+        return published;
     }
 
     internal Task RecordJustificationAsync(JustificationRequest request, string? clientSid,
