@@ -1,3 +1,0 @@
-PSVersion=5.1.19041.2673
-ParseErrors=0
-T8MotwCompletionSignatureSelfCheck=PASS NativeCalls=False

@@ -1,8 +1,0 @@
-{
-  "state": "shut off",
-  "base_untouched": true,
-  "dev_overlay_preserved": true,
-  "inactive_xml_equal": true,
-  "qualification": false,
-  "restoration": "preserved dev overlay; not a fresh-disk qualification restoration"
-}

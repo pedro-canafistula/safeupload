@@ -43,8 +43,7 @@ em [INSPECTION-COVERAGE.md](docs/INSPECTION-COVERAGE.md).
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver de kernel
 (minifiltro) opcional, com documentação própria em
-[`../driver/docs/architecture/ARQUITETURA.md`](../driver/docs/architecture/ARQUITETURA.md) e
-[`../driver/docs/operations/DEPLOY.md`](../driver/docs/operations/DEPLOY.md).
+[`../driver/README.md`](../driver/README.md).
 
 ### Duas formas de interceptar
 
@@ -161,8 +160,7 @@ SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo. Se a ACL ex
 arquivo e mantém a última política aplicada em memória; sem uma política válida anterior, não carrega uma política mais fraca.
 A fila local de auditoria (`queue.jsonl`) ainda não é protegida por ACL.
 
-**Limitações do instalador encontradas no teste manual de 08/10/2026** (ver
-[`../driver/evidence/2026-10-08/manual-test-win10-debug/README.md`](../driver/evidence/2026-10-08/manual-test-win10-debug/README.md)):
+**Limitações do instalador encontradas no teste manual de 08/10/2026:**
 
 Registro histórico: os argumentos staged e o reconhecimento da saída SID foram
 corrigidos no script atual. O encaminhamento de configuração ao seed também foi

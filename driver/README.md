@@ -1,30 +1,49 @@
 # SafeUpload driver
 
-Kernel minifilter and harnesses for staged protection of writes (local fixed NTFS). The agent that talks to it lives in `../agente/`.
+## State (2026-11-01)
 
-## Start here
+`SafeUpload.Minifilter/` still holds the in-kernel staging driver (about 51K lines of C) and its agent counterpart lives
+in `agente/SafeUpload.Agent.Service/Interception/`. It works for Notepad, Excel and Explorer in local protected folders,
+but Word saves still race, and USB, network shares and cloud folders were never enabled.
 
-1. [`POST-MVP-PLAN.md`](POST-MVP-PLAN.md) — current scope, owner decisions, stops and qualification status.
-2. [`M2-COMPLETION-PLAN.md`](M2-COMPLETION-PLAN.md) — the 2026-10-13 review and proposed execution order (recommendations, not approvals).
-3. [`MVP-PLAN.md`](MVP-PLAN.md) — historical component baseline.
-4. [`docs/README.md`](docs/README.md) — index of the designs, reviews, operations notes and history, with the former locations of moved files.
-5. [`../AGENTS.md`](../AGENTS.md) — contributor rules: product invariants, verification, lab boundaries.
+It is being replaced by a much smaller design:
+
+| Part | Where | Job |
+|---|---|---|
+| SafeUpload drive | agent (user mode, WinFsp) | Serves each protected destination as a drive/folder. Writes go to a private stage; when a modified file is closed, a snapshot is inspected and only clean versions are copied to the real destination. |
+| Gate minifilter | this folder (kernel) | Refuses direct writes to the real destinations (protected folders, removable and network volumes) for every process except the agent. |
+
+WinFsp's own signed driver handles caching, memory mapping, locks and sharing, which is where most of the old kernel
+code went. The last state of the old design is tagged `archive/staging-final`; its plans, reviews and evidence are in
+git history before that tag.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `SafeUpload.Minifilter/` | The kernel minifilter (writer tracking, staging, admission, native operations) and its host-side tests in `tests/`. |
-| `SafeUpload.Inspector/` | v1 user-mode client of the minifilter's communication port. |
-| `SafeUpload.WriterFixture/`, `SafeUpload.SectionFault/`, `SafeUpload.ArchitectureProbe/` | Qualification-only fixtures: a single-file writer, a fault-injection filter for section creation, and a bounded same-stack isolation experiment. None is part of the product. |
-| `SafeUpload.Driver.sln` | Solution for the projects above. |
-| `scripts/` | Builds, Windows harnesses, verdict checks and lab runners; see [`scripts/README.md`](scripts/README.md). |
-| `docs/` | Designs, reviews, operations notes and history; see [`docs/README.md`](docs/README.md). |
-| `evidence/` | Raw harness output stays local and ignored; curated, cited summaries are tracked. See [`evidence/README.md`](evidence/README.md). |
-| `recovery-dispositioned/` | Preserved recovery markers from 2026-10-05/06. Their `disposition.json` files record these paths, and CI enables long paths for them; do not move or rewrite. |
+| `SafeUpload.Minifilter/` | Kernel minifilter (`.vcxproj`, `.inf`) and host-side tests in `tests/` |
+| `SafeUpload.Inspector/` | Small user-mode client of the minifilter's communication port, for manual tests |
+| `SafeUpload.Driver.sln` | Solution for both |
+| `scripts/build-driver.sh` | Builds and test-signs the driver on a builder VM; output in `out/driver/` |
+| `scripts/remote_ps.py` | Runs a PowerShell script on a builder or the test VM over SSH |
+| `scripts/run-disk.sh` | Starts the test VM on a disposable overlay of its base disk and deletes it afterwards |
+| `scripts/debuggees.txt` | Test VM addresses |
+| `scripts/Update-DevPair.ps1` | Installs a driver/agent pair on the dev disk (old design; goes away with it) |
 
-## Conventions
+## Build
 
-- Run `python3 scripts/check-doc-links.py` after moving or renaming documentation; it fails on any relative link that is not already in `scripts/doc-links-baseline.txt`.
-- Raw run output goes to `evidence/<date>/<label>-*`; never reuse a label or overwrite a failed receipt.
-- Source comments that point at designs use the paths under `docs/`.
+```bash
+driver/scripts/build-driver.sh            # HEAD, Release
+driver/scripts/build-driver.sh abc123 Debug
+```
+
+Requirements on the builder: Visual Studio 18 with the WDK (10.0.28000), and the test-signing certificate in
+`LocalMachine\My`. The test VM trusts that certificate and runs with test signing on.
+
+## Install on the test VM (manual)
+
+```powershell
+RUNDLL32.EXE SETUPAPI.DLL,InstallHinfSection DefaultInstall.NTamd64 132 .\SafeUpload.inf
+fltmc load SafeUpload
+fltmc instances -f SafeUpload
+```

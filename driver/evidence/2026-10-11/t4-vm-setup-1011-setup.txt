@@ -1,5 +1,0 @@
-SelectedVM=win10-debug3
-OtherClone=win10-debug2 (shut off)
-ResetNvramSupported=True
-TPMRemoved=True
-OnlyTPMXmlChanged=True

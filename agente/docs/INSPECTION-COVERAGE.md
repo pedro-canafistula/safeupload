@@ -1,8 +1,6 @@
-# Inspection content coverage — T9
+# Inspection content coverage
 
-Both extraction APIs use the same readers. Word/Excel/PDF round 2 has component matrix evidence in the
-[T9 status plan](../../driver/POST-MVP-PLAN.md#t9-large-files-and-complete-inspection).
-Each format increment requires its own Windows feature matrix and protected qualification.
+Both extraction APIs use the same readers.
 Unsupported content yields `unsupported_format`: staged Blocked, legacy AllowedWithoutInspection.
 Archive-specific refusal reasons are listed below. No OCR, Office embedded-package inspection or macro execution is provided.
 
@@ -136,7 +134,7 @@ ZIP and the explicit 7z refusal route; no other policy default changes.
 `ArchiveInspectionTests`/`ArchiveIntegrityTests` use independent raw ZIP headers/CRC, BCL seekable/nonseekable writers,
 and independently generated encrypted ZIP/7z fixtures. They cover member provenance and redaction, nested existing
 inspectors, exact/over budget boundaries, malformed/late failures, compressed framing, extraction parity and worker/lease lifetime.
-The [design and rejected-parser record](T9-ARCHIVE-INSPECTION.md) lists the 7z limitation and independent review conditions.
+7z archives are not inspected (`archive_7z_unavailable`).
 
 ## PDF
 

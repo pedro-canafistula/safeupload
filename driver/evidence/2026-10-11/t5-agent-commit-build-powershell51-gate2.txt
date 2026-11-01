@@ -1,2 +1,0 @@
-Build-ExactAgentMatrix-commit2.ps1: ParseErrors=0
-BuildExactAgentSelfCheck=PASS; controls=required-commit,invalid-commit,no-source-manifest
