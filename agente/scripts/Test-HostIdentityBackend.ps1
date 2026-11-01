@@ -3,9 +3,11 @@
 param(
     [Parameter(Mandatory)][string]$MySqlBase,
     [string]$ResultsDirectory = (Join-Path $PSScriptRoot '../../artifacts/host-identity-backend'),
-    [switch]$ContractOnly
+    [switch]$ContractOnly,
+    [switch]$ConsolePolicyAcceptance
 )
 $ErrorActionPreference = 'Stop'
+if ($ContractOnly -and $ConsolePolicyAcceptance) { throw 'Choose component contract or installed console policy acceptance.' }
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'This service test is restricted to a disposable GitHub-hosted Windows runner.'
 }
@@ -47,7 +49,7 @@ $createdService = $false
 $started = Get-Date
 $evidence = [ordered]@{
     status='running'; agentCommit=(& git -C $repo rev-parse HEAD); backendSource='same checkout as agent'
-    mode=$(if ($ContractOnly) { 'Current C# API contract and real MySQL; remote policy application remains pending' } else { 'Installed LocalSystem service, FileSystemWatcher; no driver, UI or real file inspection qualified' })
+    mode=$(if ($ContractOnly) { 'Current C# API contract and real MySQL; component policy application only' } elseif ($ConsolePolicyAcceptance) { 'Installed ConsoleByIp service and protected cache; FileSystemWatcher only, no drive/gate qualification' } else { 'Installed LocalSystem service, FileSystemWatcher; no driver, UI or real file inspection qualified' })
     mysqlVersion=$null; checks=@(); snapshots=[ordered]@{}; cleanup=[ordered]@{}
 }
 function Check([string]$Name, [bool]$Passed) {
@@ -227,7 +229,10 @@ try {
         Get-Content -LiteralPath (Join-Path $results 'current-api-contract.log') -Tail 40
         Check 'current C# API acceptance completed successfully' ($contractExit -eq 0)
         $contractText = Get-Content -LiteralPath (Join-Path $results 'current-api-contract.log') -Raw
-        Check 'current API result retains policy and driver qualification limits' ($contractText.Contains('CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByAgent=Pending;RemotePolicyCacheQualification=Pending;DriverQualified=False'))
+        Check 'current API result retains policy and driver qualification limits' ($contractText.Contains('CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByEngine=True;RemotePolicyCacheComponent=True;InstalledConsolePolicy=Pending;PolicyCacheAclQualified=False;DriverQualified=False'))
+        $evidence.status='passed'
+    } elseif ($ConsolePolicyAcceptance) {
+        . (Join-Path $PSScriptRoot 'support/Test-ConsolePolicyServiceCase.ps1')
         $evidence.status='passed'
     } else {
     $control=Register-Host 'CONTROLE-IDENTIDADE'

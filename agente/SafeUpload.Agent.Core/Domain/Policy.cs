@@ -64,6 +64,10 @@ public sealed record Policy(
     bool OverrideAllowed = false,
     ClipboardPolicy? Clipboard = null)
 {
+    // Publicações da console e políticas locais têm numerações independentes.
+    // O conteúdo efetivo também precisa identificar uma decisão em memória.
+    internal string EvaluationKey => PolicyContentFingerprint.Compute(this);
+
     /// <summary>
     /// O bloco de clipboard em vigor. Uma política sem o bloco vale como canal
     /// desligado, para que um arquivo antigo continue carregando igual.

@@ -17,6 +17,12 @@ if (args.Length == 2 && args[0] == "--verify-service-peer")
     return;
 }
 
+if (args.Length == 3 && args[0] == "--console-service-fixture")
+{
+    await ConsoleServiceFixture.RunAsync(args[1], args[2]);
+    return;
+}
+
 if (args.Length == 1 && args[0] == "--current-api")
 {
     await CurrentBackendContract.RunAsync();

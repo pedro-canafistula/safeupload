@@ -12,8 +12,8 @@ using SafeUpload.Agent.Service.Clipboard;
 using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Policies;
 
-// Current API acceptance, with a known local inspection fixture. It does not claim
-// that the console JSON has been applied by the service's legacy policy reader.
+// Current API acceptance with isolated inspection fixtures, including the opt-in console consumer.
+// Component checks do not qualify the installed service, cache ACLs or drive/gate protection.
 internal static class CurrentBackendContract
 {
     internal static async Task RunAsync()
@@ -143,18 +143,17 @@ internal static class CurrentBackendContract
         var inventory = (await Get("endpoints")).GetProperty("itens").EnumerateArray().Single(e => e.GetProperty("endpointId").GetString() == endpoint);
         Check("current host heartbeat and audit count agree", inventory.GetProperty("status").GetString() == "online" && inventory.GetProperty("inspecoes7d").GetInt32() == 6 && inventory.GetProperty("hostId").GetInt32() == target);
 
-        async Task<int> Publish(string action)
+        async Task<int> Publish(string action, string rule)
         {
             await Post("politicas", new { versao = "1.0", nome = "Política de contrato", destino = new { ip = "10.90.0.21" }, acao = action,
-                regras = new[] { new { tipo = "cnpj", nome = "CNPJ" } }, criadaEm = DateTimeOffset.UtcNow, origem = "contract-test" }, HttpStatusCode.Created);
+                regras = new[] { new { tipo = rule, nome = rule } }, criadaEm = DateTimeOffset.UtcNow, origem = "contract-test" }, HttpStatusCode.Created);
             var published = await Get("agent/api/policy?ip=10.90.0.21");
             Check("published policy preserves host IP and rule", published.GetProperty("destino").GetProperty("idHost").GetInt32() == target &&
                 published.GetProperty("destino").GetProperty("ip").GetString() == "10.90.0.21" && published.GetProperty("acao").GetString() == action &&
-                published.GetProperty("regras").GetArrayLength() == 1 && published.GetProperty("regras")[0].GetProperty("tipo").GetString() == "cnpj");
+                published.GetProperty("regras").GetArrayLength() == 1 && published.GetProperty("regras")[0].GetProperty("tipo").GetString() == rule);
             return published.GetProperty("idPolitica").GetInt32();
         }
-        int first = await Publish("alertar"), second = await Publish("bloquear");
-        Check("publication creates a newer identified policy", second > first && first > 0);
+        await ConsolePolicyAcceptance.RunAsync(agent, target, work, Publish, Check, token);
         using (var other = await client.GetAsync("agent/api/policy?ip=10.90.0.22", token)) Check("policy does not leak to the control host", other.StatusCode == HttpStatusCode.NotFound);
 
         // New identities are minimized by the producers, before persistence. Old queued
@@ -188,7 +187,7 @@ internal static class CurrentBackendContract
         using var logout = await client.PostAsJsonAsync("auth/logout", new { }, token);
         Check("logout completes", logout.IsSuccessStatusCode);
         using (var loggedOut = await client.GetAsync("painel", token)) Check("logout revokes administrative reads", loggedOut.StatusCode == HttpStatusCode.Unauthorized);
-        Console.WriteLine("CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByAgent=Pending;RemotePolicyCacheQualification=Pending;DriverQualified=False");
+        Console.WriteLine("CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByEngine=True;RemotePolicyCacheComponent=True;InstalledConsolePolicy=Pending;PolicyCacheAclQualified=False;DriverQualified=False");
     }
     private sealed class FixturePolicy(Policy value) : IPolicyStore
     {

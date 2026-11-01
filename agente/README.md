@@ -171,9 +171,7 @@ Com `CentroAdministracao:BaseUrl` vazio, o agente é **autônomo**: lê a polít
 
 o agente passa a:
 
-- **Buscar a política do painel** (`GET /agent/policy`) em vez do arquivo
-  local — mesmo formato JSON nos dois casos, então trocar a fonte não muda
-  o contrato do documento. O provedor mantém cache persistido protegido.
+- **Buscar a política do painel** a cada 30 s, com cache persistido protegido (ver abaixo).
 - **Mandar heartbeat periódico** (`POST /agent/heartbeat`) — aparece em
   `/admin/endpoints` no painel.
 - **Entregar os eventos de auditoria pendentes** (`POST /agent/events`) — a
@@ -184,6 +182,29 @@ o agente passa a:
 
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
 projeto (ver `Interception:Mode` acima, mesma filosofia).
+
+### Política publicada pela console web
+
+Com `"PolicyProtocol": "ConsoleByIp"`, `"PolicyHostIp"` (o IP cadastrado do host) e `"RegisteredHostId"` em
+`CentroAdministracao`, o agente lê `GET /agent/api/policy?ip=<PolicyHostIp>`, a política que o administrador publica na
+tela Políticas. Sem `PolicyProtocol`, continua o formato antigo (`GET /agent/policy`).
+
+| Da console | No agente |
+|---|---|
+| `regras`: cpf, cnpj, cartao_credito, credenciais, rg, dados_bancarios, dados_saude, documentos_confidenciais, dados_pessoais | categorias ativas (`credenciais` = senha + segredo) |
+| `acao`: bloquear / alertar | bloqueia / libera e registra o alerta (`AuditOnly`; evento `Approved` com as categorias). Arquivo que não pôde ser inspecionado continua bloqueado nos dois casos |
+| `idPolitica` | versão da política |
+
+A console ainda não publica pastas protegidas, pendrives, compartilhamentos, extensões, limites nem a permissão de
+justificar: esses valores continuam vindo do `policy.json` local. Um documento de outro host, com regra desconhecida ou
+mais antigo que o atual é recusado e a última política válida continua (memória e
+`%ProgramData%\SafeUpload\console-policy-cache.json`). As unidades SafeUpload e o gate seguem a política nova no
+próximo ciclo de 30 s.
+
+As regras sem dígito verificador próprio precisam de rótulo ou de formato validável
+(`SafeUpload.Agent.Core/Domain/Validators/ContextDetectors.cs`): RG rotulado ou de SP com DV; agência + conta
+rotuladas ou IBAN; CID rotulado, Cartão Nacional de Saúde ou campo de formulário médico ("Diagnóstico: ..."); marcação
+CONFIDENCIAL/SIGILOSO/USO INTERNO; e-mail, telefone ou data de nascimento rotulada.
 
 **Diagnóstico local de políticas:** com logs de nível Information habilitados,
 procure `PolicyIntegration`. `SnapshotVersion`/`SnapshotSource` identificam a

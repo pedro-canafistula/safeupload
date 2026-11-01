@@ -388,7 +388,7 @@ public sealed class InspectionService
             // A read handle does not revoke an existing writable mapping.
             // Hash and scan the same captured bytes for legacy cache authority.
             fingerprint = Convert.ToHexString(SHA256.HashData(bytes));
-            if (_cache.TryGet(operation, policy.Version, out var cached, fingerprint) && cached is not null)
+            if (_cache.TryGet(operation, policy.Version, out var cached, fingerprint, policy.EvaluationKey) && cached is not null)
                 return (cached.Findings, fingerprint, cached);
             using var content = new MemoryStream(bytes, writable: false);
             if (extractor is ZipArchiveExtractor archive)
@@ -473,7 +473,8 @@ public sealed class InspectionService
             policy.Version,
             InScope: true)
         {
-            PolicyContentFingerprint = auditAndCache ? null : PolicyContentFingerprint.Compute(policy)
+            PolicyContentFingerprint = auditAndCache ? null : PolicyContentFingerprint.Compute(policy),
+            PolicyEvaluationKey = policy.EvaluationKey
         };
 
         if (auditAndCache)

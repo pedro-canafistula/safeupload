@@ -50,6 +50,7 @@ public static class ContentScanner
         var consumed = new List<(int Start, int End)>();
         var found = new List<(int Start, Finding Finding)>();
 
+        AddContext(ContextDetectors.FindIbans(text, active), consumed, found);
         ScanNumbers(text, active, consumed, found);
 
         // Segredos antes de senhas, pela mesma razão que os números vêm do
@@ -60,6 +61,10 @@ public static class ContentScanner
         ScanSecrets(text, active, consumed, found);
         ScanPasswords(text, active, consumed, found);
 
+        // Por último as regras de contexto (RG, dados bancários, saúde, confidencial, pessoais): um trecho que já é
+        // CPF, cartão ou senha fica com a categoria mais específica.
+        AddContext(ContextDetectors.Find(text, active), consumed, found);
+
         if (found.Count == 0)
         {
             return [];
@@ -67,6 +72,22 @@ public static class ContentScanner
 
         found.Sort(static (a, b) => a.Start.CompareTo(b.Start));
         return found.ConvertAll(static entry => entry.Finding);
+    }
+
+    private static void AddContext(
+        IEnumerable<ContextDetectors.ContextMatch> matches,
+        List<(int Start, int End)> consumed,
+        List<(int Start, Finding Finding)> found)
+    {
+        foreach (var match in matches)
+        {
+            var end = match.Start + match.Length - 1;
+            if (!Overlaps(consumed, match.Start, end))
+            {
+                consumed.Add((match.Start, end));
+                found.Add((match.Start, match.Finding));
+            }
+        }
     }
 
     private static void ScanNumbers(

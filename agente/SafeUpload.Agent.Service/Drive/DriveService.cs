@@ -192,9 +192,13 @@ public sealed class DriveService : BackgroundService
         var policy = _policy;
         var writer = decision.Writer;
         bool ownerFile = decision.FileName.StartsWith("~$", StringComparison.Ordinal);
+        // Audit mode (the console's "alertar"): a version whose inspection completed with findings goes through and
+        // is audited as an approval with its categories. A failed inspection still blocks (fail closed).
+        bool alert = !decision.Published && policy?.AuditOnly == true &&
+            decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
         if (decision.Operation is { } operation && decision.Result is { } result && !(ownerFile && decision.Published))
         {
-            var outcome = decision.Published ? result.Verdict : Verdict.Blocked;
+            var outcome = decision.Published ? result.Verdict : alert ? Verdict.Approved : Verdict.Blocked;
             await _inspection.RecordTransferOutcomeAsync(operation,
                 result, outcome, result.Reason, CancellationToken.None, eventId: decision.VersionId,
                 auditUserName: writer?.UserName).ConfigureAwait(false);
@@ -203,9 +207,8 @@ public sealed class DriveService : BackgroundService
 
         DriveMount? mount;
         lock (_mounts) _mounts.TryGetValue(destination, out mount);
-        if (policy?.AuditOnly == true)
+        if (alert)
         {
-            // Audit mode: record what would have been blocked, but let it through.
             mount?.FileSystem.Approve(decision.VersionId);
             return;
         }

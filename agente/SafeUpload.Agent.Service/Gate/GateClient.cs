@@ -13,11 +13,8 @@ namespace SafeUpload.Agent.Service.Gate;
 public sealed class GateClient : IDisposable
 {
     public const string PortName = @"\SafeUploadGatePort";
-    private const uint ProtocolVersion = 1;
-    private const uint CommandSetPolicy = 1;
+    private const uint ProtocolVersion = GatePolicyMessage.ProtocolVersion;
     private const uint CommandGetCounters = 2;
-    private const uint FlagRemovable = 0x1, FlagNetwork = 0x2;
-    private const int MaxPaths = 16, MaxPathChars = 512;
 
     private readonly ILogger<GateClient> _logger;
     private readonly object _gate = new();
@@ -33,22 +30,14 @@ public sealed class GateClient : IDisposable
     public void Apply(IReadOnlyList<string> folders, bool removable, bool network)
     {
         if (!OperatingSystem.IsWindows()) return;
-        var ntPaths = folders.Select(ToNtPath).Where(p => p is not null).Select(p => p!).Take(MaxPaths).ToList();
-        var key = string.Join("|", ntPaths) + $"|{removable}|{network}";
+        // Validate the complete scope before connecting, starting the driver or sending anything.
+        var policy = GatePolicyMessage.Create(folders, removable, network, ToNtPath);
+        var key = policy.Key;
         lock (_gate)
         {
             if (!Connect()) return;
             if (key == _appliedKey) return;
-            var message = new byte[16 + MaxPaths * MaxPathChars * 2];
-            BitConverter.TryWriteBytes(message.AsSpan(0), CommandSetPolicy);
-            BitConverter.TryWriteBytes(message.AsSpan(4), ProtocolVersion);
-            BitConverter.TryWriteBytes(message.AsSpan(8), (removable ? FlagRemovable : 0) | (network ? FlagNetwork : 0));
-            BitConverter.TryWriteBytes(message.AsSpan(12), (uint)ntPaths.Count);
-            for (int i = 0; i < ntPaths.Count; i++)
-            {
-                var chars = ntPaths[i].Length < MaxPathChars ? ntPaths[i] : ntPaths[i][..(MaxPathChars - 1)];
-                Encoding.Unicode.GetBytes(chars).CopyTo(message, 16 + i * MaxPathChars * 2);
-            }
+            var message = policy.Bytes;
             int hr = FilterSendMessage(_port!, message, (uint)message.Length, null, 0, out _);
             if (hr != 0)
             {
@@ -58,7 +47,7 @@ public sealed class GateClient : IDisposable
             }
             _appliedKey = key;
             _logger.LogInformation("Gate driver protects {Count} folder(s), removable={Removable}, network={Network}: {Paths}",
-                ntPaths.Count, removable, network, string.Join(", ", ntPaths));
+                policy.PathCount, removable, network, string.Join(", ", folders));
         }
     }
 

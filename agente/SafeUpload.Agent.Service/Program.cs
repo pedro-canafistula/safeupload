@@ -147,14 +147,19 @@ public static class Program
             }
 
             builder.Services.AddSingleton<RefreshingPolicyStore>(provider =>
-                new RefreshingPolicyStore(
-                    new DurableHttpPolicyStore(
-                        provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
-                        endpointId,
-                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json"),
-                        provider.GetRequiredService<CommunicationHealth>()),
-                    TimeSpan.FromSeconds(30),
-                    provider.GetRequiredService<ILogger<RefreshingPolicyStore>>()));
+            {
+                var factory = provider.GetRequiredService<IHttpClientFactory>();
+                var health = provider.GetRequiredService<CommunicationHealth>();
+                var remote = administration.ConsolePolicy is { } console
+                    ? new DurableHttpPolicyStore(
+                        factory.CreateClient(HttpClientName + "AgentApi"), endpointId,
+                        Path.Combine(AgentPaths.RootDirectory, "console-policy-cache.json"),
+                        health, console, new LocalPolicyStore())
+                    : new DurableHttpPolicyStore(factory.CreateClient(HttpClientName), endpointId,
+                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json"), health);
+                return new RefreshingPolicyStore(remote, TimeSpan.FromSeconds(30),
+                    provider.GetRequiredService<ILogger<RefreshingPolicyStore>>());
+            });
             builder.Services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<RefreshingPolicyStore>());
             builder.Services.AddHostedService(provider => provider.GetRequiredService<RefreshingPolicyStore>());
 
