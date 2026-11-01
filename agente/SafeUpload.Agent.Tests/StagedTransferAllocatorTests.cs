@@ -35,6 +35,7 @@ public sealed class StagedTransferAllocatorTests : IDisposable
         var entry = await journal.ReadAsync(first.TransferId, CancellationToken.None);
         Assert.Equal(TransferJournalState.Allocated, entry.State);
         Assert.Equal(first, entry.Transfer);
+        Assert.Equal(1, entry.Transfer.AuditMetadataVersion);
         Assert.Null(entry.Transfer.AuditAccountName); // An unbound/legacy allocation is not reattributed.
     }
 

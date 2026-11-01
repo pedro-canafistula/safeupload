@@ -172,10 +172,10 @@ public sealed class InspectionService
                 var fromCache = inspected.Cached with
                 {
                     ElapsedMs = stopwatch.ElapsedMilliseconds,
-                    FromCache = true
+                    FromCache = true,
+                    RecordedEvent = null
                 };
-                await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false);
-                return fromCache;
+                return fromCache with { RecordedEvent = await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false) };
             }
         }
         catch (TimeoutException)
@@ -275,7 +275,7 @@ public sealed class InspectionService
         {
             if (fingerprint is not null && verdict is Verdict.Approved or Verdict.Blocked)
                 _cache.Set(operation, result, fingerprint);
-            await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false);
+            result = result with { RecordedEvent = await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false) };
         }
 
         return result;
@@ -301,13 +301,14 @@ public sealed class InspectionService
             InScope: false);
     }
 
-    private async Task AuditAsync(
+    private async Task<AuditEvent?> AuditAsync(
         FileOperation operation,
         InspectionResult result,
         CancellationToken cancellationToken,
         Guid? eventId = null,
         string? publishedSha256Hex = null)
     {
+        bool minimize = eventId is null || operation.AuditMetadataVersion == 1;
         var auditEvent = new AuditEvent(
             eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
@@ -315,15 +316,15 @@ public sealed class InspectionService
             operation.AuditUserName ?? _userName,
             // Explicit IDs can refer to a persisted transfer from an older build.
             // Preserve its canonical metadata; fresh IDs use the minimized name.
-            eventId is null ? AuditMetadata.FileNameOnly(operation.FileName) : operation.FileName,
-            operation.Extension,
+            minimize ? AuditTextPrivacy.Sanitize(AuditMetadata.FileNameOnly(operation.FileName)) : operation.FileName,
+            minimize ? AuditTextPrivacy.Sanitize(operation.Extension) : operation.Extension,
             operation.SizeBytes,
             result.Verdict,
             result.Categories,
             result.Findings.Select(static f => f.MaskedSnippet).Distinct().ToList(),
-            operation.ProcessName,
+            minimize ? AuditTextPrivacy.Sanitize(operation.ProcessName) : operation.ProcessName,
             operation.ProcessId,
-            operation.DestinationPath,
+            minimize ? AuditTextPrivacy.Sanitize(operation.DestinationPath) : operation.DestinationPath,
             result.Reason,
             result.PolicyVersion,
             result.ElapsedMs,
@@ -333,11 +334,13 @@ public sealed class InspectionService
         try
         {
             await _auditSink.WriteAsync(auditEvent, cancellationToken).ConfigureAwait(false);
+            return auditEvent;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             // Falha ao registrar não pode mudar o veredito nem derrubar a
             // operação do usuário. O evento se perde; a decisão vale.
+            return null;
         }
     }
 }

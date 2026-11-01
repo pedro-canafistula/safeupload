@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.Diagnostics;
 using System.Security.Principal;
 using SafeUpload.Agent.Core.Application;
@@ -18,7 +19,7 @@ namespace SafeUpload.Agent.Service.Network;
 ///
 /// O proxy não conhece o Core e o Core não conhece HTTP; esta classe é o único
 /// ponto que conhece os dois. Nada do conteúdo é registrado (RN-006): o log
-/// tem site, caminho sem query string, tamanhos, categorias e processo.
+/// tem somente a origem do site (sem caminho/query), tamanhos, categorias e processo sanitizado.
 ///
 /// Também é daqui que sai o aviso ao usuário (Fase 6). O proxy só enxerga um
 /// PID; pelo token desse processo o serviço descobre de quem é o navegador e
@@ -62,7 +63,7 @@ public sealed class WebUploadInspector(
 
         if (result.Findings.Count == 0)
         {
-            logger.LogDebug(
+            logger.LogSafeDebug(
                 "Envio liberado: {Method} {Destination} ({Bytes} bytes, {Parts} partes) por {Process}.",
                 request.Head.Method, destination, request.Body.Length, parts.Count, processName);
 
@@ -73,14 +74,14 @@ public sealed class WebUploadInspector(
 
         if (!result.IsBlocked)
         {
-            logger.LogInformation(
+            logger.LogSafeInformation(
                 "Envio com dado sensível liberado pelo modo de auditoria: {Method} {Destination}, categorias [{Categories}], por {Process}.",
                 request.Head.Method, destination, categories, processName);
 
             return UploadDecision.Allow;
         }
 
-        logger.LogInformation(
+        logger.LogSafeInformation(
             "Envio bloqueado: {Method} {Destination}, categorias [{Categories}], por {Process}.",
             request.Head.Method, destination, categories, processName);
 
@@ -123,7 +124,7 @@ public sealed class WebUploadInspector(
             catch (Exception ex)
             {
                 // Falhar em avisar não muda o veredito.
-                logger.LogWarning(ex, "Falha ao publicar a notificação do envio para {Destination}.", record.Event.DestinationPath);
+                logger.LogSafeWarning(ex, "Falha ao publicar a notificação do envio para {Destination}.", record.Event.DestinationPath);
             }
         }
     }

@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -77,7 +78,7 @@ public sealed class NotificationPipeServer : BackgroundService
                 // O laço de accept nunca pode morrer por causa de uma falha de
                 // um cliente: seria o serviço parar de notificar até ser
                 // reiniciado. Registra, respira e continua aceitando.
-                _logger.LogError(ex, "Falha ao aceitar conexao no canal de notificacao");
+                _logger.LogSafeError(ex, "Falha ao aceitar conexao no canal de notificacao");
 
                 try
                 {
@@ -221,7 +222,7 @@ public sealed class NotificationPipeServer : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Conexao encerrada");
+            _logger.LogSafeDebug(ex, "Conexao encerrada");
         }
         finally
         {

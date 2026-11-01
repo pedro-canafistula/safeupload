@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -85,7 +86,7 @@ public sealed class JustificationPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
+                _logger.LogSafeWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
                 if (pipe is not null) await pipe.DisposeAsync().ConfigureAwait(false);
                 _connections.Release();
                 continue;
@@ -130,7 +131,7 @@ public sealed class JustificationPipeServer : BackgroundService
                 {
                     // A stale generation or failed audit/publication is a
                     // rejection, not an unexplained EOF to the real client.
-                    _logger.LogWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
+                    _logger.LogSafeWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
                 }
             }
 
@@ -149,7 +150,7 @@ public sealed class JustificationPipeServer : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Falha ao atender o canal de justificativas.");
+            _logger.LogSafeWarning(ex, "Falha ao atender o canal de justificativas.");
         }
         finally
         {
@@ -205,14 +206,14 @@ public sealed class JustificationPipeServer : BackgroundService
 
         _logger.LogWarning(
             "Excecao concedida para {Arquivo}, processo {Pid}, justificada pelo usuario.",
-            pendente.FileName,
+            AuditTextPrivacy.Sanitize(pendente.FileName),
             pendente.ProcessId);
         return true;
     }
 
     private Task RecordJustificationAsync(JustificationRequest request, string? clientSid,
         CancellationToken cancellationToken)
-        => _auditSink.RecordOverrideAsync(new AuditOverride(Guid.Parse(request.EventId), request.Justification,
+        => _auditSink.RecordOverrideAsync(AuditOverride.FromNewSubmission(Guid.Parse(request.EventId), request.Justification,
             DateTimeOffset.UtcNow, clientSid ?? "Não identificado", Environment.MachineName), cancellationToken);
 
     /// <summary>

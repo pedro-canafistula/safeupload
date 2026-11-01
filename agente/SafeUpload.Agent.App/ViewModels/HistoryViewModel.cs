@@ -92,10 +92,10 @@ public sealed class HistoryRowViewModel
 
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
         FileName = AuditSubject.Describe(auditEvent);
-        Extension = auditEvent.Extension;
+        Extension = AuditTextPrivacy.Sanitize(auditEvent.Extension);
         Size = FormatSize(auditEvent.SizeBytes);
-        Destination = auditEvent.DestinationPath;
-        Process = auditEvent.ProcessName;
+        Destination = AuditTextPrivacy.Sanitize(auditEvent.DestinationPath);
+        Process = AuditTextPrivacy.Sanitize(auditEvent.ProcessName);
         Status = StatusPill.For(auditEvent.Verdict);
 
         Categories = auditEvent.Categories.Count == 0

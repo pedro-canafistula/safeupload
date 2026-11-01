@@ -156,7 +156,8 @@ public sealed class StagedTransferAllocator
         {
             RequestorSid = requestorSid,
             RequestorProcessCreationTime = requestorProcessCreationTime,
-            AuditAccountName = sessionId is not null && requestorProcessCreationTime is > 0 ? AuditAccount(requestorSid) : null
+            AuditAccountName = sessionId is not null && requestorProcessCreationTime is > 0 ? AuditAccount(requestorSid) : null,
+            AuditMetadataVersion = 1
         };
 
         if (disposition > 5)

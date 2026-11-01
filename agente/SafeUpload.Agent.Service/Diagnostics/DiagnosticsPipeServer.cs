@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -68,7 +69,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
             catch (Exception ex)
             {
                 // A broken client or a pipe that could not be created must not stop the service or spin.
-                _logger.LogWarning(ex, "Diagnostics pipe request failed.");
+                _logger.LogSafeWarning(ex, "Diagnostics pipe request failed.");
                 try { await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken).ConfigureAwait(false); }
                 catch (OperationCanceledException) { return; }
             }

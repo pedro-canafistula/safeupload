@@ -46,6 +46,7 @@ public sealed partial class LocalQueueAuditSink
             AuditQueueTemporaryClassification Result(bool exists = true, bool limited = false, bool blocked = false) =>
                 new(exists, entries, candidates, busy, unterminated, complete, suspicious,
                     unavailable, indeterminate, unsafeFiles, bytesRead, limited, blocked);
+            if (!VerifyQueueParentReadonly()) return Result(exists: false);
             try
             {
                 for (var ancestor = directory; ancestor is not null; ancestor = ancestor.Parent)

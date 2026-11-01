@@ -104,7 +104,7 @@ public static class Program
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Cannot open notification record; all notifications will be suppressed");
+                logger.LogSafeError(ex, "Cannot open notification record; all notifications will be suppressed");
                 return new UnavailableNotificationRecord(ex);
             }
         });
@@ -268,7 +268,7 @@ public static class Program
 
     internal static void ConfigureAuditStorage(IServiceCollection services)
     {
-        services.AddSingleton<LocalQueueAuditSink>();
+        services.AddSingleton(_ => new LocalQueueAuditSink()); // Never select the isolated-path test constructor through DI.
         services.AddSingleton<AuditQueueHealth>();
         services.AddSingleton<MonitoredAuditSink>(provider => new MonitoredAuditSink(
             provider.GetRequiredService<LocalQueueAuditSink>(), provider.GetRequiredService<AuditQueueHealth>(),
@@ -315,7 +315,7 @@ public static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Boot policy seed failed: {ex}");
+            Console.Error.WriteLine("Boot policy seed failed: " + OperationalLog.DescribeFailure(ex));
             return 1;
         }
     }

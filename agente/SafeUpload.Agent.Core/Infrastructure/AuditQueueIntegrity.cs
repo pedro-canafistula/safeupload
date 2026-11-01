@@ -154,8 +154,7 @@ public sealed partial class LocalQueueAuditSink
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                stream = new FileStream(_queueFile, FileMode.Open, FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous);
+                stream = OpenQueueRead();
             }
             catch (FileNotFoundException) { return null; }
             catch (DirectoryNotFoundException) { return null; }

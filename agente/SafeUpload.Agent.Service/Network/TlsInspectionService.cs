@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using SafeUpload.Agent.Network.Bypass;
@@ -73,8 +74,8 @@ public sealed class TlsInspectionService(
             proxyLogger);
 
         _proxy.Start();
-        logger.LogInformation("Inspeção TLS ativa com a CA {Thumbprint}.", _authority.Thumbprint);
-        logger.LogInformation(
+        logger.LogSafeInformation("Inspeção TLS ativa com a CA {Thumbprint}.", _authority.Thumbprint);
+        logger.LogSafeInformation(
             "Exceções de inspeção (túnel, sem leitura): {Categories}. Detecção de pinning {Pinning}.",
             exceptions.Count == 0
                 ? "nenhuma"
@@ -83,8 +84,8 @@ public sealed class TlsInspectionService(
 
         if (exceptions.Ignored.Count > 0)
         {
-            logger.LogWarning(
-                "Entradas de exceção descartadas por não serem um domínio: {Entries}.", string.Join(", ", exceptions.Ignored));
+            logger.LogSafeWarning(
+                "Entradas de exceção descartadas por não serem um domínio: {Count}.", exceptions.Ignored.Count);
         }
 
         // O desvio só depois do proxy no ar: apontar os navegadores para um
@@ -95,9 +96,9 @@ public sealed class TlsInspectionService(
             _policiesApplied = true;
 
             _egressFilter = BrowserEgressFilter.Install();
-            logger.LogInformation(
-                "Navegadores desviados para o proxy; saída direta bloqueada para: {Browsers}.",
-                _egressFilter.BlockedApplications.Count == 0 ? "nenhum navegador encontrado" : string.Join(", ", _egressFilter.BlockedApplications));
+            logger.LogSafeInformation(
+                "Navegadores desviados para o proxy; saída direta bloqueada para {Count} aplicativo(s).",
+                _egressFilter.BlockedApplications.Count);
         }
 
         return Task.CompletedTask;
@@ -115,7 +116,7 @@ public sealed class TlsInspectionService(
         {
             BrowserProxyPolicies.Remove();
             _policiesApplied = false;
-            logger.LogInformation("Desvio dos navegadores desfeito.");
+            logger.LogSafeInformation("Desvio dos navegadores desfeito.");
         }
 
         if (_proxy is not null)

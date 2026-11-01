@@ -64,10 +64,13 @@ try {
         $proof = [regex]::Matches([string]$cases[0].Output.StdOut,
             ('(?m)^HOST_IDENTITY_PROCESS=' + $phase + '\|([1-9][0-9]*\|[1-9][0-9]*)\r?$'))
         if ($proof.Count -ne 1) { throw "SYSTEM phase $phase has missing or duplicated process evidence." }
+        $queueProof = [regex]::Matches([string]$cases[0].Output.StdOut,
+            ('(?m)^AUDIT_QUEUE_SYSTEM=' + $phase + '\|production-two-trustees\|passed\r?$'))
+        if ($queueProof.Count -ne 1) { throw "SYSTEM phase $phase has missing or duplicated audit queue evidence." }
         $processes += $proof[0].Groups[1].Value
     }
     if ($processes[0] -ceq $processes[1]) { throw 'SYSTEM phases reused the same test process.' }
-    Write-Output 'SYSTEM identity provision and recovery passed in two separate processes.'
+    Write-Output 'SYSTEM identity and audit queue provision/recovery passed in two separate processes.'
 } finally {
     $ownedTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     if ($ownedTask) {

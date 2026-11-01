@@ -46,7 +46,6 @@ public sealed class MinifilterInterceptor : BackgroundService
 
     private readonly InspectionService _inspection;
     private readonly IPolicyStore _policyStore;
-    private readonly IAuditSink _auditSink;
     private readonly NotificationHub _hub;
     private readonly PendingOverrides _pending;
     private readonly OverrideGrantDispatcher _grants;
@@ -91,7 +90,7 @@ public sealed class MinifilterInterceptor : BackgroundService
     {
         _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
-        _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
+        ArgumentNullException.ThrowIfNull(auditSink); // Keep the existing composition/constructor contract.
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
         _grants = grants ?? throw new ArgumentNullException(nameof(grants));
@@ -137,7 +136,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 await BootPolicySeeder.SeedAsync(_policyStore,
                     new BootPolicyRegistryWriter(new WindowsBootPolicyRegistryBackend()),
                     cancellationToken).ConfigureAwait(false);
-                _logger.LogInformation("BootPolicy reseeded for the next boot during service shutdown.");
+                _logger.LogSafeInformation("BootPolicy reseeded for the next boot during service shutdown.");
             }
             finally
             {
@@ -146,11 +145,11 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Shutdown BootPolicy reseed was cancelled; the last durable policy remains in place.");
+            _logger.LogSafeWarning("Shutdown BootPolicy reseed was cancelled; the last durable policy remains in place.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Shutdown BootPolicy reseed failed; the last durable policy remains in place.");
+            _logger.LogSafeError(ex, "Shutdown BootPolicy reseed failed; the last durable policy remains in place.");
         }
 
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
@@ -171,7 +170,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             // Descompasso de layout entre Protocol.cs e Protocol.h. Seguir
             // daqui produziria vereditos respondidos para a requisição
             // errada, sem nada no sistema reportando erro.
-            _logger.LogCritical(ex, "Contrato incompativel com o driver. O gatilho de kernel nao vai subir.");
+            _logger.LogSafeCritical(ex, "Contrato incompativel com o driver. O gatilho de kernel nao vai subir.");
             return;
         }
 
@@ -187,7 +186,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             // dois se resolve com nova tentativa imediata, e o serviço não
             // deve morrer por causa disso: o agente segue no ar sem o
             // gatilho de kernel, o que o log precisa deixar explícito.
-            _logger.LogError(ex, "Nao foi possivel conectar na porta do minifiltro. Sem intercepcao de kernel.");
+            _logger.LogSafeError(ex, "Nao foi possivel conectar na porta do minifiltro. Sem intercepcao de kernel.");
             return;
         }
 
@@ -228,7 +227,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     Task.Run(() => PublishSealedLoopAsync(publishCancellation.Token),
                         publishCancellation.Token);
 
-                _logger.LogInformation("Minifiltro conectado. Interceptando em modo kernel.");
+                _logger.LogSafeInformation("Minifiltro conectado. Interceptando em modo kernel.");
 
                 _hub.Publish(new StatusNotification(
                     _policyVersion, _activeCategories, ProtectionActive: true, AuditOnly: _auditOnly,
@@ -278,7 +277,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     else if (request.Operation == Operation.StageDiagnostic)
                     {
-                        _logger.LogWarning("Staged kernel diagnostic: phase {Phase}, status 0x{Status:X8}, path {Path}",
+                        _logger.LogSafeWarning("Staged kernel diagnostic: phase {Phase}, status 0x{Status:X8}, path {Path}",
                             request.Flags, request.Reserved, request.GetPath());
                         verdict = PortVerdict.Deny;
                     }
@@ -294,7 +293,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
+                        _logger.LogSafeWarning(ex, "Falha ao responder o veredito {RequestId}.", request.RequestId);
                     }
                 }
             }
@@ -309,7 +308,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Admission evidence endpoint failed to drain before FilterPort close.");
+                        _logger.LogSafeError(ex, "Admission evidence endpoint failed to drain before FilterPort close.");
                     }
                 }
 #endif
@@ -320,7 +319,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     catch (OperationCanceledException) { }
                     catch (Exception ex)
                     {
-                        _logger.LogCritical(ex,
+                        _logger.LogSafeCritical(ex,
                             "Processamento de transferencias seladas interrompido.");
                     }
                 }
@@ -330,7 +329,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     catch (OperationCanceledException) { }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Admission coverage monitor stopped before FilterPort close.");
+                        _logger.LogSafeWarning(ex, "Admission coverage monitor stopped before FilterPort close.");
                     }
                 }
                 _grants.Unbind(port);
@@ -342,7 +341,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             }
         }
 
-        _logger.LogInformation(
+        _logger.LogSafeInformation(
             "Laco do minifiltro encerrado. {Answered} vereditos, {OverBudget} fora do prazo.",
             Interlocked.Read(ref _answered),
             Interlocked.Read(ref _overBudget));
@@ -378,7 +377,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Falha ao renomear transferencia privada {RequestId}.", request.RequestId);
+            _logger.LogSafeWarning(ex, "Falha ao renomear transferencia privada {RequestId}.", request.RequestId);
             return PortVerdict.Deny;
         }
     }
@@ -469,7 +468,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falha ao reservar estagio para a requisicao {RequestId}.",
+            _logger.LogSafeError(ex, "Falha ao reservar estagio para a requisicao {RequestId}.",
                 request.RequestId);
             return (PortVerdict.Deny, null);
         }
@@ -509,7 +508,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falha ao selar estagio para a requisicao {RequestId}.",
+            _logger.LogSafeError(ex, "Falha ao selar estagio para a requisicao {RequestId}.",
                 request.RequestId);
             return PortVerdict.Deny;
         }
@@ -538,7 +537,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Falha ao limpar estagio bloqueado {TransferId}.",
+                        _logger.LogSafeError(ex, "Falha ao limpar estagio bloqueado {TransferId}.",
                             entry.Transfer.TransferId);
                     }
                     continue;
@@ -558,7 +557,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Falha ao limpar estagio publicado {TransferId}.",
+                        _logger.LogSafeError(ex, "Falha ao limpar estagio publicado {TransferId}.",
                             entry.Transfer.TransferId);
                     }
                     continue;
@@ -576,7 +575,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Falha ao inspecionar transferencia selada {TransferId}.",
+                    _logger.LogSafeError(ex, "Falha ao inspecionar transferencia selada {TransferId}.",
                         entry.Transfer.TransferId);
                     var current = await _stageJournal.ReadAsync(
                         entry.Transfer.TransferId, cancellationToken).ConfigureAwait(false);
@@ -594,7 +593,7 @@ public sealed class MinifilterInterceptor : BackgroundService
                         {
                             // A rename can prepare after the read above. Its
                             // durable hold wins; keep the publisher loop alive.
-                            _logger.LogDebug(changed, "Transferencia mudou antes da retencao {TransferId}.",
+                            _logger.LogSafeDebug(changed, "Transferencia mudou antes da retencao {TransferId}.",
                                 entry.Transfer.TransferId);
                         }
                     }
@@ -641,7 +640,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogCritical(ex, "Falha ao recuperar o diario de transferencias.");
+            _logger.LogSafeCritical(ex, "Falha ao recuperar o diario de transferencias.");
             return false;
         }
     }
@@ -689,7 +688,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             _acceptedPolicyFingerprint = candidatePolicyFingerprint;
 #endif
 
-            _logger.LogInformation(
+            _logger.LogSafeInformation(
                 "Politica v{Version} empurrada ao driver: {Extensions} extensoes, " +
                 "{Paths} destinos, classificacao de fontes em todos os volumes.",
                 policy.Version,
@@ -700,12 +699,12 @@ public sealed class MinifilterInterceptor : BackgroundService
             {
                 // Em letras garrafais de proposito: uma maquina que alguem
                 // acha protegida e nao esta e pior que uma sem agente.
-                _logger.LogWarning(
+                _logger.LogSafeWarning(
                     "MODO AUDITORIA: nada sera negado. As operacoes sao avaliadas e contadas " +
                     "em WouldHaveDenied, que mede quanto o bloqueio custaria se fosse ligado.");
             }
 
-            _logger.LogInformation(
+            _logger.LogSafeInformation(
                 "Prazo: motor {Budget} ms (RN-012), kernel espera {Kernel} ms.",
                 _budget.TotalMilliseconds,
                 (policy.InspectionTimeout + MinifilterPolicyFactory.Margin).TotalMilliseconds);
@@ -714,7 +713,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Falha ao empurrar a politica. O driver ficaria carregado sem inspecionar nada.");
+            _logger.LogSafeError(ex, "Falha ao empurrar a politica. O driver ficaria carregado sem inspecionar nada.");
             return false;
         }
     }
@@ -755,7 +754,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             {
                 if (lastQueryFailure != ex.GetType().Name)
                 {
-                    _logger.LogWarning(ex, "Admission coverage receipt is unavailable; status remains degraded.");
+                    _logger.LogSafeWarning(ex, "Admission coverage receipt is unavailable; status remains degraded.");
                     lastQueryFailure = ex.GetType().Name;
                 }
                 decision = new AdmissionCoverageDecision(
@@ -780,10 +779,10 @@ public sealed class MinifilterInterceptor : BackgroundService
                 // Protection that cannot be confirmed is an operator-visible event; the default
                 // service event-log filter keeps warnings, so Pending/Degraded carry their reason.
                 if (status == AdmissionCoverageStatus.Ready)
-                    _logger.LogInformation("Admission coverage Ready (native generation {Generation}).",
+                    _logger.LogSafeInformation("Admission coverage Ready (native generation {Generation}).",
                         decision.NativePolicyGeneration);
                 else
-                    _logger.LogWarning("Admission coverage {Status}: {Reason} (native generation {Generation}).",
+                    _logger.LogSafeWarning("Admission coverage {Status}: {Reason} (native generation {Generation}).",
                         status, decision.Reason, decision.NativePolicyGeneration);
                 _hub.Publish(new StatusNotification(policyVersion, activeCategories,
                     ProtectionActive: true, AuditOnly: auditOnly,
@@ -863,7 +862,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             // buraco que a propria politica documenta como aberto.
             if (sourceScope && result.Verdict == Core.Domain.Verdict.AllowedWithoutInspection)
             {
-                _logger.LogInformation(
+                _logger.LogSafeInformation(
                     "{Arquivo} nao pode ser inspecionado ({Motivo}): processo {Pid} marcado por precaucao.",
                     operation.FileName,
                     result.Reason ?? "sem motivo registrado",
@@ -878,7 +877,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         {
             Interlocked.Increment(ref _overBudget);
 
-            _logger.LogWarning(
+            _logger.LogSafeWarning(
                 "Inspecao de {Path} passou de {Budget} ms.{Consequencia}",
                 operation.FileName,
                 _budget.TotalMilliseconds,
@@ -893,8 +892,7 @@ public sealed class MinifilterInterceptor : BackgroundService
             // Fail-open, como o resto do agente: um DLP que bloqueia quando
             // quebra impede o usuário de trabalhar e é desligado na primeira
             // semana.
-            _logger.LogError(
-                ex,
+            _logger.LogSafeError(ex,
                 "Erro ao inspecionar {Path}.{Consequencia}",
                 operation.FileName,
                 sourceScope ? " Processo marcado por precaucao." : " Liberado sem inspecao.");
@@ -926,11 +924,7 @@ public sealed class MinifilterInterceptor : BackgroundService
 
         try
         {
-            IReadOnlyList<AuditEvent> recent =
-                _auditSink.ReadRecentAsync(5, CancellationToken.None).GetAwaiter().GetResult();
-
-            AuditEvent? auditEvent = recent.FirstOrDefault(e =>
-                string.Equals(e.FileName, operation.FileName, StringComparison.OrdinalIgnoreCase));
+            AuditEvent? auditEvent = result.RecordedEvent;
 
             if (auditEvent is not null)
             {
@@ -959,7 +953,7 @@ public sealed class MinifilterInterceptor : BackgroundService
         {
             // Falhar em avisar o painel não pode mudar o veredito nem derrubar
             // o laço: a proteção continua, o usuário é que não vê o aviso.
-            _logger.LogWarning(ex, "Falha ao publicar a notificacao de {Arquivo}.", operation.FileName);
+            _logger.LogSafeWarning(ex, "Falha ao publicar a notificacao de {Arquivo}.", operation.FileName);
         }
     }
 

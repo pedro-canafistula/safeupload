@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.Threading.Channels;
 using SafeUpload.Agent.Core.Contracts;
 
@@ -201,7 +202,7 @@ public sealed class NotificationHub
         try { _record.Append(notification, targetSessionId); return true; }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Notification recording failed; {Kind} was not delivered", notification.GetType().Name);
+            _logger.LogSafeError(ex, "Notification recording failed; {Kind} was not delivered", notification.GetType().Name);
             return false;
         }
     }

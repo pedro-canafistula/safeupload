@@ -268,8 +268,21 @@ public sealed class StagedTransferPublisherTests : IDisposable
         Assert.Equal(newIdentity ? 1 : 0, history.Events.Count);
     }
 
+    [Theory]
+    [InlineData(null)] [InlineData(1)]
+    public async Task Privacy_projection_does_not_change_the_publication_path_or_legacy_event(int? version)
+    {
+        var transfer = Transfer("report_52998224725.txt", "ordinary text", auditMetadataVersion: version);
+        Assert.Equal(StagedTransferOutcome.Released, await _publisher.PublishAsync(transfer, default));
+        Assert.Equal("ordinary text", await File.ReadAllTextAsync(transfer.DestinationPath));
+        var record = (await new LocalQueueAuditSink(_workspace.QueueFile).ReadRecentAsync(10, default))
+            .Single(e => e.EventId == transfer.TransferId);
+        Assert.Equal(version == 1 ? AuditTextPrivacy.Redacted : "report_52998224725.txt", record.FileName);
+        Assert.Equal(version, (await _journal.ReadAsync(transfer.TransferId, default)).Transfer.AuditMetadataVersion);
+    }
+
     private StagedTransfer Transfer(string name, string content, DestinationKind kind = DestinationKind.RemovableDrive,
-        bool captureAuditOwner = false)
+        bool captureAuditOwner = false, int? auditMetadataVersion = null)
     {
         string stage = Path.Combine(_stagingRoot, name);
         File.WriteAllText(stage, content);
@@ -281,7 +294,7 @@ public sealed class StagedTransferPublisherTests : IDisposable
             kind,
             "explorer.exe", 4242, 7)
         { RequestorSid = TestRequestorSid, RequestorProcessCreationTime = captureAuditOwner ? 638953632000000000 : null,
-            AuditAccountName = captureAuditOwner ? "LAB\\owner" : null };
+            AuditAccountName = captureAuditOwner ? "LAB\\owner" : null, AuditMetadataVersion = auditMetadataVersion };
         _journal.CreateAsync(transfer, CancellationToken.None).GetAwaiter().GetResult();
         _journal.TransitionAsync(transfer.TransferId,
             TransferJournalState.Allocated, TransferJournalState.Sealed,

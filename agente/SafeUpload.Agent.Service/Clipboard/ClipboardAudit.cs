@@ -40,8 +40,8 @@ public static class ClipboardAudit
             endpointId ?? Environment.MachineName,
             string.IsNullOrWhiteSpace(userName) ? "Não informado" : userName,
             "", "", observation.SizeBytes, verdict,
-            observation.Categories ?? [], [], observation.SourceProcess ?? "", 0,
-            observation.DestinationProcess ?? "", reason,
+            observation.Categories ?? [], [], AuditTextPrivacy.Sanitize(observation.SourceProcess), 0,
+            AuditTextPrivacy.Sanitize(observation.DestinationProcess), reason,
             observation.PolicyVersion, 0, false, Channel: AuditChannel.Clipboard) { OwnerSid = ownerSid };
         try
         {

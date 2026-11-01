@@ -18,14 +18,14 @@ public static class AuditSubject
 
         if (auditEvent.Channel != AuditChannel.Web)
         {
-            return auditEvent.FileName;
+            return AuditTextPrivacy.Sanitize(auditEvent.FileName);
         }
 
-        string site = Site(auditEvent.DestinationPath);
+        string site = AuditTextPrivacy.Sanitize(Site(auditEvent.DestinationPath));
 
         return string.IsNullOrEmpty(auditEvent.FileName)
             ? $"texto destinado a {site}"
-            : $"{auditEvent.FileName} para {site}";
+            : $"{AuditTextPrivacy.Sanitize(auditEvent.FileName)} para {site}";
     }
 
     private static string Site(string destination) =>

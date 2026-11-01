@@ -69,4 +69,7 @@ public sealed record FileOperation(
     /// <summary>Service-captured audit attribution, independent of inspection and publication paths.</summary>
     public string? AuditOwnerSid { get; init; }
     public string? AuditUserName { get; init; }
+
+    /// <summary>Captured at staged allocation; null preserves legacy fixed-ID audit payloads.</summary>
+    public int? AuditMetadataVersion { get; init; }
 }

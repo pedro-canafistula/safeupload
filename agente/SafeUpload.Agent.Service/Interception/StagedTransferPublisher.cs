@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.Security.Cryptography;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
@@ -152,7 +153,7 @@ public sealed class StagedTransferPublisher
             transfer.ProcessId,
             destinationPath,
             transfer.Destination) { AuditOwnerSid = transfer.AuditAccountName is null ? null : transfer.RequestorSid,
-                AuditUserName = transfer.AuditAccountName };
+                AuditUserName = transfer.AuditAccountName, AuditMetadataVersion = transfer.AuditMetadataVersion };
 
         InspectionResult result;
         try
@@ -161,7 +162,7 @@ public sealed class StagedTransferPublisher
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger?.LogWarning(ex, "Staged inspection failed for {TransferId}.", transfer.TransferId);
+            _logger?.LogSafeWarning(ex, "Staged inspection failed for {TransferId}.", transfer.TransferId);
             await _journal.TransitionAsync(transfer.TransferId,
                 TransferJournalState.Inspecting, TransferJournalState.Retained,
                 null, CancellationToken.None).ConfigureAwait(false);
@@ -321,12 +322,12 @@ public sealed class StagedTransferPublisher
             // A successful native rename is the publication commit point.
             // Losing the port while revoking its already-consumed permit, or
             // cancellation during disposal, cannot undo those approved bytes.
-            _logger?.LogWarning(ex, "Publication committed for {TransferId}; final handle/permit cleanup failed.",
+            _logger?.LogSafeWarning(ex, "Publication committed for {TransferId}; final handle/permit cleanup failed.",
                 transfer.TransferId);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger?.LogWarning(ex, "Staged publication failed for {TransferId}.", transfer.TransferId);
+            _logger?.LogSafeWarning(ex, "Staged publication failed for {TransferId}.", transfer.TransferId);
             // The handle already marked an uncommitted temporary for deletion; reopening the
             // name can be refused (its permit is spent), and nothing here may skip Retained.
             try { File.Delete(temporaryDestination); } catch (Exception) { }
@@ -398,7 +399,7 @@ public sealed class StagedTransferPublisher
             }
             catch (Exception ex) when (!token.IsCancellationRequested)
             {
-                _logger?.LogWarning(ex, "Could not recover staged hand-back for {TransferId}.",
+                _logger?.LogSafeWarning(ex, "Could not recover staged hand-back for {TransferId}.",
                     entry.Transfer.TransferId);
                 current = await RecordHandbackFailureAsync(entry.Transfer,
                     OperationFor(entry.Transfer, 0, DateTimeOffset.UtcNow),
@@ -412,7 +413,7 @@ public sealed class StagedTransferPublisher
             try { _handbackCopier.CleanupUncommittedTemporary(entry.Transfer); }
             catch (Exception ex) when (!token.IsCancellationRequested)
             {
-                _logger?.LogWarning(ex, "Could not clean the service temporary for {TransferId}.",
+                _logger?.LogSafeWarning(ex, "Could not clean the service temporary for {TransferId}.",
                     entry.Transfer.TransferId);
             }
         }
@@ -430,7 +431,7 @@ public sealed class StagedTransferPublisher
             }
             catch (Exception ex) when (!token.IsCancellationRequested)
             {
-                _logger?.LogWarning(ex, "Recovered hand-back no longer verifies for {TransferId}.",
+                _logger?.LogSafeWarning(ex, "Recovered hand-back no longer verifies for {TransferId}.",
                     current.Transfer.TransferId);
                 current = await RecordInvalidHandbackAsync(current, "handback_reverification_failed",
                     CancellationToken.None).ConfigureAwait(false);
@@ -520,7 +521,7 @@ public sealed class StagedTransferPublisher
             }
             catch (Exception ex) when (!token.IsCancellationRequested)
             {
-                _logger?.LogWarning(ex, "Hand-back changed before stage cleanup for {TransferId}.",
+                _logger?.LogSafeWarning(ex, "Hand-back changed before stage cleanup for {TransferId}.",
                     current.Transfer.TransferId);
                 await RecordInvalidHandbackAsync(current, "handback_reverification_failed",
                     CancellationToken.None).ConfigureAwait(false);
@@ -536,7 +537,7 @@ public sealed class StagedTransferPublisher
         }
         catch (Exception ex) when (!token.IsCancellationRequested)
         {
-            _logger?.LogWarning(ex, "Could not remove verified blocked stage {TransferId}.",
+            _logger?.LogSafeWarning(ex, "Could not remove verified blocked stage {TransferId}.",
                 current.Transfer.TransferId);
             var operation = OperationFor(current.Transfer, 0, DateTimeOffset.UtcNow);
             var result = new InspectionResult(Verdict.Blocked, [], null, 0, false,
@@ -564,7 +565,7 @@ public sealed class StagedTransferPublisher
         }
         catch (Exception ex) when (!token.IsCancellationRequested)
         {
-            _logger?.LogWarning(ex, "Staged hand-back failed for {TransferId}.", transfer.TransferId);
+            _logger?.LogSafeWarning(ex, "Staged hand-back failed for {TransferId}.", transfer.TransferId);
             return await RecordHandbackFailureAsync(transfer, operation, result,
                 "handback_failed", CancellationToken.None).ConfigureAwait(false);
         }
@@ -622,6 +623,7 @@ public sealed class StagedTransferPublisher
 
     private void PublishTransferNotification(StagedTransfer transfer, TransferNotification notification)
     {
+        notification = notification with { FileName = AuditTextPrivacy.Sanitize(notification.FileName) };
         if (TryGetBoundSession(transfer, out uint sessionId, out string sid))
             _notifications.Publish(notification, sessionId, sid);
         else if (transfer.SessionId is { } ownerSession)
@@ -685,7 +687,7 @@ public sealed class StagedTransferPublisher
         Path.GetFileName(transfer.DestinationPath), Path.GetExtension(transfer.DestinationPath),
         length, lastWriteUtc, transfer.ProcessName, transfer.ProcessId,
         transfer.DestinationPath, transfer.Destination) { AuditOwnerSid = transfer.AuditAccountName is null ? null : transfer.RequestorSid,
-            AuditUserName = transfer.AuditAccountName };
+            AuditUserName = transfer.AuditAccountName, AuditMetadataVersion = transfer.AuditMetadataVersion };
 
     private void RequirePrivateStagePath(string path)
     {
@@ -759,6 +761,10 @@ public sealed record StagedTransfer(
 
     /// <summary>Captured only for new allocations; null preserves legacy canonical audit usernames.</summary>
     public string? AuditAccountName { get; init; }
+
+    /// <summary>Audit projection selected at allocation; missing preserves legacy fixed-ID payloads after restart.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? AuditMetadataVersion { get; init; }
 }
 
 public enum StagedTransferOutcome
