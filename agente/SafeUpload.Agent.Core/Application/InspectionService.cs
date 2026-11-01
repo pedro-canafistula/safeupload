@@ -106,6 +106,7 @@ public sealed class InspectionService
         }
 
         var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         return current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
             string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
@@ -118,6 +119,7 @@ public sealed class InspectionService
     {
         if (!result.InScope || !result.IsBlocked || result.FailureKind == InspectionFailureKind.NotEnoughStagingSpace) return false;
         var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         return current.OverrideAllowed && current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
             string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
@@ -145,6 +147,7 @@ public sealed class InspectionService
         Func<string, IDisposable?>? phaseTiming = null, string? forcedFailure = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var stopwatch = Stopwatch.StartNew();
         Policy policy;
@@ -153,6 +156,7 @@ public sealed class InspectionService
             policy = await (staged ? _policyStore.LoadCurrentAsync(cancellationToken)
                 : _policyStore.LoadAsync(cancellationToken)).ConfigureAwait(false);
         }
+        cancellationToken.ThrowIfCancellationRequested();
         bool auditAndCache = !staged;
         if (forcedFailure is not null)
             return await CompleteAsync(operation, policy, stopwatch, Verdict.Blocked, [], forcedFailure, false, cancellationToken)
@@ -234,7 +238,9 @@ public sealed class InspectionService
                     FromCache = true,
                     RecordedEvent = null
                 };
-                return fromCache with { RecordedEvent = await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false) };
+                var recorded = await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                return fromCache with { RecordedEvent = recorded };
             }
         }
         catch (StagedParserFailureException failure)
@@ -336,6 +342,7 @@ public sealed class InspectionService
             try
             {
                 var inspected = await inspection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
                 // Timers/continuations can themselves run late under load.
                 // Enforce the full queue+work deadline with monotonic time
                 // even when WaitAsync observes an already completed task.
@@ -462,6 +469,7 @@ public sealed class InspectionService
         CancellationToken cancellationToken,
         string? fingerprint = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         stopwatch.Stop();
 
         var result = new InspectionResult(
@@ -479,9 +487,12 @@ public sealed class InspectionService
 
         if (auditAndCache)
         {
+            result = result with { RecordedEvent = await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false) };
+            // A sink can observe cancellation after writing, or even return without checking it.
+            // Keep the durable event if written; check cancellation before installing a new cache entry.
+            cancellationToken.ThrowIfCancellationRequested();
             if (fingerprint is not null && verdict is Verdict.Approved or Verdict.Blocked)
                 _cache.Set(operation, result, fingerprint);
-            result = result with { RecordedEvent = await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false) };
         }
 
         return result;
