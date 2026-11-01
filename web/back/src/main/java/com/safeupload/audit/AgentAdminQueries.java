@@ -115,7 +115,9 @@ public class AgentAdminQueries {
     private String categoryName(String key) {
         return switch (key) {
             case "Cpf" -> "CPF"; case "Cnpj" -> "CNPJ"; case "PaymentCard" -> "Cartão de pagamento";
-            case "Password" -> "Senha em texto claro"; case "Secret" -> "Segredo/credencial"; default -> key;
+            case "Password" -> "Senha em texto claro"; case "Secret" -> "Segredo/credencial";
+            case "Rg" -> "RG"; case "BankData" -> "Dados bancários"; case "HealthData" -> "Dados de saúde";
+            case "ConfidentialDocument" -> "Documento confidencial"; case "PersonalData" -> "Dados pessoais"; default -> key;
         };
     }
     public Map<String, Object> dashboard() { return read(() -> {

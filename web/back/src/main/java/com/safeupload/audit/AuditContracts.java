@@ -11,7 +11,7 @@ import java.util.UUID;
 public final class AuditContracts {
     private AuditContracts() {}
     public enum Verdict { Approved, Blocked, AllowedWithoutInspection, Retained }
-    public enum Category { Cpf, Cnpj, PaymentCard, Password, Secret }
+    public enum Category { Cpf, Cnpj, PaymentCard, Password, Secret, Rg, BankData, HealthData, ConfidentialDocument, PersonalData }
     public enum Channel { File, Clipboard, Web }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -38,7 +38,7 @@ public final class AuditContracts {
         @NotNull @Size(max = 100) String extension,
         @NotNull @PositiveOrZero Long sizeBytes,
         @NotNull Verdict verdict,
-        @Size(max = 5) List<@NotNull Category> categories,
+        @Size(max = 10) List<@NotNull Category> categories,
         @NotNull @Size(max = 1000) String processName,
         @NotNull @PositiveOrZero Integer processId,
         @NotNull @Size(max = 4096) String destinationPath,

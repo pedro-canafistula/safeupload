@@ -12,7 +12,8 @@ export interface ApiErro {
 }
 
 export type Verdict = 'Approved' | 'Blocked' | 'AllowedWithoutInspection' | 'Retained';
-export type Category = 'Cpf' | 'Cnpj' | 'PaymentCard' | 'Password' | 'Secret';
+export type Category = 'Cpf' | 'Cnpj' | 'PaymentCard' | 'Password' | 'Secret'
+  | 'Rg' | 'BankData' | 'HealthData' | 'ConfidentialDocument' | 'PersonalData';
 export type AuditChannel = 'File' | 'Clipboard' | 'Web';
 export interface AuditEvent {
   eventId: string;
@@ -70,5 +71,7 @@ export const verdictLabels: Record<Verdict, string> = {
 };
 export const categoryLabels: Record<Category, string> = {
   Cpf: 'CPF', Cnpj: 'CNPJ', PaymentCard: 'Cartão de pagamento',
-  Password: 'Senha em texto claro', Secret: 'Segredo/credencial'
+  Password: 'Senha em texto claro', Secret: 'Segredo/credencial',
+  Rg: 'RG', BankData: 'Dados bancários', HealthData: 'Dados de saúde',
+  ConfidentialDocument: 'Documento confidencial', PersonalData: 'Dados pessoais'
 };
