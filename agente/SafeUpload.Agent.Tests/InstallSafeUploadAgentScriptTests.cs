@@ -4,13 +4,17 @@ namespace SafeUpload.Agent.Tests;
 public sealed class InstallSafeUploadAgentScriptTests
 {
     [Fact]
-    public void Installer_installs_winfsp_only_when_missing_and_replaces_the_gate_driver_file()
+    public void Installer_installs_winfsp_only_when_missing_and_registers_the_gate_driver_directly()
     {
         string script = ReadScript("scripts", "Install-SafeUploadAgent.ps1");
         Assert.Contains(@"WinFsp\bin\winfsp-x64.dll", script, StringComparison.Ordinal);
         Assert.Contains("'/qn', '/norestart'", script, StringComparison.Ordinal);
-        Assert.Contains("InstallHinfSection DefaultInstall.NTamd64 132", script, StringComparison.Ordinal);
-        // The INF copy skips an existing file that is not older; the script copies the driver itself and checks it.
+        // An INF install needs a signed catalog and silently does nothing without one: the script registers the
+        // demand-start filter service and its instance itself.
+        Assert.DoesNotContain("InstallHinfSection", script, StringComparison.Ordinal);
+        Assert.Contains("type= filesys start= demand", script, StringComparison.Ordinal);
+        Assert.Contains("group= 'FSFilter Anti-Virus' depend= FltMgr", script, StringComparison.Ordinal);
+        Assert.Contains("-Name Altitude -Value '321410'", script, StringComparison.Ordinal);
         Assert.Contains(@"'System32\drivers\SafeUpload.sys'", script, StringComparison.Ordinal);
         Assert.Contains("Gate driver file was not replaced.", script, StringComparison.Ordinal);
     }
