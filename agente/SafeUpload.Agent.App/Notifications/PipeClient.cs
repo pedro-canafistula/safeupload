@@ -31,6 +31,10 @@ public sealed class PipeClient : IAsyncDisposable
 
     private readonly CancellationTokenSource _stopping = new();
     private Task? _loop;
+    private readonly string _pipeName;
+
+    public PipeClient() : this(NotificationProtocol.PipeName) { }
+    internal PipeClient(string pipeName) => _pipeName = pipeName;
 
     /// <summary>Uma mensagem chegou do serviço.</summary>
     public event EventHandler<AgentNotification>? NotificationReceived;
@@ -115,7 +119,7 @@ public sealed class PipeClient : IAsyncDisposable
     {
         using var pipe = new NamedPipeClientStream(
             ".",
-            NotificationProtocol.PipeName,
+            _pipeName,
             PipeDirection.In,
             PipeOptions.Asynchronous);
 
@@ -123,6 +127,7 @@ public sealed class PipeClient : IAsyncDisposable
         connectTimeout.CancelAfter(ConnectTimeout);
 
         await pipe.ConnectAsync(connectTimeout.Token).ConfigureAwait(false);
+        ServicePeer.Require(pipe);
 
         ConnectionChanged?.Invoke(this, true);
 

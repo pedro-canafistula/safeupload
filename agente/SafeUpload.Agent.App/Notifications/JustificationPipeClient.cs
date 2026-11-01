@@ -8,16 +8,20 @@ namespace SafeUpload.Agent.App.Notifications;
 public static class JustificationPipeClient
 {
     public static async Task SendAsync(string eventId, string reason)
+        => await SendAsync(eventId, reason, JustificationProtocol.PipeName).ConfigureAwait(false);
+
+    internal static async Task SendAsync(string eventId, string reason, string pipeName)
     {
         var request = new JustificationRequest(eventId, reason);
         string line = JustificationProtocol.Serialize(request);
 
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         await using var pipe = new NamedPipeClientStream(
-            ".", JustificationProtocol.PipeName,
+            ".", pipeName,
             PipeDirection.InOut, PipeOptions.Asynchronous);
 
         await pipe.ConnectAsync(deadline.Token).ConfigureAwait(false);
+        ServicePeer.Require(pipe);
 
         await using var writer = new StreamWriter(
             pipe, JustificationProtocol.Encoding, bufferSize: 1024,

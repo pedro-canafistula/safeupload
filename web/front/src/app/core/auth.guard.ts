@@ -8,10 +8,11 @@ export const authGuard: CanActivateChildFn = () => {
   const router = inject(Router);
 
   return auth.carregarSessao().pipe(
-    map((usuario) => usuario.role === 'admin' ? true : router.createUrlTree(['/acesso-negado'])),
+    map((usuario) => ['admin', 'root'].includes(usuario.role?.toLowerCase())
+      ? true
+      : router.createUrlTree(['/acesso-negado'])),
     catchError((erro) => of(router.createUrlTree(['/login'], {
       queryParams: erro.status === 401 ? { sessao: 'expirada' } : { servico: 'indisponivel' }
     })))
   );
 };
-

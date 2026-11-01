@@ -25,7 +25,7 @@
                        FontSize="15"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource Text}" />
-            <TextBlock Text="Todas as operações registradas neste endpoint, da mais recente para a mais antiga."
+            <TextBlock Text="{Binding AvailabilityMessage}"
                        Style="{StaticResource MutedText}"
                        Margin="0,3,0,0" />
         </StackPanel>
@@ -85,7 +85,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <TextBlock Text="Nenhuma operação registrada até agora"
+                <TextBlock Text="{Binding EmptyMessage}"
                            Style="{StaticResource MutedText}"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"

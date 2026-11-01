@@ -16,7 +16,9 @@
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
-            "styles": ["src/styles.css"]
+            "styles": ["src/styles.css"],
+            "assets": [{ "glob": "**/*", "input": "src/public", "output": "/" }],
+            "sourceMap": true
           }
         },
         "serve": {
@@ -33,4 +35,3 @@
     "analytics": "8be3883e-7ef7-40e0-9f1f-7f3476479d88"
   }
 }
-

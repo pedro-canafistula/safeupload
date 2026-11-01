@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -35,70 +36,49 @@ public sealed class NotificationPipeServer : BackgroundService
 
     private readonly NotificationHub _hub;
     private readonly ILogger<NotificationPipeServer> _logger;
+    private readonly AuditHistoryReader _history;
     private readonly string _pipeName;
 
     /// <summary>Compõe o servidor.</summary>
-    public NotificationPipeServer(NotificationHub hub, ILogger<NotificationPipeServer> logger)
-        : this(hub, logger, NotificationProtocol.PipeName)
-    {
-    }
-
-    /// <summary>Tests use a private pipe name; production uses <see cref="NotificationProtocol.PipeName"/>.</summary>
-    internal NotificationPipeServer(NotificationHub hub, ILogger<NotificationPipeServer> logger, string pipeName)
+    public NotificationPipeServer(NotificationHub hub, ILogger<NotificationPipeServer> logger, AuditHistoryReader history,
+        string pipeName = NotificationProtocol.PipeName)
     {
         _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _pipeName = string.IsNullOrEmpty(pipeName) ? throw new ArgumentException("Pipe name required.", nameof(pipeName)) : pipeName;
+        _history = history ?? throw new ArgumentNullException(nameof(history));
+        _pipeName = pipeName;
     }
 
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Canal de notificacao em \\\\.\\pipe\\{Pipe}", _pipeName);
+        _logger.LogInformation("Canal de notificacao em \\\\.\\pipe\\{Pipe}", NotificationProtocol.PipeName);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            NamedPipeServerStream? pipe = null;
             try
             {
-                pipe = CreatePipe(_pipeName);
+                var pipe = CreatePipe();
 
-                try
-                {
-                    await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
-                }
-                catch (IOException ex)
-                {
-                    // A client that connected and left before the accept finished.
-                    // Not a server failure: release this instance (it was leaked
-                    // until finalization before) and accept the next client.
-                    _logger.LogDebug(ex, "Cliente saiu antes de a conexao ser aceita");
-                    pipe.Dispose();
-                    pipe = null;
-                    await Task.Delay(TimeSpan.FromMilliseconds(50), stoppingToken).ConfigureAwait(false);
-                    continue;
-                }
+                try { await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false); }
+                catch { await pipe.DisposeAsync().ConfigureAwait(false); throw; }
 
                 // Cada cliente é atendido em sua própria tarefa. O laço volta
                 // imediatamente a aceitar: se ele esperasse o cliente terminar,
                 // o segundo aplicativo a abrir ficaria sem conexão até o
                 // primeiro fechar.
-                var accepted = pipe;
-                pipe = null; // ServeAsync owns and disposes it
-                _ = ServeAsync(accepted, stoppingToken);
+                _ = ServeAsync(pipe, stoppingToken);
             }
             catch (OperationCanceledException)
             {
-                pipe?.Dispose();
                 break;
             }
             catch (Exception ex)
             {
-                pipe?.Dispose();
                 // O laço de accept nunca pode morrer por causa de uma falha de
                 // um cliente: seria o serviço parar de notificar até ser
                 // reiniciado. Registra, respira e continua aceitando.
-                _logger.LogError(ex, "Falha ao aceitar conexao no canal de notificacao");
+                _logger.LogSafeError(ex, "Falha ao aceitar conexao no canal de notificacao");
 
                 try
                 {
@@ -135,7 +115,7 @@ public sealed class NotificationPipeServer : BackgroundService
     /// que cobre tanto LocalSystem em produção quanto o usuário interativo
     /// durante a depuração em console.
     /// </summary>
-    private static NamedPipeServerStream CreatePipe(string pipeName)
+    private NamedPipeServerStream CreatePipe()
     {
         var security = new PipeSecurity();
 
@@ -159,12 +139,9 @@ public sealed class NotificationPipeServer : BackgroundService
                 AccessControlType.Allow));
         }
 
-        // Duplex only so the server can hold one pending read per client and
-        // learn of its disconnection at once (see ServeAsync); clients still
-        // open the pipe for reading and never write.
         return NamedPipeServerStreamAcl.Create(
-            pipeName,
-            PipeDirection.InOut,
+            _pipeName,
+            PipeDirection.Out,
             MaxServerInstances,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.WriteThrough,
@@ -181,17 +158,10 @@ public sealed class NotificationPipeServer : BackgroundService
         // A sessao do aplicativo que conectou, para nao entregar a uma sessao
         // o bloqueio ocorrido em outra.
         SessionResolver.ProcessIdentity? client = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        if (client is null) { await pipe.DisposeAsync().ConfigureAwait(false); return; }
         uint? sessionId = client?.SessionId;
 
         using var subscription = _hub.Subscribe(sessionId, client?.UserSid.Value);
-
-        // A client that disconnects is otherwise noticed only by the next failed
-        // write. With a quiet status no write comes, and departed clients kept
-        // all 16 instances: new clients, including the tray, could never connect
-        // (m2t5boot5: "All pipe instances are busy" every second). Clients never
-        // write, so one pending read ends this connection when it completes.
-        using var connection = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        Task watcher = WatchClientAsync(pipe, connection);
 
         try
         {
@@ -210,14 +180,36 @@ public sealed class NotificationPipeServer : BackgroundService
                 // aplicativo recém-aberto não teria como preencher os cartões,
                 // porque quem carrega política agora é o serviço.
                 if (_hub.GetRecordedStatus() is { } status
-                    && !await TryWriteAsync(writer, status, connection.Token).ConfigureAwait(false))
+                    && !await TryWriteAsync(writer, status, stoppingToken).ConfigureAwait(false))
                 {
                     return;
                 }
 
-                await foreach (var notification in subscription.Reader.ReadAllAsync(connection.Token).ConfigureAwait(false))
+                HistoryNotification history;
+                using (var historyBudget = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken))
                 {
-                    if (!await TryWriteAsync(writer, notification, connection.Token).ConfigureAwait(false))
+                    historyBudget.CancelAfter(TimeSpan.FromSeconds(5));
+                    try
+                    {
+                        string? account = null;
+                        try { account = client?.UserSid.Translate(typeof(NTAccount)).Value; }
+                        catch (IdentityNotMappedException) { /* SID-bound history does not depend on a domain lookup. */ }
+                        history = await _history.ReadAsync(account, historyBudget.Token, client?.UserSid.Value).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                    { history = new([], Available: false); }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogWarning("Historico indisponivel para esta conexao ({Kind}).", ex.GetType().Name);
+                        history = new([], Available: false);
+                    }
+                }
+                if (!_hub.RecordHistory(history, sessionId) ||
+                    !await TryWriteAsync(writer, history, stoppingToken).ConfigureAwait(false)) return;
+
+                await foreach (var notification in subscription.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+                {
+                    if (!await TryWriteAsync(writer, notification, stoppingToken).ConfigureAwait(false))
                     {
                         return;
                     }
@@ -226,40 +218,15 @@ public sealed class NotificationPipeServer : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            // Serviço parando, ou o cliente desconectou.
+            // Serviço parando.
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Conexao encerrada");
+            _logger.LogSafeDebug(ex, "Conexao encerrada");
         }
         finally
         {
-            connection.Cancel();
-            try { await watcher.ConfigureAwait(false); }
-            catch (Exception ex) { _logger.LogDebug(ex, "Monitor de desconexao encerrado"); }
             _logger.LogInformation("Aplicativo desconectado do canal de notificacao");
-        }
-    }
-
-    /// <summary>
-    /// Ends the connection when the client disconnects, breaks the pipe or writes
-    /// anything: every completion of the single pending read cancels it.
-    /// </summary>
-    private static async Task WatchClientAsync(PipeStream pipe, CancellationTokenSource connection)
-    {
-        var buffer = new byte[1];
-        try
-        {
-            _ = await pipe.ReadAsync(buffer, connection.Token).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
-        {
-            // Broken pipe, disposal or shutdown: the connection ends either way.
-        }
-        finally
-        {
-            try { connection.Cancel(); }
-            catch (ObjectDisposedException) { }
         }
     }
 

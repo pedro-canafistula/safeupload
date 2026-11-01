@@ -25,7 +25,6 @@ namespace SafeUpload.Agent.App;
 /// </summary>
 public partial class App : System.Windows.Application
 {
-    private readonly LocalQueueAuditSink _auditSink = new();
     private readonly PipeClient _pipe = new();
     private readonly ClipboardMonitor _clipboard = new(new ClipboardPipeClient());
 
@@ -40,15 +39,14 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
 
         _agentViewModel = new AgentViewModel(
-            new StatusViewModel(_auditSink),
-            new HistoryViewModel(_auditSink));
+            new StatusViewModel(),
+            new HistoryViewModel());
 
         // O painel é construído no arranque e mantido oculto. O modelo de visão
         // precisa existir desde já para acumular o que o serviço anunciar
         // enquanto a janela estiver fechada.
         _panel = new AgentWindow(_agentViewModel);
 
-        _ = _agentViewModel.LoadAsync();
 
         _tray = new TrayIconHost(OpenPanel, ExitAgent);
 
@@ -56,12 +54,15 @@ public partial class App : System.Windows.Application
         _pipe.ConnectionChanged += OnConnectionChanged;
         _pipe.Start();
 
-        // Observa o clipboard e o foco e pergunta ao serviço. Na Fase 1 não
-        // altera nada para o usuário; com a política em "Off" (o padrão) o
-        // serviço responde "limpo" a tudo.
+        // Observa o clipboard e, no modo Block, troca a colagem de dado sensível
+        // num destino de saída por um aviso. Com a política em "Off" (o padrão) o
+        // serviço responde "limpo" a tudo e nada muda para o usuário.
+        _clipboard.PasteBlocked += OnPasteBlocked;
         _clipboard.Start();
 
         _tray.ShowBalloon("SafeUpload", "Painel do agente ativo na bandeja do sistema.");
+        if (e.Args.Contains("--show", StringComparer.OrdinalIgnoreCase))
+            OpenPanel();
     }
 
     /// <inheritdoc />
@@ -101,15 +102,19 @@ public partial class App : System.Windows.Application
 
                 case EventNotification evento:
                     _agentViewModel.Status.PrependActivity(evento.Event);
-                    _agentViewModel.History.Prepend(evento.Event);
+                    bool added = _agentViewModel.History.Prepend(evento.Event);
 
                     // RN-005 — todo bloqueio notifica, com o painel aberto ou
                     // fechado.
-                    if (evento.Event.Verdict == Verdict.Blocked)
+                    if (added && evento.Event.Verdict == Verdict.Blocked)
                     {
                         ShowBlockNotification(evento);
                     }
 
+                    break;
+
+                case HistoryNotification history:
+                    _agentViewModel.ApplyHistory(history);
                     break;
 
                 case TransferNotification transfer:
@@ -117,6 +122,14 @@ public partial class App : System.Windows.Application
                     break;
             }
         });
+    }
+
+    private void OnPasteBlocked(string destination)
+    {
+        // Vem da STA do proxy de clipboard; o balão é da interface.
+        Current.Dispatcher.BeginInvoke(() => _tray?.ShowBalloon(
+            "SafeUpload: colagem bloqueada",
+            $"A cópia contém dado sensível e não foi colada em {destination}."));
     }
 
     private void ShowTransferNotification(TransferNotification transfer)
@@ -206,7 +219,11 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        Current.Dispatcher.Invoke(() => _agentViewModel?.Status.SetDisconnected());
+        Current.Dispatcher.Invoke(() =>
+        {
+            _agentViewModel?.Status.SetDisconnected();
+            _agentViewModel?.History.SetUnavailable();
+        });
     }
 
     /// <summary>
@@ -226,7 +243,7 @@ public partial class App : System.Windows.Application
             // arquivos sensíveis produziria dez janelas empilhadas no mesmo
             // canto, e o usuário fecharia uma por uma sem ler nenhuma.
             _notification.Add(
-                notification.Event.FileName,
+                AuditSubject.Describe(notification.Event),
                 notification.Findings,
                 notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
                 notification.Quarantined);
@@ -234,7 +251,7 @@ public partial class App : System.Windows.Application
         }
 
         _notification = new BlockNotificationWindow(
-            notification.Event.FileName,
+            AuditSubject.Describe(notification.Event),
             notification.Findings,
             notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
             quarantined: notification.Quarantined);

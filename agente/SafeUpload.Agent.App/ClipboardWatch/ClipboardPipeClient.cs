@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Pipes;
 using SafeUpload.Agent.Core.Contracts;
+using SafeUpload.Agent.App.Notifications;
 
 namespace SafeUpload.Agent.App.ClipboardWatch;
 
@@ -17,6 +18,9 @@ namespace SafeUpload.Agent.App.ClipboardWatch;
 /// </summary>
 public sealed class ClipboardPipeClient
 {
+    private readonly string _pipeName;
+    public ClipboardPipeClient() : this(ClipboardProtocol.PipeName) { }
+    internal ClipboardPipeClient(string pipeName) => _pipeName = pipeName;
     /// <summary>
     /// Faz uma pergunta ao serviço.
     /// </summary>
@@ -41,11 +45,13 @@ public sealed class ClipboardPipeClient
         {
             using var pipe = new NamedPipeClientStream(
                 ".",
-                ClipboardProtocol.PipeName,
+                _pipeName,
                 PipeDirection.InOut,
                 PipeOptions.Asynchronous);
 
             await pipe.ConnectAsync(deadline.Token).ConfigureAwait(false);
+            ServicePeer.Require(pipe); // Before serializing/writing any copied text.
+            deadline.Token.ThrowIfCancellationRequested();
 
             await using (var writer = new StreamWriter(pipe, ClipboardProtocol.Encoding, 1024, leaveOpen: true))
             {

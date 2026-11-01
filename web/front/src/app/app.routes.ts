@@ -8,8 +8,13 @@ import { AuditoriaComponent } from './pages/auditoria/auditoria.component';
 import { EndpointsComponent } from './pages/endpoints/endpoints.component';
 import { RelatoriosComponent } from './pages/relatorios/relatorios.component';
 import { AcessoNegadoComponent } from './pages/acesso-negado/acesso-negado.component';
+import { PoliticasComponent } from './pages/politicas/politicas.component';
+import { PlaceholderComponent } from './pages/placeholder/placeholder.component';
+import { AuthEntryComponent } from './features/auth-entry.component';
 
 export const routes: Routes = [
+  { path: '', redirectTo: 'inicio', pathMatch: 'full' },
+  { path: 'inicio', component: AuthEntryComponent },
   { path: 'login', component: LoginComponent },
   { path: 'cadastro', component: CadastroComponent },
   { path: 'acesso-negado', component: AcessoNegadoComponent },
@@ -22,9 +27,10 @@ export const routes: Routes = [
       { path: 'painel', component: PainelComponent },
       { path: 'auditoria', component: AuditoriaComponent },
       { path: 'endpoints', component: EndpointsComponent },
-      { path: 'relatorios', component: RelatoriosComponent }
+      { path: 'relatorios', component: RelatoriosComponent },
+      { path: 'politicas', component: PoliticasComponent },
+      { path: 'configuracoes', component: PlaceholderComponent, data: { title: 'Configurações' } }
     ]
   },
   { path: '**', redirectTo: 'login' }
 ];
-

@@ -45,8 +45,6 @@ public class CachedPolicyStoreTests
 
         public TimeSpan Demora { get; set; } = TimeSpan.Zero;
 
-        public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
-
         public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
         {
             int n = Interlocked.Increment(ref _cargas);

@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.Threading.Channels;
 using SafeUpload.Agent.Core.Contracts;
 
@@ -38,8 +39,7 @@ public sealed class NotificationHub
     private readonly ILogger<NotificationHub> _logger;
 
     private StatusNotification? _currentStatus;
-    private PolicyIntegrationStatus? _policyIntegration;
-    private AuditWriteStatus? _auditWrites;
+    private AdministrationCommunicationStatus? _communication;
 
     public NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger)
         : this(record, logger, TimeProvider.System) { }
@@ -131,30 +131,21 @@ public sealed class NotificationHub
         lock (_gate) { _ = TryRecord(notification, targetSessionId); }
     }
 
-    public bool Publish(AgentNotification notification, uint? targetSessionId = null,
+    public void Publish(AgentNotification notification, uint? targetSessionId = null,
         string? targetUserSid = null)
     {
         ArgumentNullException.ThrowIfNull(notification);
+        if (notification is HistoryNotification)
+            throw new InvalidOperationException("History is delivered only to its authenticated connection.");
         if (notification is TransferNotification { Phase: TransferPhase.Blocked } &&
             (targetSessionId is null || targetUserSid is null))
-            return false;
-        if (notification is TransferNotification { Phase: TransferPhase.Retained,
-                InspectionFailure: SafeUpload.Agent.Core.Domain.InspectionFailureKind.NotEnoughStagingSpace } &&
-            (targetSessionId is null || string.IsNullOrWhiteSpace(targetUserSid))) return false;
-        if (notification is TransferNotification { RecoveryAdvice: { } advice } recovery &&
-            (recovery.Phase != TransferPhase.Retained || recovery.OverrideAllowed || !Enum.IsDefined(advice) ||
-             targetSessionId is null || string.IsNullOrWhiteSpace(targetUserSid)))
-            return false;
+            return;
 
         lock (_gate)
         {
-            if (notification is StatusNotification incoming)
-                notification = incoming with
-                {
-                    PolicyIntegration = _policyIntegration ?? incoming.PolicyIntegration,
-                    AuditWrites = _auditWrites ?? incoming.AuditWrites
-                };
-            if (!TryRecord(notification, targetSessionId)) return false;
+            if (notification is StatusNotification current)
+                notification = current with { Communication = _communication };
+            if (!TryRecord(notification, targetSessionId)) return;
 
             if (notification is StatusNotification status)
             {
@@ -177,37 +168,6 @@ public sealed class NotificationHub
                     subscription.Channel.Writer.TryWrite(notification);
                 }
             }
-            return true;
-        }
-    }
-
-    /// <summary>Refresh only the optional summary, preserving the interceptor's real status and durable delivery rule.</summary>
-    internal bool PublishPolicyIntegration(PolicyIntegrationStatus integration)
-    {
-        lock (_gate)
-        {
-            if (_policyIntegration == integration) return true;
-            var previous = _policyIntegration;
-            _policyIntegration = integration;
-            // Keep the latest summary until the interceptor first announces its real status.
-            // Never synthesize protection/readiness fields to carry diagnostics.
-            if (_currentStatus is null || Publish(_currentStatus)) return true;
-            _policyIntegration = previous;
-            return false;
-        }
-    }
-
-    /// <summary>Refresh only historical audit diagnostics, using the existing durable delivery rule.</summary>
-    internal bool PublishAuditWrites(AuditWriteStatus summary)
-    {
-        lock (_gate)
-        {
-            if (_auditWrites == summary) return true;
-            var previous = _auditWrites;
-            _auditWrites = summary;
-            if (_currentStatus is null || Publish(_currentStatus)) return true;
-            _auditWrites = previous;
-            return false;
         }
     }
 
@@ -220,12 +180,29 @@ public sealed class NotificationHub
         }
     }
 
+    /// <summary>Retains coarse machine-wide state; never adds it to the event replay window.</summary>
+    public void UpdateCommunication(AdministrationCommunicationStatus communication)
+    {
+        ArgumentNullException.ThrowIfNull(communication);
+        lock (_gate)
+        {
+            _communication = communication;
+            if (_currentStatus is { } status && status.Communication != communication)
+                Publish(status with { Communication = communication });
+        }
+    }
+
+    public bool RecordHistory(HistoryNotification history, uint? sessionId)
+    {
+        lock (_gate) { return TryRecord(history, sessionId); }
+    }
+
     private bool TryRecord(AgentNotification notification, uint? targetSessionId)
     {
         try { _record.Append(notification, targetSessionId); return true; }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Notification recording failed; {Kind} was not delivered", notification.GetType().Name);
+            _logger.LogSafeError(ex, "Notification recording failed; {Kind} was not delivered", notification.GetType().Name);
             return false;
         }
     }

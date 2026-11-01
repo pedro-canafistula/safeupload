@@ -20,11 +20,11 @@ for (const perfil of ['user', 'desconhecido', '']) {
         await route.fulfill({ status: 403, json: {} });
       }
     });
-    for (const tela of ['painel', 'auditoria', 'endpoints', 'relatorios']) {
+    for (const tela of ['painel', 'auditoria', 'endpoints', 'relatorios', 'politicas']) {
       await page.goto('/' + tela);
       await expect(page).toHaveURL(/acesso-negado$/);
       await expect(page.getByRole('heading', { name: 'Acesso restrito à administração' })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Auditoria', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'Políticas', exact: true })).toHaveCount(0);
     }
     expect(consultas).toEqual([]);
   });
@@ -44,7 +44,7 @@ test('administrador entra e a sessão é revalidada ao navegar entre telas', asy
   await page.goto('/painel');
   await expect(page.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
   expirada = true;
-  await page.getByRole('link', { name: 'Auditoria', exact: true }).click();
+  await page.getByRole('link', { name: 'Ver todas', exact: true }).click();
   await expect(page).toHaveURL(/login\?sessao=expirada$/);
   await expect(page.getByRole('alert')).toContainText('Sua sessão não está ativa');
   expect(consultasAuditoria).toBe(0);
@@ -57,7 +57,7 @@ test('mudança de perfil bloqueia navegação mesmo com usuário em memória', a
   await page.goto('/painel');
   await expect(page.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
   perfil = 'user';
-  await page.getByRole('link', { name: 'Endpoints', exact: true }).click();
+  await page.getByRole('link', { name: 'Políticas', exact: true }).click();
   await expect(page).toHaveURL(/acesso-negado$/);
 });
 

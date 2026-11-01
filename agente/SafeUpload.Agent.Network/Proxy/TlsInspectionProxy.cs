@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Security;
@@ -20,7 +22,8 @@ namespace SafeUpload.Agent.Network.Proxy;
 /// 1. O navegador, configurado com o proxy, conecta em 127.0.0.1 e manda
 ///    <c>CONNECT drive.google.com:443</c>, em texto claro. É o único momento
 ///    em que o proxy sabe o destino antes de qualquer criptografia.
-/// 2. Pelo host, <see cref="TlsInspectionProxyOptions.ShouldIntercept"/> decide:
+/// 2. Pelo host, as exceções decidem (<see cref="TlsInspectionProxyOptions.Exceptions"/>
+///    e <see cref="TlsInspectionProxyOptions.PinningDetector"/>):
 ///    - <b>túnel</b> (exceções: bancos, saúde, governo, pinning): o proxy só
 ///      conecta no servidor e copia bytes nos dois sentidos, sem entender nada;
 ///    - <b>interceptação</b>: o proxy responde 200 e faz duas conexões TLS
@@ -255,8 +258,13 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
             return;
         }
 
-        if (!_options.ShouldIntercept(host))
+        // O programa só interessa à detecção de pinning, que aprende por
+        // programa e host.
+        string? application = _options.PinningDetector is null ? null : ApplicationOf(processId);
+
+        if (TunnelReason(host, application) is { } reason)
         {
+            _logger.LogDebug("Túnel sem interceptação para {Host} ({Reason}).", host, reason);
             await TunnelAsync(host, port, clientStream, clientReader, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -271,6 +279,7 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
         await using var clientTls = new SslStream(transport, leaveInnerStreamOpen: false);
         SslStream? upstreamTls = null;
         TcpClient? upstreamClient = null;
+        bool certificateOffered = false;
 
         try
         {
@@ -285,6 +294,7 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
                 {
                     string name = string.IsNullOrEmpty(hello.ServerName) ? host : hello.ServerName;
                     (upstreamClient, upstreamTls) = await ConnectUpstreamTlsAsync(host, port, name, ct).ConfigureAwait(false);
+                    certificateOffered = true;
 
                     return new SslServerAuthenticationOptions
                     {
@@ -295,9 +305,45 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
                 null,
                 cancellationToken).ConfigureAwait(false);
 
+            // Quem valida o certificado só depois do handshake (OkHttp, .NET)
+            // não o aborta: conclui e, em vez da primeira requisição, manda um
+            // alerta TLS. Por isso a primeira requisição é lida aqui.
+            var tlsReader = new HttpStreamReader(clientTls);
+            HttpRequestHead? firstRequest;
+
+            try
+            {
+                firstRequest = await ReadWithIdleTimeoutAsync(tlsReader, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (IsTlsRejection(ex))
+            {
+                RecordRejection(application, host);
+                throw;
+            }
+
+            if (firstRequest is null)
+            {
+                // Fechou sem pedir nada. É o que o navegador faz com a conexão
+                // que abriu por antecipação e não usou; não diz nada sobre o
+                // certificado.
+                return;
+            }
+
+            _options.PinningDetector?.RecordSuccess(application, host);
+
             await ExchangeAsync(
-                clientTls, new HttpStreamReader(clientTls), upstreamTls!, host, port, processId,
-                encrypted: true, first: null, closeAfterFirst: false, cancellationToken).ConfigureAwait(false);
+                clientTls, tlsReader, upstreamTls!, host, port, processId,
+                encrypted: true, first: firstRequest, closeAfterFirst: false, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (certificateOffered && !clientTls.IsAuthenticated && IsTlsRejection(ex))
+        {
+            // O servidor de verdade foi validado e o certificado da CA local
+            // foi apresentado, mas o programa respondeu com um alerta TLS: ele
+            // recusou o certificado (pinning, ou não confia na CA). Falha do
+            // lado do servidor não chega aqui, porque nela o certificado nem é
+            // apresentado.
+            RecordRejection(application, host);
+            throw;
         }
         finally
         {
@@ -307,6 +353,93 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
             }
 
             upstreamClient?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Se a falha é o outro lado recusando no nível do TLS, e não a conexão
+    /// simplesmente caindo. A diferença é o que separa pinning de aba fechada:
+    /// quem recusa o certificado manda um alerta TLS, e a leitura falha com um
+    /// erro de TLS; quem desiste só fecha o socket (fim de fluxo ou erro de
+    /// socket). Contar a segunda como recusa mandava para o túnel sites que o
+    /// navegador aceitava normalmente (visto na qualificação, Fase 7).
+    /// </summary>
+    private static bool IsTlsRejection(Exception ex)
+    {
+        if (ex is not (AuthenticationException or IOException))
+        {
+            return false;
+        }
+
+        for (Exception? inner = ex; inner is not null; inner = inner.InnerException)
+        {
+            if (inner is SocketException or OperationCanceledException or ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        // Fim de fluxo no meio do handshake também vem como IOException, sem
+        // exceção interna: é o socket fechado, não um alerta.
+        return ex is AuthenticationException || ex.InnerException is not null;
+    }
+
+    private void RecordRejection(string? application, string host)
+    {
+        if (_options.PinningDetector?.RecordRejection(application, host) == true)
+        {
+            _logger.LogWarning(
+                "{Application} recusou repetidamente o certificado de inspeção para {Host}; as próximas conexões seguem por túnel, sem inspeção.",
+                application, host);
+        }
+    }
+
+    /// <summary>
+    /// Por que este host passa por túnel, ou nulo se deve ser interceptado.
+    /// </summary>
+    private string? TunnelReason(string host, string? application)
+    {
+        if (!_options.ShouldIntercept(host))
+        {
+            return "regra";
+        }
+
+        if (_options.Exceptions.Match(host) is { } category)
+        {
+            return $"exceção: {category}";
+        }
+
+        return _options.PinningDetector?.IsPinned(application, host) == true ? "pinning detectado" : null;
+    }
+
+    /// <summary>
+    /// Caminho do executável do processo, que é o que identifica o programa
+    /// para a detecção de pinning. O PID não serve: muda a cada execução.
+    /// </summary>
+    private static string? ApplicationOf(int? processId)
+    {
+        if (processId is not { } pid)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+
+            try
+            {
+                return process.MainModule?.FileName ?? process.ProcessName;
+            }
+            catch (Win32Exception)
+            {
+                // Processo protegido: o caminho é negado, o nome não.
+                return process.ProcessName;
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return null;
         }
     }
 

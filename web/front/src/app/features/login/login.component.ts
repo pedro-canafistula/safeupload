@@ -42,9 +42,10 @@ export class LoginComponent {
     ).subscribe({
       next: () => this.router.navigate(['/painel']),
       error: (e) => {
-        this.erro = (e.error as ApiErro)?.erro ?? 'Não foi possível entrar.';
+        this.erro = (e.error as ApiErro)?.mensagem
+          ?? (e.error as ApiErro)?.erro
+          ?? 'Não foi possível entrar.';
       }
     });
   }
 }
-

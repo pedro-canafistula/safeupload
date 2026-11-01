@@ -9,7 +9,7 @@ echo "##################################################"
 sleep 1
 
 echo
-read -rsp "Digite a senha do root: " MYSQL_SENHA_ROOT
+read -rsp "Crie uma senha para o root: " MYSQL_SENHA_ROOT
 echo 
 
 MYSQL_SENHA_ROOT=$(printf '%s' "$MYSQL_SENHA_ROOT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')

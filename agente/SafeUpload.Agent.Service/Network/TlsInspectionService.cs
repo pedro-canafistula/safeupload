@@ -1,6 +1,7 @@
-using System.Diagnostics;
+using SafeUpload.Agent.Service.Diagnostics;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
+using SafeUpload.Agent.Network.Bypass;
 using SafeUpload.Agent.Network.Certificates;
 using SafeUpload.Agent.Network.Diversion;
 using SafeUpload.Agent.Network.Proxy;
@@ -24,11 +25,17 @@ namespace SafeUpload.Agent.Service.Network;
 /// <c>desvio remove</c> (ver <see cref="DiversionCommand"/>). O desvio pode ser
 /// desligado com <c>"InspecaoTls": { "DesviarNavegadores": false }</c>, e aí o
 /// navegador precisa ser apontado para o proxy à mão.
+///
+/// As exceções da Fase 4 também saem da configuração, em
+/// <c>"InspecaoTls": { "Excecoes": ... }</c>: as categorias iniciais (bancos,
+/// saúde, governo) ligadas ou desligadas, domínios acrescentados à mão e a
+/// detecção de pinning. Ver <see cref="LoadExceptions"/>.
 /// </summary>
 public sealed class TlsInspectionService(
     IConfiguration configuration,
     ILogger<TlsInspectionService> logger,
-    ILogger<TlsInspectionProxy> proxyLogger) : IHostedService, IAsyncDisposable
+    ILogger<TlsInspectionProxy> proxyLogger,
+    WebUploadInspector inspector) : IHostedService, IAsyncDisposable
 {
     private X509Certificate2? _authority;
     private HostCertificateFactory? _certificates;
@@ -50,18 +57,36 @@ public sealed class TlsInspectionService(
 
         _certificates = new HostCertificateFactory(_authority, revocationList);
 
+        InterceptionExceptions exceptions = LoadExceptions();
+        bool detectPinning = !string.Equals(
+            configuration["InspecaoTls:Excecoes:DetectarPinning"], "false", StringComparison.OrdinalIgnoreCase);
+
         _proxy = new TlsInspectionProxy(
             _certificates,
-            new LoggingInspector(logger),
+            inspector,
             new TlsInspectionProxyOptions
             {
                 Listen = new IPEndPoint(IPAddress.Loopback, port),
                 RevocationList = revocationList,
+                Exceptions = exceptions,
+                PinningDetector = detectPinning ? new PinningDetector() : null,
             },
             proxyLogger);
 
         _proxy.Start();
-        logger.LogInformation("Inspeção TLS ativa com a CA {Thumbprint}.", _authority.Thumbprint);
+        logger.LogSafeInformation("Inspeção TLS ativa com a CA {Thumbprint}.", _authority.Thumbprint);
+        logger.LogSafeInformation(
+            "Exceções de inspeção (túnel, sem leitura): {Categories}. Detecção de pinning {Pinning}.",
+            exceptions.Count == 0
+                ? "nenhuma"
+                : string.Join(", ", exceptions.CountByCategory().Select(pair => $"{pair.Key} ({pair.Value} domínios)")),
+            detectPinning ? "ligada" : "desligada");
+
+        if (exceptions.Ignored.Count > 0)
+        {
+            logger.LogSafeWarning(
+                "Entradas de exceção descartadas por não serem um domínio: {Count}.", exceptions.Ignored.Count);
+        }
 
         // O desvio só depois do proxy no ar: apontar os navegadores para um
         // proxy que ainda não escuta é deixá-los sem internet.
@@ -71,9 +96,9 @@ public sealed class TlsInspectionService(
             _policiesApplied = true;
 
             _egressFilter = BrowserEgressFilter.Install();
-            logger.LogInformation(
-                "Navegadores desviados para o proxy; saída direta bloqueada para: {Browsers}.",
-                _egressFilter.BlockedApplications.Count == 0 ? "nenhum navegador encontrado" : string.Join(", ", _egressFilter.BlockedApplications));
+            logger.LogSafeInformation(
+                "Navegadores desviados para o proxy; saída direta bloqueada para {Count} aplicativo(s).",
+                _egressFilter.BlockedApplications.Count);
         }
 
         return Task.CompletedTask;
@@ -91,7 +116,7 @@ public sealed class TlsInspectionService(
         {
             BrowserProxyPolicies.Remove();
             _policiesApplied = false;
-            logger.LogInformation("Desvio dos navegadores desfeito.");
+            logger.LogSafeInformation("Desvio dos navegadores desfeito.");
         }
 
         if (_proxy is not null)
@@ -115,49 +140,35 @@ public sealed class TlsInspectionService(
     }
 
     /// <summary>
-    /// Inspetor provisório da Fase 2: registra o que passaria pela inspeção
-    /// e libera. Nunca registra o conteúdo, só os metadados (RN-006). A Fase 5
-    /// troca por um que chama o motor de inspeção.
+    /// Monta as exceções: as categorias iniciais que a configuração não
+    /// desligou, mais os domínios de <c>InspecaoTls:Excecoes:Dominios</c>.
+    ///
+    /// As categorias são chaves com verdadeiro ou falso, e não uma lista,
+    /// porque a configuração do .NET junta listas de arquivos diferentes pela
+    /// posição: não haveria como um arquivo tirar um item que outro pôs.
     /// </summary>
-    private sealed class LoggingInspector(ILogger logger) : IUploadInspector
+    private InterceptionExceptions LoadExceptions()
     {
-        public ValueTask<UploadDecision> InspectAsync(UploadRequest request, CancellationToken cancellationToken)
+        var categories = new List<KeyValuePair<string, IEnumerable<string>>>();
+
+        foreach ((string category, string[] domains) in DefaultExceptionLists.Categories)
         {
-            logger.LogInformation(
-                "Envio visto: {Method} {Host}{Path} ({Bytes} bytes, {ContentType}) por {Process}.",
-                request.Head.Method,
-                request.Host,
-                PathOnly(request.Head.Target),
-                request.Body.Length,
-                request.Head.Headers.Get("Content-Type") ?? "sem tipo",
-                ProcessName(request.ProcessId));
-
-            return ValueTask.FromResult(UploadDecision.Allow);
-        }
-
-        /// <summary>Sem a query string, que pode carregar tokens e dados.</summary>
-        private static string PathOnly(string target)
-        {
-            int query = target.IndexOf('?');
-            return query < 0 ? target : target[..query];
-        }
-
-        private static string ProcessName(int? processId)
-        {
-            if (processId is not { } pid)
+            if (!string.Equals(
+                    configuration[$"InspecaoTls:Excecoes:Categorias:{category}"], "false", StringComparison.OrdinalIgnoreCase))
             {
-                return "processo desconhecido";
-            }
-
-            try
-            {
-                using var process = Process.GetProcessById(pid);
-                return $"{process.ProcessName} (PID {pid})";
-            }
-            catch (ArgumentException)
-            {
-                return $"PID {pid}";
+                categories.Add(new(category, domains));
             }
         }
+
+        string[] configured =
+        [
+            .. configuration.GetSection("InspecaoTls:Excecoes:Dominios").GetChildren()
+                .Select(entry => entry.Value)
+                .OfType<string>(),
+        ];
+
+        categories.Add(new(DefaultExceptionLists.Configured, configured));
+
+        return new InterceptionExceptions(categories);
     }
 }

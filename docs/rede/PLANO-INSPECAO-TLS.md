@@ -156,6 +156,15 @@ segue direto; serviço morto à força libera o Edge). Limitações:
 - Depois, se necessário: base comercial de categorização (Zvelo, BrightCloud)
   ou lista aberta (UT1).
 
+Estado: implementada com as listas na configuração local
+(`InspecaoTls:Excecoes`) e testada na VM. Categorias iniciais: bancos, saúde e
+governo. A detecção de pinning aprende por **programa + host**, depois de duas
+recusas seguidas, e expira em 24 h. Ficaram para depois: edição pelo painel e
+envio com a política, exceção fixa por processo (só importa quando o desvio
+cobrir mais do que os navegadores) e o registro na auditoria, que depende do
+canal web das Fases 5 e 6. Detalhes em
+[ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md), seção 4.5.
+
 ### Fase 5 — Inspeção de upload
 
 - `multipart/form-data`: arquivos vão para o `ExtractorRegistry` pela extensão
@@ -166,16 +175,33 @@ segue direto; serviço morto à força libera o Edge). Limitações:
   barrar a requisição que finaliza (conforme a Fase 0).
 - Limite de tamanho do que é segurado em memória ou disco.
 
+Estado: implementada e testada na VM. O proxy chama o motor
+(`WebInspectionService`, no Core) e responde 403 quando há achado; o evento de
+auditoria sai no canal `Web`. O bloqueio com 403 e o evento, previstos para a
+Fase 6, vieram junto, porque sem eles a inspeção não teria efeito. Não entrou o
+acúmulo de upload em pedaços por sessão. Detalhes em
+[ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md), seção 4.6.
+
 ### Fase 6 — Decisão, aviso e auditoria
 
 - Bloqueio: 403 ao site; o app WPF mostra o motivo pelo `NotificationPipeServer`.
 - Evento de auditoria com domínio, processo, usuário e categorias encontradas.
 - Justificativa: reaproveitar o fluxo atual em versão posterior.
 
+Estado: implementada. O 403 e o evento vieram na Fase 5; aqui entraram o
+usuário real no evento, o aviso na bandeja só para o dono do navegador e o
+agrupamento de bloqueios repetidos de texto. A justificativa continua para
+versão posterior. A janela de aviso ainda não foi verificada na tela. Detalhes
+em [ARQUITETURA-INSPECAO-TLS.md](ARQUITETURA-INSPECAO-TLS.md), seção 4.7.
+
 ### Fase 7 — Qualificação
 
 Matriz de sites × navegadores, latência adicionada, apps que quebram e
 comportamento com o proxy fora do ar.
+
+Estado: feita com o Edge na VM, com três correções saídas dela. Resultado em
+[FASE7-QUALIFICACAO.md](FASE7-QUALIFICACAO.md). Falta upload com login em
+Drive e Gmail, Chrome e Firefox, e uso prolongado.
 
 ### Depois
 

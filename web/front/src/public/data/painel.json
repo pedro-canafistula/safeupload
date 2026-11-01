@@ -1,0 +1,13 @@
+{
+  "periodo": { "rotulo": "Últimos 7 dias", "inicio": "2026-10-07T00:00:00Z", "fim": "2026-10-13T23:59:59Z" },
+  "indicadores": {
+    "incidentesAbertos": { "valor": 37, "variacaoPercentual": 12, "comparacao": "vs. semana anterior", "tom": "negativo" },
+    "criticosSemTratamento": { "valor": 5, "acimaDe24Horas": 2, "tom": "negativo" },
+    "dadosBloqueados": { "valor": 1284, "unidade": "ocorrências", "variacaoPercentual": -8, "comparacao": "vs. semana anterior", "tom": "positivo" },
+    "agentesProtegidos": { "percentual": 97.4, "semComunicacao": 11, "tom": "positivo" }
+  },
+  "incidentesPorDia": [{ "data": "2026-10-07", "rotulo": "Seg", "quantidade": 12 }, { "data": "2026-10-08", "rotulo": "Ter", "quantidade": 18 }, { "data": "2026-10-09", "rotulo": "Qua", "quantidade": 14 }, { "data": "2026-10-10", "rotulo": "Qui", "quantidade": 23 }, { "data": "2026-10-11", "rotulo": "Sex", "quantidade": 22 }, { "data": "2026-10-12", "rotulo": "Sáb", "quantidade": 6 }, { "data": "2026-10-13", "rotulo": "Dom", "quantidade": 7 }],
+  "porCanal": [{ "canal": "E-mail", "percentual": 42 }, { "canal": "Upload web", "percentual": 27 }, { "canal": "USB", "percentual": 14 }, { "canal": "Nuvem", "percentual": 11 }, { "canal": "Impressão", "percentual": 6 }],
+  "incidentesRecentes": [{ "id": "INC-4821", "severidade": "Crítico", "politica": "CPF e dados pessoais (LGPD)", "usuario": "marina.souza", "area": "Financeiro", "canal": "E-mail", "acao": "Bloqueado", "status": "Novo", "ocorridoHa": "há 12 min" }, { "id": "INC-4820", "severidade": "Alto", "politica": "Cartão de crédito (PCI)", "usuario": "rafael.lima", "area": "Vendas", "canal": "Upload web", "acao": "Bloqueado", "status": "Em análise", "ocorridoHa": "há 41 min" }, { "id": "INC-4819", "severidade": "Médio", "politica": "Documentos confidenciais", "usuario": "paulo.dias", "area": "Jurídico", "canal": "USB", "acao": "Alertado", "status": "Novo", "ocorridoHa": "há 1 h" }, { "id": "INC-4818", "severidade": "Alto", "politica": "Código-fonte", "usuario": "carla.nunes", "area": "Engenharia", "canal": "Git / nuvem", "acao": "Bloqueado", "status": "Em análise", "ocorridoHa": "há 2 h" }, { "id": "INC-4817", "severidade": "Baixo", "politica": "Dados de saúde", "usuario": "lucas.melo", "area": "RH", "canal": "Chat", "acao": "Permitido + log", "status": "Resolvido", "ocorridoHa": "há 3 h" }],
+  "usuariosMaiorRisco": [{ "usuario": "marina.souza", "area": "Financeiro", "pontuacao": 92 }, { "usuario": "rafael.lima", "area": "Vendas", "pontuacao": 78 }, { "usuario": "carla.nunes", "area": "Engenharia", "pontuacao": 71 }, { "usuario": "ana.prado", "area": "Financeiro", "pontuacao": 64 }]
+}

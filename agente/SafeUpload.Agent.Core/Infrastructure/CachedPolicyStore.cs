@@ -57,7 +57,6 @@ public sealed class CachedPolicyStore : IPolicyStore
     /// <inheritdoc />
     public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         if (Fresh() is { } cached)
         {
             return cached;
@@ -83,13 +82,6 @@ public sealed class CachedPolicyStore : IPolicyStore
         {
             _gate.Release();
         }
-    }
-
-    /// <summary>Strict decisions bypass the legacy cache and its refresh gate.</summary>
-    public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return _inner.LoadCurrentAsync(cancellationToken);
     }
 
     private Policy? Fresh()

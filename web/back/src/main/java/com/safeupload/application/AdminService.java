@@ -1,96 +1,172 @@
 package com.safeupload.application;
 
-import com.safeupload.application.dto.AdminViews.*;
-import com.safeupload.application.dto.AgentContracts.*;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Optional;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import java.time.*;
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 
-@Service
+import com.safeupload.application.dto.AdminContracts.DefaultPostResponse;
+import com.safeupload.application.dto.AdminContracts.SetPolicyRequest;
+import com.safeupload.application.dto.AgentContracts.PolicyDestination;
+import com.safeupload.application.dto.AgentContracts.PolicyResponse;
+import com.safeupload.application.dto.AgentContracts.PolicyRule;
+import com.safeupload.domain.entity.app.Host;
+import com.safeupload.domain.entity.app.Politica;
+import com.safeupload.domain.entity.app.Regras;
+import com.safeupload.infrastructure.repository.app.HostRepository;
+import com.safeupload.infrastructure.repository.app.PoliticaRepository;
+import com.safeupload.infrastructure.repository.app.RegrasRepository;
+import com.safeupload.presentation.exception.DatabaseErrorException;
+
+
+
+@Service 
 public class AdminService {
-    private final AgentService agents;
-    private final Clock clock;
+    private final PoliticaRepository politicaRepository;
+    private final RegrasRepository regrasRepository;
+    private final HostRepository hostRepository;
+    private final RestClient restClient;
 
-    public AdminService(AgentService agents, Clock clock) {
-        this.agents = agents;
-        this.clock = clock;
+    public AdminService (
+        PoliticaRepository politicaRepository,
+        RegrasRepository regrasRepository,
+        HostRepository hostRepository,
+        RestClient restClient
+    ){
+        this.politicaRepository = politicaRepository;
+        this.regrasRepository = regrasRepository;
+        this.hostRepository = hostRepository;
+        this.restClient = restClient;
     }
 
-    public Dashboard dashboard() {
-        Instant now = clock.instant();
-        LocalDate firstDay = LocalDate.ofInstant(now, ZoneOffset.UTC).minusDays(6);
-        List<AuditEvent> all = agents.auditEvents();
-        List<AuditEvent> period = between(all, firstDay.atStartOfDay(ZoneOffset.UTC).toInstant(), now);
-        Map<LocalDate, Long> daily = period.stream().collect(Collectors.groupingBy(
-                event -> event.occurredAtUtc().toLocalDate(), Collectors.counting()));
-        List<Day> trend = IntStream.range(0, 7).mapToObj(offset -> {
-            LocalDate date = firstDay.plusDays(offset);
-            return new Day(date, daily.getOrDefault(date, 0L));
-        }).toList();
-        Map<Category, Long> counts = period.stream().filter(event -> event.verdict() == Verdict.Blocked)
-                .flatMap(event -> event.categories().stream().distinct())
-                .collect(Collectors.groupingBy(category -> category, Collectors.counting()));
-        List<CategoryCount> categories = counts.entrySet().stream()
-                .map(entry -> new CategoryCount(entry.getKey(), categoryLabel(entry.getKey()), entry.getValue()))
-                .sorted(Comparator.comparingLong(CategoryCount::quantidade).reversed().thenComparing(CategoryCount::nome))
-                .toList();
-        return new Dashboard("Últimos 7 dias (UTC)", summary(period), trend, categories,
-                all.stream().limit(6).toList(), agents.policy().activeCategories());
+    @Transactional(transactionManager = "appTransactionManager")
+    public DefaultPostResponse setPolicy(SetPolicyRequest request){
+
+        Regras regras = convertRules(request.regras());
+
+        regras = regrasRepository.save(regras);
+
+        Host host = hostRepository.findByIp(request.destino().ip())
+            .orElseThrow(() ->
+            new DatabaseErrorException(
+                "Nenhum host cadastrado com o IP: " + request.destino().ip()
+            )
+        );
+
+        LocalDateTime criadaEm = request.criadaEm() == null
+            ? null
+            : request.criadaEm()
+                .atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
+                .toLocalDateTime();
+
+        Politica politica = new Politica (
+            request.versao(),
+            request.nome(),
+            host,
+            request.acao(),
+            regras,
+            criadaEm,
+            request.origem() 
+        );
+
+        politica = politicaRepository.save(politica);
+
+        return new DefaultPostResponse(
+            HttpStatus.CREATED, 
+            "Política salva com sucesso."
+        );
     }
 
-    public Audit audit(String endpoint) {
-        String filter = endpoint == null ? "" : endpoint.trim();
-        List<AuditEvent> events = agents.auditEvents().stream()
-                .filter(event -> filter.isEmpty() || event.endpointId().equals(filter)).toList();
-        return new Audit(summary(events), events, filter);
+    @Transactional(transactionManager = "appTransactionManager", readOnly = true)
+    public Optional<PolicyResponse> latestPolicyForIp(String ip) {
+        return hostRepository.findByIp(ip)
+            .flatMap(host -> politicaRepository
+                .findFirstByFkIdHost_IdHostOrderByIdPoliticaDesc(host.getIdHost()))
+            .map(this::toPolicyResponse);
     }
 
-    public Endpoints endpoints(String status, String os, String query) {
-        Instant now = clock.instant();
-        Map<String, Long> counts = between(agents.auditEvents(), now.minus(Duration.ofDays(7)), now).stream()
-                .collect(Collectors.groupingBy(AuditEvent::endpointId, Collectors.counting()));
-        List<EndpointRow> all = agents.endpoints().stream().map(endpoint -> new EndpointRow(
-                endpoint.getEndpointId(), endpoint.getHostname(), endpoint.getOs(), endpoint.getAgentVersion(),
-                endpoint.getPolicyVersion(), endpoint.getLastSeenUtc(),
-                endpoint.getLastSeenUtc().isBefore(now.minusSeconds(90)) ? "offline" : "online",
-                counts.getOrDefault(endpoint.getEndpointId(), 0L))).toList();
-        long online = all.stream().filter(endpoint -> endpoint.status().equals("online")).count();
-        String search = query.trim().toLowerCase(Locale.ROOT);
-        List<EndpointRow> filtered = all.stream()
-                .filter(endpoint -> !Set.of("online", "offline").contains(status) || endpoint.status().equals(status))
-                .filter(endpoint -> !Set.of("win11", "win10", "other").contains(os) || osKind(endpoint.os()).equals(os))
-                .filter(endpoint -> (endpoint.hostname() + " " + endpoint.endpointId()).toLowerCase(Locale.ROOT).contains(search))
-                .toList();
-        return new Endpoints(new EndpointSummary(all.size(), online, all.size() - online), filtered, 90);
+    private PolicyResponse toPolicyResponse(Politica politica) {
+        Host host = politica.getFkIdHost();
+        Regras regras = politica.getFkIdRegras();
+        List<PolicyRule> regrasAtivas = new ArrayList<>();
+
+        if (regras != null) {
+            addRule(regrasAtivas, "cpf", "CPF", regras.getBloquearCpf());
+            addRule(regrasAtivas, "cnpj", "CNPJ", regras.getBloquearCnpj());
+            addRule(regrasAtivas, "rg", "RG", regras.getBloquearRg());
+            addRule(regrasAtivas, "cartao_credito", "Número de cartão", regras.getBloquearCartaoCredito());
+            addRule(regrasAtivas, "dados_bancarios", "Dados bancários", regras.getBloquearDadosBancarios());
+            addRule(regrasAtivas, "credenciais", "Credenciais e segredos", regras.getBloquearCredenciais());
+            addRule(regrasAtivas, "dados_saude", "Dados de saúde", regras.getBloquearDadosSaude());
+            addRule(regrasAtivas, "documentos_confidenciais", "Documentos confidenciais", regras.getBloquearDocumentosConfidenciais());
+            addRule(regrasAtivas, "dados_pessoais", "Dados pessoais", regras.getBloquearDadosPessoais());
+        }
+
+        return new PolicyResponse(
+            politica.getIdPolitica(),
+            politica.getVersao(),
+            politica.getNome(),
+            new PolicyDestination(host.getIdHost(), host.getIp()),
+            politica.getAcao(),
+            List.copyOf(regrasAtivas),
+            politica.getCriadaEm(),
+            politica.getOrigem()
+        );
     }
 
-    private List<AuditEvent> between(List<AuditEvent> events, Instant start, Instant end) {
-        return events.stream().filter(event -> !event.occurredAtUtc().toInstant().isBefore(start)
-                && !event.occurredAtUtc().toInstant().isAfter(end)).toList();
+    private void addRule(List<PolicyRule> result, String type, String name, Integer enabled) {
+        if (enabled != null && enabled == 1) {
+            result.add(new PolicyRule(type, name));
+        }
     }
 
-    private Summary summary(List<AuditEvent> events) {
-        Map<Verdict, Long> counts = events.stream().collect(Collectors.groupingBy(AuditEvent::verdict, Collectors.counting()));
-        return new Summary(events.size(), counts.getOrDefault(Verdict.Blocked, 0L),
-                counts.getOrDefault(Verdict.Approved, 0L), counts.getOrDefault(Verdict.AllowedWithoutInspection, 0L));
-    }
 
-    private String osKind(String os) {
-        String normalized = os.toLowerCase(Locale.ROOT);
-        if (normalized.contains("windows 11")) return "win11";
-        if (normalized.contains("windows 10")) return "win10";
-        return "other";
-    }
+    private Regras convertRules(List<SetPolicyRequest.RegraRequest> regrasDTO) {
 
-    private String categoryLabel(Category category) {
-        return switch (category) {
-            case Cpf -> "CPF";
-            case Cnpj -> "CNPJ";
-            case PaymentCard -> "Cartão de pagamento";
-            case Password -> "Senha em texto claro";
-            case Secret -> "Segredo/credencial";
-        };
+        boolean cpf = false;
+        boolean cnpj = false;
+        boolean rg = false;
+        boolean dadosBancarios = false;
+        boolean cartaoCredito = false;
+        boolean credenciais = false;
+        boolean dadosSaude = false;
+        boolean dadosPessoais = false;
+        boolean documentosConfidenciais = false;
+
+        if (regrasDTO != null) {
+            for (SetPolicyRequest.RegraRequest regra : regrasDTO) {
+
+                switch (regra.tipo()) {
+                    case "cpf" -> cpf = true;
+                    case "cnpj" -> cnpj = true;
+                    case "rg" -> rg = true;
+                    case "dados_bancarios" -> dadosBancarios = true;
+                    case "cartao_credito" -> cartaoCredito = true;
+                    case "credenciais" -> credenciais = true;
+                    case "dados_saude" -> dadosSaude = true;
+                    case "dados_pessoais" -> dadosPessoais = true;
+                    case "documentos_confidenciais" ->
+                            documentosConfidenciais = true;
+                }
+            }
+        }
+
+        return new Regras(
+            cpf ? 1 : 0,
+            cnpj ? 1 : 0,
+            rg ? 1 : 0,
+            dadosBancarios ? 1 : 0,
+            cartaoCredito ? 1 : 0,
+            credenciais ? 1 : 0,
+            dadosSaude ? 1 : 0,
+            dadosPessoais ? 1 : 0,
+            documentosConfidenciais ? 1 : 0
+        );
     }
 }

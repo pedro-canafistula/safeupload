@@ -9,7 +9,6 @@ using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Drive;
 using SafeUpload.Agent.Service.Gate;
 using SafeUpload.Agent.Service.Notifications;
-using SafeUpload.Agent.Service.Policies;
 
 namespace SafeUpload.Agent.Service.Drive;
 
@@ -27,7 +26,6 @@ public sealed class DriveService : BackgroundService
     private readonly NotificationHub _hub;
     private readonly DriveJustifications _justifications;
     private readonly GateClient _gate;
-    private readonly PolicyIntegrationDiagnostics _diagnostics;
     private readonly ILogger<DriveService> _logger;
     private readonly string[] _letters;
     private readonly string _privateRoot;
@@ -36,10 +34,8 @@ public sealed class DriveService : BackgroundService
     private string? _lastStatus;
 
     public DriveService(IPolicyStore policyStore, InspectionService inspection, NotificationHub hub,
-        DriveJustifications justifications, GateClient gate, PolicyIntegrationDiagnostics diagnostics,
-        IConfiguration configuration, ILogger<DriveService> logger)
+        DriveJustifications justifications, GateClient gate, IConfiguration configuration, ILogger<DriveService> logger)
     {
-        _diagnostics = diagnostics;
         _policyStore = policyStore;
         _inspection = inspection;
         _hub = hub;
@@ -70,7 +66,6 @@ public sealed class DriveService : BackgroundService
                 try { await SyncAsync(stoppingToken).ConfigureAwait(false); }
                 catch (Exception error) when (error is not OperationCanceledException)
                 {
-                    _diagnostics.RecordApplyFailure(error);
                     _logger.LogError(error, "Could not apply the protected folders of the policy");
                 }
                 try { await Task.Delay(PolicyCheckInterval, stoppingToken).ConfigureAwait(false); }
@@ -137,7 +132,6 @@ public sealed class DriveService : BackgroundService
             }
         }
         bool active = wanted.Count > 0 && _mounts.Count == wanted.Count;
-        if (active) _diagnostics.RecordDriverScopeAccepted(policy);
         PublishStatus(policy, active);
     }
 
@@ -224,8 +218,9 @@ public sealed class DriveService : BackgroundService
         var notification = new TransferNotification(decision.VersionId, decision.DrivePath, TransferPhase.Blocked,
             decision.Result?.Findings ?? [], overrideAllowed, HandbackPath: decision.DrivePath, HandbackVerified: true,
             SnapshotSha256Hex: Sha256(decision.Snapshot), InspectionFailure: decision.Result?.FailureKind);
-        if (!_hub.Publish(notification, writer?.SessionId, writer?.UserSid))
+        if (writer?.SessionId is null || writer.UserSid is null)
             _logger.LogWarning("Blocked {File}; no user session to notify", decision.DrivePath);
+        _hub.Publish(notification, writer?.SessionId, writer?.UserSid);
     }
 
     /// <summary>SYSTEM and administrators control the folder; users may only read it (or nothing).</summary>

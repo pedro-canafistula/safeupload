@@ -188,6 +188,8 @@ pessoa.
 
 ### Como foi montado
 
+> **Contexto histórico.** Este teste foi feito em 7/10/2026, **antes** do PR #24 do driver, que passou a exigir uma ACL protegida no `policy.json`. A montagem descrita abaixo (arquivo editado por usuário comum, serviço sem elevação) **não funciona mais na `main`**. O roteiro atual, com o script de proteção e o serviço elevado, está em [FASE-1-MARCAR-SUJO-E-MEDIR.md](FASE-1-MARCAR-SUJO-E-MEDIR.md#como-testar-manualmente-excel-e-chrome) e ainda não foi executado.
+
 | Peça | Como |
 |---|---|
 | Política | `%ProgramData%\SafeUpload\policy.json` com `"mode": "Audit"`; saída: navegadores (Chrome, Edge...), mensageiros e e-mail. O Word **não** está na lista |

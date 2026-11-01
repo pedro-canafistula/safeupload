@@ -1,27 +1,22 @@
-<header class="page-header"><h2>Visão geral</h2><p>Indicadores calculados a partir dos eventos recebidos.</p>
-  <button class="btn-secondary" (click)="refresh.next()">Atualizar</button></header>
-<ng-container *ngIf="state$ | async as state">
-  <p role="status" *ngIf="state.loading">Carregando painel…</p>
-  <p role="alert" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
-  <ng-container *ngIf="state.data as dados">
-    <p>{{ dados.periodo }}</p>
-    <div class="metrics">
-      <section class="card"><h3>Inspeções</h3><strong>{{ dados.resumo.total | number }}</strong></section>
-      <section class="card"><h3>Bloqueados</h3><strong>{{ dados.resumo.bloqueados | number }}</strong>
-        <p>{{ percentage(dados.resumo.bloqueados, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
-      <section class="card"><h3>Aprovados</h3><strong>{{ dados.resumo.aprovados | number }}</strong>
-        <p>{{ percentage(dados.resumo.aprovados, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
-      <section class="card"><h3>Liberados sem inspeção</h3><strong>{{ dados.resumo.liberadosSemInspecao | number }}</strong>
-        <p>{{ percentage(dados.resumo.liberadosSemInspecao, dados.resumo.total) | number:'1.1-1' }}% do total</p></section>
-    </div>
-    <section class="card"><h3>Inspeções por dia</h3><ul class="daily-counts">
-      <li *ngFor="let day of dados.tendencia"><span>{{ day.data | date:'dd/MM':'UTC' }}</span><strong>{{ day.quantidade }}</strong></li>
-    </ul></section>
-    <section class="card"><h3>Categorias em arquivos bloqueados</h3>
-      <p *ngIf="!dados.categoriasBloqueadas.length">Nenhum bloqueio no período.</p>
-      <ol><li *ngFor="let category of dados.categoriasBloqueadas">{{ category.nome }}: {{ category.quantidade }}</li></ol></section>
-    <section class="card"><h3>Categorias da política vigente</h3><ul>
-      <li *ngFor="let category of dados.categoriasAtivas">{{ categories[category] }}</li></ul></section>
-    <section class="card"><h3>Últimas 6 inspeções recebidas</h3><app-event-table [events]="dados.recentes" /></section>
+<section class="dashboard">
+  <header class="dashboard-topbar"><div><h1>Visão geral</h1><p>Indicadores calculados a partir dos eventos recebidos.</p></div><div class="toolbar"><button type="button" class="theme-button" (click)="refresh.next()">Atualizar</button></div></header>
+  <ng-container *ngIf="state$ | async as state">
+    <p role="status" *ngIf="state.loading">Carregando painel…</p>
+    <p role="alert" class="data-error" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
+    <ng-container *ngIf="state.data as dados">
+      <p>{{ dados.periodo }}</p>
+      <div class="kpi-grid metrics">
+        <section class="metric-card"><h3>Inspeções</h3><strong>{{ dados.resumo.total | number }}</strong></section>
+        <section class="metric-card"><h3>Bloqueados</h3><strong>{{ dados.resumo.bloqueados | number }}</strong><small>{{ percentage(dados.resumo.bloqueados, dados.resumo.total) | number:'1.1-1' }}% do total</small></section>
+        <section class="metric-card"><h3>Aprovados</h3><strong>{{ dados.resumo.aprovados | number }}</strong><small>{{ percentage(dados.resumo.aprovados, dados.resumo.total) | number:'1.1-1' }}% do total</small></section>
+        <section class="metric-card"><h3>Liberados sem inspeção</h3><strong>{{ dados.resumo.liberadosSemInspecao | number }}</strong><small>{{ percentage(dados.resumo.liberadosSemInspecao, dados.resumo.total) | number:'1.1-1' }}% do total</small></section>
+      </div>
+      <div class="dashboard-grid">
+        <section class="panel-card chart-card"><h2>Inspeções por dia</h2><div class="bar-chart" aria-label="Inspeções por dia"><div class="bar-column" *ngFor="let day of dados.tendencia"><strong>{{ day.quantidade }}</strong><span class="bar" [style.height.%]="barHeight(day.quantidade, dados.tendencia)"></span><span class="bar-label">{{ day.data | date:'dd/MM':'UTC' }}</span></div></div></section>
+        <section class="panel-card categories-card"><h2>Categorias em arquivos bloqueados</h2><p *ngIf="!dados.categoriasBloqueadas.length">Nenhum bloqueio no período.</p><ul><li *ngFor="let category of dados.categoriasBloqueadas"><strong>{{ category.nome }}</strong>: {{ category.quantidade }}</li></ul></section>
+        <section class="panel-card recent-card"><div class="card-heading"><h2>Últimas 6 inspeções recebidas</h2><a routerLink="/auditoria">Ver todas</a></div><app-event-table [events]="dados.recentes" /></section>
+        <section class="panel-card policy-card"><h2>Categorias da política vigente</h2><div class="policy-tags"><span *ngFor="let category of dados.categoriasAtivas">{{ categories[category] }}</span></div><h3>Transferências retidas</h3><strong>{{ dados.resumo.retidos ?? 0 }}</strong></section>
+      </div>
+    </ng-container>
   </ng-container>
-</ng-container>
+</section>

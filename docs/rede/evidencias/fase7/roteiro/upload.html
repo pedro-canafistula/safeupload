@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>teste</title><pre id="r">rodando</pre>
+<script>
+const CPF = '529.982.247-25';
+const out = [];
+async function tentar(nome, fazer) {
+  const t = performance.now();
+  try { const r = await fazer(); out.push(nome + ' => HTTP ' + r.status + ' em ' + Math.round(performance.now() - t) + ' ms'); }
+  catch (e) { out.push(nome + ' => FALHOU (' + e.name + ') em ' + Math.round(performance.now() - t) + ' ms'); }
+}
+function form(conteudo, nome) {
+  const f = new FormData();
+  f.append('observacao', 'folha de maio');
+  f.append('arquivo', new Blob([conteudo], { type: 'text/csv' }), nome);
+  return f;
+}
+(async () => {
+  await tentar('multipart csv com CPF', () => fetch('https://httpbin.org/post', { method: 'POST', body: form('nome;cpf\nAna;' + CPF + '\n', 'folha.csv') }));
+  await tentar('multipart csv limpo  ', () => fetch('https://httpbin.org/post', { method: 'POST', body: form('nome;setor\nAna;RH\n', 'setores.csv') }));
+  await tentar('JSON (prompt) com CPF', () => fetch('https://httpbin.org/post', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'meu cpf é ' + CPF }] }) }));
+  await tentar('JSON (prompt) limpo  ', () => fetch('https://httpbin.org/post', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'qual a capital da França?' }] }) }));
+  await tentar('PUT bruto com CPF    ', () => fetch('https://httpbin.org/put', { method: 'PUT', body: new Blob(['nome;cpf\nAna;' + CPF + '\n']) }));
+  await tentar('GET simples          ', () => fetch('https://httpbin.org/get'));
+  document.getElementById('r').textContent = out.join('\n');
+  document.title = 'pronto';
+})();
+</script>

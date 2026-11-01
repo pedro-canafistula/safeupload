@@ -1,6 +1,8 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Service.Notifications;
 
@@ -8,7 +10,8 @@ namespace SafeUpload.Agent.Service.Clipboard;
 
 /// <summary>
 /// O pipe do canal de clipboard: recebe o pedido do aplicativo, entrega à
-/// <see cref="ClipboardService"/> e devolve a resposta.
+/// <see cref="ClipboardInspectionService"/>, devolve a resposta e registra o que
+/// o motor observou (<see cref="ClipboardLog"/>).
 ///
 /// <para>Uma conexão, um pedido, uma resposta, e a conexão fecha. O aplicativo
 /// pergunta numa cadência humana (uma cópia, uma troca de foco), então abrir
@@ -40,23 +43,26 @@ public sealed class ClipboardPipeServer : BackgroundService
     /// </summary>
     private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
 
-    private readonly ClipboardService _service;
+    private readonly ClipboardInspectionService _inspection;
+    private readonly IAuditSink _auditSink;
     private readonly ILogger<ClipboardPipeServer> _logger;
     private readonly string _pipeName;
     private readonly TimeSpan _initialRetryDelay;
 
     /// <summary>Compõe o servidor.</summary>
-    /// <param name="service">Quem decide.</param>
+    /// <param name="inspection">Quem decide (o motor do canal, no Core).</param>
     /// <param name="logger">Log.</param>
     /// <param name="pipeName">Nome do pipe; só os testes usam outro que não o do protocolo.</param>
     /// <param name="retryDelay">Espera inicial ao falhar; só os testes usam outra que não a padrão.</param>
     public ClipboardPipeServer(
-        ClipboardService service,
+        ClipboardInspectionService inspection,
         ILogger<ClipboardPipeServer> logger,
+        IAuditSink auditSink,
         string? pipeName = null,
         TimeSpan? retryDelay = null)
     {
-        _service = service ?? throw new ArgumentNullException(nameof(service));
+        _inspection = inspection ?? throw new ArgumentNullException(nameof(inspection));
+        _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName ?? ClipboardProtocol.PipeName;
         _initialRetryDelay = retryDelay ?? DefaultRetryDelay;
@@ -84,8 +90,7 @@ public sealed class ClipboardPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(
-                    ex,
+                _logger.LogSafeError(ex,
                     "Nao foi possivel criar o pipe do canal de clipboard. Nova tentativa em {Espera}.",
                     retryDelay);
 
@@ -109,7 +114,7 @@ public sealed class ClipboardPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de clipboard.");
+                _logger.LogSafeWarning(ex, "Falha ao aceitar conexao no canal de clipboard.");
                 await pipe.DisposeAsync().ConfigureAwait(false);
 
                 // Sem esperar, uma falha que se repete viraria um laço apertado
@@ -149,7 +154,9 @@ public sealed class ClipboardPipeServer : BackgroundService
 
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
-        uint? sessionId = SessionResolver.TryGetClientSessionId(pipe.SafePipeHandle);
+        var clientIdentity = SessionResolver.TryGetClientIdentity(pipe.SafePipeHandle);
+        if (clientIdentity is null) { await pipe.DisposeAsync().ConfigureAwait(false); return; }
+        uint? sessionId = clientIdentity?.SessionId;
 
         try
         {
@@ -169,9 +176,23 @@ public sealed class ClipboardPipeServer : BackgroundService
                 return;
             }
 
-            ClipboardResponse response = await _service
+            string? userName = null;
+            try
+            {
+                userName = pipe.GetImpersonationUserName();
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                _logger.LogWarning("Usuario do clipboard indisponivel ({Tipo}).", exception.GetType().Name);
+            }
+
+            ClipboardOutcome outcome = await _inspection
                 .HandleAsync(request, sessionId, timeout.Token)
                 .ConfigureAwait(false);
+
+            ClipboardLog.Write(_logger, outcome.Observation);
+            ClipboardResponse response = await ClipboardAudit.WriteAsync(
+                outcome, _auditSink, _logger, userName, timeout.Token, ownerSid: clientIdentity?.UserSid.Value).ConfigureAwait(false);
 
             // O escritor tem escopo próprio: descartá-lo só no fim do método
             // tentaria um último Flush depois de o cliente já ter fechado, e
@@ -197,7 +218,7 @@ public sealed class ClipboardPipeServer : BackgroundService
         {
             // O log leva a exceção, que não carrega o texto: ela vem do pipe
             // ou da política, nunca do conteúdo do pedido.
-            _logger.LogWarning(ex, "Falha ao atender o canal de clipboard.");
+            _logger.LogSafeWarning(ex, "Falha ao atender o canal de clipboard.");
         }
         finally
         {

@@ -7,6 +7,7 @@ using System.Text.Json;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Service.Interception;
 
+using SafeUpload.Agent.Service.Diagnostics;
 namespace SafeUpload.Agent.Service.Notifications;
 
 public interface INotificationRecord
@@ -164,6 +165,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 TransferNotification t => ("Transfer", (Guid?)t.TransferId, (Guid?)null, t.Phase.ToString()),
                 EventNotification e => ("Event", (Guid?)null, (Guid?)e.Event.EventId, e.Event.Verdict.ToString()),
                 StatusNotification => ("Status", (Guid?)null, (Guid?)null, (string?)null),
+                HistoryNotification h => ("History", (Guid?)null, (Guid?)null, h.Available ? "available" : "unavailable"),
                 _ => throw new InvalidDataException("Unknown notification kind.")
             };
             RequireHealthy();
@@ -196,7 +198,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 Heartbeat();
             }
         }
-        catch (Exception ex) { _logger.LogError(ex, "Notification record coverage failed; notifications suppressed until recovery"); }
+        catch (Exception ex) { _logger.LogSafeError(ex, "Notification record coverage failed; notifications suppressed until recovery"); }
     }
 
     private void MarkStorageFailure(Exception error)
@@ -387,12 +389,14 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 entry.DroppedThroughSequence >= entry.Sequence || string.IsNullOrWhiteSpace(entry.BootId) ||
                 !Guid.TryParse(entry.InstanceId, out var instance) || instance == Guid.Empty || entry.Utc == default || entry.Utc.Offset != TimeSpan.Zero || entry.Qpc < 0 || entry.QpcFrequency <= 0 ||
                 entry.PreviousSha256 is not { Length: 64 } || !entry.PreviousSha256.All(Uri.IsHexDigit) ||
-                entry.Kind is not ("Start" or "Heartbeat" or "Stop" or "Rotation" or "Transfer" or "Event" or "Status"))
+                entry.Kind is not ("Start" or "Heartbeat" or "Stop" or "Rotation" or "Transfer" or "Event" or "Status" or "History"))
                 throw new InvalidDataException("Invalid notification record fields.");
             if ((entry.Kind == "Transfer" && (entry.TransferId is null || entry.TransferId == Guid.Empty ||
                     entry.Phase is not ("Analyzing" or "Released" or "Blocked" or "Retained"))) ||
                 (entry.Kind == "Event" && (entry.EventId is null || entry.EventId == Guid.Empty ||
                     entry.Phase is not ("Approved" or "Blocked" or "AllowedWithoutInspection" or "Retained"))) ||
+                (entry.Kind == "History" && (entry.TransferId is not null || entry.EventId is not null ||
+                    entry.Phase is not ("available" or "unavailable"))) ||
                 (entry.BlockReason is { } reason &&
                     (!Enum.IsDefined(reason) || entry.Kind != "Transfer" || entry.Phase != "Blocked")))
                 throw new InvalidDataException("Invalid notification payload identity/phase.");
@@ -481,7 +485,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         {
             if (_disposed) return;
             try { if (!_failed) Write("Stop", null, null, null, null); }
-            catch (Exception ex) { _logger.LogError(ex, "Notification record shutdown failed"); }
+            catch (Exception ex) { _logger.LogSafeError(ex, "Notification record shutdown failed"); }
             _disposed = true;
             _lease.Dispose();
         }

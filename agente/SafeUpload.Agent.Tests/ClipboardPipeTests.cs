@@ -73,17 +73,17 @@ public class ClipboardPipeTests
         public Server(string? pipeName = null, TimeSpan? retryDelay = null)
         {
             PipeName = pipeName ?? "SafeUpload.Test.Clipboard." + Guid.NewGuid().ToString("N");
-            Service = new ClipboardService(
+            Service = new ClipboardInspectionService(
                 new FixedPolicyStore(Politica()),
                 new ClipboardCopyStore(),
-                new ClipboardMetrics(),
-                NullLogger<ClipboardService>.Instance);
-            _server = new ClipboardPipeServer(Service, Log, PipeName, retryDelay);
+                new ClipboardMetrics());
+            _server = new ClipboardPipeServer(Service, Log, Sink, PipeName, retryDelay);
         }
 
         public string PipeName { get; }
 
-        public ClipboardService Service { get; }
+        public ClipboardInspectionService Service { get; }
+        public ClipboardAuditSink Sink { get; } = new();
 
         public ErrorLog<ClipboardPipeServer> Log { get; } = new();
 
@@ -151,6 +151,32 @@ public class ClipboardPipeTests
         Assert.NotNull(foco);
         Assert.Equal(ClipboardPasteVerdict.AuditOnly, foco.Verdict);
         Assert.Equal(1, server.Service.Metrics.FocusOnEgressWhileDirty);
+        var audit = Assert.Single(server.Sink.Events);
+        Assert.Equal(audit.EventId.ToString(), foco.EventId);
+        Assert.Contains(audit.UserName, new[] { Environment.UserName, System.Security.Principal.WindowsIdentity.GetCurrent().Name });
+        Assert.Equal(System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value, audit.OwnerSid);
+        Assert.Equal("clipboard_focus_observed", audit.NotInspectedReason);
+    }
+
+    [Fact]
+    public async Task Colagem_de_verdade_pelo_pipe_e_contada_e_auditada_a_parte_do_foco()
+    {
+        await using var server = new Server();
+        await server.StartAsync();
+
+        var copia = await server.PerguntarAsync(
+            ClipboardProtocol.Serialize(ClipboardRequest.Classify("CPF " + CpfValido, "notepad")) + "\n");
+
+        var colagem = await server.PerguntarAsync(
+            ClipboardProtocol.Serialize(ClipboardRequest.PasteAttempt(copia!.CopyId!, "chrome")) + "\n");
+
+        Assert.NotNull(colagem);
+        Assert.Equal(ClipboardPasteVerdict.AuditOnly, colagem.Verdict);
+        Assert.Equal(1, server.Service.Metrics.PasteAttemptsWhileDirty);
+        Assert.Equal(0, server.Service.Metrics.FocusChangesWhileDirty);
+        var audit = Assert.Single(server.Sink.Events);
+        Assert.Equal(audit.EventId.ToString(), colagem.EventId);
+        Assert.Equal(ClipboardAudit.PasteAuditOnly, audit.NotInspectedReason);
     }
 
     [Fact]
@@ -185,6 +211,22 @@ public class ClipboardPipeTests
 
         Assert.NotNull(resposta);
         Assert.True(resposta.Dirty);
+    }
+
+    [Fact]
+    public async Task Pergunta_de_estado_vai_e_volta_pelo_pipe_sem_texto()
+    {
+        await using var server = new Server();
+        await server.StartAsync();
+
+        var linha = ClipboardProtocol.Serialize(ClipboardRequest.State());
+        var resposta = await server.PerguntarAsync(linha + "\n");
+
+        Assert.DoesNotContain("\"text\"", linha, StringComparison.Ordinal);
+        Assert.NotNull(resposta);
+        Assert.Equal(ClipboardProtocol.StateType, resposta.Type);
+        Assert.True(resposta.Enabled);
+        Assert.Equal(0, server.Service.Metrics.Copies);
     }
 
     [Fact]

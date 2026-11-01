@@ -7,11 +7,13 @@ export interface Usuario {
 }
 
 export interface ApiErro {
-  erro: string;
+  erro?: string;
+  mensagem?: string;
 }
 
-export type Verdict = 'Approved' | 'Blocked' | 'AllowedWithoutInspection';
+export type Verdict = 'Approved' | 'Blocked' | 'AllowedWithoutInspection' | 'Retained';
 export type Category = 'Cpf' | 'Cnpj' | 'PaymentCard' | 'Password' | 'Secret';
+export type AuditChannel = 'File' | 'Clipboard' | 'Web';
 export interface AuditEvent {
   eventId: string;
   occurredAtUtc: string;
@@ -21,6 +23,8 @@ export interface AuditEvent {
   sizeBytes: number;
   verdict: Verdict;
   categories: Category[];
+  channel: AuditChannel;
+  publishedSha256Hex?: string | null;
   notInspectedReason: string | null;
   extension?: string | null;
   processName?: string | null;
@@ -29,7 +33,7 @@ export interface AuditEvent {
   policyVersion?: number | null;
   elapsedMs?: number | null;
 }
-export interface Summary { total: number; bloqueados: number; aprovados: number; liberadosSemInspecao: number; }
+export interface Summary { total: number; bloqueados: number; aprovados: number; liberadosSemInspecao: number; retidos?: number; }
 export interface Dashboard {
   periodo: string;
   resumo: Summary;
@@ -38,7 +42,14 @@ export interface Dashboard {
   recentes: AuditEvent[];
   categoriasAtivas: Category[];
 }
-export interface Audit { resumo: Summary; eventos: AuditEvent[]; endpoint: string; }
+export interface AuditOverride {
+  eventId: string;
+  justification: string;
+  occurredAtUtc: string;
+  userName: string;
+  endpointId: string;
+}
+export interface Audit { resumo: Summary; eventos: AuditEvent[]; endpoint: string; justificativas?: AuditOverride[]; }
 export interface EndpointRow {
   endpointId: string;
   hostname: string;
@@ -55,10 +66,9 @@ export interface Endpoints {
   onlineThresholdSeconds: number;
 }
 export const verdictLabels: Record<Verdict, string> = {
-  Approved: 'Aprovado', Blocked: 'Bloqueado', AllowedWithoutInspection: 'Liberado sem inspeção'
+  Approved: 'Aprovado', Blocked: 'Bloqueado', AllowedWithoutInspection: 'Liberado sem inspeção', Retained: 'Retido'
 };
 export const categoryLabels: Record<Category, string> = {
   Cpf: 'CPF', Cnpj: 'CNPJ', PaymentCard: 'Cartão de pagamento',
   Password: 'Senha em texto claro', Secret: 'Segredo/credencial'
 };
-

@@ -19,6 +19,13 @@ Medir:
 
 ## O que foi implementado
 
+> **Atualização depois da fase (refatoração de 12/10/2026).** O `ClipboardService`
+> virou `ClipboardInspectionService` e foi, com o `ClipboardCopyStore` e o
+> `ClipboardMetrics`, para `agente/SafeUpload.Agent.Core/Application/`, no mesmo
+> molde do canal web: o Core decide e devolve o que vale registrar, e o serviço
+> registra (`ClipboardLog`) e cuida do pipe (`ClipboardPipeServer`). As tabelas
+> abaixo descrevem a fase como foi entregue.
+
 **Serviço** (`agente/SafeUpload.Agent.Service/Clipboard/`)
 
 | Arquivo | Papel |
@@ -112,17 +119,50 @@ os totais acumulados. As linhas têm categorias, nomes de processo e contagens;
 
 ## Como testar manualmente (Excel e Chrome)
 
-1. Em `%ProgramData%\SafeUpload\policy.json`, ponha `"mode": "Audit"` no bloco `clipboard`.
-2. Suba o serviço em modo console, lendo o arquivo local:
+> **Atenção: este roteiro mudou depois do PR #24 (driver).** A política local passou
+> a ser protegida por ACL, e o roteiro original (editar o arquivo como usuário
+> comum e subir o serviço sem elevação) **não funciona mais**. A versão abaixo foi
+> **derivada do código da `main` (`LocalPolicyStore`, `ProtectedPolicyAcl` e
+> `Protect-SafeUploadPolicy.ps1`) e ainda não foi executada.** Se algum passo
+> falhar, o log do serviço diz por quê (`Politica indisponivel`), e este documento
+> deve ser corrigido.
+
+**O que mudou.** O `LocalPolicyStore` só lê um `policy.json` com a ACL protegida:
+dono SYSTEM, herança removida, controle total só para SYSTEM e Administradores, e
+**nenhuma entrada para usuário comum**. Um arquivo diferente disso é **recusado, e
+não corrigido**, porque um arquivo gravável por um usuário comum pode já conter
+uma política enfraquecida. Consequências:
+
+- Numa **primeira partida** sem política válida, o serviço **falha**, em vez de usar o padrão.
+- Se a ACL ficar inválida **depois** de uma leitura boa, o serviço **mantém em
+  silêncio a política anterior**. Um `mode` editado por um usuário comum não surte
+  efeito algum, e o `LocalPolicyStore` não registra aviso nenhum nesse caso.
+- O canal de clipboard, por seguir a RN-013, **libera** quando a política não carrega
+  (`Politica indisponivel`), então o sintoma de uma ACL errada é "nada é detectado".
+
+1. **Abra um PowerShell como Administrador** (o serviço também precisa estar elevado: o
+   arquivo protegido não dá acesso a usuário comum, nem a um administrador sem elevação).
+2. **Prepare a política.** Se `%ProgramData%\SafeUpload\policy.json` não existir, o
+   serviço (elevado) o cria na primeira partida, já com a ACL certa e
+   `clipboard.mode = Off`. Edite o arquivo e ponha `"mode": "Audit"` no bloco `clipboard`.
+   **Depois de editar**, aplique a ACL:
+   ```
+   powershell -ExecutionPolicy Bypass -File agente\scripts\Protect-SafeUploadPolicy.ps1
+   ```
+   Se o arquivo for recriado ou substituído, rode o script de novo.
+3. **Suba o serviço em modo console, elevado**, lendo o arquivo local:
    ```
    dotnet run --project agente/SafeUpload.Agent.Service -- --CentroAdministracao:BaseUrl=
    ```
-   **O `--CentroAdministracao:BaseUrl=` é necessário.** O `appsettings.json`
-   aponta para o painel (`http://127.0.0.1:8080/agent/`), e com isso a política
-   viria de lá, e não do arquivo. O serviço relê a política a cada pedido, então
-   não precisa reiniciar para trocar o modo.
-3. Suba o App: `dotnet run --project agente/SafeUpload.Agent.App`.
-4. Cenários:
+   **O `--CentroAdministracao:BaseUrl=` continua necessário.** O `appsettings.json`
+   aponta para o painel (`http://127.0.0.1:8080/agent/`), e com isso a política viria
+   de lá, e não do arquivo. O canal de clipboard guarda a política por **até 30 s**
+   (`CachedPolicyStore`, desde a refatoração de 12/10/2026), então uma troca de modo
+   leva até 30 s para valer, sem reiniciar, desde que a ACL continue válida. A inspeção TLS vem desligada (`InspecaoTls:Habilitada = false`).
+4. **Suba o App, como usuário normal** (não elevado):
+   `dotnet run --project agente/SafeUpload.Agent.App`. O pipe do clipboard aceita
+   usuários locais, então o App não precisa de privilégio.
+5. Cenários:
 
 | Cenário | Esperado no log do serviço |
 |---|---|
@@ -180,9 +220,10 @@ célula, ou texto selecionado na barra de fórmulas).
 
 - **Os contadores aparecem só no log do serviço e zeram ao reiniciar.** Não há
   painel nem persistência. Servem para estimar volume, não para auditoria.
-- **Com `mode: Off` o App ainda envia o texto ao serviço**, que o descarta e
-  responde "limpo". O texto só trafega no pipe local, mas o contrato não tem como
-  o serviço dizer "canal desligado, não envie".
+- ~~**Com `mode: Off` o App ainda envia o texto ao serviço**~~. **Resolvido na
+  refatoração de 12/10/2026:** o App pergunta antes (`state`, que não leva texto) e
+  só manda o texto quando o canal está ligado. A cópia em que o canal é desligado
+  ainda leva o texto uma vez, e é ela que avisa o App.
 - **O gancho de foco conta qualquer processo com janela**, inclusive de apps da
   loja (`ApplicationFrameHost`), do terminal e deste chat. Por isso o total de
   "trocas de foco com o clipboard sujo" é ruidoso (64 no teste manual, contra 8
@@ -197,5 +238,5 @@ célula, ou texto selecionado na barra de fórmulas).
 
 | Ponto | Com quem |
 |---|---|
-| O serviço poder dizer "canal desligado" para o App não enviar o texto | Equipe do agente |
+| ~~O serviço poder dizer "canal desligado" para o App não enviar o texto~~ | Resolvido na refatoração de 12/10/2026 (pergunta `state`) |
 | Mostrar os contadores no painel do agente, em vez de só no log | A definir |

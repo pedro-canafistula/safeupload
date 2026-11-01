@@ -21,7 +21,7 @@ namespace SafeUpload.Agent.Core.Application;
 /// </summary>
 public interface IAuditSink
 {
-    /// <summary>Persiste o evento; uma falha não pode ser tratada como confirmação de auditoria.</summary>
+    /// <summary>Registra um evento. Nunca deve lançar no caminho da decisão.</summary>
     Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken);
 
     /// <summary>
@@ -44,16 +44,23 @@ public interface IAuditSink
     /// Últimos eventos registrados, do mais recente para o mais antigo. É o que
     /// alimenta a grade do simulador.
     /// </summary>
+    /// <param name="maxEvents">Limite de registros; zero ou negativo mantém a consulta completa legada.</param>
     Task<IReadOnlyList<AuditEvent>> ReadRecentAsync(int maxEvents, CancellationToken cancellationToken);
 
+    /// <summary>Bounded recent records after a trusted service-side visibility filter.</summary>
+    Task<IReadOnlyList<AuditEvent>> ReadRecentMatchingAsync(int maxEvents, Func<AuditEvent, bool> visible,
+        CancellationToken cancellationToken) => throw new NotSupportedException("Filtered history is unavailable.");
+
     /// <summary>
-    /// Eventos ainda não entregues ao servidor central, consumidos pelo despachante.
+    /// Eventos ainda não entregues ao servidor central, na ordem em que foram
+    /// registrados. O despachante usa esta leitura para preparar o próximo lote.
     /// </summary>
+    /// <param name="maxEvents">Limite de registros; zero ou negativo mantém a consulta completa legada.</param>
     Task<IReadOnlyList<AuditEvent>> ReadPendingAsync(int maxEvents, CancellationToken cancellationToken);
 
     /// <summary>
     /// Marca como entregues os eventos que o servidor confirmou. Contraparte de
-    /// ReadPendingAsync.
+    /// ReadPendingAsync, chamada somente após o recibo de entrega.
     /// </summary>
     Task MarkDispatchedAsync(IReadOnlyCollection<Guid> eventIds, CancellationToken cancellationToken);
 }

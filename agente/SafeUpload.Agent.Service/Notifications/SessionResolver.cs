@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Security.Principal;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace SafeUpload.Agent.Service.Notifications;
@@ -89,6 +90,11 @@ public static class SessionResolver
     public static ProcessIdentity? TryGetClientIdentity(SafePipeHandle pipeHandle)
     {
         ArgumentNullException.ThrowIfNull(pipeHandle);
+        // A remote process ID must not be interpreted in the local process table.
+        // Only ERROR_PIPE_LOCAL confirms local transport; any other outcome fails closed.
+        var computer = new StringBuilder(256);
+        bool hasRemoteName = GetNamedPipeClientComputerNameW(pipeHandle, computer, checked((uint)computer.Capacity * 2));
+        if (!IsConfirmedLocalPipe(hasRemoteName, hasRemoteName ? 0 : Marshal.GetLastWin32Error())) return null;
         if (!GetNamedPipeClientProcessId(pipeHandle, out uint processId)) return null;
         try { return GetRequiredProcessIdentity(checked((int)processId)); }
         catch (Exception) { return null; }
@@ -137,6 +143,13 @@ public static class SessionResolver
     // AllowUnsafeBlocks no projeto inteiro, e ligar codigo inseguro num servico
     // de prevencao de vazamento so para consultar duas funcoes do kernel32
     // seria um preco alto pago no lugar errado.
+    internal static bool IsConfirmedLocalPipe(bool hasRemoteComputerName, int error) =>
+        !hasRemoteComputerName && error == 229; // ERROR_PIPE_LOCAL
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetNamedPipeClientComputerNameW(SafePipeHandle pipe, StringBuilder name, uint sizeBytes);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint clientProcessId);

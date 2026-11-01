@@ -113,7 +113,6 @@ public sealed class RefreshingPolicyStoreTests
         public bool BlockSecondCall;
         public int Calls;
         public bool Cancelled;
-        public Task<Policy> LoadCurrentAsync(CancellationToken token) => LoadAsync(token);
         public async Task<Policy> LoadAsync(CancellationToken token)
         {
             var call = Interlocked.Increment(ref Calls);

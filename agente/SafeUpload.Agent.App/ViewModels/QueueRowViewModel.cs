@@ -18,7 +18,7 @@ public sealed class QueueRowViewModel
         ArgumentNullException.ThrowIfNull(auditEvent);
 
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM HH:mm:ss");
-        FileName = auditEvent.FileName;
+        FileName = AuditSubject.Describe(auditEvent);
         Verdict = VerdictLabels.Describe(auditEvent.Verdict);
         Categories = auditEvent.Categories.Count == 0
             ? "—"
@@ -27,8 +27,8 @@ public sealed class QueueRowViewModel
             ? "—"
             : string.Join("   ", auditEvent.MaskedSnippets);
         Reason = auditEvent.NotInspectedReason ?? "—";
-        Process = auditEvent.ProcessName;
-        Destination = auditEvent.DestinationPath;
+        Process = AuditTextPrivacy.Sanitize(auditEvent.ProcessName);
+        Destination = AuditTextPrivacy.Sanitize(auditEvent.DestinationPath);
         ElapsedMs = auditEvent.ElapsedMs;
         PolicyVersion = auditEvent.PolicyVersion;
         Dispatched = auditEvent.Dispatched ? "Sim" : "Não";

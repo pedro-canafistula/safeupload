@@ -91,6 +91,12 @@ SQL
             MYSQL_PWD="$MYSQL_SENHA_ROOT" mysql --protocol=socket --socket="$SOCKET" -u root < "$arquivo"
             echo "$(date '+%d-%m-%Y %H:%M:%S') ${arquivo##*/} executado com sucesso no banco de dados."
         done
+
+        MYSQL_PWD="$MYSQL_SENHA_ROOT" mysql --protocol=socket --socket="$SOCKET" -u root <<SQL
+CREATE USER IF NOT EXISTS 'ms_safeupload'@'%' IDENTIFIED BY 'admin123';
+GRANT ALL PRIVILEGES ON acesso.* TO 'ms_safeupload'@'%' with grant option;
+GRANT ALL PRIVILEGES ON app.* TO 'ms_safeupload'@'%' with grant option;
+SQL
     fi
 
     echo "$(date '+%d-%m-%Y %H:%M:%S') Finalizando instância temporária..."

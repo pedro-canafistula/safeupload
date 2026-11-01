@@ -31,10 +31,8 @@ public interface IPolicyStore
     Task<Policy> LoadAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Loads the current validated policy. Read failures cannot substitute a
-    /// previous/default fallback. Initial local provisioning may create and
-    /// validate a live policy file before returning it.
-    /// Providers must implement this contract explicitly.
+    /// Loads the current validated policy. Providers that can tell a fresh read from a fallback override this so read
+    /// failures cannot substitute a previous/default policy; the others answer with <see cref="LoadAsync"/>.
     /// </summary>
-    Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken);
+    Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
 }

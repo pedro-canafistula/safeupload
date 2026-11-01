@@ -8,14 +8,18 @@ namespace SafeUpload.Agent.Core.Contracts;
 /// <summary>
 /// Pedido do App ao serviço, numa linha NDJSON.
 ///
-/// <para>Duas perguntas pelo mesmo canal, distinguidas por <see cref="Type"/>:</para>
+/// <para>Três perguntas pelo mesmo canal, distinguidas por <see cref="Type"/>:</para>
 /// <list type="bullet">
 /// <item><c>classify</c>, no Ctrl+C: "este texto suja o clipboard?". Leva o
 /// texto, o tamanho real e quem copiou.</item>
-/// <item><c>paste</c>, no Ctrl+V de um clipboard sujo: "pode colar aqui?". Leva
-/// só o <see cref="CopyId"/> devolvido na classificação e o processo de
-/// destino. O texto não viaja de novo: quem guarda o estado da cópia é o
-/// serviço.</item>
+/// <item><c>paste</c>, com o clipboard sujo: "pode colar aqui?". Leva só o
+/// <see cref="CopyId"/> devolvido na classificação e o processo de destino. O
+/// texto não viaja de novo: quem guarda o estado da cópia é o serviço. Com
+/// <see cref="Attempt"/> verdadeiro é um Ctrl+V de verdade; sem ele, é a sonda
+/// de foco da Fase 1 ("o usuário foi para este processo").</item>
+/// <item><c>state</c>, antes de mandar texto: "o canal está ligado?". Não leva
+/// nada. Existe para o aplicativo não mandar o texto copiado a um serviço com o
+/// canal desligado, onde ele seria só descartado.</item>
 /// </list>
 ///
 /// <para>Um record só, e não dois, porque o leitor do pipe precisa decidir o
@@ -28,7 +32,8 @@ public sealed record ClipboardRequest(
     [property: JsonPropertyName("textLength")] int TextLength = 0,
     [property: JsonPropertyName("sourceProcess")] string? SourceProcess = null,
     [property: JsonPropertyName("copyId")] string? CopyId = null,
-    [property: JsonPropertyName("destinationProcess")] string? DestinationProcess = null)
+    [property: JsonPropertyName("destinationProcess")] string? DestinationProcess = null,
+    [property: JsonPropertyName("attempt")] bool? Attempt = null)
 {
     /// <summary>Monta um pedido de classificação, cortando o texto no teto do protocolo.</summary>
     public static ClipboardRequest Classify(string text, string? sourceProcess)
@@ -45,9 +50,23 @@ public sealed record ClipboardRequest(
         return new ClipboardRequest(ClipboardProtocol.ClassifyType, sent, text.Length, sourceProcess);
     }
 
-    /// <summary>Monta um pedido de colagem.</summary>
+    /// <summary>Monta a sonda de foco: o usuário foi para este processo com o clipboard sujo.</summary>
     public static ClipboardRequest Paste(string copyId, string? destinationProcess) =>
         new(ClipboardProtocol.PasteType, CopyId: copyId, DestinationProcess: destinationProcess);
+
+    /// <summary>
+    /// Monta o pedido de um Ctrl+V de verdade. O campo <c>attempt</c> é opcional:
+    /// um serviço antigo o ignora e trata o pedido como sonda de foco, que libera.
+    /// </summary>
+    public static ClipboardRequest PasteAttempt(string copyId, string? destinationProcess) =>
+        new(ClipboardProtocol.PasteType, CopyId: copyId, DestinationProcess: destinationProcess, Attempt: true);
+
+    /// <summary>Se o pedido é um Ctrl+V de verdade, e não a sonda de foco.</summary>
+    [JsonIgnore]
+    public bool IsPasteAttempt => Type == ClipboardProtocol.PasteType && Attempt == true;
+
+    /// <summary>Monta a pergunta "o canal está ligado?". Não carrega texto nenhum.</summary>
+    public static ClipboardRequest State() => new(ClipboardProtocol.StateType);
 }
 
 /// <summary>
@@ -56,7 +75,12 @@ public sealed record ClipboardRequest(
 /// <para>Para <c>classify</c>: <see cref="CopyId"/>, <see cref="Dirty"/>,
 /// <see cref="Categories"/> e <see cref="Findings"/> (já mascarados). Para
 /// <c>paste</c>: <see cref="Verdict"/> e, quando houve registro,
-/// <see cref="EventId"/>.</para>
+/// <see cref="EventId"/>. Para <c>state</c> e <c>classify</c>:
+/// <see cref="Enabled"/>.</para>
+///
+/// <para><see cref="Enabled"/> é opcional e fica fora da linha quando é nulo.
+/// Um serviço antigo, que não o envia, é tratado pelo aplicativo como canal
+/// ligado: é o comportamento que existia antes do campo.</para>
 ///
 /// <para>Nenhum campo carrega o texto copiado (RN-006).</para>
 /// </summary>
@@ -67,7 +91,8 @@ public sealed record ClipboardResponse(
     [property: JsonPropertyName("categories")] IReadOnlyList<Category>? Categories = null,
     [property: JsonPropertyName("findings")] IReadOnlyList<string>? Findings = null,
     [property: JsonPropertyName("verdict")] ClipboardPasteVerdict Verdict = ClipboardPasteVerdict.Allow,
-    [property: JsonPropertyName("eventId")] string? EventId = null);
+    [property: JsonPropertyName("eventId")] string? EventId = null,
+    [property: JsonPropertyName("enabled")] bool? Enabled = null);
 
 /// <summary>
 /// Formato do canal de clipboard: NDJSON sobre named pipe, como os outros dois.
@@ -89,8 +114,11 @@ public static class ClipboardProtocol
     /// <summary>Tipo do pedido feito no Ctrl+C.</summary>
     public const string ClassifyType = "classify";
 
-    /// <summary>Tipo do pedido feito no Ctrl+V.</summary>
+    /// <summary>Tipo do pedido de colagem (Ctrl+V ou sonda de foco).</summary>
     public const string PasteType = "paste";
+
+    /// <summary>Tipo da pergunta "o canal está ligado?".</summary>
+    public const string StateType = "state";
 
     /// <summary>
     /// Teto de caracteres de texto que o protocolo transporta.
@@ -184,6 +212,7 @@ public static class ClipboardProtocol
                               request.TextLength >= request.Text.Length => request,
             PasteType when !string.IsNullOrWhiteSpace(request.CopyId) &&
                            request.CopyId.Length <= 64 => request,
+            StateType => request,
             _ => null
         };
     }
@@ -202,7 +231,7 @@ public static class ClipboardProtocol
         try
         {
             var response = JsonSerializer.Deserialize<ClipboardResponse>(line, JsonOptions);
-            return response is not null && response.Type is ClassifyType or PasteType ? response : null;
+            return response is not null && response.Type is ClassifyType or PasteType or StateType ? response : null;
         }
         catch (JsonException)
         {

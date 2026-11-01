@@ -26,8 +26,22 @@
     <None Update="Fixtures\word-export-hybrid.pdf" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="..\SafeUpload.Agent.App\Notifications\StagedSeedBlockPresentation.cs" Link="StagedSeedBlockPresentation.cs" />
     <Compile Include="..\SafeUpload.Agent.App\Notifications\StagedPublicationPresentation.cs" Link="StagedPublicationPresentation.cs" />
-    <Compile Include="..\SafeUpload.Agent.App\Notifications\PolicyIntegrationPresentation.cs" Link="PolicyIntegrationPresentation.cs" />
-    <Compile Include="..\SafeUpload.Agent.App\Notifications\AuditWritePresentation.cs" Link="AuditWritePresentation.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pure presentation logic; no WPF runtime or reference to the interactive app. -->
+    <Compile Include="..\SafeUpload.Agent.App\Mvvm\ObservableObject.cs" Link="Presentation\ObservableObject.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\CommunicationViewModel.cs" Link="Presentation\CommunicationViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\AgentViewModel.cs" Link="Presentation\AgentViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\StatusViewModel.cs" Link="Presentation\StatusViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\HistoryViewModel.cs" Link="Presentation\HistoryViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\ActivityRowViewModel.cs" Link="Presentation\ActivityRowViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\QueueRowViewModel.cs" Link="Presentation\QueueRowViewModel.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ViewModels\AuditSubject.cs" Link="Presentation\AuditSubject.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\Notifications\ServicePeer.cs" Link="Ipc\ServicePeer.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\Notifications\PipeClient.cs" Link="Ipc\PipeClient.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\Notifications\JustificationPipeClient.cs" Link="Ipc\JustificationPipeClient.cs" />
+    <Compile Include="..\SafeUpload.Agent.App\ClipboardWatch\ClipboardPipeClient.cs" Link="Ipc\ClipboardPipeClient.cs" />
   </ItemGroup>
 
   <ItemGroup>

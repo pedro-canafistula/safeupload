@@ -2,76 +2,117 @@ package com.safeupload.application.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
-import java.time.OffsetDateTime;
+
+import org.springframework.http.HttpStatus;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
+
 
 public final class AgentContracts {
     private AgentContracts() {}
 
-    public enum Verdict { Approved, Blocked, AllowedWithoutInspection }
-    public enum Category { Cpf, Cnpj, PaymentCard, Password, Secret }
+    public record HostRequest(
+         @Size(max=15, message="\"ip\" deve ter no máximo 15 caracteres")
+        String ip,
 
-    public record Heartbeat(
-            @NotBlank @Size(max = 255) String endpointId,
-            @NotBlank @Size(max = 255) String hostname,
-            @NotBlank @Size(max = 500) String os,
-            @NotBlank @Size(max = 100) String agentVersion,
-            @NotNull @Positive Integer policyVersion) {}
+        @Min(value=0, message="\"mascara\" deve estar entre 0 e 32")
+        @Max(value=32, message="\"mascara\" deve estar entre 0 e 32")
+        int mascara,
 
-    public record HeartbeatResponse(String endpointId, OffsetDateTime serverTimeUtc, int policyVersion) {}
+        @Size(max=100, message="\"hostname\" deve ter no máximo 100 caracteres")
+        String hostname,
 
-    public record AuditEvent(
-            @NotNull UUID eventId,
-            @NotNull OffsetDateTime occurredAtUtc,
-            @NotBlank @Size(max = 255) String endpointId,
-            @NotBlank String userName,
-            @NotBlank String fileName,
-            @NotNull String extension,
-            @NotNull @PositiveOrZero Long sizeBytes,
-            @NotNull Verdict verdict,
-            List<@NotNull Category> categories,
-            List<@NotNull String> maskedSnippets,
-            @NotNull String processName,
-            @NotNull @PositiveOrZero Integer processId,
-            @NotNull String destinationPath,
-            String notInspectedReason,
-            @NotNull @Positive Integer policyVersion,
-            @NotNull @PositiveOrZero Long elapsedMs,
-            boolean dispatched) {
-        public AuditEvent {
-            categories = categories == null ? List.of() : List.copyOf(categories);
-            maskedSnippets = maskedSnippets == null ? List.of() : List.copyOf(maskedSnippets);
-            if (occurredAtUtc != null) occurredAtUtc = occurredAtUtc.withOffsetSameInstant(java.time.ZoneOffset.UTC);
-        }
-    }
+        @Size(max=40, message="\"sistema_operacional\" deve ter no máximo 40 caracteres")
+        String sistema_operacional,
 
-    public record OverrideEvent(
-            @NotNull UUID eventId,
-            @NotBlank String justification,
-            @NotNull OffsetDateTime occurredAtUtc,
-            @NotBlank String userName,
-            @NotBlank @Size(max = 255) String endpointId) {
-        public OverrideEvent {
-            if (occurredAtUtc != null) occurredAtUtc = occurredAtUtc.withOffsetSameInstant(java.time.ZoneOffset.UTC);
-        }
-    }
+        @Size(max=20, message="\"versao_so\" deve ter no máximo 20 caracteres")
+        String versao_so,
 
-    public record SubmitEvents(
-            @Size(max = 100) List<@NotNull @Valid AuditEvent> events,
-            @Size(max = 100) List<@NotNull @Valid OverrideEvent> overrides) {
-        public SubmitEvents {
-            events = events == null ? List.of() : List.copyOf(events);
-            overrides = overrides == null ? List.of() : List.copyOf(overrides);
-        }
-    }
+        @Size(max=50, message="\"fabricante\" deve ter no máximo 50 caracteres") 
+        String fabricante,
 
-    public record SubmitResponse(int acceptedEvents, int acceptedOverrides) {}
+        @Size(max=50, message="\"modelo\" deve ter no máximo 50 caracteres") 
+        String modelo,
 
-    public record MonitoredScopes(List<String> extensions, List<String> destinationPaths,
-            List<String> sourcePaths, boolean removableDrives, boolean networkPaths) {}
+        @Size(max=20, message="\"mac_address\" deve ter no máximo 20 caracteres") 
+        String mac_address,
 
-    public record Policy(int version, List<Category> activeCategories, MonitoredScopes monitoredScopes,
-            int maxFileSizeMb, int inspectionTimeoutSeconds, boolean auditOnly,
-            boolean overrideAllowed, boolean failOpen, List<String> excludedProcesses) {}
+        @Size(max=30, message="\"numero_serie\" deve ter no máximo 30 caracteres")
+        String numero_serie
+    ) {}
+
+    public record UsuarioSoRequest(
+        @Size (max=50, message = "\"sid\" deve ter no máximo 50 caracteres")
+        String sid,
+
+        @Size (max=40, message = "\"usuario_so\" deve ter no máximo 40 caracteres")
+        String usuario_so,
+
+        @Size (max=50, message = "\"dominio\" deve ter no máximo 50 caracteres")
+        String dominio,
+
+        @Min(value=0, message = "O valor de \"admin\" deve ser 0 ou 1")
+        @Max(value=1, message = "O valor de \"admin\" deve ser 0 ou 1")
+        int admin
+    ) {}
+
+    public record SynchronizeRequest (
+        @NotNull
+        @Valid
+        HostRequest host,
+
+        @NotNull
+        @Valid 
+        UsuarioSoRequest usuarioSo
+    ){}
+
+    public record SynchronizeResponse (
+        HttpStatus status,
+        Integer id_host,
+        Integer id_usuario_so
+    ){}
+
+    public record HeartbeatRequest (
+        @NotNull (message = "\"id_host\" não pode estar vazio")
+        Integer id_host
+    ){}
+
+    public record DefaultResponse (
+        HttpStatus status,
+        String mensagem
+    ){}
+
+    public record TicketsRequest(
+        Integer fk_id_usuario_so,
+        Integer fk_id_empresa_designada,
+        Integer fk_id_admin_designado,
+        String descricao
+    ){}
+
+    public record ListEmpresaResponse(
+        Integer id_empresa,
+        String razao_social
+    ){}
+
+    public record PolicyRequest(
+        Integer id_host
+    ){}
+
+    public record PolicyResponse(
+        Integer idPolitica,
+        String versao,
+        String nome,
+        PolicyDestination destino,
+        String acao,
+        List<PolicyRule> regras,
+        LocalDateTime criadaEm,
+        String origem
+    ) {}
+
+    public record PolicyDestination(Integer idHost, String ip) {}
+
+    public record PolicyRule(String tipo, String nome) {}
+
+    
+    
 }

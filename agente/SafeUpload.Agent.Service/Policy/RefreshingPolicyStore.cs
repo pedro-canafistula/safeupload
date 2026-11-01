@@ -1,12 +1,13 @@
 using SafeUpload.Agent.Core.Application;
 using DomainPolicy = SafeUpload.Agent.Core.Domain.Policy;
 using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Service.Diagnostics;
 
 namespace SafeUpload.Agent.Service.Policies;
 
 /// <summary>
-/// Publica um snapshot validado para consumidores legados; leituras estritas
-/// consultam a origem e não usam o snapshot como autoridade staged.
+/// Publica um snapshot validado para as inspeções. Somente o serviço de fundo
+/// acessa a rede; inicialização lê o cache protegido antes de tentar HTTP.
 /// </summary>
 public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
 {
@@ -14,18 +15,17 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
     private readonly Func<CancellationToken, Task<DomainPolicy>> _restore;
     private readonly TimeSpan _interval;
     private readonly ILogger<RefreshingPolicyStore> _logger;
-    private readonly PolicyIntegrationDiagnostics? _diagnostics;
     private readonly SemaphoreSlim _initializeGate = new(1, 1);
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private DomainPolicy? _current;
 
     public RefreshingPolicyStore(DurableHttpPolicyStore remote, TimeSpan interval,
-        ILogger<RefreshingPolicyStore> logger, PolicyIntegrationDiagnostics? diagnostics = null)
-        : this(remote, remote.LoadCachedOrDefaultAsync, interval, logger, diagnostics) { }
+        ILogger<RefreshingPolicyStore> logger)
+        : this(remote, remote.LoadCachedOrDefaultAsync, interval, logger) { }
 
     internal RefreshingPolicyStore(IPolicyStore remote,
         Func<CancellationToken, Task<DomainPolicy>> restore, TimeSpan interval,
-        ILogger<RefreshingPolicyStore> logger, PolicyIntegrationDiagnostics? diagnostics = null)
+        ILogger<RefreshingPolicyStore> logger)
     {
         ArgumentNullException.ThrowIfNull(remote);
         ArgumentNullException.ThrowIfNull(restore);
@@ -35,7 +35,6 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
         _restore = restore;
         _interval = interval;
         _logger = logger;
-        _diagnostics = diagnostics;
     }
 
     public Task<DomainPolicy> LoadAsync(CancellationToken cancellationToken)
@@ -44,28 +43,6 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
         return Volatile.Read(ref _current) is { } current
             ? Task.FromResult(current)
             : InitializeAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// A staged decision requires a fresh origin read. Do not initialize from
-    /// disk, wait for a background snapshot, or publish its fallback here.
-    /// The result is not written to the legacy snapshot by this operation.
-    /// </summary>
-    public async Task<DomainPolicy> LoadCurrentAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            var policy = await _remote.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
-            _diagnostics?.RecordStrictRead(policy);
-            return policy;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception error)
-        {
-            _diagnostics?.RecordStrictFailure(error);
-            throw;
-        }
     }
 
     private async Task<DomainPolicy> InitializeAsync(CancellationToken token)
@@ -78,7 +55,6 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             restored.EnsureValid();
             Volatile.Write(ref _current, restored);
             var source = _remote is DurableHttpPolicyStore durable ? durable.LastSource : "local";
-            _diagnostics?.RecordSnapshot(restored, source ?? "unknown");
             _logger.LogInformation("Política inicial v{Version} disponível sem consulta de rede. Origem={Source}.",
                 restored.Version, source);
             return restored;
@@ -96,7 +72,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Carga remota inicial falhou; política recuperada mantida.");
+            CommunicationLog.Warning(_logger, CommunicationLogStage.InitialPolicy, exception);
         }
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -110,8 +86,6 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             var refreshed = await _remote.LoadAsync(token).ConfigureAwait(false);
             refreshed.EnsureValid();
             Volatile.Write(ref _current, refreshed);
-            var source = _remote is DurableHttpPolicyStore durable ? durable.LastSource : "unknown";
-            _diagnostics?.RecordSnapshot(refreshed, source ?? "unknown");
             _logger.LogInformation("Política v{Version} disponível após atualização.", refreshed.Version);
         }
         finally { _refreshGate.Release(); }
@@ -127,7 +101,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception)
             {
-                _logger.LogWarning(exception, "Falha na atualização de política; último snapshot mantido.");
+                CommunicationLog.Warning(_logger, CommunicationLogStage.PolicyRefresh, exception);
             }
         }
     }

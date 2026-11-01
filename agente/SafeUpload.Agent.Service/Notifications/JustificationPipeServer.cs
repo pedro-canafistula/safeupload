@@ -1,9 +1,11 @@
+using SafeUpload.Agent.Service.Diagnostics;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
+
 using SafeUpload.Agent.Service.Drive;
 
 namespace SafeUpload.Agent.Service.Notifications;
@@ -36,6 +38,7 @@ public sealed class JustificationPipeServer : BackgroundService
     private readonly DriveJustifications _justifications;
     private readonly ILogger<JustificationPipeServer> _logger;
 
+    /// <summary>Compõe o servidor.</summary>
     public JustificationPipeServer(
         IPolicyStore policyStore,
         IAuditSink auditSink,
@@ -70,7 +73,7 @@ public sealed class JustificationPipeServer : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
+                _logger.LogSafeWarning(ex, "Falha ao aceitar conexao no canal de justificativas.");
                 if (pipe is not null) await pipe.DisposeAsync().ConfigureAwait(false);
                 _connections.Release();
                 continue;
@@ -115,7 +118,7 @@ public sealed class JustificationPipeServer : BackgroundService
                 {
                     // A stale generation or failed audit/publication is a
                     // rejection, not an unexplained EOF to the real client.
-                    _logger.LogWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
+                    _logger.LogSafeWarning(ex, "Justificativa recusada durante auditoria ou publicacao.");
                 }
             }
 
@@ -134,7 +137,7 @@ public sealed class JustificationPipeServer : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Falha ao atender o canal de justificativas.");
+            _logger.LogSafeWarning(ex, "Falha ao atender o canal de justificativas.");
         }
         finally
         {
@@ -176,7 +179,7 @@ public sealed class JustificationPipeServer : BackgroundService
 
     internal Task RecordJustificationAsync(JustificationRequest request, string? clientSid,
         CancellationToken cancellationToken)
-        => _auditSink.RecordOverrideAsync(new AuditOverride(Guid.Parse(request.EventId), request.Justification,
+        => _auditSink.RecordOverrideAsync(AuditOverride.FromNewSubmission(Guid.Parse(request.EventId), request.Justification,
             DateTimeOffset.UtcNow, clientSid ?? "Não identificado", Environment.MachineName), cancellationToken);
 
     /// <summary>

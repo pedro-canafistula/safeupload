@@ -37,10 +37,7 @@ public sealed record MonitoredScopes(
 /// <param name="MonitoredScopes">Destinos e extensões vigiados.</param>
 /// <param name="MaxFileSizeMb">Acima disto não se inspeciona (RN-013).</param>
 /// <param name="InspectionTimeoutSeconds">Tempo máximo de inspeção (RN-012).</param>
-/// <param name="FailOpen">
-/// Campo de compatibilidade incluído no vínculo de conteúdo da política.
-/// InspectionService escolhe as falhas pelo modo staged ou legado, não por este campo.
-/// </param>
+/// <param name="FailOpen">Se falha libera a operação. No projeto isto é sempre verdadeiro.</param>
 /// <param name="ExcludedProcesses">Processos nunca interceptados (RN-014).</param>
 /// <param name="AuditOnly">
 /// Avalia e registra, mas não nega nada. É como se implanta um DLP sem ser
@@ -70,8 +67,18 @@ public sealed record Policy(
     /// <summary>
     /// O bloco de clipboard em vigor. Uma política sem o bloco vale como canal
     /// desligado, para que um arquivo antigo continue carregando igual.
+    ///
+    /// Com <see cref="AuditOnly"/> ligado, <c>Block</c> vale como <c>Audit</c>:
+    /// a política inteira em observação não pode ter um canal que ainda nega,
+    /// e os canais de arquivo e web já seguem essa regra. <c>Off</c> e
+    /// <c>Audit</c> não mudam.
     /// </summary>
-    public ClipboardPolicy EffectiveClipboard => Clipboard ?? ClipboardPolicy.Disabled;
+    public ClipboardPolicy EffectiveClipboard =>
+        Clipboard is null
+            ? ClipboardPolicy.Disabled
+            : AuditOnly && Clipboard.Mode == ClipboardMode.Block
+                ? Clipboard with { Mode = ClipboardMode.Audit }
+                : Clipboard;
 
     /// <summary>Limite da RN-013 convertido para bytes.</summary>
     public long MaxFileSizeBytes => (long)MaxFileSizeMb * 1024 * 1024;
@@ -90,9 +97,14 @@ public sealed record Policy(
     public void EnsureValid()
     {
         if (Version <= 0)
+        {
             throw new InvalidPolicyException("version precisa ser maior que zero.");
+        }
+
         if (ActiveCategories.Any(category => !Enum.IsDefined(category)))
+        {
             throw new InvalidPolicyException("A política contém uma categoria não reconhecida.");
+        }
 
         if (ActiveCategories.Count == 0)
         {
@@ -112,7 +124,10 @@ public sealed record Policy(
             throw new InvalidPolicyException("inspectionTimeoutSeconds precisa ser maior que zero.");
         }
 
-        EffectiveClipboard.EnsureValid();
+        // Valida o bloco como foi configurado, e não o efetivo: um Block sem
+        // destino de saída é erro de configuração mesmo com auditOnly ligado,
+        // porque deixaria de ser auditoria no dia em que auditOnly fosse desligado.
+        (Clipboard ?? ClipboardPolicy.Disabled).EnsureValid();
     }
 
     /// <summary>

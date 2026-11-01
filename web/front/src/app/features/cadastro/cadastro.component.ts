@@ -12,37 +12,43 @@ import { ApiErro } from '../../core/models';
   styleUrl: './cadastro.component.css'
 })
 export class CadastroComponent {
-  nomeCompleto = '';
-  username = '';
-  email = '';
-  cpf = '';
-  dataNascimento = '';
-  senha = '';
-  confirmarSenha = '';
+  cadastro = {
+    nome_completo: '', username: '', email: '', cpf: '', data_nascimento: '', senha: '', confirmarSenha: '',
+    empresa: {
+      razao_social: '', nome_fantasia: '', cnpj: '', email_contato: '', telefone_contato: '',
+      endereco: { cep: '', logradouro: '', numero: 0, complemento: '', bairro: '', cidade: '', estado: '' }
+    },
+    endereco: { cep: '', logradouro: '', numero: 0, complemento: '', bairro: '', cidade: '', estado: '' }
+  };
   erro = '';
   carregando = false;
 
-  constructor(private auth: AuthService, private router: Router) {}
+  constructor(private auth: AuthService, private router: Router) {
+    this.auth.decision().subscribe({
+      next: ({ existemUsuarios }) => {
+        if (existemUsuarios) this.router.navigate(['/login']);
+      },
+      error: () => this.erro = 'Não foi possível verificar se o primeiro cadastro está disponível.'
+    });
+  }
 
   enviar(): void {
     this.erro = '';
+    if (this.cadastro.senha !== this.cadastro.confirmarSenha) {
+      this.erro = 'As senhas não coincidem.';
+      return;
+    }
+
     this.carregando = true;
 
-    this.auth.cadastrar({
-      nomeCompleto: this.nomeCompleto,
-      username: this.username,
-      email: this.email,
-      cpf: this.cpf,
-      dataNascimento: this.dataNascimento || undefined,
-      senha: this.senha,
-      confirmarSenha: this.confirmarSenha
-    }).subscribe({
+    const { confirmarSenha: _confirmarSenha, ...payload } = this.cadastro;
+    this.auth.cadastrar(payload).subscribe({
       next: () => this.router.navigate(['/login'], { queryParams: { cadastrado: '1' } }),
       error: (e) => {
         this.carregando = false;
-        this.erro = (e.error as ApiErro)?.erro ?? 'Falha ao cadastrar.';
+        const apiErro = e.error as ApiErro | undefined;
+        this.erro = apiErro?.mensagem ?? apiErro?.erro ?? 'Falha ao cadastrar.';
       }
     });
   }
 }
-

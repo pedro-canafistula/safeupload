@@ -1,36 +1,80 @@
 <section class="auth-page">
   <div class="auth-box card">
     <h1>SafeUpload</h1>
-    <p>Criar conta</p>
+    <p>Primeiro cadastro do sistema</p>
 
     <div class="msg erro" *ngIf="erro">{{ erro }}</div>
 
     <form (ngSubmit)="enviar()">
+      <h2>Administrador</h2>
       <label for="nomeCompleto">Nome completo</label>
-      <input id="nomeCompleto" name="nomeCompleto" [(ngModel)]="nomeCompleto" autocomplete="name" required />
+      <input id="nomeCompleto" name="nomeCompleto" [(ngModel)]="cadastro.nome_completo" autocomplete="name" required maxlength="100" />
 
       <label for="username">Nome de usuário</label>
-      <input id="username" name="username" [(ngModel)]="username" autocomplete="username" required />
+      <input id="username" name="username" [(ngModel)]="cadastro.username" autocomplete="username" required maxlength="50" />
 
       <label for="email">E-mail</label>
-      <input id="email" name="email" [(ngModel)]="email" type="email" autocomplete="email" required />
+      <input id="email" name="email" [(ngModel)]="cadastro.email" type="email" autocomplete="email" required maxlength="75" />
 
       <label for="cpf">CPF</label>
-      <input id="cpf" name="cpf" [(ngModel)]="cpf" required />
+      <input id="cpf" name="cpf" [(ngModel)]="cadastro.cpf" required maxlength="14" />
 
       <label for="dataNascimento">Data de nascimento</label>
-      <input id="dataNascimento" name="dataNascimento" [(ngModel)]="dataNascimento" type="date" />
+      <input id="dataNascimento" name="dataNascimento" [(ngModel)]="cadastro.data_nascimento" type="date" required />
 
       <label for="senha">Senha</label>
-      <input id="senha" name="senha" [(ngModel)]="senha" type="password" autocomplete="new-password" required minlength="8" />
+      <input id="senha" name="senha" [(ngModel)]="cadastro.senha" type="password" autocomplete="new-password" required maxlength="60" />
 
       <label for="confirmarSenha">Confirmar senha</label>
-      <input id="confirmarSenha" name="confirmarSenha" [(ngModel)]="confirmarSenha" type="password" autocomplete="new-password" required />
+      <input id="confirmarSenha" name="confirmarSenha" [(ngModel)]="cadastro.confirmarSenha" type="password" autocomplete="new-password" required />
+
+      <h2>Empresa</h2>
+      <label for="razaoSocial">Razão social</label>
+      <input id="razaoSocial" name="razaoSocial" [(ngModel)]="cadastro.empresa.razao_social" required maxlength="100" />
+      <label for="nomeFantasia">Nome fantasia</label>
+      <input id="nomeFantasia" name="nomeFantasia" [(ngModel)]="cadastro.empresa.nome_fantasia" required maxlength="100" />
+      <label for="cnpj">CNPJ (14 dígitos)</label>
+      <input id="cnpj" name="cnpj" [(ngModel)]="cadastro.empresa.cnpj" required minlength="14" maxlength="14" />
+      <label for="emailContato">E-mail de contato</label>
+      <input id="emailContato" name="emailContato" [(ngModel)]="cadastro.empresa.email_contato" type="email" required maxlength="100" />
+      <label for="telefoneContato">Telefone de contato</label>
+      <input id="telefoneContato" name="telefoneContato" [(ngModel)]="cadastro.empresa.telefone_contato" required maxlength="14" />
+
+      <h2>Endereço da empresa</h2>
+      <label for="cepEmpresa">CEP (formato 00000-000)</label>
+      <input id="cepEmpresa" name="cepEmpresa" [(ngModel)]="cadastro.empresa.endereco.cep" required minlength="9" maxlength="9" />
+      <label for="logradouroEmpresa">Logradouro</label>
+      <input id="logradouroEmpresa" name="logradouroEmpresa" [(ngModel)]="cadastro.empresa.endereco.logradouro" required maxlength="40" />
+      <label for="numeroEmpresa">Número</label>
+      <input id="numeroEmpresa" name="numeroEmpresa" [(ngModel)]="cadastro.empresa.endereco.numero" type="number" min="0" required />
+      <label for="complementoEmpresa">Complemento</label>
+      <input id="complementoEmpresa" name="complementoEmpresa" [(ngModel)]="cadastro.empresa.endereco.complemento" maxlength="100" />
+      <label for="bairroEmpresa">Bairro</label>
+      <input id="bairroEmpresa" name="bairroEmpresa" [(ngModel)]="cadastro.empresa.endereco.bairro" required maxlength="30" />
+      <label for="cidadeEmpresa">Cidade</label>
+      <input id="cidadeEmpresa" name="cidadeEmpresa" [(ngModel)]="cadastro.empresa.endereco.cidade" required maxlength="40" />
+      <label for="estadoEmpresa">Estado (UF)</label>
+      <input id="estadoEmpresa" name="estadoEmpresa" [(ngModel)]="cadastro.empresa.endereco.estado" required minlength="2" maxlength="2" />
+
+      <h2>Endereço do administrador</h2>
+      <label for="cepUsuario">CEP (formato 00000-000)</label>
+      <input id="cepUsuario" name="cepUsuario" [(ngModel)]="cadastro.endereco.cep" required minlength="9" maxlength="9" />
+      <label for="logradouroUsuario">Logradouro</label>
+      <input id="logradouroUsuario" name="logradouroUsuario" [(ngModel)]="cadastro.endereco.logradouro" required maxlength="40" />
+      <label for="numeroUsuario">Número</label>
+      <input id="numeroUsuario" name="numeroUsuario" [(ngModel)]="cadastro.endereco.numero" type="number" min="0" required />
+      <label for="complementoUsuario">Complemento</label>
+      <input id="complementoUsuario" name="complementoUsuario" [(ngModel)]="cadastro.endereco.complemento" maxlength="100" />
+      <label for="bairroUsuario">Bairro</label>
+      <input id="bairroUsuario" name="bairroUsuario" [(ngModel)]="cadastro.endereco.bairro" required maxlength="30" />
+      <label for="cidadeUsuario">Cidade</label>
+      <input id="cidadeUsuario" name="cidadeUsuario" [(ngModel)]="cadastro.endereco.cidade" required maxlength="40" />
+      <label for="estadoUsuario">Estado (UF)</label>
+      <input id="estadoUsuario" name="estadoUsuario" [(ngModel)]="cadastro.endereco.estado" required minlength="2" maxlength="2" />
 
       <button class="btn-primary" [disabled]="carregando" type="submit">Criar conta</button>
     </form>
 
-    <a routerLink="/login">Voltar para login</a>
+    <a routerLink="/inicio">Voltar</a>
   </div>
 </section>
-
