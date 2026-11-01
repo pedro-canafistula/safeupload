@@ -23,7 +23,6 @@ wait_ssh() {
 case "${1:-}" in
 begin)
     tag="${2:?tag}"
-    [ "$($V domstate win10-debug2)" = "shut off" ] || { echo "win10-debug2 must be off (same guest IP)"; exit 1; }
     [ "$($V domstate $dom)" = "shut off" ] || { echo "$dom is running; end the current session first"; exit 1; }
     [ "$(_rd_vda $dom --inactive)" = "$base" ] || { echo "$dom is not on its base image $base"; exit 1; }
     run_disk_begin $dom "$tag" || exit 1
