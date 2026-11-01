@@ -227,7 +227,7 @@ try {
         Get-Content -LiteralPath (Join-Path $results 'current-api-contract.log') -Tail 40
         Check 'current C# API acceptance completed successfully' ($contractExit -eq 0)
         $contractText = Get-Content -LiteralPath (Join-Path $results 'current-api-contract.log') -Raw
-        Check 'current API result retains policy and driver qualification limits' ($contractText.Contains('CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByAgent=Pending;RemotePolicyCacheQualification=Pending;DriverQualified=False'))
+        Check 'current API result retains policy and driver qualification limits' ($contractText.Contains('CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByEngine=True;RemotePolicyCacheComponent=True;InstalledConsolePolicy=Pending;PolicyCacheAclQualified=False;DriverQualified=False'))
         $evidence.status='passed'
     } else {
     $control=Register-Host 'CONTROLE-IDENTIDADE'
