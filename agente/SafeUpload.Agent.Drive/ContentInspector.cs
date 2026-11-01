@@ -12,10 +12,10 @@ internal sealed record InspectionOutcome(bool Publish, string Summary, FileOpera
 /// Word and Excel save through temporary names such as "~WRL0001.tmp" or "1A2B3C4D".
 /// Anything that is not clearly approved is held (fail closed).
 /// </summary>
-public sealed class ContentInspector(InspectionService inspection)
+public sealed class ContentInspector(InspectionService inspection, IPolicyStore policies)
 {
-    internal async Task<InspectionOutcome> InspectAsync(string snapshot, string destinationPath, string name, DriveWriter? writer,
-        CancellationToken token)
+    internal async Task<InspectionOutcome> InspectAsync(string snapshot, string destinationPath, DestinationKind kind,
+        string name, DriveWriter? writer, CancellationToken token)
     {
         try
         {
@@ -23,13 +23,20 @@ public sealed class ContentInspector(InspectionService inspection)
             var extension = DetectExtension(snapshot, Path.GetExtension(name));
             var effectiveName = Path.GetFileNameWithoutExtension(name) + extension;
             var operation = new FileOperation(snapshot, effectiveName, extension, info.Length, info.LastWriteTimeUtc,
-                writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, DestinationKind.Cloud);
+                writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, kind);
             var result = await inspection.InspectStagedAsync(operation, token).ConfigureAwait(false);
             var categories = string.Join(",", result.Categories);
             var summary = $"verdict={result.Verdict} type={extension} reason={result.Reason ?? "-"} findings={result.Findings.Count}"
                 + (categories.Length > 0 ? $" categories={categories}" : "");
-            bool publish = result.Verdict == Verdict.Approved ||
-                (result.Verdict == Verdict.AllowedWithoutInspection && result.Reason is "out_of_scope" or "excluded_process");
+            bool publish = result.Verdict == Verdict.Approved;
+            if (result.Verdict == Verdict.AllowedWithoutInspection && result.Reason is "out_of_scope" or "excluded_process")
+            {
+                // Everything written to a SafeUpload drive goes to a protected place. "Out of scope" may only mean a file
+                // type the policy does not inspect; a monitored type means the destination itself was not recognized.
+                var policy = await policies.LoadCurrentAsync(token).ConfigureAwait(false);
+                publish = result.Reason == "excluded_process" || !policy.IsMonitoredExtension(extension);
+                if (!publish) summary += " held=destination_not_monitored";
+            }
             return new InspectionOutcome(publish, summary, operation, result);
         }
         catch (Exception error)

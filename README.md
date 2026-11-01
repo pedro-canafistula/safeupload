@@ -2,7 +2,7 @@
 
 Protótipo acadêmico de prevenção de vazamento acidental de dados (DLP).
 
-O Centro de Administração usa **Java 21 / Spring Boot + Angular**. O agente Windows continua em **C#/.NET 10**, com driver minifilter em **C** opcional.
+O Centro de Administração usa **Java 21 / Spring Boot + Angular**. O agente Windows continua em **C#/.NET 10**; a proteção de pastas usa unidades WinFsp e um driver minifilter pequeno em **C**.
 
 ## Fluxo funcional
 

@@ -39,6 +39,7 @@ internal sealed class Node
     public uint Attributes;
     public ulong CreationTime, LastAccessTime, LastWriteTime, ChangeTime;
     public ulong Id;
+    public bool Private;                         // Windows housekeeping (indexer, recycle bin): never published
 }
 
 internal sealed class Handle
@@ -71,6 +72,10 @@ public sealed class DriveFileSystem : FileSystemBase
     private readonly string _backing, _stage, _snapshots, _mountPoint;
     private readonly ContentInspector _inspector;
     private readonly IDriveObserver _observer;
+    private readonly SafeUpload.Agent.Core.Domain.DestinationKind _kind;
+    private readonly string _label;
+    private static readonly HashSet<string> PrivateRootNames = new(StringComparer.OrdinalIgnoreCase)
+        { "System Volume Information", "$RECYCLE.BIN" };
     private readonly Dictionary<Guid, Content> _blocked = [];
     private readonly Node _root;
     private readonly byte[] _fileSecurity, _dirSecurity;
@@ -80,10 +85,13 @@ public sealed class DriveFileSystem : FileSystemBase
     private readonly CancellationTokenSource _stop = new();
 
     internal DriveFileSystem(string backing, string privateRoot, string mountPoint, ContentInspector inspector,
-        IDriveObserver observer)
+        IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label)
     {
         _observer = observer;
-        _backing = System.IO.Path.GetFullPath(backing).TrimEnd('\\');
+        _kind = kind;
+        _label = label.Length <= 32 ? label : label[..32];
+        _backing = System.IO.Path.GetFullPath(backing);
+        if (_backing.Length > 3) _backing = _backing.TrimEnd('\\');   // keep "E:\" for a drive root
         _stage = System.IO.Path.Combine(privateRoot, "stage");
         _snapshots = System.IO.Path.Combine(privateRoot, "snapshots");
         _mountPoint = mountPoint.TrimEnd('\\');
@@ -135,10 +143,13 @@ public sealed class DriveFileSystem : FileSystemBase
     public override int GetVolumeInfo(out VolumeInfo volumeInfo)
     {
         volumeInfo = default;
-        var drive = new DriveInfo(System.IO.Path.GetPathRoot(_backing)!);
-        volumeInfo.TotalSize = (ulong)drive.TotalSize;
-        volumeInfo.FreeSize = (ulong)drive.TotalFreeSpace;
-        volumeInfo.SetVolumeLabel("SafeUpload");
+        // GetDiskFreeSpaceEx also works for network shares (\\server\share).
+        if (GetDiskFreeSpaceEx(_backing, out _, out ulong total, out ulong free))
+        {
+            volumeInfo.TotalSize = total;
+            volumeInfo.FreeSize = free;
+        }
+        volumeInfo.SetVolumeLabel(_label);
         return STATUS_SUCCESS;
     }
 
@@ -172,12 +183,13 @@ public sealed class DriveFileSystem : FileSystemBase
             EnsureLoaded(parent);
             if (parent.Children!.ContainsKey(leaf)) return STATUS_OBJECT_NAME_COLLISION;
 
-            var node = new Node { Name = leaf, Parent = parent, Id = _nextId++ };
+            var node = new Node { Name = leaf, Parent = parent, Id = _nextId++,
+                Private = parent.Private || (parent == _root && PrivateRootNames.Contains(leaf)) };
             StampNow(node);
             Handle handle;
             if ((createOptions & FILE_DIRECTORY_FILE) != 0)
             {
-                Directory.CreateDirectory(BackingPath(parent, leaf));
+                if (!node.Private) Directory.CreateDirectory(BackingPath(parent, leaf));
                 node.IsDirectory = true;
                 node.Children = new(StringComparer.OrdinalIgnoreCase);
                 node.Attributes = fileAttributes | (uint)FileAttributes.Directory;
@@ -411,7 +423,7 @@ public sealed class DriveFileSystem : FileSystemBase
                 Delete(target);
             }
             var oldPath = VirtualPath(node);
-            if (node.IsDirectory)
+            if (node.IsDirectory && !node.Private)
             {
                 // No content to inspect: move the backing directory now and re-point published files under it.
                 var oldBacking = BackingPath(node.Parent!, node.Name);
@@ -526,6 +538,7 @@ public sealed class DriveFileSystem : FileSystemBase
         foreach (var info in new DirectoryInfo(path).EnumerateFileSystemInfos())
         {
             if (info.Name.StartsWith(TempPrefix, StringComparison.Ordinal)) continue;
+            if (dir == _root && PrivateRootNames.Contains(info.Name)) continue;
             var node = new Node
             {
                 Name = info.Name, Parent = dir, Id = _nextId++, Attributes = (uint)info.Attributes,
@@ -605,7 +618,7 @@ public sealed class DriveFileSystem : FileSystemBase
     {
         var path = VirtualPath(node);
         node.Parent?.Children?.Remove(node.Name);
-        if (node.IsDirectory)
+        if (node.IsDirectory && !node.Private)
         {
             Reconcile();   // the backing folder may still hold files the namespace already removed
             var backing = BackingPath(node.Parent!, node.Name);
@@ -674,6 +687,9 @@ public sealed class DriveFileSystem : FileSystemBase
         return bytes;
     }
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetDiskFreeSpaceEx(string directory, out ulong freeForCaller, out ulong total, out ulong free);
+
     private static void TryDelete(string path)
     {
         try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
@@ -725,7 +741,7 @@ public sealed class DriveFileSystem : FileSystemBase
 
     private void InspectOne(Content content)
     {
-        string snapshot, destination, name;
+        string snapshot, destination, target, name;
         long version;
         DriveWriter? writer;
         var versionId = Guid.NewGuid();
@@ -733,18 +749,19 @@ public sealed class DriveFileSystem : FileSystemBase
         {
             _dirty.Remove(content);
             content.CleanupSeen = false;
-            if (content.Deleted || content.Node is null || content.Version == content.InspectedVersion) return;
+            if (content.Deleted || content.Node is null || content.Node.Private || content.Version == content.InspectedVersion) return;
             // A snapshot taken under the lock is a consistent version: writes take the same lock.
             snapshot = System.IO.Path.Combine(_snapshots, Guid.NewGuid().ToString("N"));
             CopyShared(content.Path, snapshot);
             version = content.InspectedVersion = content.Version;
             destination = VirtualPath(content.Node);
+            target = BackingPath(content.Node.Parent!, content.Node.Name);
             name = content.Node.Name;
             writer = content.Writer;
             content.Inspecting = true;
         }
         var started = DateTime.UtcNow;
-        var outcome = _inspector.InspectAsync(snapshot, destination, name, writer, _stop.Token).GetAwaiter().GetResult();
+        var outcome = _inspector.InspectAsync(snapshot, target, _kind, name, writer, _stop.Token).GetAwaiter().GetResult();
         bool report = false;
         lock (_gate)
         {
@@ -778,7 +795,7 @@ public sealed class DriveFileSystem : FileSystemBase
         }
         if (report)
             _observer.OnDecision(new DriveDecision(versionId, destination, name, writer, outcome.Operation, outcome.Result,
-                outcome.Publish, outcome.Summary));
+                outcome.Publish, outcome.Summary, snapshot));
     }
 
     /// <summary>
@@ -837,6 +854,7 @@ public sealed class DriveFileSystem : FileSystemBase
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var child in dir.Children.Values)
         {
+            if (child.Private) continue;
             keep.Add(child.Name);
             if (child.IsDirectory) { ReconcileDirectory(child, referenced); continue; }
             var content = child.Content!;

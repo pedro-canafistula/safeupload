@@ -1,33 +1,25 @@
 #Requires -RunAsAdministrator
 #Requires -Version 5.1
+<#
+.SYNOPSIS
+Removes the SafeUpload agent service, the tray app and the gate driver. WinFsp, policy and audit data are kept.
+Files waiting for inspection stay in C:\ProgramData\SafeUpload\drive; the protected folders keep their content.
+#>
 [CmdletBinding()]
 param()
-
 $ErrorActionPreference = 'Stop'
-# Stop must succeed before removing the UI. The service/driver may veto stop
-# while recovery obligations are outstanding; retain their actionable notices.
-$service = Get-Service -Name 'SafeUploadAgent' -ErrorAction SilentlyContinue
-if ($null -ne $service) {
-    Stop-Service -Name 'SafeUploadAgent' -ErrorAction Stop
-    & sc.exe delete SafeUploadAgent
-    if ($LASTEXITCODE -ne 0) { throw ('Removing SafeUploadAgent failed: sc.exe ' + $LASTEXITCODE) }
+$programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { [Environment]::GetFolderPath('ProgramFiles') }
+
+if (Get-Service -Name SafeUploadAgent -ErrorAction SilentlyContinue) {
+    Stop-Service -Name SafeUploadAgent -Force
+    & sc.exe delete SafeUploadAgent | Out-Null
 }
-$programFiles = [Environment]::GetFolderPath('ProgramFiles')
-if ($env:ProgramW6432) { $programFiles = $env:ProgramW6432 }
-$appDirectory = Join-Path $programFiles 'SafeUpload\App'
-$appExecutable = Join-Path $appDirectory 'SafeUpload.Agent.App.exe'
-$machine = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64')
-try {
-    $run = $machine.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Run', $true)
-    if ($null -ne $run) {
-        try { $run.DeleteValue('SafeUploadApp', $false) }
-        finally { $run.Dispose() }
-    }
-} finally { $machine.Dispose() }
-Get-Process -Name 'SafeUpload.Agent.App' -ErrorAction SilentlyContinue | Where-Object {
-    $_.Path -eq $appExecutable
-} | Stop-Process -Force -ErrorAction Stop
-if (Test-Path -LiteralPath $appDirectory) { Remove-Item -LiteralPath $appDirectory -Recurse -Force }
-Write-Output 'AgentServiceRemoved=True'
-Write-Output 'AppRemoved=True'
-Write-Output 'Driver, policy and recovery data retained.'
+Remove-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name SafeUploadApp -ErrorAction SilentlyContinue
+Get-Process -Name 'SafeUpload.Agent.App' -ErrorAction SilentlyContinue | Stop-Process -Force
+& fltmc.exe unload SafeUpload 2>$null | Out-Null
+if (Test-Path -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload') { & sc.exe delete SafeUpload | Out-Null }
+foreach ($directory in 'Agent', 'App') {
+    $path = Join-Path $programFiles "SafeUpload\$directory"
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+}
+Write-Output 'SafeUploadRemoved=True'

@@ -21,9 +21,9 @@ public sealed class DriveMount : IDisposable
 
     /// <summary>Mounts <paramref name="mountPoint"/> (for example "S:") in front of <paramref name="destination"/>.</summary>
     public static DriveMount Mount(string destination, string privateRoot, string mountPoint, ContentInspector inspector,
-        IDriveObserver observer)
+        IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label)
     {
-        var fileSystem = new DriveFileSystem(destination, privateRoot, mountPoint, inspector, observer);
+        var fileSystem = new DriveFileSystem(destination, privateRoot, mountPoint, inspector, observer, kind, label);
         var host = new FileSystemHost(fileSystem);
         int status = host.Mount(mountPoint, null, false, 0);
         if (status < 0)

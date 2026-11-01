@@ -1,5 +1,5 @@
 # Runs as t5actor in the interactive session (vm-as-actor.sh adds Out and the DONE line).
-$B = 'C:\SafeUploadSpike\Envios'
+$B = 'C:\SafeUpload\Envios'
 $CPF = '529.982.247-25'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
@@ -32,6 +32,8 @@ function Step([string]$name, [scriptblock]$body) {
     try { & $body } catch { Out ('FAIL ' + $name + ' exception: ' + $_.Exception.Message) }
 }
 
+$wait = [Diagnostics.Stopwatch]::StartNew()
+while (-not (Test-Path 'S:\') -and $wait.Elapsed.TotalSeconds -lt 120) { Start-Sleep -Seconds 2 }
 Out ('drive present: ' + (Test-Path 'S:\') + ' user=' + $env:USERNAME)
 
 Step 'T1' {
@@ -129,6 +131,42 @@ Step 'T8' {
     Check 'T8c folder create + rename' ((Test-Path -LiteralPath "$B\pasta2") -and -not (Test-Path -LiteralPath "$B\pasta")) ''
     Remove-Item -LiteralPath 'S:\pasta2'
     Check 'T8d folder delete' (-not (Test-Path -LiteralPath "$B\pasta2")) ''
+}
+
+Step 'T9' {
+    # Listen like the tray app, save a blocked file, then justify it through the justification pipe.
+    $utf8 = New-Object Text.UTF8Encoding($false)
+    $notices = New-Object IO.Pipes.NamedPipeClientStream('.', 'SafeUpload.Agent', [IO.Pipes.PipeDirection]::In)
+    $notices.Connect(5000)
+    $reader = New-Object IO.StreamReader($notices, $utf8)
+    Set-Content -LiteralPath 'S:\justificar.txt' -Value "Cliente Joana, CPF $CPF" -Encoding UTF8
+    $eventId = $null
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $pending = $reader.ReadLineAsync()
+    while ($eventId -eq $null -and $sw.Elapsed.TotalSeconds -lt 20) {
+        if ($pending.Wait(1000)) {
+            $line = $pending.Result
+            if ($line -ne $null -and $line -match '"type":"transfer"' -and $line -match 'justificar' -and $line -match '"phase":"Blocked"') {
+                if ($line -match '"transferId":"([0-9a-fA-F-]{36})"') { $eventId = $Matches[1] }
+                Out ('  notice: ' + $line.Substring(0, [Math]::Min(220, $line.Length)))
+            }
+            if ($eventId -eq $null) { $pending = $reader.ReadLineAsync() }
+        }
+    }
+    $notices.Dispose()
+    Check 'T9a block notice reaches the user session with a justification id' ($eventId -ne $null) "id=$eventId"
+    if ($eventId -ne $null) {
+        $pipe = New-Object IO.Pipes.NamedPipeClientStream('.', 'SafeUpload.Agent.Justification', [IO.Pipes.PipeDirection]::InOut)
+        $pipe.Connect(5000)
+        $writer = New-Object IO.StreamWriter($pipe, $utf8)
+        $writer.WriteLine('{"eventId":"' + $eventId + '","justification":"Envio autorizado pelo cliente (teste)"}')
+        $writer.Flush()
+        $answer = (New-Object IO.StreamReader($pipe, $utf8)).ReadLine()
+        $pipe.Dispose()
+        Check 'T9b justification accepted' ($answer -eq 'accepted') "answer=$answer"
+        $ms = WaitFor { Test-Path -LiteralPath "$B\justificar.txt" } 15
+        Check 'T9c the justified version reaches the destination' ($ms -ge 0) "($ms ms)"
+    }
 }
 
 Out '--- destination'

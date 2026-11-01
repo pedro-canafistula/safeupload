@@ -21,42 +21,45 @@ The old plans, reviews, harnesses and evidence are in git history (tag `archive/
 |---|---|---|
 | `web/back`, `web/front` | Spring Boot + Angular admin console, with its own CI | web team |
 | `agente/` | .NET 10 Windows agent: inspection (`Agent.Core`), service (`Agent.Service`), tray app (`Agent.App`), clipboard, TLS proxy (`Agent.Network`), tests | agent team |
-| `driver/` | Minifilter, its test client and the build/VM scripts; see [driver/README.md](driver/README.md) | Victor |
+| `driver/` | Gate minifilter and the build/VM scripts; see [driver/README.md](driver/README.md) | Victor |
+| `smoke/` | End-to-end VM test of the agent + driver | Victor |
 | `lab/` | Packer/Ansible/Terraform recipes that build the Windows test VM | Victor |
 | `docs/`, `db/`, `tests/` | Team documents and older material | team |
 
 Do not rewrite another team's area as part of driver work. Never touch untracked personal files (`.ai-memory.toml`,
 `reports/`, `research_notes/`).
 
-## Current direction (driver)
+## How protection works
 
-The in-kernel staging driver (about 51K lines of C) is being replaced:
+1. **SafeUpload drive (agent, user mode, WinFsp):** each protected folder (and each USB stick, when removable media is
+   protected) appears as a drive. Writes go to a private stage. When a modified file is closed, the agent inspects a
+   snapshot; clean versions are copied to the real folder, sensitive ones never reach it and the user gets the block
+   notification (with justification).
+2. **Gate minifilter (kernel, `driver/SafeUpload.Minifilter/Gate.c`):** refuses direct writes to the real places for
+   everyone except the agent. No inspection, staging or process taint in the kernel.
 
-1. **SafeUpload drive (agent, user mode):** a WinFsp file system in front of each protected destination. Writes go to
-   a private stage. When a modified file is closed, the agent inspects a snapshot; clean versions are copied to the
-   real destination, sensitive ones never reach it and the user gets the block notification (with justification).
-2. **Gate minifilter (kernel, small):** refuses direct writes to the real destinations for everyone except the agent.
-   No inspection, staging or process taint in the kernel.
-
-Product rules that stay: nothing uninspected reaches a protected destination; an inspection that fails, times out or
-cannot read the file blocks (fail closed); reads are never blocked; a justification covers exactly one version.
+Product rules: nothing uninspected reaches a protected destination; an inspection that fails, times out or cannot read
+the file blocks (fail closed); reads are never blocked; a justification covers exactly one version.
 
 ## Build and test
 
 ```bash
 # Agent (Linux, using the local SDK; WPF needs EnableWindowsTargeting)
 dotnet build agente/SafeUpload.Agent.sln -p:EnableWindowsTargeting=true
-# Tests: run on Windows. On Linux about a fifth of them fail because they use Windows APIs (pipes, ACLs, certificate store).
+# Tests: run on Windows. On Linux about one in eight fail because they use Windows APIs (pipes, ACLs, certificate store).
 dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj
 
 # Driver (on a Windows builder VM, signed with the test certificate)
 driver/scripts/build-driver.sh [commit] [Release|Debug]
+
+# End to end on a throwaway VM session (see driver/README.md)
+smoke/run.sh <tag> <driver-dir> <agent-pkg-dir> <winfsp.msi>
 ```
 
 ## Lab
 
 - Test VM: **win10-debug3** (Windows 10 19045.2965, test signing on, Secure Boot off). Keep win10-debug2 off; it shares
-  the guest IP. Use a disposable disk overlay for experiments (`driver/scripts/run-disk.sh`).
+  the guest IP. Use a throwaway session for experiments (`driver/scripts/vm-session.sh`).
 - Builders: builder1 `192.168.122.210` (libvirt `win10`) and builder2 `192.168.122.211` (`su-builder2`). One job per
   builder at a time.
 - Host-wide changes (libvirt, polkit, systemd, sudoers) need the owner's OK.

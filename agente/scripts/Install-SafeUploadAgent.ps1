@@ -1,206 +1,79 @@
 #Requires -RunAsAdministrator
 #Requires -Version 5.1
+<#
+.SYNOPSIS
+Installs SafeUpload on this machine: WinFsp (if needed), the gate driver, the agent service and the tray app.
+
+.EXAMPLE
+.\Install-SafeUploadAgent.ps1 -PackagePath C:\pkg\agent -DriverPath C:\pkg\driver -WinFspMsi C:\pkg\winfsp-2.1.25156.msi
+
+PackagePath holds SafeUpload.Agent.Service.exe and the tray app under App\. DriverPath holds SafeUpload.sys and
+SafeUpload.inf (signed with the test certificate; the machine needs test signing on). AdminBaseUrl points the agent at
+the web console (http://host:8080/agent/); leave it empty to use C:\ProgramData\SafeUpload\policy.json.
+#>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
-    [string] $ServiceExecutablePath,
-
-    # Defaults to the App directory in the exact agent package.
-    [string] $AppSourcePath = '',
-
-    # Central policy server. Empty (the default) keeps the agent autonomous: it reads C:\ProgramData\SafeUpload\policy.json.
-    # appsettings.json ships a panel address, and with any address configured the agent takes its policy from the
-    # panel. Legacy consumers can use a validated fallback; staged decisions and boot seed require the current
-    # policy, so the installer states the choice explicitly instead of inheriting the shipped address.
-    [string] $AdminBaseUrl = '',
-
-    # The staged-write driver only works with the agent in staged minifilter mode. Without these arguments the
-    # agent runs outside staged mode (admissionCoverage NotAvailable, auditOnly true) and the driver, which fails
-    # closed, refuses every standard-user save into a protected folder.
-    [string[]] $ServiceArguments = @('--Interception:Mode=Minifilter', '--Interception:StagingPrototype=true',
-        ('--CentroAdministracao:BaseUrl=' + $AdminBaseUrl))
+    [Parameter(Mandatory = $true)] [string] $PackagePath,
+    [string] $DriverPath = '',
+    [string] $WinFspMsi = '',
+    [string] $AdminBaseUrl = ''
 )
-
 $ErrorActionPreference = 'Stop'
-$serviceName = 'SafeUploadAgent'
-$serviceExecutable = (Resolve-Path -LiteralPath $ServiceExecutablePath).Path
-if ([string]::IsNullOrWhiteSpace($AppSourcePath)) {
-    $AppSourcePath = Join-Path (Split-Path -Parent $serviceExecutable) 'App'
-}
-$appSource = (Resolve-Path -LiteralPath $AppSourcePath).Path
-if (-not (Test-Path -LiteralPath (Join-Path $appSource 'SafeUpload.Agent.App.exe') -PathType Leaf)) {
-    throw 'Agent package is missing App\SafeUpload.Agent.App.exe.'
-}
-$quotedExecutable = '"' + $serviceExecutable + '"'
-function ConvertTo-SafeUploadCommandLineArgument([AllowEmptyString()][string] $Argument) {
-    # Windows argv quoting: double backslashes before quotes and before the closing quote.
-    $escaped = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
-    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
-    return '"' + $escaped + '"'
+$programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { [Environment]::GetFolderPath('ProgramFiles') }
+$installRoot = Join-Path $programFiles 'SafeUpload'
+$agentDirectory = Join-Path $installRoot 'Agent'
+$appDirectory = Join-Path $installRoot 'App'
+$package = (Resolve-Path -LiteralPath $PackagePath).Path
+if (-not (Test-Path -LiteralPath (Join-Path $package 'SafeUpload.Agent.Service.exe'))) { throw 'PackagePath has no SafeUpload.Agent.Service.exe.' }
+
+# 1. WinFsp provides the SafeUpload drives.
+if (-not (Test-Path -LiteralPath "${env:ProgramFiles(x86)}\WinFsp\bin\winfsp-x64.dll")) {
+    if (-not $WinFspMsi) { throw 'WinFsp is not installed; pass -WinFspMsi <winfsp.msi>.' }
+    $msi = Start-Process msiexec.exe -ArgumentList '/i', ('"' + (Resolve-Path -LiteralPath $WinFspMsi).Path + '"'), '/qn', '/norestart' -Wait -PassThru
+    if ($msi.ExitCode -ne 0) { throw "WinFsp installation failed ($($msi.ExitCode))." }
+    Write-Output 'WinFspInstalled=True'
 }
 
-function Get-SafeUploadInstallCommandLines([string] $Executable, [string[]] $Arguments) {
-    $configuration = @($Arguments | ForEach-Object { ConvertTo-SafeUploadCommandLineArgument $_ })
-    return [pscustomobject]@{
-        ServiceCommandLine = (@((ConvertTo-SafeUploadCommandLineArgument $Executable)) + $configuration) -join ' '
-        SeedArguments = (@('--seed-boot-policy') + $configuration) -join ' '
-    }
+# 2. The gate driver (demand-start; the agent loads it).
+if ($DriverPath) {
+    $driverSource = (Resolve-Path -LiteralPath $DriverPath).Path
+    $inf = Join-Path $driverSource 'SafeUpload.inf'
+    & fltmc.exe unload SafeUpload 2>$null | Out-Null
+    & rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall.NTamd64 132 $inf
+    Start-Sleep -Seconds 2
+    # The INF copy skips a target that is not older; copy explicitly so an upgrade always replaces the driver.
+    $target = Join-Path $env:SystemRoot 'System32\drivers\SafeUpload.sys'
+    Copy-Item -LiteralPath (Join-Path $driverSource 'SafeUpload.sys') -Destination $target -Force
+    if ((Get-FileHash $target).Hash -ne (Get-FileHash (Join-Path $driverSource 'SafeUpload.sys')).Hash) { throw 'Gate driver file was not replaced.' }
+    if (-not (Test-Path -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload')) { throw 'Gate driver installation failed.' }
+    Write-Output 'GateDriverInstalled=True'
 }
 
-# Share the complete configuration, including an explicitly empty origin, across both processes.
-$commandLines = Get-SafeUploadInstallCommandLines $serviceExecutable $ServiceArguments
-$binaryPath = $commandLines.ServiceCommandLine
-$seedArguments = $commandLines.SeedArguments
-$agentServiceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent'
-$driverServiceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload'
+# 3. The agent service.
+$existing = Get-Service -Name SafeUploadAgent -ErrorAction SilentlyContinue
+if ($existing) { Stop-Service -Name SafeUploadAgent -Force -ErrorAction SilentlyContinue }
+Get-Process -Name 'SafeUpload.Agent.App' -ErrorAction SilentlyContinue | Stop-Process -Force
+New-Item -ItemType Directory -Force -Path $agentDirectory | Out-Null
+Get-ChildItem -LiteralPath $package -Force | Where-Object { $_.Name -ne 'App' } | Copy-Item -Destination $agentDirectory -Recurse -Force
+$binaryPath = '"' + (Join-Path $agentDirectory 'SafeUpload.Agent.Service.exe') + '" "--CentroAdministracao:BaseUrl=' + $AdminBaseUrl + '"'
+if (-not $existing) {
+    New-Service -Name SafeUploadAgent -BinaryPathName $binaryPath -StartupType Automatic -DisplayName 'SafeUpload Agent' | Out-Null
+} else {
+    Set-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent' -Name ImagePath -Value $binaryPath
+}
+& sc.exe description SafeUploadAgent 'Inspects files saved to SafeUpload drives before they reach protected folders.' | Out-Null
+& sc.exe failure SafeUploadAgent reset= 86400 actions= restart/5000/restart/5000/restart/30000 | Out-Null
+Write-Output "ServiceCommandLine=$binaryPath"
 
-function Invoke-ScChecked([string[]] $Arguments, [string] $Description) {
-    $output = & sc.exe @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Description failed (sc.exe $LASTEXITCODE): $($output -join ' ')"
-    }
-    $output | Out-Host
+# 4. The tray app, started at every user's sign-in.
+$appSource = Join-Path $package 'App'
+if (Test-Path -LiteralPath (Join-Path $appSource 'SafeUpload.Agent.App.exe')) {
+    New-Item -ItemType Directory -Force -Path $appDirectory | Out-Null
+    Get-ChildItem -LiteralPath $appSource -Force | Copy-Item -Destination $appDirectory -Recurse -Force
+    Set-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name SafeUploadApp `
+        -Value ('"' + (Join-Path $appDirectory 'SafeUpload.Agent.App.exe') + '"')
+    Write-Output 'AppInstalled=True'
 }
 
-# sc.exe on Windows 10 prints "SERVICE_SID_TYPE:  UNRESTRICTED"; other builds and docs use "SERVICE_SID_TYPE_UNRESTRICTED".
-function Test-ServiceSidTypeUnrestricted([string] $QueryOutput) {
-    return $QueryOutput -match 'SERVICE_SID_TYPE[_:\s]+UNRESTRICTED'
-}
-
-function Install-SafeUploadApp {
-    $programFiles = [Environment]::GetFolderPath('ProgramFiles')
-    if ($env:ProgramW6432) { $programFiles = $env:ProgramW6432 }
-    $appDirectory = Join-Path $programFiles 'SafeUpload\App'
-    $appExecutable = Join-Path $appDirectory 'SafeUpload.Agent.App.exe'
-    if ($appSource.TrimEnd('\') -ne $appDirectory.TrimEnd('\')) {
-        # Only stop the installed tray; other checkouts/test instances are unrelated.
-        Get-Process -Name 'SafeUpload.Agent.App' -ErrorAction SilentlyContinue | Where-Object {
-            $_.Path -eq $appExecutable
-        } | Stop-Process -Force -ErrorAction Stop
-        [void](New-Item -ItemType Directory -Path $appDirectory -Force)
-        Get-ChildItem -LiteralPath $appSource -Force | Copy-Item -Destination $appDirectory -Recurse -Force
-    }
-    if ((Get-FileHash -LiteralPath $appExecutable -Algorithm SHA256).Hash -ne
-        (Get-FileHash -LiteralPath (Join-Path $appSource 'SafeUpload.Agent.App.exe') -Algorithm SHA256).Hash) {
-        throw 'Installed tray executable differs from the package.'
-    }
-    # Always use the 64-bit all-user Run key, even from 32-bit PowerShell.
-    $machine = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64')
-    try {
-        $run = $machine.CreateSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Run')
-        try { $run.SetValue('SafeUploadApp', ('"' + $appExecutable + '"'), 'String') }
-        finally { $run.Dispose() }
-    } finally { $machine.Dispose() }
-    Write-Output ('AppInstalled=' + $appExecutable)
-    Write-Output 'AppAutostart=HKLM Run SafeUploadApp (every user at sign-in)'
-}
-
-# Windows PowerShell 5.1 mangles embedded quotes when it passes an argument to sc.exe, so the command line (quoted
-# executable plus arguments) is written to the ImagePath value directly and read back.
-function Set-SafeUploadAgentImagePath {
-    Set-ItemProperty -LiteralPath $agentServiceKey -Name ImagePath -Value $binaryPath -Type ExpandString
-    $written = [string](Get-ItemProperty -LiteralPath $agentServiceKey -Name ImagePath).ImagePath
-    if ($written -ne $binaryPath) {
-        throw "SafeUploadAgent ImagePath was not written as expected: $written"
-    }
-    Write-Output "ServiceCommandLine=$written"
-}
-
-function Invoke-BootPolicySeedAsSystem {
-    $taskName = 'SafeUpload-BootPolicySeed-' + [guid]::NewGuid().ToString('N')
-    $action = New-ScheduledTaskAction -Execute $serviceExecutable -Argument $seedArguments
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(2))
-    $registered = $false
-    try {
-        Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
-        $registered = $true
-        Start-ScheduledTask -TaskName $taskName
-
-        $deadline = [DateTime]::UtcNow.AddSeconds(60)
-        do {
-            $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-            $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop
-            if ($task.State -eq 'Ready' -and $info.LastRunTime -gt [DateTime]::FromFileTimeUtc(0)) {
-                if ([int]$info.LastTaskResult -ne 0) {
-                    throw "SYSTEM boot-policy seed failed (task result $($info.LastTaskResult))."
-                }
-                Write-Output 'BootPolicySeededAsSystem=True'
-                return
-            }
-            Start-Sleep -Milliseconds 200
-        } while ([DateTime]::UtcNow -lt $deadline)
-
-        throw 'SYSTEM boot-policy seed timed out; installation cannot continue.'
-    }
-    finally {
-        if ($registered) {
-            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-function Set-SafeUploadDriverDemandBeforeSeed {
-    if (-not (Test-Path -LiteralPath $driverServiceKey)) {
-        throw 'SafeUpload minifilter service is not installed. Install the driver package before the agent.'
-    }
-
-    # The INF can already have written BOOT_START. Hold the unloaded filter at
-    # demand start until the SYSTEM seeder has durably verified BootPolicy.
-    Invoke-ScChecked @('config', 'SafeUpload', 'start=', 'demand') 'Holding SafeUpload at demand-start before policy seed'
-    $driverStart = [int](Get-ItemProperty -LiteralPath $driverServiceKey -Name Start -ErrorAction Stop).Start
-    if ($driverStart -ne 3) {
-        throw "SafeUpload could not be held at demand-start before policy seeding (Start=$driverStart)."
-    }
-}
-
-function Set-SafeUploadDriverBootStart {
-    Invoke-ScChecked @('config', 'SafeUpload', 'start=', 'boot') 'Staging SafeUpload as boot-start'
-    $driverStart = [int](Get-ItemProperty -LiteralPath $driverServiceKey -Name Start -ErrorAction Stop).Start
-    if ($driverStart -ne 0) {
-        throw "SafeUpload was not staged as boot-start after policy seeding (Start=$driverStart)."
-    }
-    Write-Output 'DriverBootStartConfigured=True'
-    Write-Output 'DriverStartedByInstaller=False'
-}
-
-if (-not (Test-Path -LiteralPath $driverServiceKey)) {
-    throw 'SafeUpload minifilter service is not installed. Install the driver package before the agent.'
-}
-
-# This record must be durable and verified while the filter is still unloaded.
-# Keep the INF-installed service at demand-start until the SYSTEM task succeeds.
-Set-SafeUploadDriverDemandBeforeSeed
-Invoke-BootPolicySeedAsSystem
-Set-SafeUploadDriverBootStart
-
-$existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-if ($null -eq $existing) {
-    Invoke-ScChecked @('create', $serviceName, 'binPath=', $quotedExecutable,
-        'start=', 'auto', 'obj=', 'LocalSystem') 'Creating SafeUploadAgent'
-}
-else {
-    if ($existing.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
-        throw 'Stop SafeUploadAgent before changing its image path.'
-    }
-    Invoke-ScChecked @('config', $serviceName, 'binPath=', $quotedExecutable,
-        'start=', 'auto', 'obj=', 'LocalSystem') 'Configuring SafeUploadAgent'
-}
-Set-SafeUploadAgentImagePath
-
-# SCM adds this service SID to the service process token. Unrestricted mode
-# retains the LocalSystem token while including NT SERVICE\SafeUploadAgent.
-Invoke-ScChecked @('sidtype', $serviceName, 'unrestricted') 'Configuring the service SID'
-$sidType = (& sc.exe qsidtype $serviceName 2>&1 | Out-String)
-if ($LASTEXITCODE -ne 0 -or -not (Test-ServiceSidTypeUnrestricted $sidType)) {
-    throw "SafeUploadAgent does not have an unrestricted service SID: $sidType"
-}
-
-Write-Output "ServiceName=$serviceName"
-Install-SafeUploadApp
-Write-Output 'ServiceSidType=UNRESTRICTED'
-Write-Output 'ServiceConfigured=True'
-Write-Output 'ServiceStarted=False'
-Write-Output 'Protection activates after reboot.'
+Start-Service -Name SafeUploadAgent
+Write-Output 'AgentStarted=True'

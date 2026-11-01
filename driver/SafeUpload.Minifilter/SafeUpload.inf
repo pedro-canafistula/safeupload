@@ -20,7 +20,7 @@ Signature   = "$Windows NT$"
 Class       = "ActivityMonitor"
 ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}
 Provider    = %ProviderString%
-DriverVer   = 09/03/2026,1.0.0.0
+DriverVer   = 11/01/2026,2.0.0.0
 CatalogFile = SafeUpload.cat
 PnpLockdown = 1
 

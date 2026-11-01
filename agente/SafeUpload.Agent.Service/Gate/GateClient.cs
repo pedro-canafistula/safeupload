@@ -24,7 +24,6 @@ public sealed class GateClient : IDisposable
     private SafeFileHandle? _port;
     private string? _appliedKey;
     private bool _warned;
-    private bool _loadTried;
 
     public GateClient(ILogger<GateClient> logger) => _logger = logger;
 
@@ -84,15 +83,31 @@ public sealed class GateClient : IDisposable
     {
         if (_port is { IsInvalid: false, IsClosed: false }) return true;
         int hr = FilterConnectCommunicationPort(PortName, 0, IntPtr.Zero, 0, IntPtr.Zero, out var port);
-        if (hr != 0 && !_loadTried)
+        if (hr != 0)
         {
-            // The gate is demand-start: load it once (the agent runs as SYSTEM). Already loaded is fine.
-            _loadTried = true;
+            // The gate is demand-start: start its driver service once (the service manager holds the load privilege).
             port.Dispose();
-            int load = FilterLoad("SafeUpload");
-            if (load != 0 && load != unchecked((int)0x80070420) && load != unchecked((int)0x800700B7))
-                _logger.LogWarning("Could not load the gate driver (HRESULT 0x{Hr:X8})", load);
-            hr = FilterConnectCommunicationPort(PortName, 0, IntPtr.Zero, 0, IntPtr.Zero, out port);
+            try
+            {
+                using var driver = new System.ServiceProcess.ServiceController("SafeUpload");
+                if (driver.Status == System.ServiceProcess.ServiceControllerStatus.Stopped)
+                {
+                    driver.Start();
+                    driver.WaitForStatus(System.ServiceProcess.ServiceControllerStatus.Running, TimeSpan.FromSeconds(10));
+                }
+            }
+            catch (Exception error) when (error is InvalidOperationException or System.ServiceProcess.TimeoutException
+                or System.ComponentModel.Win32Exception)
+            {
+                _logger.LogWarning(error, "Could not start the gate driver");
+            }
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                hr = FilterConnectCommunicationPort(PortName, 0, IntPtr.Zero, 0, IntPtr.Zero, out port);
+                if (hr == 0) break;
+                port.Dispose();
+                Thread.Sleep(500);
+            }
         }
         if (hr != 0)
         {
@@ -121,10 +136,12 @@ public sealed class GateClient : IDisposable
         lock (_gate) Disconnect();
     }
 
-    /// <summary>C:\Folder -> \Device\HarddiskVolume3\Folder, the form the driver sees.</summary>
+    /// <summary>C:\Folder -> \Device\HarddiskVolume3\Folder (shares: \Device\Mup\server\share), the form the driver sees.</summary>
     internal static string? ToNtPath(string dosPath)
     {
         var full = Path.GetFullPath(dosPath).TrimEnd('\\');
+        if (full.StartsWith(@"\\", StringComparison.Ordinal))
+            return @"\Device\Mup" + full[1..];        // \\server\share -> \Device\Mup\server\share
         if (full.Length < 2 || full[1] != ':') return null;
         var device = new StringBuilder(1024);
         if (QueryDosDevice(full[..2], device, device.Capacity) == 0) return null;
@@ -134,9 +151,6 @@ public sealed class GateClient : IDisposable
     [DllImport("fltlib.dll", CharSet = CharSet.Unicode)]
     private static extern int FilterConnectCommunicationPort(string portName, uint options, IntPtr context,
         ushort sizeOfContext, IntPtr securityAttributes, out SafeFileHandle port);
-
-    [DllImport("fltlib.dll", CharSet = CharSet.Unicode)]
-    private static extern int FilterLoad(string filterName);
 
     [DllImport("fltlib.dll")]
     private static extern int FilterSendMessage(SafeFileHandle port, byte[] inBuffer, uint inBufferSize,

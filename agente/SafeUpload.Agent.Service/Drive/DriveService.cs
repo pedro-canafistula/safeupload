@@ -9,6 +9,7 @@ using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Drive;
 using SafeUpload.Agent.Service.Gate;
 using SafeUpload.Agent.Service.Notifications;
+using SafeUpload.Agent.Service.Policies;
 
 namespace SafeUpload.Agent.Service.Drive;
 
@@ -26,6 +27,7 @@ public sealed class DriveService : BackgroundService
     private readonly NotificationHub _hub;
     private readonly DriveJustifications _justifications;
     private readonly GateClient _gate;
+    private readonly PolicyIntegrationDiagnostics _diagnostics;
     private readonly ILogger<DriveService> _logger;
     private readonly string[] _letters;
     private readonly string _privateRoot;
@@ -34,8 +36,10 @@ public sealed class DriveService : BackgroundService
     private string? _lastStatus;
 
     public DriveService(IPolicyStore policyStore, InspectionService inspection, NotificationHub hub,
-        DriveJustifications justifications, GateClient gate, IConfiguration configuration, ILogger<DriveService> logger)
+        DriveJustifications justifications, GateClient gate, PolicyIntegrationDiagnostics diagnostics,
+        IConfiguration configuration, ILogger<DriveService> logger)
     {
+        _diagnostics = diagnostics;
         _policyStore = policyStore;
         _inspection = inspection;
         _hub = hub;
@@ -66,6 +70,7 @@ public sealed class DriveService : BackgroundService
                 try { await SyncAsync(stoppingToken).ConfigureAwait(false); }
                 catch (Exception error) when (error is not OperationCanceledException)
                 {
+                    _diagnostics.RecordApplyFailure(error);
                     _logger.LogError(error, "Could not apply the protected folders of the policy");
                 }
                 try { await Task.Delay(PolicyCheckInterval, stoppingToken).ConfigureAwait(false); }
@@ -86,11 +91,16 @@ public sealed class DriveService : BackgroundService
     {
         var policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
         _policy = policy;
-        var wanted = policy.MonitoredScopes.DestinationPaths
+        var folders = policy.MonitoredScopes.DestinationPaths
             .Select(path => Path.GetFullPath(path).TrimEnd('\\'))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        // USB sticks get a SafeUpload drive too; the gate refuses direct writes to them.
+        var sticks = policy.MonitoredScopes.RemovableDrives ? RemovableRoots() : [];
+        var wanted = folders.Concat(sticks).ToList();
+        // Close the real places before the drives appear.
+        _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
         lock (_mounts)
         {
             foreach (var gone in _mounts.Keys.Where(k => !wanted.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
@@ -108,11 +118,15 @@ public sealed class DriveService : BackgroundService
                 }
                 try
                 {
-                    Directory.CreateDirectory(destination);
-                    Protect(destination, usersMayRead: true);
+                    bool stick = sticks.Contains(destination, StringComparer.OrdinalIgnoreCase);
+                    bool share = destination.StartsWith(@"\\", StringComparison.Ordinal);
+                    if (!stick) Directory.CreateDirectory(destination);
+                    // Local folders become read-only for users; shares and sticks are protected by the gate driver.
+                    if (!stick && !share) Protect(destination, usersMayRead: true);
                     var privateRoot = Path.Combine(_privateRoot, ShortHash(destination));
-                    var mount = DriveMount.Mount(destination, privateRoot, letter, new ContentInspector(_inspection),
-                        new Observer(this, destination));
+                    var mount = DriveMount.Mount(destination, privateRoot, letter, new ContentInspector(_inspection, _policyStore),
+                        new Observer(this, destination), stick ? DestinationKind.RemovableDrive : DestinationKind.Cloud,
+                        Label(destination, stick));
                     _mounts[destination] = mount;
                     _logger.LogInformation("Protected folder {Destination} is available as {Letter}", destination, letter);
                 }
@@ -122,8 +136,9 @@ public sealed class DriveService : BackgroundService
                 }
             }
         }
-        _gate.Apply(wanted, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
-        PublishStatus(policy, active: wanted.Count > 0 && _mounts.Count == wanted.Count);
+        bool active = wanted.Count > 0 && _mounts.Count == wanted.Count;
+        if (active) _diagnostics.RecordDriverScopeAccepted(policy);
+        PublishStatus(policy, active);
     }
 
     private void PublishStatus(Policy policy, bool active)
@@ -132,6 +147,16 @@ public sealed class DriveService : BackgroundService
         if (key == _lastStatus) return;
         _lastStatus = key;
         _hub.Publish(new StatusNotification(policy.Version, policy.ActiveCategories.Count, active, policy.AuditOnly));
+    }
+
+    /// <summary>Roots of ready removable volumes ("E:\\"), excluding our own drives.</summary>
+    private List<string> RemovableRoots()
+    {
+        var ours = _mounts.Values.Select(m => m.MountPoint.TrimEnd(':').ToUpperInvariant()).ToHashSet();
+        return DriveInfo.GetDrives()
+            .Where(d => d.DriveType == DriveType.Removable && d.IsReady && !ours.Contains(d.Name[..1].ToUpperInvariant()))
+            .Select(d => d.RootDirectory.FullName)
+            .ToList();
     }
 
     private string? FreeLetter()
@@ -176,7 +201,7 @@ public sealed class DriveService : BackgroundService
         if (decision.Operation is { } operation && decision.Result is { } result && !(ownerFile && decision.Published))
         {
             var outcome = decision.Published ? result.Verdict : Verdict.Blocked;
-            await _inspection.RecordTransferOutcomeAsync(operation with { DestinationPath = decision.DrivePath },
+            await _inspection.RecordTransferOutcomeAsync(operation,
                 result, outcome, result.Reason, CancellationToken.None, eventId: decision.VersionId,
                 auditUserName: writer?.UserName).ConfigureAwait(false);
         }
@@ -195,8 +220,10 @@ public sealed class DriveService : BackgroundService
         if (overrideAllowed)
             _justifications.Remember(decision.VersionId, writer!.SessionId!.Value, writer.UserSid!,
                 () => mount!.FileSystem.Approve(decision.VersionId));
+        // The blocked version stays visible to the user on the drive, at DrivePath.
         var notification = new TransferNotification(decision.VersionId, decision.DrivePath, TransferPhase.Blocked,
-            decision.Result?.Findings ?? [], overrideAllowed, InspectionFailure: decision.Result?.FailureKind);
+            decision.Result?.Findings ?? [], overrideAllowed, HandbackPath: decision.DrivePath, HandbackVerified: true,
+            SnapshotSha256Hex: Sha256(decision.Snapshot), InspectionFailure: decision.Result?.FailureKind);
         if (!_hub.Publish(notification, writer?.SessionId, writer?.UserSid))
             _logger.LogWarning("Blocked {File}; no user session to notify", decision.DrivePath);
     }
@@ -215,6 +242,26 @@ public sealed class DriveService : BackgroundService
             security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
                 FileSystemRights.ReadAndExecute, inherit, PropagationFlags.None, AccessControlType.Allow));
         new DirectoryInfo(folder).SetAccessControl(security);
+    }
+
+    /// <summary>Volume label users see in Explorer, e.g. "SafeUpload-Envios" or "SafeUpload-USB-F".</summary>
+    private static string Label(string destination, bool stick)
+    {
+        var leaf = stick ? "USB-" + destination[..1] : Path.GetFileName(destination.TrimEnd('\\'));
+        return "SafeUpload-" + (string.IsNullOrEmpty(leaf) ? "Destino" : leaf);
+    }
+
+    private static string Sha256(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            return Convert.ToHexString(SHA256.HashData(stream));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return Convert.ToHexString(SHA256.HashData(Array.Empty<byte>()));
+        }
     }
 
     private static string ShortHash(string text) =>

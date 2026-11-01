@@ -12,17 +12,10 @@ Administração web.
 
 ## Visão geral
 
-O instalador encaminha os mesmos argumentos de configuração ao seed da política
-de boot e ao serviço. Com os argumentos padrão, `AdminBaseUrl` vazio seleciona
-explicitamente a política local; uma URL informada seleciona a origem remota em
-ambas as fases. `ServiceArguments` personalizados substituem o conjunto padrão
-inteiro e são usados nas duas fases; se omitirem a origem, ambas herdam sua
-configuração. O seed continua exigindo SYSTEM e não inicia o host ou interceptores.
-A configuração compartilhada não congela a revisão remota entre as fases.
-A instalação e o autostart da bandeja da M2 permanecem no mesmo fluxo.
+O instalador (`scripts/Install-SafeUploadAgent.ps1`) instala o WinFsp, o driver gate, o serviço e a bandeja.
+Com `AdminBaseUrl` vazio o agente usa a política local; com uma URL, a política vem do Centro de Administração.
 
-O agente é composto por **4 projetos .NET** mais um **driver de kernel
-opcional**:
+O agente é composto pelos projetos .NET abaixo mais um **driver de kernel pequeno** (`driver/`):
 
 | Projeto | O que é |
 |---|---|
@@ -30,7 +23,7 @@ opcional**:
 | `SafeUpload.Agent.Service` | Serviço Windows que roda 24/7, intercepta operações de arquivo e chama o Core para decidir |
 | `SafeUpload.Agent.App` | Interface WPF (bandeja do sistema, tela de status/histórico, aviso de bloqueio) — só exibe, não decide nada |
 | `SafeUpload.Agent.Tests` | Testes automatizados (xUnit, sem framework de mock) |
-| `SafeUpload.Agent.Minifilter` | Biblioteca de protocolo que conecta o Service ao driver de kernel |
+| `SafeUpload.Agent.Drive` | Unidade SafeUpload (WinFsp): o que o usuário grava fica privado até ser inspecionado; só versões aprovadas chegam à pasta protegida |
 | `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1), proxy TLS e parser HTTP/1.1 (Fase 2), desvio dos navegadores (Fase 3); exceções e inspeção nas próximas fases ([arquitetura](../docs/rede/ARQUITETURA-INSPECAO-TLS.md), [plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
 
 As extensões padrão, tanto na política criada pelo agente quanto na política
@@ -41,22 +34,20 @@ são migradas automaticamente. ZIP inspeciona cada membro sob orçamento cumulat
 em [INSPECTION-COVERAGE.md](docs/INSPECTION-COVERAGE.md).
 
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
-lógica) — e `driver/` na raiz do repositório, o driver de kernel
-(minifiltro) opcional, com documentação própria em
+lógica) — e `driver/` na raiz do repositório, o driver gate (minifiltro), com documentação própria em
 [`../driver/README.md`](../driver/README.md).
 
-### Duas formas de interceptar
+### Como o agente protege
 
-O Service escolhe, por configuração (`Interception:Mode` em
-`appsettings.json`), entre:
+O Service escolhe por configuração (`Interception:Mode` em `appsettings.json`):
 
-- **`FileSystemWatcher`** (padrão) — reage *depois* que o arquivo chega ao
-  destino. Roda em qualquer máquina, sem instalar nada além do serviço.
-- **`Minifilter`** — intercepta *antes*, no kernel, via o driver em
-  `driver/`. Exige o driver compilado, assinado e carregado.
-
-O padrão é sempre o modo mais simples: uma máquina sem o driver deve ficar
-protegida de forma imperfeita, não sem proteção nenhuma.
+- **`Drive`** (padrão) — cada pasta protegida da política aparece como uma unidade SafeUpload (S:, T:, ...),
+  e cada pendrive conectado também, quando a política protege mídia removível. O usuário salva na unidade; ao
+  fechar o arquivo, o agente inspeciona uma cópia e só então a copia para a pasta real. Versões bloqueadas não
+  chegam lá (a pasta mantém a versão anterior) e a bandeja mostra o aviso com a opção de justificativa. A pasta
+  real fica somente leitura para usuários, e o driver gate recusa gravações diretas de qualquer outro processo.
+  Exige o WinFsp instalado.
+- **`FileSystemWatcher`** — o mock antigo: reage *depois* que o arquivo chega ao destino e o apaga.
 
 ---
 
@@ -137,39 +128,22 @@ O teste que instala uma CA em `LocalMachine\Root` só roda com
 
 ---
 
-### Instalar como serviço com o minifiltro (protótipo de escrita em estágio)
+### Instalar como serviço
 
-Somente em VM de teste, com o INF do minifiltro já instalado, em PowerShell **elevado**:
+Numa máquina de teste com test signing ligado, em PowerShell **elevado**:
 
 ```powershell
-dotnet publish agente\SafeUpload.Agent.Service -c Release -r win-x64 --self-contained false
-.\agente\scripts\Install-SafeUploadAgent.ps1 -ServiceExecutablePath "<caminho>\SafeUpload.Agent.Service.exe"
-sc.exe qsidtype SafeUploadAgent
+dotnet publish agente\SafeUpload.Agent.Service -c Release -r win-x64 --self-contained true -o pkg
+dotnet publish agente\SafeUpload.Agent.App -c Release -r win-x64 --self-contained true -o pkg\App
+.\agente\scripts\Install-SafeUploadAgent.ps1 -PackagePath pkg -DriverPath <pasta com SafeUpload.sys e .inf> -WinFspMsi winfsp-2.1.25156.msi
 ```
 
-O script registra o serviço como LocalSystem, no modo de minifiltro com escrita em estágio (`--Interception:Mode=Minifilter
---Interception:StagingPrototype=true`, alterável com `-ServiceArguments`; sem eles toda gravação de usuário comum numa pasta
-protegida é recusada) e configura `SERVICE_SID_TYPE_UNRESTRICTED` para que o token contenha
-`NT SERVICE\SafeUploadAgent`, exigido pelo driver para substituir política e conceder autorizações. Ele não inicia o serviço.
-Instale primeiro o INF do minifiltro e execute o script antes de reiniciar. Ele semeia e verifica `BootPolicy` como SYSTEM,
-mantém o driver em início sob demanda até a semeadura terminar e então o deixa em boot-start. Se a semeadura falhar, a
-instalação para e o driver fica em início sob demanda. O filtro não é iniciado pelo instalador; a proteção ativa depois do reboot.
+O driver vem de `driver/scripts/build-driver.sh`. Para remover: `.\agente\scripts\Uninstall-SafeUploadAgent.ps1`.
+O teste ponta a ponta numa VM descartável é `smoke/run.sh` (ver `driver/README.md`).
 
 Antes de ler `policy.json`, o agente exige ACL protegida e explícita, sem ACEs herdadas, com controle total somente para
-SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo. Se a ACL existente não corresponder, ele recusa o
-arquivo e mantém a última política aplicada em memória; sem uma política válida anterior, não carrega uma política mais fraca.
-A fila local de auditoria (`queue.jsonl`) ainda não é protegida por ACL.
-
-**Limitações do instalador encontradas no teste manual de 08/10/2026:**
-
-Registro histórico: os argumentos staged e o reconhecimento da saída SID foram
-corrigidos no script atual. O encaminhamento de configuração ao seed também foi
-validado localmente; a execução instalada no alvo homologado continua pendente.
-o script registra o serviço só com o caminho do executável, mas o protótipo de escrita em estágio precisa de
-`--Interception:Mode=Minifilter --Interception:StagingPrototype=true` na linha de comando do serviço (é assim que a bateria de
-testes o inicia). Sem esses argumentos o agente fica fora do modo em estágio (`admissionCoverage` `NotAvailable`) e o driver recusa
-toda gravação de usuário comum na pasta protegida. A última verificação do script também falha com a saída
-`SERVICE_SID_TYPE:  UNRESTRICTED` do Windows 10 19045, depois de já ter configurado tudo.
+SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo (`scripts/Protect-SafeUploadPolicy.ps1` aplica essa
+ACL). Se a ACL existente não corresponder, ele recusa o arquivo e mantém a última política aplicada em memória.
 
 ## Integração com o Centro de Administração (HU-10)
 
@@ -190,9 +164,7 @@ o agente passa a:
 
 - **Buscar a política do painel** (`GET /agent/policy`) em vez do arquivo
   local — mesmo formato JSON nos dois casos, então trocar a fonte não muda
-  o contrato do documento. O provedor mantém cache persistido protegido para
-  consumidores legados. Decisões staged, seed e carga inicial do driver exigem
-  a política atual pela leitura estrita; falha de consulta não autoriza por cache.
+  o contrato do documento. O provedor mantém cache persistido protegido.
 - **Mandar heartbeat periódico** (`POST /agent/heartbeat`) — aparece em
   `/admin/endpoints` no painel.
 - **Entregar os eventos de auditoria pendentes** (`POST /agent/events`) — a
@@ -210,8 +182,8 @@ política disponível para consumidores legados (remote, memory, disk ou default
 `StrictVersion`/`StrictFingerprint` registram a última leitura estrita bem-sucedida;
 `StrictReadError` informa o tipo da falha posterior, sem copiar URL ou mensagem da
 exceção. `LastAcceptedVersion`/`LastAcceptedFingerprint` são o histórico da política
-cujo escopo foi aceito após as operações de porta e BootPolicy retornarem.
-`DriverScopeRecorded` perde validade na falha de aplicação ou saída da conexão;
+cujas pastas protegidas as unidades SafeUpload aplicaram.
+`DriverScopeRecorded` perde validade na falha de aplicação;
 `ApplyError` registra o tipo da falha de aplicação. Nenhum desses dados comprova
 readiness/proteção ativa. Uma nova política recebida não altera esse histórico de
 aceite. Compare fingerprints apenas de consumos equivalentes: defaults omitidos
@@ -259,10 +231,9 @@ agente/
 ├── SafeUpload.Agent.Service/      # Serviço Windows (o "cérebro" rodando)
 ├── SafeUpload.Agent.App/          # Interface WPF (bandeja + painel)
 ├── SafeUpload.Agent.Tests/        # Testes automatizados
-├── SafeUpload.Agent.Minifilter/   # Protocolo de comunicação com o driver
+├── SafeUpload.Agent.Drive/        # Unidade SafeUpload (WinFsp): stage, inspeção e publicação
 ├── SafeUpload.Agent.Network/      # Inspeção TLS: CA local, certificados e proxy
 ├── SafeUpload.Fixtures/           # Gerador de arquivos de teste (.docx/.xlsx/.pdf)
-├── SafeUpload.Minifilter.Probe/   # Ferramenta de teste do driver (sem lógica real)
 ├── SafeUploadAgent/                # Protótipo visual WPF anterior (sem lógica)
 └── SafeUpload.Agent.sln
 ```

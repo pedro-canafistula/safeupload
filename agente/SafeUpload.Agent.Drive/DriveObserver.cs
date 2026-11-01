@@ -8,6 +8,7 @@ public sealed record DriveWriter(int ProcessId, string ProcessName, uint? Sessio
 /// <summary>The decision about one inspected version of a file on a SafeUpload drive.</summary>
 /// <param name="VersionId">Identifies this exact version; also the audit event and justification id.</param>
 /// <param name="Published">True when the version may reach the destination.</param>
+/// <param name="Snapshot">Private copy of the exact bytes that were inspected (kept while a blocked version may be justified).</param>
 public sealed record DriveDecision(
     Guid VersionId,
     string DrivePath,
@@ -16,7 +17,8 @@ public sealed record DriveDecision(
     FileOperation? Operation,
     InspectionResult? Result,
     bool Published,
-    string Summary);
+    string Summary,
+    string Snapshot);
 
 /// <summary>Connects a drive to the rest of the agent (sessions, notifications, audit).</summary>
 public interface IDriveObserver
