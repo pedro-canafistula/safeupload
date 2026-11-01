@@ -26,3 +26,12 @@ O ensaio SYSTEM foi ampliado em um cenário separado para selecionar ConsoleByIp
 107 testes focados aprovados, zero falhas/ignorados: caches, tempo decorrido, cancelamento, leitura atual, vínculo de política e justificativas. Não somar com recortes anteriores, que se sobrepõem. Testes usam relógio controlado, sem alterar o relógio do Windows. Os grupos de cache passam a ser exigidos no workflow de recibos. Não houve VM ou novo ensaio pesado local.
 
 [PR #79](https://github.com/pedro-canafistula/safeupload/pull/79) continua separado da main; resultados remotos devem ser conferidos no commit exato. [Política e integração](POLITICA-CENTRAL-20261101.md).
+
+
+## Ordem das próximas entregas independentes
+
+1. Diagnóstico local: distinguir revisão recebida/cacheada/snapshot clássico e aplicação do escopo ao gate. Comunicação HTTP bem-sucedida não deve ser apresentada como aplicação nas unidades. Reutilizar o pipe administrativo e a saúde existentes, sem inventar ACK ou rota Java.
+2. Preparar regras e validação da retenção/compactação: preservar todos os pendentes e referências evento/justificativa, definir autoridade/base temporal e manter exclusão desabilitada até acordo. O preview somente leitura já existe; não reconstruí-lo.
+3. Integração real do par: conferir decisões e desfecho da publicação, auditoria, reconexão e justificativas nas unidades com o pacote identificado, quando houver acesso ao laboratório. Não substituir por outro ensaio do watcher.
+
+Autenticação/renovação/revogação do dispositivo e confirmação no painel continuam sendo contratos conjuntos. A janela de justificativas foi corrigida para tempo decorrido; não ampliar a janela nem substituir vínculo de política por prazo apenas.

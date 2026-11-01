@@ -93,6 +93,59 @@ public sealed class DriveJustificationPolicyTests
         Assert.False(published);
     }
 
+    [Theory]
+    [InlineData(-6)]
+    [InlineData(0)]
+    [InlineData(6)]
+    public void Wall_clock_changes_do_not_shorten_or_extend_the_justification_window(int hours)
+    {
+        var clock = new Clock();
+        var pending = new DriveJustifications(clock);
+        var recent = Guid.NewGuid(); var expiring = Guid.NewGuid();
+        var fingerprint = PolicyContentFingerprint.Compute(Allowed);
+        pending.Remember(recent, 1, Sid, fingerprint, () => true);
+        pending.Remember(expiring, 1, Sid, fingerprint, () => true);
+        clock.Elapsed += TimeSpan.FromSeconds(10);
+        clock.Utc += TimeSpan.FromHours(hours);
+        Assert.True(pending.TryConsume(recent.ToString(), 1, Sid, Allowed, out _));
+        clock.Elapsed = DriveJustifications.Window;
+        Assert.False(pending.TryConsume(expiring.ToString(), 1, Sid, Allowed, out var approve));
+        Assert.Null(approve);
+    }
+
+    [Fact]
+    public void Window_expires_at_the_exact_elapsed_boundary()
+    {
+        var clock = new Clock(); var pending = new DriveJustifications(clock);
+        var before = Guid.NewGuid(); var boundary = Guid.NewGuid();
+        var fingerprint = PolicyContentFingerprint.Compute(Allowed);
+        pending.Remember(before, 1, Sid, fingerprint, () => true);
+        pending.Remember(boundary, 1, Sid, fingerprint, () => true);
+        clock.Elapsed = DriveJustifications.Window - TimeSpan.FromTicks(1);
+        Assert.True(pending.TryConsume(before.ToString(), 1, Sid, Allowed, out _));
+        clock.Elapsed += TimeSpan.FromTicks(1);
+        Assert.False(pending.TryConsume(boundary.ToString(), 1, Sid, Allowed, out _));
+    }
+
+    [Fact]
+    public void Rejected_caller_does_not_renew_the_window()
+    {
+        var clock = new Clock(); var pending = new DriveJustifications(clock); var id = Guid.NewGuid();
+        pending.Remember(id, 1, Sid, PolicyContentFingerprint.Compute(Allowed), () => true);
+        clock.Elapsed = DriveJustifications.Window - TimeSpan.FromSeconds(1);
+        Assert.False(pending.TryConsume(id.ToString(), 2, Sid, Allowed, out _));
+        clock.Elapsed += TimeSpan.FromSeconds(1);
+        Assert.False(pending.TryConsume(id.ToString(), 1, Sid, Allowed, out _));
+    }
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Utc = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+        public TimeSpan Elapsed;
+        public override DateTimeOffset GetUtcNow() => Utc;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => Elapsed.Ticks;
+    }
+
     private static Policy Changed(string change) => change switch
     {
         "disabled" => Allowed with { OverrideAllowed = false },
