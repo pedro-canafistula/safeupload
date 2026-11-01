@@ -9,6 +9,8 @@ namespace SafeUpload.Agent.Core.Domain;
 ///   <item><description><see cref="PaymentCard"/> — RN-003</description></item>
 ///   <item><description><see cref="Password"/> — RN-004</description></item>
 ///   <item><description><see cref="Secret"/> — credencial de máquina</description></item>
+///   <item><description><see cref="Rg"/>, <see cref="BankData"/>, <see cref="HealthData"/>,
+///   <see cref="ConfidentialDocument"/>, <see cref="PersonalData"/> — regras publicadas pela console web</description></item>
 /// </list>
 /// A política declara quais categorias estão ativas; o domínio nunca decide
 /// isso sozinho, recebe o conjunto ativo como parâmetro.
@@ -29,5 +31,23 @@ public enum Category
     /// categoria de primeira classe, e o caso — copiar a pasta do projeto
     /// para a nuvem com o arquivo de configuração dentro — é rotina.
     /// </summary>
-    Secret
+    Secret,
+
+    // Regras da console web sem dígito verificador próprio (ou só às vezes): exigem um rótulo ou um formato
+    // distintivo. Ver Validators/ContextDetectors.cs.
+
+    /// <summary>RG: rotulado ("RG: ...") ou no formato de SP com dígito verificador válido.</summary>
+    Rg,
+
+    /// <summary>Agência e conta rotuladas, ou IBAN válido.</summary>
+    BankData,
+
+    /// <summary>CID rotulado, Cartão Nacional de Saúde válido ou campo de formulário médico preenchido.</summary>
+    HealthData,
+
+    /// <summary>Marcação de classificação: CONFIDENCIAL, SIGILOSO, USO INTERNO...</summary>
+    ConfidentialDocument,
+
+    /// <summary>E-mail, telefone ou data de nascimento rotulada.</summary>
+    PersonalData
 }

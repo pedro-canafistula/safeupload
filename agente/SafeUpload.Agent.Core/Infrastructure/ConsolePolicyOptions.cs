@@ -64,6 +64,11 @@ public sealed record ConsolePolicyOptions
                     categories.Add(Category.Password);
                     categories.Add(Category.Secret);
                     break;
+                case "rg": categories.Add(Category.Rg); break;
+                case "dados_bancarios": categories.Add(Category.BankData); break;
+                case "dados_saude": categories.Add(Category.HealthData); break;
+                case "documentos_confidenciais": categories.Add(Category.ConfidentialDocument); break;
+                case "dados_pessoais": categories.Add(Category.PersonalData); break;
                 default:
                     // Não aplicar apenas uma fração das regras como se fosse a política completa.
                     throw new InvalidPolicyException("Regra da console não suportada pelo agente.");
@@ -77,7 +82,8 @@ public sealed record ConsolePolicyOptions
             Version = revision,
             ActiveCategories = categories.Order().Select(c => c.ToString()).ToArray(),
             AuditOnly = action == "alertar",
-            OverrideAllowed = false
+            // A console não publica a permissão de justificar: vale a do policy.json local, como os escopos.
+            OverrideAllowed = operational.OverrideAllowed
         };
     }
 

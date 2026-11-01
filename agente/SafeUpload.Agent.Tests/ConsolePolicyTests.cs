@@ -27,15 +27,18 @@ public sealed class ConsolePolicyTests : IDisposable
     [Fact]
     public async Task Consulta_contrato_real_confere_host_e_preserva_operacao_local()
     {
-        var handler = new Handler { Body = Document(101, "cpf", "cnpj", "cartao_credito", "credenciais") };
+        var handler = new Handler { Body = Document(101, "cpf", "cnpj", "cartao_credito", "credenciais",
+            "rg", "dados_bancarios", "dados_saude", "documentos_confidenciais", "dados_pessoais") };
         using var client = Client(handler);
         var store = Store(client);
         var result = await store.LoadAsync(default);
         Assert.Equal("https://example.test/context/agent/api/policy?ip=192.0.2.10", handler.Path);
         Assert.Equal(101, result.Version);
-        Assert.True(result.ActiveCategories.SetEquals([Category.Cpf, Category.Cnpj, Category.PaymentCard, Category.Password, Category.Secret]));
+        Assert.True(result.ActiveCategories.SetEquals([Category.Cpf, Category.Cnpj, Category.PaymentCard, Category.Password, Category.Secret,
+            Category.Rg, Category.BankData, Category.HealthData, Category.ConfidentialDocument, Category.PersonalData]));
         Assert.False(result.AuditOnly);
-        Assert.False(result.OverrideAllowed);
+        // A console não publica a permissão de justificar: vale a do policy.json local.
+        Assert.True(result.OverrideAllowed);
         Assert.False(result.FailOpen);
         Assert.Equal(13, result.MaxFileSizeMb);
         Assert.Equal(7, result.InspectionTimeoutSeconds);
@@ -104,13 +107,13 @@ public sealed class ConsolePolicyTests : IDisposable
     }
 
     [Fact]
-    public async Task Alertar_apenas_audita_e_nao_habilita_justificativa()
+    public async Task Alertar_apenas_audita_e_a_justificativa_segue_a_politica_local()
     {
         var handler = new Handler { Body = Document(101, "cpf").Replace("\"bloquear\"", "\"alertar\"") };
         using var client = Client(handler);
         var policy = await Store(client).LoadAsync(default);
         Assert.True(policy.AuditOnly);
-        Assert.False(policy.OverrideAllowed);
+        Assert.Equal(Operational.OverrideAllowed, policy.OverrideAllowed);
     }
 
     [Theory]
@@ -139,8 +142,8 @@ public sealed class ConsolePolicyTests : IDisposable
             case "host": changed["destino"]!["idHost"] = 24; break;
             case "ip": changed["destino"]!["ip"] = "192.0.2.11"; break;
             case "action": changed["acao"] = "permitir"; break;
-            case "rule": changed["regras"] = new JsonArray(new JsonObject { ["tipo"] = "rg" }); break;
-            case "mixed_rules": changed["regras"]!.AsArray().Add(new JsonObject { ["tipo"] = "rg" }); break;
+            case "rule": changed["regras"] = new JsonArray(new JsonObject { ["tipo"] = "biometria" }); break;
+            case "mixed_rules": changed["regras"]!.AsArray().Add(new JsonObject { ["tipo"] = "biometria" }); break;
             case "empty": changed["regras"] = new JsonArray(); break;
             case "version": changed["versao"] = "2.0"; break;
             case "missing": changed.AsObject().Remove("idPolitica"); break;

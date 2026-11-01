@@ -39,7 +39,8 @@ internal static class ConsolePolicyAcceptance
         var decisionA = await engine.InspectAsync(operation, token);
         // The engine reports findings. AuditOnly enforcement belongs to the channel, not this component fixture.
         check("central A reaches the engine despite local revision collision", decisionA.PolicyVersion == first &&
-            decisionA.Categories.Contains(Category.Cpf) && !decisionA.FromCache && loadedA.AuditOnly && !loadedA.OverrideAllowed);
+            decisionA.Categories.Contains(Category.Cpf) && !decisionA.FromCache && loadedA.AuditOnly &&
+            loadedA.OverrideAllowed == operational.OverrideAllowed);
         check("central cache was persisted", File.Exists(cache) && remote.LastSource == "remote");
         int second = await publish("bloquear", "cnpj");
         check("publication creates a newer identified policy", second > first && first > 0);

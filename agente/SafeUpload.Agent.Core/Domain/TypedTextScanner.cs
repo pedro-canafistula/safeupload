@@ -85,6 +85,10 @@ public static partial class TypedTextScanner
         }
 
         var found = new List<(int Start, int End, Finding Finding)>();
+        foreach (var iban in ContextDetectors.FindIbans(text, active))
+        {
+            found.Add((iban.Start, iban.Start + iban.Length - 1, iban.Finding));
+        }
 
         foreach (var (category, written, bare, keywords) in NumericRules)
         {
@@ -115,6 +119,15 @@ public static partial class TypedTextScanner
                 {
                     found.Add((secret.Start, secret.Start + secret.Length - 1, new Finding(Category.Secret, Masking.MaskSecret(secret.Kind))));
                 }
+            }
+        }
+
+        foreach (var match in ContextDetectors.Find(text, active))
+        {
+            int end = match.Start + match.Length - 1;
+            if (!Overlaps(found, match.Start, end))
+            {
+                found.Add((match.Start, end, match.Finding));
             }
         }
 

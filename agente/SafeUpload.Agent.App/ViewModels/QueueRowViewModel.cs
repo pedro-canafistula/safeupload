@@ -91,6 +91,12 @@ public static class CategoryLabels
         Category.Cnpj => "CNPJ",
         Category.PaymentCard => "Cartão de pagamento",
         Category.Password => "Senha",
+        Category.Secret => "Segredo/credencial",
+        Category.Rg => "RG",
+        Category.BankData => "Dados bancários",
+        Category.HealthData => "Dados de saúde",
+        Category.ConfidentialDocument => "Documento confidencial",
+        Category.PersonalData => "Dados pessoais",
         _ => category.ToString()
     };
 }
