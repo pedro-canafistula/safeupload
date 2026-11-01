@@ -91,8 +91,10 @@ public sealed class ConsolePolicyTests : IDisposable
         var path = _workspace.WriteText("sintetico.txt", "CPF: 529.982.247-25");
         var operation = TestWorkspace.Operation(path, DestinationKind.Cloud, destinationPath: @"C:\Teste\Protegido\arquivo.txt");
         Assert.Equal(Verdict.Approved, (await inspection.InspectAsync(operation, default)).Verdict);
-        var oldApproval = await inspection.InspectStagedAsync(operation, default);
-        Assert.True(await inspection.IsCurrentStagedApprovalAsync(operation, oldApproval, default));
+        var localInspection = new InspectionService(new FixedPolicy(local), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache());
+        var oldApproval = await localInspection.InspectStagedAsync(operation, default);
+        Assert.True(await localInspection.IsCurrentStagedApprovalAsync(operation, oldApproval, default));
         await snapshots.RefreshAsync(default);
         var result = await inspection.InspectAsync(operation, default);
         Assert.Equal(1, result.PolicyVersion);
@@ -221,6 +223,53 @@ public sealed class ConsolePolicyTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => Read());
         values["CentroAdministracao:PolicyProtocol"] = "Legacy";
         Assert.Throws<InvalidOperationException>(() => Read());
+    }
+
+    [Fact]
+    public async Task Origem_indisponivel_retem_publicacao_mas_preserva_snapshot_classico()
+    {
+        var handler = new Handler { Body = Document(101, "cpf") };
+        using var client = Client(handler);
+        var remote = Store(client);
+        using var snapshots = new RefreshingPolicyStore(remote, TimeSpan.FromSeconds(30),
+            NullLogger<RefreshingPolicyStore>.Instance);
+        await snapshots.RefreshAsync(default);
+        Assert.Equal(101, (await snapshots.LoadCurrentAsync(default)).Version);
+        handler.Status = HttpStatusCode.ServiceUnavailable;
+        await Assert.ThrowsAsync<HttpRequestException>(() => snapshots.LoadCurrentAsync(default));
+        Assert.Equal(101, (await snapshots.LoadAsync(default)).Version);
+        Assert.Equal(101, (await remote.LoadAsync(default)).Version);
+    }
+
+    [Fact]
+    public async Task Leitura_atual_rejeita_regressao_apos_reinicio_sem_apagar_cache()
+    {
+        var handler = new Handler { Body = Document(101, "cpf") };
+        using var client = Client(handler);
+        await Store(client).LoadAsync(default);
+        var before = await File.ReadAllBytesAsync(Cache);
+        handler.Body = Document(100, "cnpj");
+        await Assert.ThrowsAsync<InvalidPolicyException>(() => Store(client).LoadCurrentAsync(default));
+        Assert.Equal(before, await File.ReadAllBytesAsync(Cache));
+    }
+
+    [Fact]
+    public async Task Origem_operacional_invalida_nao_autoriza_publicacao_com_fallback()
+    {
+        using var client = Client(new Handler { Body = Document(101, "cpf") });
+        var store = new DurableHttpPolicyStore(client, "PC-SINTETICO", Cache, false,
+            consolePolicy: Options, operationalPolicy: new UnavailableCurrentPolicy());
+        Assert.Equal(101, (await store.LoadAsync(default)).Version);
+        var before = await File.ReadAllBytesAsync(Cache);
+        await Assert.ThrowsAsync<InvalidPolicyException>(() => store.LoadCurrentAsync(default));
+        Assert.Equal(before, await File.ReadAllBytesAsync(Cache));
+    }
+
+    private sealed class UnavailableCurrentPolicy : IPolicyStore
+    {
+        public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(Operational);
+        public Task<Policy> LoadCurrentAsync(CancellationToken token) =>
+            throw new InvalidPolicyException("Synthetic current policy failure");
     }
 
     private DurableHttpPolicyStore Store(HttpClient client, ConsolePolicyOptions? options = null) =>
