@@ -6,6 +6,9 @@ on:
       contract-only:
         type: boolean
         default: false
+      console-policy:
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -13,7 +16,7 @@ permissions:
 
 jobs:
   service-host-identity:
-    name: ${{ inputs.contract-only && 'Contrato atual CSharp Java MySQL' || 'Serviço SYSTEM, reinício e backend real' }}
+    name: ${{ inputs.console-policy && 'Política ConsoleByIp e cache SYSTEM' || inputs.contract-only && 'Contrato atual CSharp Java MySQL' || 'Serviço SYSTEM, reinício e backend real' }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -69,10 +72,15 @@ jobs:
           if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expected) { throw 'Unexpected MySQL archive hash.' }
           Expand-Archive -LiteralPath $zip -DestinationPath $destination
       - name: Validar identidade do serviço com banco e backend reais
-        if: ${{ !inputs.contract-only }}
+        if: ${{ !inputs.contract-only && !inputs.console-policy }}
         shell: pwsh
         run: |
           ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend
+      - name: Validar política central e cache no serviço SYSTEM
+        if: inputs.console-policy
+        shell: pwsh
+        run: |
+          ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend -ConsolePolicyAcceptance
       - name: Validar contrato C# com banco e backend reais
         if: inputs.contract-only
         shell: pwsh
@@ -82,5 +90,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.contract-only && 'agent-current-contract' || 'host-identity-backend' }}
+          name: ${{ inputs.console-policy && 'console-policy-system' || inputs.contract-only && 'agent-current-contract' || 'host-identity-backend' }}
           path: artifacts/host-identity-backend/
