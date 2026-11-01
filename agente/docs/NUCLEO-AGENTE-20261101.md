@@ -19,7 +19,7 @@ Pedro: comparar o consumidor de política com qualquer código ainda não public
 
 ## Próxima entrega prioritária
 
-Ampliar o ensaio SYSTEM já existente para selecionar ConsoleByIp e verificar cache protegido/reinício offline e mudança de política no serviço. Separar claramente recebimento da política, persistência do cache e aplicação nas unidades. A fila e os componentes de comunicação já existem; não precisam ser reconstruídos. Retenção destrutiva, autenticação e atualização de instalação exigem suas definições próprias.
+O ensaio SYSTEM foi ampliado em um cenário separado para selecionar ConsoleByIp e verificar cache protegido/reinício offline e mudança de política no serviço; sua execução remota ainda está pendente. Após esse resultado, avançar no aceite do conjunto real com WinFsp/gate. Separar claramente recebimento da política, persistência do cache e aplicação nas unidades. A fila e os componentes de comunicação já existem; não precisam ser reconstruídos. Retenção destrutiva, autenticação e atualização de instalação exigem suas definições próprias.
 
 ## Validação deste incremento
 

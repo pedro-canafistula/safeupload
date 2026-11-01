@@ -86,3 +86,8 @@ jobs:
     uses: ./.github/workflows/agent-host-identity-backend.yml
     with:
       contract-only: false
+
+  console-policy-service:
+    uses: ./.github/workflows/agent-host-identity-backend.yml
+    with:
+      console-policy: true
