@@ -74,15 +74,7 @@ _rd_shutdown() {  # $1 domain, running on its base: shut Windows down from insid
 }
 
 run_disk_begin() {  # $1 domain, $2 tag -> the domain is started on a fresh overlay of its base
-    local dom=$1 tag=$2 state base dir pool fmt cap ov xml free min sibling
-    case "$dom" in
-        win10-debug3) sibling=win10-debug2 ;;
-        win10-debug2) sibling=win10-debug3 ;;
-        *) sibling= ;;
-    esac
-    if [ -n "$sibling" ] && [ "$($V domstate "$sibling")" != 'shut off' ]; then
-        _rd_log "$sibling must stay off: these clones share a guest IP"; return 1
-    fi
+    local dom=$1 tag=$2 state base dir pool fmt cap ov xml free min
     mkdir -p "$RUN_DISK_STATE"; state="$RUN_DISK_STATE/$dom"
     if [ -f "$state" ]; then
         _rd_log "$dom: prior run state remains; stop and inspect it before starting another run"

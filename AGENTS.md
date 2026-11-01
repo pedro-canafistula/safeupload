@@ -58,8 +58,7 @@ smoke/run.sh <tag> <driver-dir> <agent-pkg-dir> <winfsp.msi>
 
 ## Lab
 
-- Test VM: **win10-debug3** (Windows 10 19045.2965, test signing on, Secure Boot off). Keep win10-debug2 off; it shares
-  the guest IP. Use a throwaway session for experiments (`driver/scripts/vm-session.sh`).
-- Builders: builder1 `192.168.122.210` (libvirt `win10`) and builder2 `192.168.122.211` (`su-builder2`). One job per
-  builder at a time.
+- Test VM: **win10-debug3** `192.168.122.52` (Windows 10 19045.2965 + Office, test signing on, Secure Boot off). Use a
+  throwaway session for experiments (`driver/scripts/vm-session.sh`).
+- Builder: `192.168.122.210` (libvirt `win10`, Visual Studio + WDK, the test-signing certificate). One job at a time.
 - Host-wide changes (libvirt, polkit, systemd, sudoers) need the owner's OK.

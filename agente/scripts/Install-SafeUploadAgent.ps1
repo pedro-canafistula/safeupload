@@ -7,8 +7,8 @@ Installs SafeUpload on this machine: WinFsp (if needed), the gate driver, the ag
 .EXAMPLE
 .\Install-SafeUploadAgent.ps1 -PackagePath C:\pkg\agent -DriverPath C:\pkg\driver -WinFspMsi C:\pkg\winfsp-2.1.25156.msi
 
-PackagePath holds SafeUpload.Agent.Service.exe and the tray app under App\. DriverPath holds SafeUpload.sys and
-SafeUpload.inf (signed with the test certificate; the machine needs test signing on). AdminBaseUrl points the agent at
+PackagePath holds SafeUpload.Agent.Service.exe and the tray app under App\. DriverPath holds SafeUpload.sys (signed
+with the test certificate; the machine needs test signing on). AdminBaseUrl points the agent at
 the web console (http://host:8080/agent/); leave it empty to use C:\ProgramData\SafeUpload\policy.json.
 
 -PrerequisitesOnly installs only WinFsp and the gate driver; the .exe installer (agente/installer) uses it.
@@ -40,18 +40,24 @@ if (-not (Test-Path -LiteralPath "${env:ProgramFiles(x86)}\WinFsp\bin\winfsp-x64
     Write-Output 'WinFspInstalled=True'
 }
 
-# 2. The gate driver (demand-start; the agent loads it).
+# 2. The gate driver (demand-start; the agent loads it). Registered directly rather than through SafeUpload.inf: an INF
+#    install needs a signed catalog (SafeUpload.cat) and silently does nothing without one, while the kernel only needs
+#    the test-signed SafeUpload.sys. The values match the INF.
 if ($DriverPath) {
-    $driverSource = (Resolve-Path -LiteralPath $DriverPath).Path
-    $inf = Join-Path $driverSource 'SafeUpload.inf'
-    & fltmc.exe unload SafeUpload 2>$null | Out-Null
-    & rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall.NTamd64 132 $inf
-    Start-Sleep -Seconds 2
-    # The INF copy skips a target that is not older; copy explicitly so an upgrade always replaces the driver.
+    $source = Join-Path (Resolve-Path -LiteralPath $DriverPath).Path 'SafeUpload.sys'
     $target = Join-Path $env:SystemRoot 'System32\drivers\SafeUpload.sys'
-    Copy-Item -LiteralPath (Join-Path $driverSource 'SafeUpload.sys') -Destination $target -Force
-    if ((Get-FileHash $target).Hash -ne (Get-FileHash (Join-Path $driverSource 'SafeUpload.sys')).Hash) { throw 'Gate driver file was not replaced.' }
-    if (-not (Test-Path -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload')) { throw 'Gate driver installation failed.' }
+    & fltmc.exe unload SafeUpload 2>$null | Out-Null
+    Copy-Item -LiteralPath $source -Destination $target -Force
+    if ((Get-FileHash $target).Hash -ne (Get-FileHash $source).Hash) { throw 'Gate driver file was not replaced.' }
+    $key = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload'
+    $verb = if (Test-Path -LiteralPath $key) { 'config' } else { 'create' }
+    & sc.exe $verb SafeUpload type= filesys start= demand error= normal binPath= 'System32\drivers\SafeUpload.sys' group= 'FSFilter Anti-Virus' depend= FltMgr DisplayName= SafeUpload | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Gate driver service could not be registered (sc.exe $verb exit $LASTEXITCODE)." }
+    New-ItemProperty -LiteralPath $key -Name SupportedFeatures -PropertyType DWord -Value 3 -Force | Out-Null
+    New-Item -Path "$key\Instances\SafeUpload Instance" -Force | Out-Null
+    New-ItemProperty -LiteralPath "$key\Instances" -Name DefaultInstance -Value 'SafeUpload Instance' -Force | Out-Null
+    New-ItemProperty -LiteralPath "$key\Instances\SafeUpload Instance" -Name Altitude -Value '321410' -Force | Out-Null
+    New-ItemProperty -LiteralPath "$key\Instances\SafeUpload Instance" -Name Flags -PropertyType DWord -Value 0 -Force | Out-Null
     Write-Output 'GateDriverInstalled=True'
 }
 

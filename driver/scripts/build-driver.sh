@@ -3,11 +3,10 @@
 #
 # Usage: driver/scripts/build-driver.sh [commit] [Release|Debug]
 #   commit   what to build (default HEAD; commit first, uncommitted changes are not sent)
-# Output: out/driver/<commit>-<config>/ with SafeUpload.sys (signed), SafeUpload.inf and build.log
+# Output: out/driver/<commit>-<config>/ with SafeUpload.sys (signed), SafeUpload.inf (reference) and build.log
 #
 # Environment:
-#   SAFEUPLOAD_BUILDER               builder address (default 192.168.122.210 = builder1, libvirt "win10";
-#                                    192.168.122.211 = builder2, libvirt "su-builder2")
+#   SAFEUPLOAD_BUILDER               builder address (default 192.168.122.210, libvirt "win10")
 #   SAFEUPLOAD_SIGNING_THUMBPRINT    test-signing certificate in the builder's LocalMachine\My store
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -23,7 +22,7 @@ out="out/driver/$sha-$config"; mkdir -p "$out"
 ssh_opts=(-F /dev/null -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR)
 
 # Start the builder VM if it is off, then wait for SSH.
-case "$host" in 192.168.122.210) dom=win10 ;; 192.168.122.211) dom=su-builder2 ;; *) dom= ;; esac
+case "$host" in 192.168.122.210) dom=win10 ;; *) dom= ;; esac
 if [[ -n "$dom" && "$(virsh -c qemu:///system domstate "$dom" 2>/dev/null)" != running ]]; then
     echo "starting builder VM $dom"; virsh -c qemu:///system start "$dom" >/dev/null
 fi

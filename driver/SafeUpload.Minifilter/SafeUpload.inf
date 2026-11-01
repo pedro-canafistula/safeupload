@@ -3,10 +3,11 @@
 ;
 ; Installation file for the SafeUpload minifilter.
 ;
-; Installed with the legacy DefaultInstall path, not as a PnP driver
-; package:
-;
-;   rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall.NTamd64 132 <path>
+; Reference only. An INF install (rundll32 InstallHinfSection or pnputil)
+; needs a signed SafeUpload.cat, which the build does not produce, and
+; without it silently installs nothing. The installers register the same
+; service and Instances values directly:
+; agente/scripts/Install-SafeUploadAgent.ps1.
 ;
 ; The test VM trusts the test certificate that driver/scripts/build-driver.sh
 ; signs SafeUpload.sys with.
