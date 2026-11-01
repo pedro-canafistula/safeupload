@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- SafeUpload drive: a WinFsp file system in front of a protected destination.
+       Writes stay in a private stage; only inspected, clean versions reach the destination. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SafeUpload.Agent.Drive</AssemblyName>
+    <RootNamespace>SafeUpload.Agent.Drive</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="winfsp.net" Version="2.1.24051" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Fixtures", "Safe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Agent.Network", "SafeUpload.Agent.Network\SafeUpload.Agent.Network.csproj", "{E24FDA95-277A-451A-A059-35044702B354}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SafeUpload.Agent.Drive", "SafeUpload.Agent.Drive\SafeUpload.Agent.Drive.csproj", "{251511E8-B864-4E38-ADE3-6306767EFDDA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -125,6 +127,18 @@ Global
 		{E24FDA95-277A-451A-A059-35044702B354}.Release|x64.Build.0 = Release|Any CPU
 		{E24FDA95-277A-451A-A059-35044702B354}.Release|x86.ActiveCfg = Release|Any CPU
 		{E24FDA95-277A-451A-A059-35044702B354}.Release|x86.Build.0 = Release|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Debug|x64.Build.0 = Debug|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Debug|x86.Build.0 = Debug|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Release|x64.ActiveCfg = Release|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Release|x64.Build.0 = Release|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Release|x86.ActiveCfg = Release|Any CPU
+		{251511E8-B864-4E38-ADE3-6306767EFDDA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

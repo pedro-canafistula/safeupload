@@ -1,4 +1,4 @@
-# Sourced by the harness runners (needs $V = "virsh -c qemu:///system" and image-store.sh).
+# Sourced by the VM scripts (uses $V = "virsh -c qemu:///system").
 # Disposable run disks. A debuggee idles SHUT OFF on its base disk, and no run ever writes the base. run_disk_begin creates a fresh qcow2
 # overlay on the base, points the domain at it and starts the guest. run_disk_end powers the guest off, points the domain back at the base
 # and deletes every file the run stacked above the base (the run overlay and any live checkpoint taken during the run). So nothing piles up,
@@ -8,6 +8,14 @@
 # Overlays go next to the base unless SAFEUPLOAD_RUN_DISK_DIR names another libvirt pool directory; SAFEUPLOAD_MIN_FREE_GB (default 20)
 # is the free space the overlay's filesystem must have before a run starts.
 RUN_DISK_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/safeupload/run-disks"
+V="${V:-virsh -c qemu:///system}"
+image_pool_of() {  # $1 directory -> libvirt pool whose target path it is
+    local p
+    for p in $($V pool-list --name); do
+        [ "$($V pool-dumpxml "$p" | sed -n 's:.*<path>\(.*\)</path>.*:\1:p' | head -1)" = "$1" ] && { echo "$p"; return 0; }
+    done
+    return 1
+}
 
 _rd_log() { printf '%s run-disk %s\n' "$(date -u +%FT%TZ)" "$*"; }
 _rd_vda() {  # $1 domain, $2 "--inactive" or "" -> file of the vda disk

@@ -14,7 +14,21 @@ It is being replaced by a much smaller design:
 | Gate minifilter | this folder (kernel) | Refuses direct writes to the real destinations (protected folders, removable and network volumes) for every process except the agent. |
 
 WinFsp's own signed driver handles caching, memory mapping, locks and sharing, which is where most of the old kernel
-code went. The last state of the old design is tagged `archive/staging-final`; its plans, reviews and evidence are in
+code went.
+
+**Spike result (2026-11-01):** `agente/SafeUpload.Agent.Drive` (about 900 lines of C#) passed all 22 user checks on
+win10-debug3 with Office: text saves and in-place edits, Word SaveAs/save/overwrite while the document stays open,
+Excel saves, Explorer copies, rename/delete and folders. Sensitive versions (CPF, card number) never reached the real
+folder, which kept its previous clean version, and direct writes to the real folder were refused. Rerun it with:
+
+```bash
+driver/scripts/vm-session.sh begin <tag> --office
+scp winfsp-2.1.25156.msi drive.zip vika@192.168.122.52:C:/Users/vika/Documents/    # drive.zip = published Agent.Drive
+python3 driver/scripts/remote_ps.py 192.168.122.52 < agente/SafeUpload.Agent.Drive/smoke/setup.ps1
+driver/scripts/vm-session.sh autologon
+CLAUDE_JOB_DIR=<dir> ~/Work/safeupload-tools/vm-as-actor.sh agente/SafeUpload.Agent.Drive/smoke/user-test.ps1 900
+driver/scripts/vm-session.sh end <tag>
+``` The last state of the old design is tagged `archive/staging-final`; its plans, reviews and evidence are in
 git history before that tag.
 
 ## Layout
