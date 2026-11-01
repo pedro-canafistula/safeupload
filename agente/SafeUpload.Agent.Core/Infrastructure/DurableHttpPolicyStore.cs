@@ -16,6 +16,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        AllowDuplicateProperties = false,
         Converters = { new JsonStringEnumConverter() }
     };
 
