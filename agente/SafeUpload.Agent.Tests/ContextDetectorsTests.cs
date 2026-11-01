@@ -92,6 +92,29 @@ public sealed class ContextDetectorsTests
     }
 
     [Theory]
+    [InlineData("Cadastro: RG: 12.345.678-2\r\n")]
+    [InlineData("Agência 1234-5, conta corrente 98765-4")]
+    [InlineData("BR1800360305000010009795493C1")]
+    [InlineData("CID F32.1 e Diagnóstico: hipertensão")]
+    [InlineData("CONFIDENCIAL\nmaria.silva@example.com\n(11) 98765-4321\nCONFIDENCIAL")]
+    [InlineData("o diagnóstico do sistema mostrou lentidão")]
+    public async Task Varredura_em_fluxo_encontra_o_mesmo_que_a_varredura_em_memoria(string text)
+    {
+        var streamed = await StreamingContentScanner.ScanAsync(() => Task.FromResult<TextReader>(new StringReader(text)), All, default);
+        Assert.Equal(ContentScanner.Scan(text, All), streamed);
+    }
+
+    [Fact]
+    public async Task Varredura_em_fluxo_encontra_achado_na_fronteira_do_buffer()
+    {
+        // The streaming scanner reads 8192 characters at a time; put the RG across that boundary, with a marking on
+        // both sides of it, which still counts once.
+        string text = "CONFIDENCIAL " + new string('x', 8192 - 13 - 6) + " RG: 12.345.678-2 " + new string('y', 9000) + " CONFIDENCIAL";
+        var findings = await StreamingContentScanner.ScanAsync(() => Task.FromResult<TextReader>(new StringReader(text)), All, default);
+        Assert.Equal([Category.ConfidentialDocument, Category.Rg], findings.Select(f => f.Category).ToArray());
+    }
+
+    [Theory]
     [InlineData("12.345.678-2", true)]
     [InlineData("10.000.006-X", true)]
     [InlineData("12.345.678-3", false)]

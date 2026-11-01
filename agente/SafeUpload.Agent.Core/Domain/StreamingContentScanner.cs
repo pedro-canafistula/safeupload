@@ -30,6 +30,13 @@ public static class StreamingContentScanner
         if (maximumCandidates < 0 || maximumCandidates > MaximumCandidates) throw new ArgumentOutOfRangeException(nameof(maximumCandidates));
         var state = new ScanState(maximumCandidates);
         bool read = false;
+        // Same order as ContentScanner: IBAN before the numbers (a card-valid run can sit inside it), the other
+        // context rules after passwords, so a CPF or a password keeps its more specific category.
+        if (active.Contains(Category.BankData))
+        {
+            await ScanContextAsync(openReader, state, window => ContextDetectors.FindIbans(window, active), token).ConfigureAwait(false);
+            read = true;
+        }
         foreach (var (category, count) in new[] { (Category.PaymentCard, 16), (Category.Cnpj, 14), (Category.Cpf, 11) })
             if (active.Contains(category))
             {
@@ -56,6 +63,11 @@ public static class StreamingContentScanner
             await ReadPassAsync(openReader, new PasswordPass(state), token).ConfigureAwait(false);
             read = true;
         }
+        if (active.Overlaps(ContextCategories))
+        {
+            await ScanContextAsync(openReader, state, window => ContextDetectors.Find(window, active), token).ConfigureAwait(false);
+            read = true;
+        }
         if (!read)
         {
             // Extraction still validates the complete encoding even when no
@@ -67,6 +79,46 @@ public static class StreamingContentScanner
         }
         state.Found.Sort(static (left, right) => left.Start.CompareTo(right.Start));
         return state.Found.ConvertAll(static value => value.Finding);
+    }
+
+    private static readonly HashSet<Category> ContextCategories =
+        [Category.Rg, Category.BankData, Category.HealthData, Category.ConfidentialDocument, Category.PersonalData];
+
+    /// <summary>
+    /// Runs the regex-based context rules over overlapping windows, like the bounded secrets: a match touching a
+    /// window edge (other than the start or end of the text) is left for the next window, and the classification
+    /// marking counts once per text.
+    /// </summary>
+    private static async Task ScanContextAsync(Func<Task<TextReader>> openReader, ScanState state,
+        Func<string, IEnumerable<ContextDetectors.ContextMatch>> find, CancellationToken token)
+    {
+        using var reader = await openReader().ConfigureAwait(false);
+        var buffer = new char[BufferCharacters]; string carry = ""; long length = 0; bool marking = false;
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false)) != 0)
+        {
+            token.ThrowIfCancellationRequested();
+            string window = carry + new string(buffer, 0, count); long start = length - carry.Length;
+            length = checked(length + count);
+            ScanWindow(window, start, eof: false);
+            carry = window.Length <= FixedPatternOverlap ? window : window[^FixedPatternOverlap..];
+        }
+        ScanWindow(carry, length - carry.Length, eof: true);
+
+        void ScanWindow(string window, long start, bool eof)
+        {
+            foreach (var match in find(window))
+            {
+                if (match.Start == 0 && start != 0 || !eof && match.Start + match.Length == window.Length) continue;
+                if (match.Finding.Category == Category.ConfidentialDocument)
+                {
+                    if (marking) continue;
+                    marking = true;
+                }
+                long begin = start + match.Start, end = begin + match.Length - 1;
+                if (!state.Overlaps(begin, end)) state.Add(begin, end, match.Finding);
+            }
+        }
     }
 
     private interface ICharacterPass
