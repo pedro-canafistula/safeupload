@@ -45,13 +45,6 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             : InitializeAsync(cancellationToken);
     }
 
-    /// <summary>Publication authority reads the origin; fallback snapshots remain for classic consumers.</summary>
-    public Task<DomainPolicy> LoadCurrentAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return _remote.LoadCurrentAsync(cancellationToken);
-    }
-
     private async Task<DomainPolicy> InitializeAsync(CancellationToken token)
     {
         await _initializeGate.WaitAsync(token).ConfigureAwait(false);

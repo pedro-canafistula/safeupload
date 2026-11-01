@@ -229,17 +229,20 @@ public sealed class ConsolePolicyTests : IDisposable
     }
 
     [Fact]
-    public async Task Origem_indisponivel_retem_publicacao_mas_preserva_snapshot_classico()
+    public async Task Origem_indisponivel_mantem_a_ultima_politica_valida_para_as_unidades()
     {
+        // Servidor fora do ar não bloqueia o trabalho: as inspeções das unidades usam a última política validada
+        // (renovada a cada 30 s e guardada em disco), não uma consulta à rede por arquivo salvo.
         var handler = new Handler { Body = Document(101, "cpf") };
         using var client = Client(handler);
         var remote = Store(client);
         using var snapshots = new RefreshingPolicyStore(remote, TimeSpan.FromSeconds(30),
             NullLogger<RefreshingPolicyStore>.Instance);
         await snapshots.RefreshAsync(default);
-        Assert.Equal(101, (await snapshots.LoadCurrentAsync(default)).Version);
+        Assert.Equal(101, (await ((IPolicyStore)snapshots).LoadCurrentAsync(default)).Version);
         handler.Status = HttpStatusCode.ServiceUnavailable;
-        await Assert.ThrowsAsync<HttpRequestException>(() => snapshots.LoadCurrentAsync(default));
+        await snapshots.RefreshAsync(default);
+        Assert.Equal(101, (await ((IPolicyStore)snapshots).LoadCurrentAsync(default)).Version);
         Assert.Equal(101, (await snapshots.LoadAsync(default)).Version);
         Assert.Equal(101, (await remote.LoadAsync(default)).Version);
     }
