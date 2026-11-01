@@ -28,6 +28,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
 {
     /// <summary>Quantos eventos vão em um POST. A fila sobrevive entre voltas.</summary>
     private const int BatchSize = 100;
+    internal const int MaximumReceiptBytes = 16 * 1024;
 
     private static readonly JsonSerializerOptions SendOptions = new()
     {
@@ -175,9 +176,16 @@ public sealed class HttpAgentDispatcher : BackgroundService
         int? receivedStatus = null;
         try
         {
-            using var response = await _client
-                .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
-                .ConfigureAwait(false);
+            // Keep the response streamed: buffering it in HttpClient would apply the
+            // receipt limit only after an arbitrarily large body was already allocated.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (_client.Timeout != Timeout.InfiniteTimeSpan) deadline.CancelAfter(_client.Timeout);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "events")
+            {
+                Content = JsonContent.Create(payload, options: SendOptions)
+            };
+            using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
+                deadline.Token).ConfigureAwait(false);
             receivedStatus = (int)response.StatusCode;
 
             if (!response.IsSuccessStatusCode)
@@ -190,8 +198,9 @@ public sealed class HttpAgentDispatcher : BackgroundService
                 return;
             }
 
-            var acknowledgement = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)
-                .ConfigureAwait(false);
+            using var receipt = await ReadReceiptAsync(response.Content, deadline.Token).ConfigureAwait(false);
+            var acknowledgement = receipt.RootElement;
+
             if (!IsCompleteAcknowledgement(acknowledgement, pending.Count, overrides.Count))
             {
                 observation.Failure(CommunicationFailure.InvalidResponse, (int)response.StatusCode);
@@ -236,6 +245,24 @@ public sealed class HttpAgentDispatcher : BackgroundService
         string Os,
         string AgentVersion,
         int PolicyVersion);
+
+    private static async Task<JsonDocument> ReadReceiptAsync(HttpContent content, CancellationToken token)
+    {
+        if (content.Headers.ContentLength > MaximumReceiptBytes)
+            throw new JsonException("Audit receipt exceeds the response limit.");
+        await using var stream = await content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        byte[] bytes = new byte[MaximumReceiptBytes + 1];
+        int length = 0;
+        while (length < bytes.Length)
+        {
+            int read = await stream.ReadAsync(bytes.AsMemory(length), token).ConfigureAwait(false);
+            if (read == 0) break;
+            length += read;
+        }
+        if (length > MaximumReceiptBytes)
+            throw new JsonException("Audit receipt exceeds the response limit.");
+        return JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 16 });
+    }
 
     private static bool IsCompleteAcknowledgement(JsonElement receipt, int events, int overrides)
     {
