@@ -3,7 +3,11 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.17',
     [Parameter(Mandatory)][ValidateScript({Test-Path -LiteralPath $_ -PathType Leaf})][string]$CompilerPath,
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot '../../artifacts/installer')
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '../../artifacts/installer'),
+    # Optional: bundle the gate driver (SafeUpload.sys + .inf from driver/scripts/build-driver.sh) and the WinFsp MSI,
+    # so Drive mode installs them. Without them, Drive mode needs WinFsp already installed and runs without the gate.
+    [string]$DriverDirectory = '',
+    [string]$WinFspMsi = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -28,6 +32,16 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'support/Invoke-AgentSetup.ps1')
     (Join-Path $PSScriptRoot 'support/SafeUpload.Setup.psm1'),
     (Join-Path $root 'agente/scripts/Install-SafeUploadAgent.ps1'),
     (Join-Path $root 'agente/scripts/Get-SafeUploadDiagnostics.ps1') -Destination $setup
+if ($DriverDirectory) {
+    $driverPayload = New-Item -ItemType Directory -Path (Join-Path $payload 'driver')
+    foreach ($file in 'SafeUpload.sys', 'SafeUpload.inf') {
+        Copy-Item -LiteralPath (Join-Path $DriverDirectory $file) -Destination $driverPayload -ErrorAction Stop
+    }
+}
+if ($WinFspMsi) {
+    $prereq = New-Item -ItemType Directory -Path (Join-Path $payload 'prereq')
+    Copy-Item -LiteralPath $WinFspMsi -Destination (Join-Path $prereq 'winfsp.msi') -ErrorAction Stop
+}
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $payload 'LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'INSTALLATION-NOTICE.txt') -Destination (Join-Path $payload 'LEIA-ME.txt')
 $files = @(Get-ChildItem -LiteralPath $payload -File -Recurse | Sort-Object FullName | ForEach-Object {

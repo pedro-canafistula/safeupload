@@ -10,21 +10,27 @@ Installs SafeUpload on this machine: WinFsp (if needed), the gate driver, the ag
 PackagePath holds SafeUpload.Agent.Service.exe and the tray app under App\. DriverPath holds SafeUpload.sys and
 SafeUpload.inf (signed with the test certificate; the machine needs test signing on). AdminBaseUrl points the agent at
 the web console (http://host:8080/agent/); leave it empty to use C:\ProgramData\SafeUpload\policy.json.
+
+-PrerequisitesOnly installs only WinFsp and the gate driver; the .exe installer (agente/installer) uses it.
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)] [string] $PackagePath,
+    [string] $PackagePath = '',
     [string] $DriverPath = '',
     [string] $WinFspMsi = '',
-    [string] $AdminBaseUrl = ''
+    [string] $AdminBaseUrl = '',
+    [switch] $PrerequisitesOnly
 )
 $ErrorActionPreference = 'Stop'
 $programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { [Environment]::GetFolderPath('ProgramFiles') }
 $installRoot = Join-Path $programFiles 'SafeUpload'
 $agentDirectory = Join-Path $installRoot 'Agent'
 $appDirectory = Join-Path $installRoot 'App'
-$package = (Resolve-Path -LiteralPath $PackagePath).Path
-if (-not (Test-Path -LiteralPath (Join-Path $package 'SafeUpload.Agent.Service.exe'))) { throw 'PackagePath has no SafeUpload.Agent.Service.exe.' }
+if (-not $PrerequisitesOnly) {
+    if (-not $PackagePath) { throw 'Pass -PackagePath (or -PrerequisitesOnly).' }
+    $package = (Resolve-Path -LiteralPath $PackagePath).Path
+    if (-not (Test-Path -LiteralPath (Join-Path $package 'SafeUpload.Agent.Service.exe'))) { throw 'PackagePath has no SafeUpload.Agent.Service.exe.' }
+}
 
 # 1. WinFsp provides the SafeUpload drives.
 if (-not (Test-Path -LiteralPath "${env:ProgramFiles(x86)}\WinFsp\bin\winfsp-x64.dll")) {
@@ -48,6 +54,8 @@ if ($DriverPath) {
     if (-not (Test-Path -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload')) { throw 'Gate driver installation failed.' }
     Write-Output 'GateDriverInstalled=True'
 }
+
+if ($PrerequisitesOnly) { return }
 
 # 3. The agent service.
 $existing = Get-Service -Name SafeUploadAgent -ErrorAction SilentlyContinue

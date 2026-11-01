@@ -4,13 +4,13 @@ Base do instalador integrada na main pelo #64, com origem nos #42/#49 e correç�
 
 Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interface WPF na bandeja, atalho e desinstalador. Os dois executáveis são publicados com runtime .NET próprio; o computador de destino não precisa do SDK. A compilação usa Inno Setup 6.7.3, obtido de uma release oficial imutável, com SHA-256 e assinatura do editor verificados.
 
-**Estado:** candidato de desenvolvimento sem assinatura da equipe. Compilar o pacote e aprovar testes de contrato não substitui executar instalação, reinício e remoção em uma VM descartável. O driver não acompanha este pacote. Esta versão não faz atualização automática de instalações existentes.
+**Estado:** candidato de desenvolvimento sem assinatura da equipe. Compilar o pacote e aprovar testes de contrato não substitui executar instalação, reinício e remoção em uma VM descartável. O driver gate e o WinFsp entram no pacote quando o build recebe `-DriverDirectory` e `-WinFspMsi`. Esta versão não faz atualização automática de instalações existentes.
 
 ## Escopo e divisão da equipe
 
 Este trabalho é somente do agente Windows. Não altera o backend Java, seus endpoints ou o painel Angular. A URL escolhida precisa apontar para uma API compatível, definida com Thiago. O pacote não inclui as propostas locais de correção Java da recuperação anterior.
 
-O script técnico existente `agente/scripts/Install-SafeUploadAgent.ps1` é reaproveitado no modo minifiltro. A composição do par atual, protocolo e autoridade de política do Vitor mantêm aceite próprio; este pacote de agente não substitui essa validação.
+No modo de unidades, o instalador chama `agente/scripts/Install-SafeUploadAgent.ps1 -PrerequisitesOnly` para instalar o WinFsp e o driver gate do pacote.
 
 ## Instalação
 
@@ -18,8 +18,8 @@ Execute o instalador como administrador **em VM de teste** e escolha:
 
 | Modo | Requisitos e comportamento |
 | --- | --- |
-| Minifiltro | Driver SafeUpload já instalado e parado. Prepara a política de boot como SYSTEM, configura o serviço com SID irrestrito e escrita em estágio; o filtro não é carregado pelo instalador. Solicita reinicialização. |
-| Teste sem driver | Só é aceito quando não há driver SafeUpload registrado. Inicia o serviço com `FileSystemWatcher`, que observa após a gravação e não fornece bloqueio preventivo no kernel. Não exige reiniciar. |
+| Unidades SafeUpload (`Drive`, padrão) | Instala o WinFsp e o driver gate quando o pacote os inclui (sem WinFsp instalado nem incluído, a instalação é recusada). Cada pasta protegida, pendrive e compartilhamento da política vira uma unidade inspecionada; o driver gate recusa gravações diretas. Windows em modo de teste (driver assinado com o certificado de teste). Não exige reiniciar. |
+| Teste sem driver (`FileSystemWatcher`) | Só é aceito quando não há driver SafeUpload registrado. Observa após a gravação, sem bloqueio preventivo. Não exige reiniciar. |
 
 A URL é opcional. Vazia significa política local e nenhuma sincronização web; para integração, use `https://servidor/agent/`. HTTP é aceito somente em loopback, por exemplo `http://127.0.0.1:8080/agent/`. Credenciais, query, fragmento, espaços e argumentos adicionais são recusados. Configurar uma URL não comprova que o servidor implementa o contrato do agente.
 
@@ -29,11 +29,11 @@ Automação, também em máquina descartável:
 
 ```powershell
 .\SafeUploadAgent-0.1.15-win-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MODE=FileSystemWatcher
-# Para o driver já instalado e parado:
-.\SafeUploadAgent-0.1.15-win-x64-setup.exe /MODE=Minifilter /ADMINURL=https://servidor/agent/
+# Unidades SafeUpload (pacote com WinFsp e driver gate):
+.\SafeUploadAgent-0.1.15-win-x64-setup.exe /MODE=Drive /ADMINURL=https://servidor/agent/
 ```
 
-No modo silencioso, ausência de `/MODE` seleciona Minifilter e mantém seus pré-requisitos. `/NORESTART` impede reinício automático, mas não dispensa o reinício necessário ao minifiltro.
+No modo silencioso, ausência de `/MODE` seleciona `Drive`.
 
 ## Remoção, falhas e manutenção
 
@@ -41,7 +41,7 @@ No modo silencioso, ausência de `/MODE` seleciona Minifilter e mantém seus pr�
 - Política, cache, auditoria, pastas monitoradas, arquivos retidos e quarentena são preservados. Não há exclusão recursiva de `%ProgramData%\SafeUpload` ou `C:\SafeUpload`.
 - Com driver registrado, a remoção é bloqueada até o driver estar **desabilitado e parado**, conforme o procedimento de manutenção aprovado pelo responsável do driver. O instalador não desabilita o driver para facilitar a remoção.
 - Serviço existente, diretório de instalação ocupado, startup conflitante e caminhos com links/junções são recusados. A versão inicial não faz upgrade nem assume propriedade de uma instalação manual.
-- A criação do serviço só ocorre depois da verificação SHA-256 do payload. Falhas nessa etapa são reportadas como erro; há tentativa de remover o serviço criado nesta execução. Se a preparação do minifiltro falhar, seu início fica sob demanda. A instalação pode deixar arquivos/desinstalador para diagnóstico; não há promessa de rollback completo do driver.
+- A criação do serviço só ocorre depois da verificação SHA-256 do payload. Falhas nessa etapa são reportadas como erro; há tentativa de remover o serviço criado nesta execução. A instalação pode deixar arquivos/desinstalador para diagnóstico; o driver gate e o WinFsp já instalados permanecem até a desinstalação.
 - A remoção encerra a interface pertencente ao caminho exato desta instalação antes de remover o serviço e os binários. Uma interface homônima em outro local é preservada; se não for possível verificar a identidade do executável, a remoção é recusada.
 
 O estado da instalação fica em `setup/installation.json`. O manifesto registra versão, commit, estado de alterações locais e hashes de todos os arquivos empacotados. Dados privados do endpoint não entram no pacote.

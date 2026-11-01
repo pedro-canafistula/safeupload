@@ -8,6 +8,12 @@
   #define AgentVersion "0.1.2"
 #endif
 
+#if FileExists(AddBackslash(PayloadRoot) + "prereq\winfsp.msi")
+  #define WinFspBundled "true"
+#else
+  #define WinFspBundled "false"
+#endif
+
 [Setup]
 AppId={{772C11DF-43ED-48B1-9303-D4339A210D89}
 AppName=SafeUpload Agent
@@ -61,7 +67,7 @@ var
 function SelectedMode: String;
 begin
   if ModePage.Values[1] then Result := 'FileSystemWatcher'
-  else Result := 'Minifilter';
+  else Result := 'Drive';
 end;
 
 function JsonEscape(const Value: String): String;
@@ -101,13 +107,13 @@ var
   ModeParameter: String;
 begin
   ModePage := CreateInputOptionPage(wpSelectDir, 'Modo de instalação', 'Escolha como o agente será utilizado.',
-    'O modo sem driver é destinado a testes e observa arquivos após a gravação. Ele não oferece o bloqueio preventivo do minifiltro.', True, False);
-  ModePage.Add('Minifiltro: driver já instalado e parado; ativação após reiniciar');
+    'O modo sem driver é destinado a testes e observa arquivos após a gravação. Ele não oferece o bloqueio preventivo das unidades SafeUpload.', True, False);
+  ModePage.Add('Unidades SafeUpload: pastas protegidas, pendrives e compartilhamentos inspecionados antes do envio (WinFsp e driver gate)');
   ModePage.Add('Teste sem driver: serviço com observação de arquivos');
-  ModeParameter := ExpandConstant('{param:MODE|Minifilter}');
-  if (CompareText(ModeParameter, 'Minifilter') <> 0) and (CompareText(ModeParameter, 'FileSystemWatcher') <> 0) then
-    RaiseException('MODE deve ser Minifilter ou FileSystemWatcher.');
-  ModePage.Values[0] := CompareText(ModeParameter, 'Minifilter') = 0;
+  ModeParameter := ExpandConstant('{param:MODE|Drive}');
+  if (CompareText(ModeParameter, 'Drive') <> 0) and (CompareText(ModeParameter, 'FileSystemWatcher') <> 0) then
+    RaiseException('MODE deve ser Drive ou FileSystemWatcher.');
+  ModePage.Values[0] := CompareText(ModeParameter, 'Drive') = 0;
   ModePage.Values[1] := not ModePage.Values[0];
   ServerPage := CreateInputQueryPage(ModePage.ID, 'Servidor de administração', 'Informe o endereço combinado com a equipe.',
     'Use HTTPS em servidores remotos e termine o endereço com /agent/. Deixe vazio para usar a política local, sem sincronização web.');
@@ -121,7 +127,8 @@ var
 begin
   ExtractTemporaryFile('Invoke-AgentSetup.ps1');
   ExtractTemporaryFile('SafeUpload.Setup.psm1');
-  Answers := '{"mode":"' + SelectedMode + '","adminBaseUrl":"' + JsonEscape(ServerPage.Values[0]) + '"}';
+  Answers := '{"mode":"' + SelectedMode + '","adminBaseUrl":"' + JsonEscape(ServerPage.Values[0]) +
+    '","winFspBundled":{#WinFspBundled}}';
   if not SaveStringToFile(ExpandConstant('{tmp}\safeupload-answers.json'), UTF8Encode(Answers), False) then begin
     Result := 'Não foi possível preparar a configuração.';
     Exit;
@@ -142,7 +149,7 @@ end;
 
 function NeedRestart: Boolean;
 begin
-  Result := InstallationSucceeded and (SelectedMode = 'Minifilter');
+  Result := False;
 end;
 
 function InitializeUninstall: Boolean;
