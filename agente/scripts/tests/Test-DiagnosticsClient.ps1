@@ -115,6 +115,9 @@ function Read-Help { Invoke-DiagnosticsQuery @{query='help'} }
 
 Test-Case 'Fragmented UTF-8 and CRLF return the complete data and preserve the request' {
     With-Fixture 'fragment' $good { param($fixture)
+        # Cold Windows PowerShell 5.1 JIT can exceed one second on a hosted runner.
+        # This case checks successful framing, not the timeout boundary; timeout cases retain one second.
+        Set-Context $fixture.PipeName 5
         $reply = Read-Help
         Assert-True ($reply.text -eq ('a' + [char]0x00e7 + [char]0x00e3 + 'o')) 'UTF-8 data changed.'
         Assert-True (($fixture.Request | ConvertFrom-Json).query -eq 'help') 'Request changed.'
