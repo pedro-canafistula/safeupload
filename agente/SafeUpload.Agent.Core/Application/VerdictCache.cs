@@ -63,13 +63,13 @@ public sealed class VerdictCache
         ArgumentNullException.ThrowIfNull(operation);
 
         var key = BuildKey(operation, contentFingerprint);
-        var now = _clock.GetUtcNow();
+        var now = _clock.GetTimestamp();
 
         lock (_gate)
         {
             if (_entries.TryGetValue(key, out var entry))
             {
-                if (entry.ExpiresAt > now && entry.Result.PolicyVersion == policyVersion &&
+                if (_clock.GetElapsedTime(entry.StoredAt, now) < _timeToLive && entry.Result.PolicyVersion == policyVersion &&
                     (policyEvaluationKey is null || entry.Result.PolicyEvaluationKey == policyEvaluationKey))
                 {
                     result = entry.Result;
@@ -91,7 +91,7 @@ public sealed class VerdictCache
         ArgumentNullException.ThrowIfNull(result);
 
         var key = BuildKey(operation, contentFingerprint);
-        var now = _clock.GetUtcNow();
+        var now = _clock.GetTimestamp();
 
         lock (_gate)
         {
@@ -110,7 +110,7 @@ public sealed class VerdictCache
             }
 
             var decision = result.RecordedEvent is null ? result : result with { RecordedEvent = null };
-            _entries[key] = new Entry(decision, now + _timeToLive);
+            _entries[key] = new Entry(decision, now);
         }
     }
 
@@ -127,13 +127,13 @@ public sealed class VerdictCache
         }
     }
 
-    private void PruneExpired(DateTimeOffset now)
+    private void PruneExpired(long now)
     {
         var expired = new List<string>();
 
         foreach (var (key, entry) in _entries)
         {
-            if (entry.ExpiresAt <= now)
+            if (_clock.GetElapsedTime(entry.StoredAt, now) >= _timeToLive)
             {
                 expired.Add(key);
             }
@@ -153,5 +153,5 @@ public sealed class VerdictCache
         operation.ProcessName,
         contentFingerprint ?? "");
 
-    private readonly record struct Entry(InspectionResult Result, DateTimeOffset ExpiresAt);
+    private readonly record struct Entry(InspectionResult Result, long StoredAt);
 }

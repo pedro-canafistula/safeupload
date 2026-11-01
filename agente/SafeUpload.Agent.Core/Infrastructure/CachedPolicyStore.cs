@@ -33,8 +33,8 @@ public sealed class CachedPolicyStore : IPolicyStore
     private readonly TimeProvider _clock;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    // Política e vencimento num registro só, trocado de uma vez: um leitor
-    // nunca vê a política nova com o vencimento antigo, nem o contrário.
+    // Snapshot and monotonic load timestamp are published together. Wall-clock
+    // adjustments must neither extend nor prematurely expire a cached policy.
     private Entry? _entry;
 
     /// <summary>Compõe o cache.</summary>
@@ -57,6 +57,7 @@ public sealed class CachedPolicyStore : IPolicyStore
     /// <inheritdoc />
     public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (Fresh() is { } cached)
         {
             return cached;
@@ -66,6 +67,7 @@ public sealed class CachedPolicyStore : IPolicyStore
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // Outro pedido pode ter carregado enquanto este esperava.
             if (Fresh() is { } loaded)
             {
@@ -73,8 +75,10 @@ public sealed class CachedPolicyStore : IPolicyStore
             }
 
             var policy = await _inner.LoadAsync(cancellationToken).ConfigureAwait(false);
-
-            Volatile.Write(ref _entry, new Entry(policy, _clock.GetUtcNow() + Lifetime));
+            // An origin may finish despite cancellation. Its result must not
+            // become the shared snapshot after this caller has been cancelled.
+            cancellationToken.ThrowIfCancellationRequested();
+            Volatile.Write(ref _entry, new Entry(policy, _clock.GetTimestamp()));
 
             return policy;
         }
@@ -84,11 +88,18 @@ public sealed class CachedPolicyStore : IPolicyStore
         }
     }
 
+    /// <summary>Bypasses this cache without changing the legacy cached entry.</summary>
+    public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return _inner.LoadCurrentAsync(cancellationToken);
+    }
+
     private Policy? Fresh()
     {
         var entry = Volatile.Read(ref _entry);
-        return entry is not null && _clock.GetUtcNow() < entry.ExpiresAt ? entry.Policy : null;
+        return entry is not null && _clock.GetElapsedTime(entry.LoadedAt) < Lifetime ? entry.Policy : null;
     }
 
-    private sealed record Entry(Policy Policy, DateTimeOffset ExpiresAt);
+    private sealed record Entry(Policy Policy, long LoadedAt);
 }

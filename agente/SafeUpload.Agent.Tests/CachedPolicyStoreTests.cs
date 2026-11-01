@@ -32,6 +32,10 @@ public class CachedPolicyStoreTests
         public DateTimeOffset Agora { get; set; } = new(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
 
         public override DateTimeOffset GetUtcNow() => Agora;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        private long _elapsed;
+        public override long GetTimestamp() => _elapsed;
+        public void Avancar(TimeSpan tempo) { Agora += tempo; _elapsed += tempo.Ticks; }
     }
 
     /// <summary>Loja que conta as cargas e devolve uma versão nova a cada uma.</summary>
@@ -66,7 +70,7 @@ public class CachedPolicyStoreTests
         var cache = new CachedPolicyStore(loja, Intervalo, relogio);
 
         var primeira = await cache.LoadAsync(CancellationToken.None);
-        relogio.Agora += TimeSpan.FromSeconds(29);
+        relogio.Avancar(TimeSpan.FromSeconds(29));
         var segunda = await cache.LoadAsync(CancellationToken.None);
 
         Assert.Same(primeira, segunda);
@@ -81,7 +85,7 @@ public class CachedPolicyStoreTests
         var cache = new CachedPolicyStore(loja, Intervalo, relogio);
 
         await cache.LoadAsync(CancellationToken.None);
-        relogio.Agora += Intervalo;
+        relogio.Avancar(Intervalo);
         var depois = await cache.LoadAsync(CancellationToken.None);
 
         Assert.Equal(2, loja.Cargas);
