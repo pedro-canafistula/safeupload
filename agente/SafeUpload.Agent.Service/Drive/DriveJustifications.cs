@@ -1,3 +1,4 @@
+using SafeUpload.Agent.Core.Domain;
 using System.Collections.Concurrent;
 
 namespace SafeUpload.Agent.Service.Drive;
@@ -10,25 +11,28 @@ public sealed class DriveJustifications
 {
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(10);
 
-    private sealed record Entry(uint SessionId, string UserSid, DateTimeOffset ExpiresAt, Func<bool> Approve);
+    private sealed record Entry(uint SessionId, string UserSid, DateTimeOffset ExpiresAt, string PolicyFingerprint, Func<bool> Approve);
     private readonly ConcurrentDictionary<Guid, Entry> _entries = new();
 
-    public void Remember(Guid versionId, uint sessionId, string userSid, Func<bool> approve)
+    public void Remember(Guid versionId, uint sessionId, string userSid, string policyFingerprint, Func<bool> approve)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(policyFingerprint);
         foreach (var pair in _entries)
             if (pair.Value.ExpiresAt <= DateTimeOffset.UtcNow)
                 _entries.TryRemove(pair.Key, out _);
-        _entries[versionId] = new Entry(sessionId, userSid, DateTimeOffset.UtcNow + Window, approve);
+        _entries[versionId] = new Entry(sessionId, userSid, DateTimeOffset.UtcNow + Window, policyFingerprint, approve);
     }
 
     /// <summary>Takes the approval for <paramref name="eventId"/> if this caller may use it.</summary>
-    public bool TryConsume(string eventId, uint? sessionId, string? userSid, out Func<bool>? approve)
+    public bool TryConsume(string eventId, uint? sessionId, string? userSid, Policy currentPolicy, out Func<bool>? approve)
     {
         approve = null;
         if (!Guid.TryParse(eventId, out var id) || !_entries.TryGetValue(id, out var entry)) return false;
         if (entry.SessionId != sessionId || !string.Equals(entry.UserSid, userSid, StringComparison.OrdinalIgnoreCase) ||
             entry.ExpiresAt <= DateTimeOffset.UtcNow)
             return false;
+        if (!currentPolicy.OverrideAllowed || !string.Equals(entry.PolicyFingerprint,
+                PolicyContentFingerprint.Compute(currentPolicy), StringComparison.Ordinal)) return false;
         if (!_entries.TryRemove(new KeyValuePair<Guid, Entry>(id, entry))) return false;
         approve = entry.Approve;
         return true;

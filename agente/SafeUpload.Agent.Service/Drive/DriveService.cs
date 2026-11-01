@@ -210,10 +210,10 @@ public sealed class DriveService : BackgroundService
             return;
         }
         bool overrideAllowed = policy?.OverrideAllowed == true && mount is not null &&
-            writer?.SessionId is not null && writer.UserSid is not null;
+            writer?.SessionId is not null && writer.UserSid is not null && decision.Result?.PolicyContentFingerprint is not null;
         if (overrideAllowed)
             _justifications.Remember(decision.VersionId, writer!.SessionId!.Value, writer.UserSid!,
-                () => mount!.FileSystem.Approve(decision.VersionId));
+                decision.Result!.PolicyContentFingerprint!, () => mount!.FileSystem.Approve(decision.VersionId));
         // The blocked version stays visible to the user on the drive, at DrivePath.
         var notification = new TransferNotification(decision.VersionId, decision.DrivePath, TransferPhase.Blocked,
             decision.Result?.Findings ?? [], overrideAllowed, HandbackPath: decision.DrivePath, HandbackVerified: true,

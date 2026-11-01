@@ -146,13 +146,13 @@ public sealed class JustificationPipeServer : BackgroundService
         }
     }
 
-    private async Task<bool> HandleAsync(
+    internal async Task<bool> HandleAsync(
         JustificationRequest request,
         uint? sessionId,
         string? clientSid,
         CancellationToken cancellationToken)
     {
-        Policy policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        Policy policy = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
 
         if (!policy.OverrideAllowed)
         {
@@ -163,7 +163,7 @@ public sealed class JustificationPipeServer : BackgroundService
             return false;
         }
 
-        if (!_justifications.TryConsume(request.EventId, sessionId, clientSid, out var approve) || approve is null)
+        if (!_justifications.TryConsume(request.EventId, sessionId, clientSid, policy, out var approve) || approve is null)
         {
             _logger.LogWarning(
                 "Justificativa para um bloqueio que nao existe, venceu, ou e de outra sessao. Ignorada.");
@@ -172,6 +172,11 @@ public sealed class JustificationPipeServer : BackgroundService
 
         // Auditar ANTES de publicar: uma falha aqui nao pode deixar a versao publicada sem registro de quem pediu.
         await RecordJustificationAsync(request, clientSid, cancellationToken).ConfigureAwait(false);
+        // Audit can involve disk I/O. Revalidate after it before granting publication.
+        var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+        if (!current.OverrideAllowed || !string.Equals(PolicyContentFingerprint.Compute(policy),
+                PolicyContentFingerprint.Compute(current), StringComparison.Ordinal)) return false;
+        cancellationToken.ThrowIfCancellationRequested();
         bool published = approve();
         _logger.LogWarning("Versao {EventId} justificada pelo usuario; publicada={Published}.", request.EventId, published);
         return published;
