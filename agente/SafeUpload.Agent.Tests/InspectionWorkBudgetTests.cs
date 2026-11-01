@@ -1,0 +1,284 @@
+using System.Diagnostics;
+using SafeUpload.Agent.Core.Application;
+using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Core.Infrastructure.Extraction;
+using Xunit.Abstractions;
+
+namespace SafeUpload.Agent.Tests;
+
+public sealed class InspectionWorkBudgetTests(ITestOutputHelper output) : IDisposable
+{
+    private readonly TestWorkspace _workspace = new();
+    public void Dispose() => _workspace.Dispose();
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Timed_out_noncooperative_parsers_keep_their_slots_and_late_results_never_authorize_content(
+        bool staged, bool lateFailure)
+    {
+        var extractor = new NoncooperativeExtractor(lateFailure);
+        var sink = new LocalQueueAuditSink(_workspace.QueueFile);
+        var service = Service(extractor, sink);
+        var operation = TestWorkspace.Operation(_workspace.WriteText("bounded.txt", "CPF: 529.982.247-25"));
+        Task<InspectionResult> Inspect(CancellationToken token) => staged
+            ? service.InspectStagedAsync(operation, token) : service.InspectAsync(operation, token);
+        var first = new[] { Inspect(CancellationToken.None), Inspect(CancellationToken.None) };
+        try
+        {
+            await extractor.BothEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.All(await Task.WhenAll(first), result => AssertTimeout(result, staged));
+            Assert.Equal(2, extractor.Active);
+
+            var queued = Enumerable.Range(0, 6).Select(_ => Inspect(CancellationToken.None)).ToArray();
+            Assert.All(await Task.WhenAll(queued), result => AssertTimeout(result, staged));
+            Assert.Equal(2, extractor.Calls);
+            Assert.Equal(2, extractor.Active);
+            Assert.Equal(2, extractor.PeakActive);
+
+            using var cancelled = new CancellationTokenSource();
+            var waiting = Inspect(cancelled.Token);
+            cancelled.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+            Assert.Equal(2, extractor.Calls);
+
+            extractor.Release.TrySetResult();
+            await extractor.BothFinished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WaitForWorkerReleaseAsync(service);
+            Assert.Equal(0, extractor.Active);
+            // The abandoned workers return an intentionally clean result for
+            // these same bytes. It must neither replace the timeout's outcome
+            // nor install a cached approval when they eventually finish.
+            Assert.Equal(staged ? 0 : 8, (await sink.ReadRecentAsync(20, CancellationToken.None)).Count);
+            var recovered = await Inspect(CancellationToken.None);
+            Assert.Equal(Verdict.Blocked, recovered.Verdict);
+            Assert.Null(recovered.Reason);
+            Assert.False(recovered.FromCache);
+            Assert.Equal(Category.Cpf, Assert.Single(recovered.Categories));
+            Assert.Equal(3, extractor.Calls);
+            Assert.Equal(0, extractor.Active);
+        }
+        finally
+        {
+            extractor.Release.TrySetResult();
+            await extractor.BothFinished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WaitForWorkerReleaseAsync(service);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cooperative_parsers_receive_deadline_cancellation_and_return_capacity_for_a_complete_inspection(bool staged)
+    {
+        var extractor = new CooperativeExtractor();
+        var service = Service(extractor, new LocalQueueAuditSink(_workspace.QueueFile));
+        var operation = TestWorkspace.Operation(_workspace.WriteText("cooperative.txt", "CPF: 529.982.247-25"));
+        Task<InspectionResult> Inspect() => staged
+            ? service.InspectStagedAsync(operation, CancellationToken.None)
+            : service.InspectAsync(operation, CancellationToken.None);
+
+        AssertTimeout(await Inspect(), staged);
+        await extractor.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await WaitForWorkerReleaseAsync(service);
+        Assert.Equal(0, extractor.Active);
+
+        var recovered = await Inspect();
+        Assert.Equal(Verdict.Blocked, recovered.Verdict);
+        Assert.Null(recovered.Reason);
+        Assert.False(recovered.FromCache);
+        Assert.Equal(Category.Cpf, Assert.Single(recovered.Categories));
+        Assert.Equal(0, extractor.Active);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Waiting_for_capacity_and_parsing_share_one_policy_deadline(bool staged)
+    {
+        var extractor = new QueuedDeadlineExtractor();
+        var service = Service(extractor, new LocalQueueAuditSink(_workspace.QueueFile), timeoutSeconds: 6);
+        var operation = TestWorkspace.Operation(_workspace.WriteText("queued-deadline.txt", "fixture"));
+        var queuedOperation = TestWorkspace.Operation(_workspace.WriteText("queued-content.txt", "other fixture"));
+        using var shutdown = new CancellationTokenSource();
+        Task<InspectionResult> Inspect(FileOperation current) => staged
+            ? service.InspectStagedAsync(current, shutdown.Token)
+            : service.InspectAsync(current, shutdown.Token);
+        var first = new[] { Inspect(operation), Inspect(operation) };
+        long queuedAt = 0, releasedAt = 0, firstReturnedAt = 0, queuedReturnedAt = 0;
+        long resultElapsedMs = -1;
+        try
+        {
+            await extractor.BothEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var elapsed = Stopwatch.StartNew();
+            queuedAt = Stopwatch.GetTimestamp();
+            var queued = Inspect(queuedOperation);
+            await Task.Delay(TimeSpan.FromSeconds(4));
+            releasedAt = Stopwatch.GetTimestamp();
+            extractor.Release.TrySetResult();
+            Assert.All(await Task.WhenAll(first), result => Assert.Equal(Verdict.Approved, result.Verdict));
+            firstReturnedAt = Stopwatch.GetTimestamp();
+            await extractor.QueuedEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var queuedResult = await queued;
+            queuedReturnedAt = Stopwatch.GetTimestamp();
+            resultElapsedMs = queuedResult.ElapsedMs;
+            AssertTimeout(queuedResult, staged);
+            elapsed.Stop();
+            // Resetting the timeout at admission would take about ten seconds
+            // (four waiting + six parsing), instead of the single six-second budget.
+            Assert.InRange(elapsed.ElapsedMilliseconds, 5_500, 7_500);
+            await extractor.QueuedCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await WaitForWorkerReleaseAsync(service);
+        }
+        finally
+        {
+            // Capture through xUnit so the TRX retains evidence on failure.
+            // Result.ElapsedMs ends before legacy audit; the outer assertion
+            // intentionally still includes that work and keeps its same band.
+            double Offset(long at) => queuedAt == 0 || at == 0 ? -1 :
+                (at - queuedAt) * 1000d / Stopwatch.Frequency;
+            try
+            {
+                output.WriteLine($"QueuedDeadline staged={staged} resultElapsedMs={resultElapsedMs} " +
+                    $"releaseMs={Offset(releasedAt):F1} firstResultsMs={Offset(firstReturnedAt):F1} " +
+                    $"parserEntryMs={Offset(Volatile.Read(ref extractor.QueuedEnteredAt)):F1} " +
+                    $"parserCancellationMs={Offset(Volatile.Read(ref extractor.QueuedCancelledAt)):F1} " +
+                    $"queuedReturnMs={Offset(queuedReturnedAt):F1}");
+            }
+            finally
+            {
+                extractor.Release.TrySetResult();
+                shutdown.Cancel();
+                await WaitForWorkerReleaseAsync(service);
+            }
+        }
+    }
+
+    private InspectionService Service(ITextExtractor extractor, LocalQueueAuditSink sink, int timeoutSeconds = 3) => new(
+        new FixedPolicyStore(LocalPolicyStore.CreateDefault() with { Version = 11, InspectionTimeoutSeconds = timeoutSeconds }),
+        sink, new ExtractorRegistry([extractor]), new VerdictCache());
+
+    private static async Task WaitForWorkerReleaseAsync(InspectionService service)
+    {
+        var wait = Stopwatch.StartNew();
+        while (service.ActiveInspectionWorkers != 0 && wait.Elapsed < TimeSpan.FromSeconds(10))
+            await Task.Delay(10);
+        Assert.Equal(0, service.ActiveInspectionWorkers);
+    }
+
+    private static void AssertTimeout(InspectionResult result, bool staged)
+    {
+        Assert.Equal(staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection, result.Verdict);
+        Assert.Equal("inspection_timeout", result.Reason);
+        Assert.Equal(11, result.PolicyVersion);
+        Assert.True(result.InScope);
+        Assert.False(result.FromCache);
+        Assert.Empty(result.Findings);
+    }
+
+    private sealed class FixedPolicyStore(Policy policy) : IPolicyStore
+    {
+        public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(policy);
+        public Task<Policy> LoadCurrentAsync(CancellationToken token) => LoadAsync(token);
+    }
+
+    private sealed class NoncooperativeExtractor(bool lateFailure) : ITextExtractor
+    {
+        public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string> { ".txt" };
+        public TaskCompletionSource BothEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource BothFinished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _calls, _active, _peakActive, _finished;
+        public int Calls => Volatile.Read(ref _calls);
+        public int Active => Volatile.Read(ref _active);
+        public int PeakActive => Volatile.Read(ref _peakActive);
+        public async Task<string> ExtractAsync(Stream content, CancellationToken token)
+        {
+            int call = Interlocked.Increment(ref _calls);
+            int active = Interlocked.Increment(ref _active);
+            int peak;
+            do { peak = Volatile.Read(ref _peakActive); }
+            while (active > peak && Interlocked.CompareExchange(ref _peakActive, active, peak) != peak);
+            if (call == 2) BothEntered.TrySetResult();
+            try
+            {
+                if (call <= 2)
+                {
+                    await Release.Task; // Deliberately ignores deadline cancellation.
+                    if (lateFailure) throw new InvalidDataException("Late parser diagnostic: 529.982.247-25");
+                    return "clean late result";
+                }
+                return await new PlainTextExtractor().ExtractAsync(content, token);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _active);
+                if (call <= 2 && Interlocked.Increment(ref _finished) == 2) BothFinished.TrySetResult();
+            }
+        }
+    }
+
+    private sealed class CooperativeExtractor : ITextExtractor
+    {
+        public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string> { ".txt" };
+        public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _calls, _active;
+        public int Active => Volatile.Read(ref _active);
+        public async Task<string> ExtractAsync(Stream content, CancellationToken token)
+        {
+            int call = Interlocked.Increment(ref _calls);
+            Interlocked.Increment(ref _active);
+            try
+            {
+                if (call == 1) await Task.Delay(Timeout.Infinite, token);
+                return await new PlainTextExtractor().ExtractAsync(content, token);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _active);
+                if (call == 1 && token.IsCancellationRequested) Cancelled.TrySetResult();
+            }
+        }
+    }
+
+    private sealed class QueuedDeadlineExtractor : ITextExtractor
+    {
+        public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string> { ".txt" };
+        public TaskCompletionSource BothEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource QueuedEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource QueuedCancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public long QueuedEnteredAt;
+        public long QueuedCancelledAt;
+        private int _calls;
+        public async Task<string> ExtractAsync(Stream content, CancellationToken token)
+        {
+            int call = Interlocked.Increment(ref _calls);
+            if (call <= 2)
+            {
+                if (call == 2) BothEntered.TrySetResult();
+                await Release.Task;
+                return "clean result";
+            }
+            Interlocked.Exchange(ref QueuedEnteredAt, Stopwatch.GetTimestamp());
+            QueuedEntered.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                throw new InvalidOperationException("The queued parser must be cancelled.");
+            }
+            finally
+            {
+                if (token.IsCancellationRequested)
+                {
+                    Interlocked.Exchange(ref QueuedCancelledAt, Stopwatch.GetTimestamp());
+                    QueuedCancelled.TrySetResult();
+                }
+            }
+        }
+    }
+}

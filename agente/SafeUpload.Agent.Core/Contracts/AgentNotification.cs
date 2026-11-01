@@ -39,6 +39,26 @@ public enum TransferPhase
     Retained
 }
 
+/// <summary>Seed-export restrictions remain active; the retired empty-save value is reserved for compatibility.</summary>
+public enum StagedBlockReason
+{
+    ReservedEmptySavePrivate = 0,
+    SeedExportRestricted = 1
+}
+
+/// <summary>Guidance for an unresolved native delete; it grants no recovery or publication action.</summary>
+public enum StagedRecoveryAdvice
+{
+    CloseApplication = 1,
+    RestartService = 2,
+    CollectDiagnostics = 3,
+    RestartWindows = 4,
+    JournalRecovery = 5,
+    PublicationUnresolved = 6,
+    PublicationBusy = 7,
+    UnsupportedMetadata = 8
+}
+
 /// <summary>
 /// Tells the user that a staged write has finished locally and is being checked.
 /// Only metadata crosses the notification pipe; the file stays in the private
@@ -53,7 +73,11 @@ public sealed record TransferNotification(
     string? PublishedSha256Hex = null,
     string? HandbackPath = null,
     bool? HandbackVerified = null,
-    string? SnapshotSha256Hex = null) : AgentNotification
+    string? SnapshotSha256Hex = null,
+    InspectionFailureKind? InspectionFailure = null,
+    StagedBlockReason? BlockReason = null,
+    StagedRecoveryAdvice? RecoveryAdvice = null,
+    string? MetadataFailure = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

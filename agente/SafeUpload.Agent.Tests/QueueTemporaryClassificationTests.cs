@@ -260,7 +260,7 @@ public sealed class QueueTemporaryClassificationTests
         if (invalidDirectory) { await File.WriteAllTextAsync(queue, "SEGREDO_PRIVADO"); queue = Path.Combine(queue, "queue.jsonl"); }
         else await File.WriteAllTextAsync(Candidate(workspace), "{partial");
         var name = "SafeUpload.TemporaryClassification.Test." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(), NullLogger<DiagnosticsPipeServer>.Instance,
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance), NullLogger<DiagnosticsPipeServer>.Instance,
             name, auditQueue: new LocalQueueAuditSink(queue));
         await server.StartAsync(CancellationToken.None);
         try

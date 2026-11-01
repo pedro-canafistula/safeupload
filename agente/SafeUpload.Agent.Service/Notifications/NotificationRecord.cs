@@ -1,4 +1,3 @@
-using SafeUpload.Agent.Service.Diagnostics;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
@@ -8,6 +7,7 @@ using System.Text.Json;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Service.Interception;
 
+using SafeUpload.Agent.Service.Diagnostics;
 namespace SafeUpload.Agent.Service.Notifications;
 
 public interface INotificationRecord
@@ -17,19 +17,21 @@ public interface INotificationRecord
 
 /// <summary>
 /// Emissions, not delivery receipts. One serialized writer; durable head anchors
-/// the tail. Any uncertain write poisons this instance until administrative
-/// recovery, so a damaged timeline can never authorize subsequent delivery.
+/// the tail. Uncertain writes suppress delivery until strict recovery succeeds.
+/// Recovery preserves a damaged timeline aside and starts a new chain;
+/// the damaged timeline can never authorize delivery or absence evidence.
 /// Privileged local actors are in the trust boundary (as with the journal).
 /// </summary>
 public sealed class NotificationRecord : INotificationRecord, IDisposable
 {
     public const int SegmentBytes = 4 * 1024 * 1024;
+    public const int RetainedSegmentBytes = 256 * 1024;
     public const int MaximumLineBytes = 16 * 1024;
     public const string ZeroHash = "0000000000000000000000000000000000000000000000000000000000000000";
     private readonly string _directory;
     private readonly int _limit;
     private readonly string _boot;
-    private readonly string _instance = Guid.NewGuid().ToString("D");
+    private string _instance = Guid.NewGuid().ToString("D");
     private readonly SecurityIdentifier? _testOwner;
     private readonly Lock _gate = new();
     private readonly ILogger _logger;
@@ -40,20 +42,25 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private string _hash = ZeroHash;
     private long _dropped;
     private bool _failed, _disposed;
+    private readonly bool _recoverCorruption;
+    private Exception? _firstStorageFailure;
+    private long _retryAt;
+    internal Func<long> RecoveryClock { get; set; } = Stopwatch.GetTimestamp;
 
     public NotificationRecord(string directory, ILogger<NotificationRecord> logger)
-        : this(directory, logger, SegmentBytes, BootIdentity(), false, true) { }
+        : this(directory, logger, RetainedSegmentBytes, BootIdentity(), false, true) { }
 
     // Tests use a private temporary tree and the invoking identity. Production
     // never permits this exception and never repairs an existing descriptor.
     internal NotificationRecord(string directory, ILogger logger, int segmentBytes,
-        string bootId, bool testIdentity, bool heartbeat = false)
+        string bootId, bool testIdentity, bool heartbeat = false, bool recoverCorruption = true)
     {
-        _directory = Path.GetFullPath(directory);
+        _directory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
         _limit = segmentBytes;
-        if (_limit < MaximumLineBytes * 2) throw new ArgumentOutOfRangeException(nameof(segmentBytes));
+        if (_limit < MaximumLineBytes * 2 || _limit > SegmentBytes) throw new ArgumentOutOfRangeException(nameof(segmentBytes));
         _boot = bootId;
         _logger = logger;
+        _recoverCorruption = recoverCorruption;
         if (OperatingSystem.IsWindows() && testIdentity)
         {
             using var identity = WindowsIdentity.GetCurrent();
@@ -86,7 +93,15 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         try
         {
             if (_lease.Length != 0) throw new InvalidDataException("Invalid notification writer lease.");
-            Recover();
+            // Strict validation remains available to evidence/validation tests.
+            // Only content damage is recoverable: ACL, link, sharing and I/O
+            // admission failures must still refuse the recorder.
+            try { Recover(initial: true); }
+            catch (Exception error) when (recoverCorruption &&
+                error is InvalidDataException or JsonException or FileNotFoundException)
+            {
+                PreserveCorruptRecord(error);
+            }
             Write("Start", null, null, null, null);
             if (heartbeat) _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
@@ -102,46 +117,64 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     {
         lock (_gate)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(NotificationRecord));
+            if (notification is TransferNotification candidate &&
+                (candidate.TransferId == Guid.Empty || !Enum.IsDefined(candidate.Phase)))
+                throw new InvalidDataException("Invalid transfer notification identity/phase.");
+            if (notification is TransferNotification { InspectionFailure: { } failure } failed &&
+                (!Enum.IsDefined(failure) || failed.Phase != TransferPhase.Blocked &&
+                 !(failed.Phase == TransferPhase.Retained && failure == SafeUpload.Agent.Core.Domain.InspectionFailureKind.NotEnoughStagingSpace)))
+                throw new InvalidDataException("Invalid transfer inspection failure classification.");
+            if (notification is TransferNotification { Phase: TransferPhase.Retained,
+                    InspectionFailure: SafeUpload.Agent.Core.Domain.InspectionFailureKind.NotEnoughStagingSpace } space &&
+                (space.PublishedSha256Hex is not null || space.OverrideAllowed))
+                throw new InvalidDataException("A staging-space refusal has no publication or override authority.");
+            if (notification is TransferNotification transfer)
+            {
+                if (transfer.BlockReason is { } reason &&
+                    (reason != StagedBlockReason.SeedExportRestricted ||
+                     transfer.Phase != TransferPhase.Blocked || transfer.OverrideAllowed ||
+                     transfer.HandbackVerified != false || transfer.HandbackPath is not null))
+                    throw new InvalidDataException("Invalid staged seed-export restriction.");
+                if (
+                ((transfer.PublishedSha256Hex is { } digest &&
+                  (digest.Length != 64 || !digest.All(Uri.IsHexDigit))) ||
+                 (transfer.SnapshotSha256Hex is { } snapshotDigest &&
+                  (snapshotDigest.Length != 64 || !snapshotDigest.All(Uri.IsHexDigit))) ||
+                 (transfer.Phase == TransferPhase.Released &&
+                  transfer.PublishedSha256Hex is null) ||
+                 (transfer.Phase == TransferPhase.Blocked &&
+                  (transfer.PublishedSha256Hex is not null || transfer.SnapshotSha256Hex is null)) ||
+                 (transfer.Phase != TransferPhase.Blocked && transfer.SnapshotSha256Hex is not null) ||
+                 (transfer.Phase == TransferPhase.Blocked &&
+                  (transfer.HandbackVerified is null ||
+                   (transfer.HandbackVerified == true && string.IsNullOrWhiteSpace(transfer.HandbackPath)) ||
+                   (transfer.HandbackVerified == false && transfer.HandbackPath is not null))) ||
+                 (transfer.Phase != TransferPhase.Blocked &&
+                  (transfer.HandbackPath is not null || transfer.HandbackVerified is not null))))
+                throw new InvalidDataException("Invalid staged hand-back notification evidence.");
+            }
+            if (notification is EventNotification audit && audit.Event.EventId == Guid.Empty)
+                throw new InvalidDataException("Invalid audit notification identity.");
+            string? contentDigest = (notification as TransferNotification) is { } outcome
+                ? outcome.PublishedSha256Hex ?? outcome.SnapshotSha256Hex : null;
+            string? handBackPath = notification is TransferNotification { HandbackVerified: true } returned
+                ? returned.HandbackPath : null;
+            var (kind, transferId, eventId, phase) = notification switch
+            {
+                TransferNotification t => ("Transfer", (Guid?)t.TransferId, (Guid?)null, t.Phase.ToString()),
+                EventNotification e => ("Event", (Guid?)null, (Guid?)e.Event.EventId, e.Event.Verdict.ToString()),
+                StatusNotification => ("Status", (Guid?)null, (Guid?)null, (string?)null),
+                HistoryNotification h => ("History", (Guid?)null, (Guid?)null, h.Available ? "available" : "unavailable"),
+                _ => throw new InvalidDataException("Unknown notification kind.")
+            };
             RequireHealthy();
             try
             {
-                if (notification is TransferNotification candidate &&
-                    (candidate.TransferId == Guid.Empty || !Enum.IsDefined(candidate.Phase)))
-                    throw new InvalidDataException("Invalid transfer notification identity/phase.");
-                if (notification is TransferNotification transfer &&
-                    ((transfer.PublishedSha256Hex is { } digest &&
-                      (digest.Length != 64 || !digest.All(Uri.IsHexDigit))) ||
-                     (transfer.SnapshotSha256Hex is { } snapshotDigest &&
-                      (snapshotDigest.Length != 64 || !snapshotDigest.All(Uri.IsHexDigit))) ||
-                     (transfer.Phase == TransferPhase.Released &&
-                      transfer.PublishedSha256Hex is null) ||
-                     (transfer.Phase == TransferPhase.Blocked &&
-                      (transfer.PublishedSha256Hex is not null || transfer.SnapshotSha256Hex is null)) ||
-                     (transfer.Phase != TransferPhase.Blocked && transfer.SnapshotSha256Hex is not null) ||
-                     (transfer.Phase == TransferPhase.Blocked &&
-                      (transfer.HandbackVerified is null ||
-                       (transfer.HandbackVerified == true && string.IsNullOrWhiteSpace(transfer.HandbackPath)) ||
-                       (transfer.HandbackVerified == false && transfer.HandbackPath is not null))) ||
-                     (transfer.Phase != TransferPhase.Blocked &&
-                      (transfer.HandbackPath is not null || transfer.HandbackVerified is not null))))
-                    throw new InvalidDataException("Invalid staged hand-back notification evidence.");
-                if (notification is EventNotification audit && audit.Event.EventId == Guid.Empty)
-                    throw new InvalidDataException("Invalid audit notification identity.");
-                string? contentDigest = (notification as TransferNotification) is { } outcome
-                    ? outcome.PublishedSha256Hex ?? outcome.SnapshotSha256Hex : null;
-                string? handBackPath = notification is TransferNotification { HandbackVerified: true } returned
-                    ? returned.HandbackPath : null;
-                var (kind, transferId, eventId, phase) = notification switch
-                {
-                    TransferNotification t => ("Transfer", (Guid?)t.TransferId, (Guid?)null, t.Phase.ToString()),
-                    EventNotification e => ("Event", (Guid?)null, (Guid?)e.Event.EventId, e.Event.Verdict.ToString()),
-                    StatusNotification => ("Status", (Guid?)null, (Guid?)null, (string?)null),
-                    HistoryNotification h => ("History", (Guid?)null, (Guid?)null, h.Available ? "available" : "unavailable"),
-                    _ => throw new InvalidDataException("Unknown notification kind.")
-                };
-                Write(kind, transferId, eventId, phase, targetSessionId, contentDigest, handBackPath);
+                Write(kind, transferId, eventId, phase, targetSessionId, contentDigest, handBackPath,
+                    (notification as TransferNotification)?.BlockReason);
             }
-            catch { _failed = true; throw; }
+            catch (Exception error) { MarkStorageFailure(error); throw; }
         }
     }
 
@@ -151,7 +184,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         {
             RequireHealthy();
             try { Write("Heartbeat", null, null, null, null); }
-            catch { _failed = true; throw; }
+            catch (Exception error) { MarkStorageFailure(error); throw; }
         }
     }
 
@@ -161,20 +194,55 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         {
             lock (_gate)
             {
-                if (_failed || _disposed) return;
+                if (_disposed || _failed && RecoveryClock() < _retryAt) return;
                 Heartbeat();
             }
         }
         catch (Exception ex) { _logger.LogSafeError(ex, "Notification record coverage failed; notifications suppressed until recovery"); }
     }
 
+    private void MarkStorageFailure(Exception error)
+    {
+        _failed = true;
+        if (_firstStorageFailure is null)
+        {
+            _firstStorageFailure = error;
+            _logger.LogError(error, "Notification record storage failed; delivery held pending recovery");
+        }
+        _retryAt = RecoveryClock() + Stopwatch.Frequency;
+    }
+
     private void RequireHealthy()
     {
-        if (_failed || _disposed) throw new IOException("Notification record is closed after a failure or shutdown.");
+        if (_disposed) throw new ObjectDisposedException(nameof(NotificationRecord));
+        if (!_failed) return;
+        if (RecoveryClock() < _retryAt)
+            throw new IOException("Notification record recovery pending; delivery refused.", _firstStorageFailure);
+        try
+        {
+            RequireDirectory();
+            try { Recover(); }
+            catch (Exception error) when (_recoverCorruption &&
+                error is InvalidDataException or JsonException or FileNotFoundException)
+            {
+                PreserveCorruptRecord(error);
+            }
+            // Record-before-queue remains intact: never deliver the failed
+            // emission merely because its bytes later turn out to be valid.
+            Write("Start", null, null, null, null);
+            _failed = false;
+            _firstStorageFailure = null;
+            _logger.LogInformation("Notification record recovered; new emissions can be recorded");
+        }
+        catch (Exception error)
+        {
+            MarkStorageFailure(error);
+            throw new IOException("Notification record recovery failed; delivery refused.", _firstStorageFailure);
+        }
     }
 
     private void Write(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session,
-        string? digest = null, string? handBackPath = null)
+        string? digest = null, string? handBackPath = null, StagedBlockReason? blockReason = null)
     {
         RequireDirectory();
         if (File.Exists(Active))
@@ -196,20 +264,23 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 _dropped = dropped;
             }
         }
-        WriteLine(kind, transfer, eventId, phase, session, _dropped, digest, handBackPath);
+        WriteLine(kind, transfer, eventId, phase, session, _dropped, digest, handBackPath, blockReason);
     }
 
     private void WriteLine(string kind, Guid? transfer, Guid? eventId, string? phase, uint? session, long dropped,
-        string? digest = null, string? handBackPath = null)
+        string? digest = null, string? handBackPath = null, StagedBlockReason? blockReason = null)
     {
         if (!File.Exists(Active)) { using var created = Create(Active); }
         using var file = Open(Active, writable: true);
         var entry = new NotificationRecordEntry(1, checked(_sequence + 1), _boot, _instance,
             DateTimeOffset.UtcNow, Stopwatch.GetTimestamp(), Stopwatch.Frequency,
             kind, transfer, eventId, phase, session, _hash, dropped)
-        { Sha256Hex = digest, HandBackPath = handBackPath };
+        { Sha256Hex = digest, HandBackPath = handBackPath, BlockReason = blockReason };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(entry);
-        if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > _limit)
+        // A first rotation after upgrading may append its announcement to an
+        // old (up to 4 MiB) segment. Preserve and validate that chain unchanged.
+        int limit = kind == "Rotation" ? SegmentBytes : _limit;
+        if (bytes.Length + 1 > MaximumLineBytes || file.Length + bytes.Length + 1 > limit)
             throw new InvalidDataException("Notification record size bound exceeded.");
         file.Position = file.Length;
         file.Write(bytes);
@@ -239,7 +310,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         _hash = hash;
     }
 
-    private void Recover()
+    private void Recover(bool initial = false)
     {
         var names = Directory.EnumerateFileSystemEntries(_directory).Select(Path.GetFileName).Where(n => n != "writer.lock").ToArray();
         if (names.Any(n => n is not ("emissions.jsonl" or "previous.jsonl" or "head.json")))
@@ -249,7 +320,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
             if (File.Exists(path)) { using var file = Open(path); lines.AddRange(ReadLines(file)); }
         if (lines.Count == 0)
         {
-            if (!_fresh || names.Length != 0) throw new InvalidDataException("Empty/truncated notification record.");
+            if (!initial || !_fresh || names.Length != 0) throw new InvalidDataException("Empty/truncated notification record.");
             return;
         }
         var first = lines[0].Entry;
@@ -270,6 +341,35 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
         _dropped = lines[^1].Entry.DroppedThroughSequence;
     }
 
+    private void PreserveCorruptRecord(Exception error)
+    {
+        RequireDirectory();
+        // Preflight every child before moving anything. These files are only
+        // untrusted evidence: check type/links without reading bytes or trusting
+        // their DACL. The trusted parent authorizes the archival rename.
+        var paths = Directory.EnumerateFileSystemEntries(_directory).Where(p => p != Lease).ToArray();
+        foreach (string path in paths)
+        {
+            if (Path.GetFileName(path) is not ("emissions.jsonl" or "previous.jsonl" or "head.json" or "head.tmp"))
+                throw new IOException("Unexpected notification child cannot be archived automatically: " + path, error);
+            RecordFile.RequireRegularFileForPreservation(path);
+        }
+        string archive = _directory + ".corrupt-" + DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffffffZ") +
+            "-" + Guid.NewGuid().ToString("N");
+        if (OperatingSystem.IsWindows()) new DirectoryInfo(archive).Create(DirectoryAcl());
+        else Directory.CreateDirectory(archive);
+        // Keep the exclusive writer lease in place throughout recovery. Each
+        // rename preserves original bytes/ACLs and never overwrites evidence.
+        // A failed move aborts startup; a later attempt preserves the remainder.
+        foreach (string path in paths) File.Move(path, Path.Combine(archive, Path.GetFileName(path)));
+        _instance = Guid.NewGuid().ToString("D"); // Explicit coverage discontinuity, never sequence reuse under one identity.
+        _sequence = 0;
+        _hash = ZeroHash;
+        _dropped = 0;
+        _logger.LogWarning(error,
+            "Corrupt notification record preserved at {Archive}; starting a new notification chain. Prior coverage is unavailable.", archive);
+    }
+
     internal static List<(NotificationRecordEntry Entry, string Hash)> ReadLines(FileStream file)
     {
         using var memory = new MemoryStream();
@@ -288,7 +388,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
             if (entry.Version != 1 || entry.Sequence <= 0 || entry.DroppedThroughSequence < 0 ||
                 entry.DroppedThroughSequence >= entry.Sequence || string.IsNullOrWhiteSpace(entry.BootId) ||
                 !Guid.TryParse(entry.InstanceId, out var instance) || instance == Guid.Empty || entry.Utc == default || entry.Utc.Offset != TimeSpan.Zero || entry.Qpc < 0 || entry.QpcFrequency <= 0 ||
-                entry.PreviousSha256.Length != 64 || !entry.PreviousSha256.All(Uri.IsHexDigit) ||
+                entry.PreviousSha256 is not { Length: 64 } || !entry.PreviousSha256.All(Uri.IsHexDigit) ||
                 entry.Kind is not ("Start" or "Heartbeat" or "Stop" or "Rotation" or "Transfer" or "Event" or "Status" or "History"))
                 throw new InvalidDataException("Invalid notification record fields.");
             if ((entry.Kind == "Transfer" && (entry.TransferId is null || entry.TransferId == Guid.Empty ||
@@ -296,7 +396,9 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
                 (entry.Kind == "Event" && (entry.EventId is null || entry.EventId == Guid.Empty ||
                     entry.Phase is not ("Approved" or "Blocked" or "AllowedWithoutInspection" or "Retained"))) ||
                 (entry.Kind == "History" && (entry.TransferId is not null || entry.EventId is not null ||
-                    entry.Phase is not ("available" or "unavailable"))))
+                    entry.Phase is not ("available" or "unavailable"))) ||
+                (entry.BlockReason is { } reason &&
+                    (!Enum.IsDefined(reason) || entry.Kind != "Transfer" || entry.Phase != "Blocked")))
                 throw new InvalidDataException("Invalid notification payload identity/phase.");
             result.Add((entry, Convert.ToHexString(SHA256.HashData(line))));
             start = i + 1;
@@ -307,7 +409,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
     private FileStream Open(string path, bool writable = false)
     {
         RequireDirectory();
-        var stream = StagedJournalFile.Open(path, writable: writable, maximumBytes: _limit);
+        var stream = RecordFile.Open(path, writable: writable, maximumBytes: SegmentBytes);
         try { if (OperatingSystem.IsWindows()) RequireAcl(stream.GetAccessControl(), false); return stream; }
         catch { stream.Dispose(); throw; }
     }
@@ -341,7 +443,7 @@ public sealed class NotificationRecord : INotificationRecord, IDisposable
 
     private void RequireParent()
     {
-        StagedTransferJournal.RequireProtectedParent(_directory);
+        RecordFile.RequireProtectedParent(_directory);
         RequireAcl(new DirectoryInfo(Path.GetDirectoryName(_directory)!).GetAccessControl(), true);
     }
 
@@ -410,6 +512,7 @@ public sealed record NotificationRecordEntry(int Version, long Sequence, string 
     // verified hand-back, its path, so the durable record alone proves what was released.
     public string? Sha256Hex { get; init; }
     public string? HandBackPath { get; init; }
+    public StagedBlockReason? BlockReason { get; init; }
 }
 public sealed record NotificationRecordHead(int Version, long Sequence, string Sha256);
 

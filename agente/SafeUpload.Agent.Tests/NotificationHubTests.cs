@@ -313,7 +313,6 @@ public class NotificationHubTests
         Assert.False(unknown.Reader.TryRead(out _));
     }
 
-    /// <summary>Relógio de teste, avançado à mão.</summary>
     private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
     {
         private DateTimeOffset _agora = inicio;

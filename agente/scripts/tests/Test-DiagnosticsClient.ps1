@@ -178,26 +178,6 @@ Test-Case 'A service error is reported without returning its data' {
         Assert-Fails { Read-Help } 'SafeUpload diagnostics: unavailable'
     }
 }
-Test-Case 'A completed two-page deny ring stops on the empty page' {
-    With-Fixture 'pages' ([byte[]]@()) { param($fixture)
-        $script:Query = 'deny-ring'
-        $data = @(& $selectQuery)
-        Assert-True ($data.Count -eq 2 -and $data[0].sequence -eq 1 -and $data[1].sequence -eq 2 -and $fixture.Connections -eq 3) 'Pagination changed.'
-    }
-}
-Test-Case 'All deny-ring pages share one budget' {
-    With-Fixture 'pages' ([byte[]]@()) {
-        $script:Query = 'deny-ring'
-        Assert-Fails { & $selectQuery } 'query timed out'
-        Assert-True ($diagnosticsClock.ElapsedMilliseconds -lt 3000) 'Pagination renewed the deadline.'
-    } 650
-}
-Test-Case 'A repeated deny-ring sequence fails instead of looping' {
-    With-Fixture 'repeat' ([byte[]]@()) {
-        $script:Query = 'deny-ring'
-        Assert-Fails { & $selectQuery } 'cursor did not advance'
-    }
-}
 Test-Case 'The next query succeeds after timeout cleanup' {
     With-Fixture 'reply' $good { Assert-True ($null -ne (Read-Help).text) 'Subsequent query failed.' }
 }

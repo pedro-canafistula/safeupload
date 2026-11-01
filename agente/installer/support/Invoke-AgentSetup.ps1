@@ -20,6 +20,7 @@ $createdByThisRun = $false
 $startupCreatedByThisRun = $false
 $startupKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
 $startupValue = '"' + (Join-Path $InstallRoot 'ui\SafeUpload.Agent.App.exe') + '"'
+$winFspDll = Join-Path ${env:ProgramFiles(x86)} 'WinFsp\bin\winfsp-x64.dll'
 
 function Remove-OwnedStartup {
     $startup = Get-ItemProperty -LiteralPath $startupKey -Name SafeUploadAgentConsole -ErrorAction SilentlyContinue
@@ -85,7 +86,9 @@ try {
     if ($Action -in @('Preflight', 'Install')) {
         $answers = Get-Content -LiteralPath $AnswersPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $plan = New-SafeUploadInstallPlan -InstallRoot $InstallRoot -Mode $answers.mode -AdminBaseUrl $answers.adminBaseUrl
-        Assert-SafeUploadMachineState -State $state -Mode $plan.Mode -Operation Install
+        $winFspBundled = $answers.PSObject.Properties.Name -contains 'winFspBundled' -and [bool]$answers.winFspBundled
+        Assert-SafeUploadMachineState -State $state -Mode $plan.Mode -Operation Install `
+            -WinFspAvailable ((Test-Path -LiteralPath $winFspDll) -or $winFspBundled)
         if ($Action -eq 'Preflight') {
             if ((Test-Path -LiteralPath $InstallRoot) -and (Get-ChildItem -LiteralPath $InstallRoot -Force | Select-Object -First 1)) {
                 throw 'The installation directory is not empty. Existing installations require a maintenance review.'
@@ -96,36 +99,37 @@ try {
         } else {
             $manifest = Test-SafeUploadPayload -Root $InstallRoot
             if (-not (Test-Path -LiteralPath $plan.Executable -PathType Leaf)) { throw 'Service executable is absent.' }
-            if ($plan.Mode -eq 'Minifilter') {
-                # The existing script may create the service before a later step fails.
-                $createdByThisRun = $true
-                & (Join-Path $PSScriptRoot 'Install-SafeUploadAgent.ps1') -ServiceExecutablePath $plan.Executable `
-                    -AdminBaseUrl $plan.AdminBaseUrl -ServiceArguments @('--Interception:Mode=Minifilter',
-                    '--Interception:StagingPrototype=true', ('--CentroAdministracao:BaseUrl=' + $plan.AdminBaseUrl),
-                    '--InspecaoTls:Habilitada=false') | Out-Null
-            } else {
-                $newService = New-Service -Name $serviceName -DisplayName 'SafeUpload Agent' -BinaryPathName $plan.CommandLine `
-                    -Description 'SafeUpload endpoint agent' -StartupType Automatic
-                # A failed New-Service must never claim an existing service for rollback.
-                $createdByThisRun = $true
-                $newService.Dispose()
-                Invoke-Sc @('sidtype', $serviceName, 'unrestricted')
+            if ($plan.Mode -eq 'Drive') {
+                # WinFsp and the gate driver, from this package when it bundles them (Install-SafeUploadAgent.ps1).
+                $bundledMsi = Join-Path $InstallRoot 'prereq\winfsp.msi'
+                $bundledDriver = Join-Path $InstallRoot 'driver'
+                Assert-SafeUploadMachineState -State $state -Mode Drive -Operation Install `
+                    -WinFspAvailable ((Test-Path -LiteralPath $winFspDll) -or (Test-Path -LiteralPath $bundledMsi))
+                $prerequisites = @{ PrerequisitesOnly = $true }
+                if (Test-Path -LiteralPath $bundledMsi) { $prerequisites.WinFspMsi = $bundledMsi }
+                if (Test-Path -LiteralPath (Join-Path $bundledDriver 'SafeUpload.sys')) { $prerequisites.DriverPath = $bundledDriver }
+                & (Join-Path $PSScriptRoot 'Install-SafeUploadAgent.ps1') @prerequisites | Out-Null
             }
+            $newService = New-Service -Name $serviceName -DisplayName 'SafeUpload Agent' -BinaryPathName $plan.CommandLine `
+                -Description 'SafeUpload endpoint agent' -StartupType Automatic
+            # A failed New-Service must never claim an existing service for rollback.
+            $createdByThisRun = $true
+            $newService.Dispose()
+            Invoke-Sc @('sidtype', $serviceName, 'unrestricted')
             Assert-OwnedService
             $registered = Get-ItemProperty -LiteralPath $serviceKey
             if ($registered.ImagePath -ne $plan.CommandLine -or [int]$registered.ServiceSidType -ne 1) {
                 throw 'Service configuration read-back failed.'
             }
-            if ($plan.Mode -eq 'FileSystemWatcher') {
-                Start-Service $serviceName
-                $service = Get-Service $serviceName
-                try { $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30)) }
-                finally { $service.Dispose() }
-                Start-Sleep -Seconds 3
-                $service = Get-Service $serviceName
-                try { if ($service.Status -ne 'Running') { throw 'The service stopped during its initial startup.' } }
-                finally { $service.Dispose() }
-            }
+            # Start in both modes and make sure the service stays up.
+            Start-Service $serviceName
+            $service = Get-Service $serviceName
+            try { $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30)) }
+            finally { $service.Dispose() }
+            Start-Sleep -Seconds 3
+            $service = Get-Service $serviceName
+            try { if ($service.Status -ne 'Running') { throw 'The service stopped during its initial startup.' } }
+            finally { $service.Dispose() }
             [ordered]@{ schemaVersion = 1; version = $manifest.version; commit = $manifest.commit; mode = $plan.Mode;
                 adminBaseUrl = $plan.AdminBaseUrl; installedAtUtc = [DateTime]::UtcNow.ToString('o'); restartRequired = $plan.RestartRequired
             } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'installation.json') -Encoding UTF8
@@ -133,11 +137,16 @@ try {
             $startupCreatedByThisRun = $true
         }
     } else {
-        Assert-SafeUploadMachineState -State $state -Mode Minifilter -Operation Uninstall
+        Assert-SafeUploadMachineState -State $state -Mode Drive -Operation Uninstall
         Assert-OwnedService
         if ($Action -eq 'Uninstall') {
             $null = Stop-SafeUploadInstalledUi -ExecutablePath (Join-Path $InstallRoot 'ui\SafeUpload.Agent.App.exe')
             Remove-OwnedService; Remove-OwnedStartup
+            # The gate driver belongs to the agent; WinFsp is a shared component and stays.
+            if (Test-Path -LiteralPath $driverKey) {
+                & "$env:SystemRoot\System32\fltmc.exe" unload SafeUpload 2>&1 | Out-Null
+                Invoke-Sc @('delete', 'SafeUpload')
+            }
         }
     }
     [IO.File]::WriteAllText($ResultPath, 'OK', [Text.UTF8Encoding]::new($false))
@@ -149,10 +158,6 @@ try {
     }
     if ($createdByThisRun) {
         try { Remove-OwnedService } catch { $message += ' Service cleanup requires review: ' + $_.Exception.Message }
-        if (Test-Path -LiteralPath $driverKey) {
-            try { Invoke-Sc @('config', 'SafeUpload', 'start=', 'demand') }
-            catch { $message += ' Driver startup state requires review: ' + $_.Exception.Message }
-        }
     }
     [IO.File]::WriteAllText($ResultPath, $message, [Text.UTF8Encoding]::new($false))
     Write-Error $message -ErrorAction Continue

@@ -1,4 +1,4 @@
-using SafeUpload.Agent.Service.Diagnostics;
+using SafeUpload.Agent.Service.Gate;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -14,10 +14,9 @@ namespace SafeUpload.Agent.Service.Diagnostics;
 /// <summary>
 /// Administrator-only field diagnostics: one JSON request line in, one JSON reply line out, then the pipe closes.
 ///
-/// <para>The driver's filter port accepts a single client and this service holds it, so the Inspector cannot read
-/// driver state while the product runs. This pipe also serves process-local communication snapshots without a driver.
-/// Driver queries are relayed over the service's own connection:
-/// <c>{"query":"counters"}</c> and <c>{"query":"deny-ring","after":0}</c>. It changes nothing and is not reachable by
+/// <para>The gate driver's port accepts a single client and this service holds it, so gate counters are relayed here:
+/// <c>{"query":"counters"}</c>. The pipe also serves process-local communication and audit queue snapshots. It changes
+/// nothing and is not reachable by
 /// standard users: the DACL grants only SYSTEM and Administrators. (There is deliberately no deny entry for the
 /// NETWORK group: a logon created for an administrator over SSH or a scheduled task carries it, and the harness and
 /// support staff read this pipe from such sessions. A remote reader must authenticate as an administrator anyway.)</para>
@@ -31,7 +30,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
-    private readonly DriverDiagnosticsSource _source;
+    private readonly GateClient _gate;
     private readonly ILogger<DiagnosticsPipeServer> _logger;
     private readonly string _pipeName;
     private readonly CommunicationHealth? _communicationHealth;
@@ -39,11 +38,11 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private readonly AuditQueueHealth? _auditHealth;
 
     /// <param name="pipeName">Only tests pass a name; the service always uses <see cref="PipeName"/>.</param>
-    public DiagnosticsPipeServer(DriverDiagnosticsSource source, ILogger<DiagnosticsPipeServer> logger,
+    public DiagnosticsPipeServer(GateClient gate, ILogger<DiagnosticsPipeServer> logger,
         string pipeName = PipeName, CommunicationHealth? communicationHealth = null, LocalQueueAuditSink? auditQueue = null,
         AuditQueueHealth? auditHealth = null)
     {
-        _source = source ?? throw new ArgumentNullException(nameof(source));
+        _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipeName = pipeName;
         _communicationHealth = communicationHealth;
@@ -147,21 +146,20 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                         Ok(query, JsonSerializer.SerializeToNode(_communicationHealth.Read(), new JsonSerializerOptions
                         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                 case "counters":
-                    return Ok(query, _source.ReadCounters());
-                case "deny-ring":
-                    ulong after = request["after"]?.GetValue<ulong>() ?? 0;
-                    return Ok(query, _source.ReadDenyRing(after));
+                    return _gate.Counters() is { } counters
+                        ? Ok(query, new JsonObject { ["refused"] = counters.Refused, ["renamesRefused"] = counters.RenamesRefused })
+                        : Error(query, "Gate driver is not connected.");
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "deny-ring", "communication-health", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
+                        ["queries"] = new JsonArray("counters", "communication-health", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
                         ["temporaryClassification"] = "bounded Windows content scan; structural validity does not prove ownership, complete copy or recovery eligibility; no promotion or deletion",
                         ["retentionPreview"] = "requires explicit occurredBeforeUtc in UTC; occurrence-age counts only, never deletion eligibility",
                         ["auditHealth"] = "process-local operation failures and resumptions; resets on restart; no file scan or proof that failed writes were recovered",
                         ["auditIntegrity"] = "explicit read-only full scan; line counts include duplicate IDs; deadline expiry returns no partial inventory; no repair, deletion or proof of delivery",
                         ["communicationHealth"] = "process-local communication results; counters reset on restart; no proof of API persistence or protection",
-                        ["denyRingCursor"] = "pass the previous reply's nextSequence minus one as after; 0 reads from the start",
-                        ["connected"] = _source.IsConnected,
+                        ["counters"] = "writes the gate driver refused since it loaded",
+                        ["connected"] = _gate.IsConnected,
                     });
                 default:
                     return Error(query, "Unknown query.");

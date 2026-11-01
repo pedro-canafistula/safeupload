@@ -126,7 +126,7 @@ public sealed class AuditQueueDiagnosticConcurrencyTests
         await gate.WaitAsync();
         var held = true;
         var name = "SafeUpload.Deadline.Test." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(),
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance),
             NullLogger<DiagnosticsPipeServer>.Instance, name, auditQueue: sink);
         using var harnessDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var token = harnessDeadline.Token;

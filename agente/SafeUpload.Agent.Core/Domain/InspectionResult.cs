@@ -1,5 +1,16 @@
 namespace SafeUpload.Agent.Core.Domain;
 
+/// <summary>Safe, user-facing classification of an incomplete inspection; no parser diagnostics.</summary>
+public enum InspectionFailureKind
+{
+    TooLarge,
+    UnsupportedFormat,
+    Timeout,
+    ReadOrParse,
+    Limit,
+    NotEnoughStagingSpace
+}
+
 /// <summary>
 /// O que o motor de inspeção conclui sobre uma operação.
 /// </summary>
@@ -8,7 +19,7 @@ namespace SafeUpload.Agent.Core.Domain;
 /// <param name="Reason">
 /// Motivo padronizado quando não houve inspeção de conteúdo. Segue a mesma
 /// grafia usada na auditoria: file_too_large, unsupported_format,
-/// inspection_timeout, parse_error:Tipo, out_of_scope.
+/// inspection_timeout, inspection_limit, parse_error:Tipo, out_of_scope.
 /// </param>
 /// <param name="ElapsedMs">
 /// Tempo da decisão, em milissegundos. É o número que demonstra os requisitos
@@ -30,6 +41,10 @@ public sealed record InspectionResult(
     int PolicyVersion,
     bool InScope)
 {
+    /// <summary>Private staged decision binding; not an audit/UI field or driver ABI.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PolicyContentFingerprint { get; init; }
+
     /// <summary>The event whose write completed for this invocation; never a cached decision or delivery receipt.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public AuditEvent? RecordedEvent { get; init; }
@@ -43,4 +58,17 @@ public sealed record InspectionResult(
 
     /// <summary>Verdadeiro quando a operação deve ser negada (RN-005).</summary>
     public bool IsBlocked => Verdict == Verdict.Blocked;
+
+    /// <summary>Only standard failure codes become UI metadata. Exception messages never cross this boundary.</summary>
+    public InspectionFailureKind? FailureKind => Reason switch
+    {
+        "not_enough_staging_space" => InspectionFailureKind.NotEnoughStagingSpace,
+        "file_too_large" => InspectionFailureKind.TooLarge,
+        "unsupported_format" => InspectionFailureKind.UnsupportedFormat,
+        "archive_encrypted" or "archive_unsupported_member" or "archive_unsupported_structure" or "archive_7z_unavailable" => InspectionFailureKind.UnsupportedFormat,
+        "inspection_timeout" => InspectionFailureKind.Timeout,
+        "inspection_limit" => InspectionFailureKind.Limit,
+        { } reason when reason.StartsWith("parse_error:", StringComparison.Ordinal) => InspectionFailureKind.ReadOrParse,
+        _ => null
+    };
 }

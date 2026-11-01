@@ -33,11 +33,12 @@ try {
     }
     $installRoot = Join-Path $fixture 'Program Files\SafeUpload\Agent'
     Test-Case 'A path containing spaces remains one quoted service executable' {
-        $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode Minifilter -AdminBaseUrl 'https://central.example.test/agent/'
+        $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode Drive -AdminBaseUrl 'https://central.example.test/agent/'
         Assert-True $plan.CommandLine.StartsWith(('"' + (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') + '" '))
-        Assert-True $plan.CommandLine.Contains('--CentroAdministracao:BaseUrl=https://central.example.test/agent/ --InspecaoTls:Habilitada=false')
-        Assert-True ($plan.RestartRequired -and $plan.CommandLine.Contains('--Interception:StagingPrototype=true'))
+        Assert-True $plan.CommandLine.Contains('--Interception:Mode=Drive --CentroAdministracao:BaseUrl=https://central.example.test/agent/ --InspecaoTls:Habilitada=false')
+        Assert-True (-not $plan.RestartRequired -and -not $plan.CommandLine.Contains('StagingPrototype'))
     }
+    Test-Case 'Drive is the default mode' { Assert-True ((New-SafeUploadInstallPlan -InstallRoot $installRoot).Mode -eq 'Drive') }
     Test-Case 'Test mode is explicit and has no staged-driver flag' {
         $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode FileSystemWatcher
         Assert-True ($plan.CommandLine.Contains('--CentroAdministracao:BaseUrl= --InspecaoTls:Habilitada=false') -and
@@ -65,18 +66,13 @@ try {
     Test-Case 'Inherited-only CREATOR OWNER ACE is allowed on a trusted-owned parent' { Assert-SafeUploadInstallAcl $acl }
     $state = [pscustomobject]@{AgentInstalled=$false;DriverInstalled=$false;DriverStart=-1;DriverState='Absent'}
     Test-Case 'Fresh test mode needs no driver' { Assert-SafeUploadMachineState $state FileSystemWatcher Install }
-    Test-Case 'Missing driver blocks minifilter installation' { Assert-Rejected { Assert-SafeUploadMachineState $state Minifilter Install } }
-    $state.DriverInstalled=$true; $state.DriverStart=3; $state.DriverState='Stopped'
-    Test-Case 'Stopped preinstalled driver permits the existing seeding procedure' { Assert-SafeUploadMachineState $state Minifilter Install }
+    Test-Case 'Drive mode installs when WinFsp is available' { Assert-SafeUploadMachineState $state Drive Install }
+    Test-Case 'Drive mode without WinFsp is refused' { Assert-Rejected { Assert-SafeUploadMachineState $state Drive Install -WinFspAvailable $false } }
+    $state.DriverInstalled=$true; $state.DriverStart=3; $state.DriverState='Running'
     Test-Case 'Registered driver blocks driver-free mode' { Assert-Rejected { Assert-SafeUploadMachineState $state FileSystemWatcher Install } }
-    Test-Case 'Demand-start driver blocks removal of the agent' { Assert-Rejected { Assert-SafeUploadMachineState $state Minifilter Uninstall } }
-    $state.DriverState='Running'; $state.DriverStart=4
-    Test-Case 'Loaded driver blocks removal even when disabled for the next boot' { Assert-Rejected { Assert-SafeUploadMachineState $state Minifilter Uninstall } }
-    Test-Case 'Loaded driver blocks policy seeding at install' { Assert-Rejected { Assert-SafeUploadMachineState $state Minifilter Install } }
-    $state.DriverState='Stopped'
-    Test-Case 'Disabled and stopped driver permits removal of the agent' { Assert-SafeUploadMachineState $state Minifilter Uninstall }
+    Test-Case 'A loaded gate driver does not block removal (uninstall removes it)' { Assert-SafeUploadMachineState $state Drive Uninstall }
     $state.AgentInstalled=$true
-    Test-Case 'Existing service is never overwritten by the initial installer' { Assert-Rejected { Assert-SafeUploadMachineState $state Minifilter Install } }
+    Test-Case 'Existing service is never overwritten by the initial installer' { Assert-Rejected { Assert-SafeUploadMachineState $state Drive Install } }
     $payloadFile = Join-Path $fixture 'sample.dll'
     [IO.File]::WriteAllText($payloadFile, 'synthetic payload')
     $hash=(Get-FileHash -LiteralPath $payloadFile -Algorithm SHA256).Hash

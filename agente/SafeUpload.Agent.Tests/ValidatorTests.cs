@@ -50,6 +50,16 @@ public class ValidatorTests
     // Outros números que satisfazem Luhn com 16 dígitos.
     [InlineData("5555555555554444", true)]
     [InlineData("6011111111111117", true)]
+    [InlineData("4012888888881881", true)]
+    [InlineData("0000000000000018", true)]
+    // Decisão de 2026-10-16: só a sequência toda zero deixa de ser cartão.
+    [InlineData("0000000000000000", false)]
+    // O validador recebe apenas dígitos; os scanners normalizam separadores.
+    [InlineData("0000 0000 0000 0000", false)]
+    [InlineData("0000-0000-0000-0000", false)]
+    [InlineData("0000.0000.0000.0000", false)]
+    [InlineData("0000/0000/0000/0000", false)]
+    [InlineData("0000.0000-0000/0000", false)]
     // A RN-003 fixa o comprimento em 16: 15 dígitos que passam em Luhn
     // (Amex) ficam de fora por decisão de escopo.
     [InlineData("378282246310005", false)]

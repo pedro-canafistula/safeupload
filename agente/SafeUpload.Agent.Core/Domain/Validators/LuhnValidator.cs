@@ -2,7 +2,8 @@ namespace SafeUpload.Agent.Core.Domain.Validators;
 
 /// <summary>
 /// RN-003 — validação de cartão de pagamento.
-/// Exatamente 16 dígitos e soma de verificação de Luhn. O escopo desta entrega
+/// Exatamente 16 dígitos e soma de verificação de Luhn, exceto a sequência
+/// composta só por zeros. O escopo desta entrega
 /// é só o comprimento 16; bandeiras de 15 dígitos (Amex) ou 19 (alguns Maestro)
 /// ficam de fora por decisão de projeto, não por limitação do algoritmo.
 /// </summary>
@@ -17,6 +18,13 @@ public static class LuhnValidator
     public static bool IsValid(ReadOnlySpan<char> digits)
     {
         if (digits.Length != DigitCount || !DigitRules.IsAllDigits(digits))
+        {
+            return false;
+        }
+
+        // Decisão do proprietário (2026-10-16): só a sequência toda zero é
+        // excluída; qualquer outro número de 16 dígitos continua sujeito a Luhn.
+        if (digits[0] == '0' && DigitRules.IsAllSameDigit(digits))
         {
             return false;
         }

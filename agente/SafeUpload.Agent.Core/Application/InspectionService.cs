@@ -22,20 +22,27 @@ namespace SafeUpload.Agent.Core.Application;
 ///   7. veredito                             RN-005
 ///   8. cache e auditoria
 ///
-/// Fail-open é a propriedade central: nenhum caminho de erro deste tipo produz
-/// bloqueio. Timeout, arquivo corrompido, formato inesperado, falha de leitura
-/// — todos terminam em AllowedWithoutInspection com o motivo registrado. Um DLP
-/// que bloqueia quando quebra impede o usuário de trabalhar e é desligado na
-/// primeira semana.
+/// A inspeção legada libera erros com AllowedWithoutInspection (RN-012/013).
+/// Uma transferência staged em escopo exige inspeção completa: tamanho acima
+/// do limite, formato não suportado, timeout e falhas de leitura ou parsing
+/// produzem Blocked. O publicador devolve os bytes ao usuário e só aceita uma
+/// justificativa vinculada à versão e à política atuais quando ela é permitida.
 /// </summary>
 public sealed class InspectionService
 {
     private readonly IPolicyStore _policyStore;
+    private readonly IStagedParser? _stagedParser;
     private readonly IAuditSink _auditSink;
     private readonly ExtractorRegistry _extractors;
     private readonly VerdictCache _cache;
     private readonly string _endpointId;
     private readonly string _userName;
+    // A timeout must not admit unbounded background parsing work. A parser
+    // that ignores cancellation keeps its slot until it actually finishes.
+    // This is a concurrency budget, independent of the file-size policy.
+    private const int MaximumConcurrentInspections = 2;
+    private readonly SemaphoreSlim _inspectionSlots = new(MaximumConcurrentInspections, MaximumConcurrentInspections);
+    internal int ActiveInspectionWorkers => MaximumConcurrentInspections - _inspectionSlots.CurrentCount;
 
     /// <summary>Compõe o motor com suas dependências.</summary>
     public InspectionService(
@@ -44,8 +51,9 @@ public sealed class InspectionService
         ExtractorRegistry extractors,
         VerdictCache cache,
         string? endpointId = null,
-        string? userName = null)
+        string? userName = null, IStagedParser? stagedParser = null)
     {
+        _stagedParser = stagedParser;
         _policyStore = policyStore ?? throw new ArgumentNullException(nameof(policyStore));
         _auditSink = auditSink ?? throw new ArgumentNullException(nameof(auditSink));
         _extractors = extractors ?? throw new ArgumentNullException(nameof(extractors));
@@ -55,16 +63,32 @@ public sealed class InspectionService
     }
 
     /// <summary>Julga uma operação de arquivo.</summary>
-    public async Task<InspectionResult> InspectAsync(FileOperation operation, CancellationToken cancellationToken)
-        => await InspectCoreAsync(operation, auditAndCache: true, cancellationToken).ConfigureAwait(false);
+    public async Task<InspectionResult> InspectAsync(FileOperation operation, CancellationToken cancellationToken,
+        Func<string, IDisposable?>? phaseTiming = null)
+        => await InspectCoreAsync(operation, staged: false, cancellationToken, phaseTiming: phaseTiming).ConfigureAwait(false);
 
     /// <summary>
     /// Classifies a sealed staging file. Its verdict is not an operation
     /// outcome: the caller records the outcome after publication or retention.
     /// Never reuse a cached decision for a staged file.
+    /// An in-scope file that cannot be fully inspected is Blocked.
+    /// The staged publisher supplies its separate, service-only snapshot;
+    /// readers consume that file directly without a second whole-file copy.
     /// </summary>
     public Task<InspectionResult> InspectStagedAsync(FileOperation operation, CancellationToken cancellationToken)
-        => InspectCoreAsync(operation, auditAndCache: false, cancellationToken);
+        => InspectCoreAsync(operation, staged: true, cancellationToken);
+
+    /// <summary>
+    /// Inspects an owned read lease on the publisher's held snapshot, without
+    /// reopening its pathname. The worker disposes the lease only when it
+    /// finishes, including after a caller-visible timeout.
+    /// </summary>
+    public Task<InspectionResult> InspectStagedAsync(FileOperation operation,
+        Func<Stream> openSnapshot, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(openSnapshot);
+        return InspectCoreAsync(operation, staged: true, cancellationToken, openSnapshot);
+    }
 
     /// <summary>
     /// A staged approval may only be published under the same policy that
@@ -81,19 +105,21 @@ public sealed class InspectionService
             return false;
         }
 
-        var current = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return current.Version == result.PolicyVersion &&
+        var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+        return current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
+            string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
-            current.IsMonitoredExtension(operation.Extension);
+            (operation.SizeBytes == 0 || current.IsMonitoredExtension(operation.Extension));
     }
 
     public async Task<bool> IsCurrentStagedJustificationAllowedAsync(
         FileOperation operation, InspectionResult result, CancellationToken cancellationToken)
     {
-        if (!result.InScope || !result.IsBlocked) return false;
-        var current = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return current.OverrideAllowed && current.Version == result.PolicyVersion &&
+        if (!result.InScope || !result.IsBlocked || result.FailureKind == InspectionFailureKind.NotEnoughStagingSpace) return false;
+        var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+        return current.OverrideAllowed && current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
+            string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
             current.IsMonitoredExtension(operation.Extension);
@@ -106,17 +132,32 @@ public sealed class InspectionService
         string? reason,
         CancellationToken cancellationToken,
         Guid? eventId = null,
-        string? publishedSha256Hex = null)
+        string? publishedSha256Hex = null,
+        string? auditUserName = null)
         => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason },
-            cancellationToken, eventId, publishedSha256Hex);
+            cancellationToken, eventId, publishedSha256Hex, auditUserName);
+
+    public Task<InspectionResult> InspectStagedFailureAsync(FileOperation operation, CancellationToken token)
+        => InspectCoreAsync(operation, true, token, forcedFailure: "not_enough_staging_space");
 
     private async Task<InspectionResult> InspectCoreAsync(
-        FileOperation operation, bool auditAndCache, CancellationToken cancellationToken)
+        FileOperation operation, bool staged, CancellationToken cancellationToken, Func<Stream>? openSnapshot = null,
+        Func<string, IDisposable?>? phaseTiming = null, string? forcedFailure = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
 
         var stopwatch = Stopwatch.StartNew();
-        var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        Policy policy;
+        using (phaseTiming?.Invoke("policy-and-owner"))
+        {
+            policy = await (staged ? _policyStore.LoadCurrentAsync(cancellationToken)
+                : _policyStore.LoadAsync(cancellationToken)).ConfigureAwait(false);
+        }
+        bool auditAndCache = !staged;
+        if (forcedFailure is not null)
+            return await CompleteAsync(operation, policy, stopwatch, Verdict.Blocked, [], forcedFailure, false, cancellationToken)
+                .ConfigureAwait(false);
+        var inspectionFailure = staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection;
 
         // 1. RN-014 — o próprio agente e os processos de sistema jamais são
         // interceptados. Além do ruído, deixar o agente se interceptar criaria
@@ -127,25 +168,50 @@ public sealed class InspectionService
         }
 
         // 2. RN-011 — fora do escopo declarado não se inspeciona nada.
-        if (!policy.IsInScope(operation) || !policy.IsMonitoredExtension(operation.Extension))
+        if (!policy.IsInScope(operation) ||
+            (!(staged && operation.SizeBytes == 0) && !policy.IsMonitoredExtension(operation.Extension)))
         {
             return OutOfScope(stopwatch, policy, "out_of_scope");
         }
 
-        // 4. RN-013 — acima do limite, libera sem inspecionar. Nunca bloqueia.
+        // Empty content has nothing to extract, regardless of filename/format.
+        // Measure the actual private snapshot rather than trusting SizeBytes.
+        // Destination/process policy still applies and is rechecked at publication.
+        if (staged && operation.SizeBytes == 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                using var input = OpenStagedInput(operation, openSnapshot);
+                if (input.Length != 0)
+                    throw new IOException("The empty inspection snapshot contains bytes.");
+                return await CompleteAsync(operation, policy, stopwatch, Verdict.Approved, [], null,
+                    auditAndCache, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return await CompleteAsync(operation, policy, stopwatch, Verdict.Blocked, [],
+                    "parse_error:" + error.GetType().Name, auditAndCache, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        // RN-013 applies to legacy operations; staged failures require a blocked hand-back.
         if (operation.SizeBytes > policy.MaxFileSizeBytes)
         {
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "file_too_large", auditAndCache, cancellationToken)
+                    operation, policy, stopwatch, inspectionFailure, [], "file_too_large", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        // 5. RN-013 — sem extrator para a extensão, não há o que varrer.
-        var extractor = _extractors.Resolve(operation.Extension);
+        // 5. RN-013 — sem extrator para a extensão, não há o que varrer. Office owner files ("~$name.docx") are inspected
+        // as text, not refused as unreadable packages (owner decision 2026-10-16).
+        var extractor = OfficeOwnerFileExtractor.Matches(operation.FileName, operation.Extension, operation.SizeBytes)
+            ? OfficeOwnerFileExtractor.Instance
+            : _extractors.Resolve(operation.Extension);
         if (extractor is null)
         {
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "unsupported_format", auditAndCache, cancellationToken)
+                    operation, policy, stopwatch, inspectionFailure, [], "unsupported_format", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -155,15 +221,8 @@ public sealed class InspectionService
 
         try
         {
-            // A leitura e o parsing são síncronos por natureza; jogá-los numa
-            // tarefa de fundo é o que permite ao WaitAsync devolver o controle
-            // no prazo mesmo que a análise continue presa. O trabalho abandonado
-            // morre sozinho, porque não escreve nada em lugar nenhum.
-            var inspection = Task.Run(
-                () => ExtractAndScanAsync(extractor, operation, policy, auditAndCache, cancellationToken),
-                cancellationToken);
-
-            var inspected = await inspection.WaitAsync(policy.InspectionTimeout, cancellationToken).ConfigureAwait(false);
+            var inspected = await InspectWithBudgetAsync(extractor, operation, policy, auditAndCache, cancellationToken, openSnapshot)
+                .ConfigureAwait(false);
             fingerprint = inspected.Fingerprint;
             findings = inspected.Findings;
             if (inspected.Cached is not null)
@@ -178,11 +237,37 @@ public sealed class InspectionService
                 return fromCache with { RecordedEvent = await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false) };
             }
         }
+        catch (StagedParserFailureException failure)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                failure.Reason, auditAndCache, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ArchiveSizeException)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                "file_too_large", auditAndCache, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ArchiveRefusalException refusal)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                refusal.ReasonCode, auditAndCache, cancellationToken).ConfigureAwait(false);
+        }
+        catch (InspectionLimitException)
+        {
+            return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
+                "inspection_limit", auditAndCache, cancellationToken).ConfigureAwait(false);
+        }
+        catch (UnsupportedContentException)
+        {
+            return await CompleteAsync(
+                    operation, policy, stopwatch, inspectionFailure, [], "unsupported_format", auditAndCache, cancellationToken)
+                .ConfigureAwait(false);
+        }
         catch (TimeoutException)
         {
-            // RN-012 — estourou o prazo. Libera e audita o motivo.
+            // The caller's mode determines the failure verdict; the reason is retained.
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [], "inspection_timeout", auditAndCache, cancellationToken)
+                    operation, policy, stopwatch, inspectionFailure, [], "inspection_timeout", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -198,7 +283,7 @@ public sealed class InspectionService
             // diagnóstico depois; a mensagem não entra, porque pode conter
             // trecho do conteúdo do arquivo.
             return await CompleteAsync(
-                    operation, policy, stopwatch, Verdict.AllowedWithoutInspection, [],
+                    operation, policy, stopwatch, inspectionFailure, [],
                     $"parse_error:{ex.GetType().Name}", auditAndCache, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -211,42 +296,159 @@ public sealed class InspectionService
             .ConfigureAwait(false);
     }
 
+    private async Task<(IReadOnlyList<Finding> Findings, string? Fingerprint, InspectionResult? Cached)> InspectWithBudgetAsync(
+        ITextExtractor extractor, FileOperation operation, Policy policy, bool useCache, CancellationToken cancellationToken,
+        Func<Stream>? openSnapshot)
+    {
+        var budget = Stopwatch.StartNew();
+        if (!await _inspectionSlots.WaitAsync(policy.InspectionTimeout, cancellationToken).ConfigureAwait(false))
+            throw new TimeoutException("No inspection worker became available within the policy budget.");
+        bool workerOwnsSlot = false;
+        CancellationTokenSource? deadline = null;
+        try
+        {
+            TimeSpan remaining = policy.InspectionTimeout - budget.Elapsed;
+            if (remaining <= TimeSpan.Zero) throw new TimeoutException("The inspection budget was exhausted while waiting.");
+            deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(remaining);
+            var workerDeadline = deadline;
+            var workerToken = workerDeadline.Token;
+            // The delegate must run even if the caller cancels before it is
+            // scheduled: its finally owns the slot and cancellation source.
+            var inspection = Task.Run(async () =>
+            {
+                try
+                {
+                    return await ExtractAndScanAsync(extractor, operation, policy, useCache, workerToken, openSnapshot)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    workerDeadline.Dispose();
+                    _inspectionSlots.Release();
+                }
+            }, CancellationToken.None);
+            workerOwnsSlot = true;
+            // A caller can leave before a noncooperative parser faults. Observe
+            // that fault without allowing its late result to reach cache/audit.
+            _ = inspection.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            try
+            {
+                var inspected = await inspection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+                // Timers/continuations can themselves run late under load.
+                // Enforce the full queue+work deadline with monotonic time
+                // even when WaitAsync observes an already completed task.
+                if (budget.Elapsed >= policy.InspectionTimeout)
+                    throw new TimeoutException("The inspection result arrived after the policy budget.");
+                return inspected;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && workerToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("The inspection exceeded the policy budget.");
+            }
+        }
+        finally
+        {
+            if (!workerOwnsSlot)
+            {
+                deadline?.Dispose();
+                _inspectionSlots.Release();
+            }
+        }
+    }
+
     /// <summary>
-    /// RN-006 — o conteúdo é lido para memória, extraído, varrido e descartado
-    /// no mesmo escopo. Não há arquivo temporário em nenhum caminho, nem no de
-    /// erro: se a extração lançar, os bytes e o texto saem de escopo junto com
-    /// a pilha e nada chegou a ser gravado.
+    /// RN-006 — a extração não grava conteúdo em arquivo temporário. Staged lê
+    /// diretamente o snapshot privado fornecido pelo publicador. A inspeção
+    /// legada captura os bytes uma vez para vincular hash, cache e varredura,
+    /// mesmo quando uma seção gravável já mapeada muda o arquivo durante a
+    /// extração. O texto extraído é descartado no mesmo escopo.
     /// </summary>
     private async Task<(IReadOnlyList<Finding> Findings, string? Fingerprint, InspectionResult? Cached)> ExtractAndScanAsync(
         ITextExtractor extractor,
         FileOperation operation,
         Policy policy,
         bool useCache,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<Stream>? openSnapshot)
     {
-        byte[] bytes;
-        // Keep the opened file's bytes stable while allowing an approved save
-        // to replace its directory entry. A source classification triggered by
-        // a reader must not transiently veto the publisher's final rename.
-        await using (var input = new FileStream(operation.FilePath, FileMode.Open,
-            FileAccess.Read, FileShare.Read | FileShare.Delete, 64 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        string text;
+        string? fingerprint = null;
+        if (useCache)
         {
-            bytes = new byte[checked((int)input.Length)];
-            await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            byte[] bytes;
+            await using (var input = OpenInspectionInput(operation.FilePath))
+            {
+                if (extractor is ZipArchiveExtractor or SevenZipRefusingExtractor && input.Length > policy.MaxFileSizeBytes)
+                    throw new ArchiveSizeException();
+                bytes = new byte[checked((int)input.Length)];
+                await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            }
+            // A read handle does not revoke an existing writable mapping.
+            // Hash and scan the same captured bytes for legacy cache authority.
+            fingerprint = Convert.ToHexString(SHA256.HashData(bytes));
+            if (_cache.TryGet(operation, policy.Version, out var cached, fingerprint) && cached is not null)
+                return (cached.Findings, fingerprint, cached);
+            using var content = new MemoryStream(bytes, writable: false);
+            if (extractor is ZipArchiveExtractor archive)
+                return (await archive.InspectAsync(content, _extractors, policy, cancellationToken).ConfigureAwait(false), fingerprint, null);
+            text = await extractor.ExtractAsync(content, cancellationToken).ConfigureAwait(false);
         }
-
-        // Hash and scan the same in-memory bytes. Size and timestamps alone
-        // can collide (or be restored), so they cannot authorize cache reuse.
-        string? fingerprint = useCache ? Convert.ToHexString(SHA256.HashData(bytes)) : null;
-        if (useCache && _cache.TryGet(operation, policy.Version, out var cached, fingerprint) && cached is not null)
-            return (cached.Findings, fingerprint, cached);
-        using var content = new MemoryStream(bytes, writable: false);
-        var text = await extractor.ExtractAsync(content, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            // Staged publication owns a separate service-only snapshot and
+            // never reuses approval cache entries. Keep this exact file object
+            // open through extraction; a replaced name cannot change its bytes.
+            await using var input = OpenStagedInput(operation, openSnapshot);
+            if (_stagedParser is not null && extractor is not (PlainTextExtractor or OfficeOwnerFileExtractor))
+                return (await _stagedParser.InspectAsync(operation.Extension, input, policy, cancellationToken)
+                    .ConfigureAwait(false), null, null);
+            if (extractor is ZipArchiveExtractor archive)
+                return (await archive.InspectAsync(input, _extractors, policy, cancellationToken).ConfigureAwait(false), null, null);
+            if (extractor is IStreamingTextExtractor streaming)
+            {
+                Task<TextReader> OpenReader()
+                {
+                    input.Position = 0;
+                    return streaming.OpenReaderAsync(input, cancellationToken);
+                }
+                // Avoid parsing a small PDF seven times. Keep at most four
+                // MiB of private text; overflow retains full streaming passes.
+                // Replay becomes usable only after complete extraction EOF.
+                // Plaintext and Office retain their existing fresh readers.
+                using BoundedTextReplay? replay = extractor is PdfExtractor
+                    ? new(OpenReader, maximumCharacters: 2 * 1024 * 1024) : null;
+                Func<Task<TextReader>> readers = replay is null ? OpenReader : replay.OpenAsync;
+                var findings = await StreamingContentScanner.ScanAsync(readers,
+                    policy.ActiveCategories, cancellationToken).ConfigureAwait(false);
+                return (findings, null, null);
+            }
+            text = await extractor.ExtractAsync(input, cancellationToken).ConfigureAwait(false);
+        }
 
         // O que sai daqui já é só achado mascarado. O texto em claro não
         // atravessa esta fronteira.
         return (ContentScanner.Scan(text, policy.ActiveCategories), fingerprint, null);
+    }
+
+    private static FileStream OpenInspectionInput(string path) => new(path, FileMode.Open,
+        // A source reader must coexist with the publisher's final rename.
+        FileAccess.Read, FileShare.Read | FileShare.Delete, 64 * 1024,
+        FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+    private static Stream OpenStagedInput(FileOperation operation, Func<Stream>? openSnapshot)
+    {
+        if (openSnapshot is null) return OpenInspectionInput(operation.FilePath);
+        Stream input = openSnapshot() ?? throw new IOException("The snapshot read lease is missing.");
+        try
+        {
+            if (!input.CanRead || !input.CanSeek || input.CanWrite || input.Length != operation.SizeBytes)
+                throw new IOException("The snapshot read lease does not match the measured content.");
+            input.Position = 0;
+            return input;
+        }
+        catch { input.Dispose(); throw; }
     }
 
     private async Task<InspectionResult> CompleteAsync(
@@ -269,7 +471,10 @@ public sealed class InspectionService
             stopwatch.ElapsedMilliseconds,
             FromCache: false,
             policy.Version,
-            InScope: true);
+            InScope: true)
+        {
+            PolicyContentFingerprint = auditAndCache ? null : PolicyContentFingerprint.Compute(policy)
+        };
 
         if (auditAndCache)
         {
@@ -306,14 +511,15 @@ public sealed class InspectionService
         InspectionResult result,
         CancellationToken cancellationToken,
         Guid? eventId = null,
-        string? publishedSha256Hex = null)
+        string? publishedSha256Hex = null,
+        string? auditUserName = null)
     {
         bool minimize = eventId is null || operation.AuditMetadataVersion == 1;
         var auditEvent = new AuditEvent(
             eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
             _endpointId,
-            operation.AuditUserName ?? _userName,
+            auditUserName ?? operation.AuditUserName ?? _userName,
             // Explicit IDs can refer to a persisted transfer from an older build.
             // Preserve its canonical metadata; fresh IDs use the minimized name.
             minimize ? AuditTextPrivacy.Sanitize(AuditMetadata.FileNameOnly(operation.FileName)) : operation.FileName,

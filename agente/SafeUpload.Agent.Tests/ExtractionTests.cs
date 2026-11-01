@@ -1,4 +1,9 @@
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
+using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Infrastructure;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 namespace SafeUpload.Agent.Tests;
@@ -51,7 +56,7 @@ public class ExtractionTests : IDisposable
     /// O .pdf saiu desta lista quando ganhou extrator.
     /// </summary>
     [Theory]
-    [InlineData(".zip")]
+    [InlineData(".rar")]
     [InlineData(".exe")]
     [InlineData("")]
     [InlineData(null)]
@@ -107,6 +112,66 @@ public class ExtractionTests : IDisposable
         Assert.Contains("529.982.247-25", await ExtractAsync(path), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("image-only", false)]
+    [InlineData("image-only", true)]
+    [InlineData("clean-then-image", false)]
+    [InlineData("clean-then-image", true)]
+    [InlineData("text-on-image", false)]
+    [InlineData("text-on-image", true)]
+    [InlineData("cpf-then-image", false)]
+    [InlineData("cpf-then-image", true)]
+    public async Task Pdf_image_content_never_becomes_an_approval_from_partial_text(string layout, bool staged)
+    {
+        string path = _workspace.WritePdfWithImage("unsupported.pdf",
+            firstPageText: layout switch { "clean-then-image" => "Clean cover page.", "cpf-then-image" => "CPF: 529.982.247-25", _ => null },
+            imagePageText: layout == "text-on-image" ? "Clean text over an uninspected image." : null);
+        byte[] original = await File.ReadAllBytesAsync(path);
+        var inspector = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), _registry, new VerdictCache());
+        var operation = TestWorkspace.Operation(path);
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            var result = staged
+                ? await inspector.InspectStagedAsync(operation, CancellationToken.None)
+                : await inspector.InspectAsync(operation, CancellationToken.None);
+            Assert.Equal(staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection, result.Verdict);
+            Assert.True(result.InScope);
+            Assert.True(result.PolicyVersion > 0);
+            Assert.False(result.FromCache);
+            Assert.Empty(result.Findings);
+            Assert.Equal("unsupported_format", result.Reason);
+            Assert.Equal(InspectionFailureKind.UnsupportedFormat, result.FailureKind);
+            Assert.Equal(original, await File.ReadAllBytesAsync(path));
+        }
+    }
+
+    [Theory]
+    [InlineData("blank", false)]
+    [InlineData("blank", true)]
+    [InlineData("clean", false)]
+    [InlineData("clean", true)]
+    [InlineData("cpf", false)]
+    [InlineData("cpf", true)]
+    public async Task Pdf_text_or_blank_content_keeps_its_complete_inspection_verdict(string content, bool staged)
+    {
+        string path = content == "blank" ? _workspace.WritePdf("text.pdf") :
+            _workspace.WritePdf("text.pdf", content == "cpf" ? "CPF: 529.982.247-25" : "Clean PDF content.");
+        var inspector = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), _registry, new VerdictCache());
+        var operation = TestWorkspace.Operation(path);
+        var result = staged
+            ? await inspector.InspectStagedAsync(operation, CancellationToken.None)
+            : await inspector.InspectAsync(operation, CancellationToken.None);
+        Assert.Equal(content == "cpf" ? Verdict.Blocked : Verdict.Approved, result.Verdict);
+        Assert.True(result.InScope);
+        Assert.False(result.FromCache);
+        Assert.Null(result.Reason);
+        Assert.Null(result.FailureKind);
+        if (content == "cpf") Assert.Equal(Category.Cpf, Assert.Single(result.Findings).Category);
+        else Assert.Empty(result.Findings);
+    }
+
     [Fact]
     public async Task Csv_e_varrido()
     {
@@ -160,6 +225,108 @@ public class ExtractionTests : IDisposable
         var path = _workspace.WriteSpreadsheet("lotes.xlsx", "11222333", "000181");
 
         Assert.Empty(ContentScanner.Scan(await ExtractAsync(path), Todas));
+    }
+
+    [Theory]
+    [InlineData("word-body", false)]
+    [InlineData("word-body", true)]
+    [InlineData("shared-index", false)]
+    [InlineData("shared-index", true)]
+    [InlineData("shared-table", false)]
+    [InlineData("shared-table", true)]
+    [InlineData("inline-value", false)]
+    [InlineData("inline-value", true)]
+    public async Task Malformed_office_content_is_never_an_approved_empty_extraction(string damage, bool staged)
+    {
+        const string sensitive = "CPF: 529.982.247-25";
+        string path = damage == "word-body"
+            ? _workspace.WriteWordDocument("malformed.docx", sensitive)
+            : _workspace.WriteSpreadsheet("malformed.xlsx", sensitive);
+        if (damage == "word-body")
+        {
+            RewriteOfficeEntry(path, "word/document.xml", xml =>
+                xml.Replace("<w:body>", "", StringComparison.Ordinal)
+                    .Replace("</w:body>", "", StringComparison.Ordinal));
+        }
+        else if (damage == "shared-index")
+        {
+            RewriteOfficeEntry(path, "xl/worksheets/sheet1.xml", xml =>
+                xml.Replace("<v>0</v>", "<v>999</v>", StringComparison.Ordinal));
+        }
+        else if (damage == "shared-table")
+        {
+            using var archive = ZipFile.Open(path, ZipArchiveMode.Update);
+            archive.GetEntry("xl/sharedStrings.xml")!.Delete();
+        }
+        else
+        {
+            RewriteOfficeEntry(path, "xl/worksheets/sheet1.xml", xml =>
+                xml.Replace("<c r=\"A1\" t=\"s\"><v>0</v></c>",
+                    "<c r=\"A1\" t=\"inlineStr\"/>", StringComparison.Ordinal));
+        }
+        string digest = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        var service = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(), new VerdictCache());
+        var operation = TestWorkspace.Operation(path);
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            var result = staged
+                ? await service.InspectStagedAsync(operation, CancellationToken.None)
+                : await service.InspectAsync(operation, CancellationToken.None);
+            Assert.Equal(staged ? Verdict.Blocked : Verdict.AllowedWithoutInspection, result.Verdict);
+            Assert.True(result.InScope);
+            Assert.True(result.PolicyVersion > 0);
+            Assert.False(result.FromCache);
+            Assert.Empty(result.Findings);
+            Assert.StartsWith("parse_error:", result.Reason);
+            Assert.Equal(InspectionFailureKind.ReadOrParse, result.FailureKind);
+            Assert.DoesNotContain("529.982.247-25", result.Reason, StringComparison.Ordinal);
+        }
+        Assert.Equal(digest, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
+    }
+
+    [Theory]
+    [InlineData("word", false)]
+    [InlineData("word", true)]
+    [InlineData("shared", false)]
+    [InlineData("shared", true)]
+    [InlineData("inline", false)]
+    [InlineData("inline", true)]
+    public async Task Valid_empty_office_content_remains_approved(string format, bool staged)
+    {
+        string path = format == "word"
+            ? _workspace.WriteWordDocument("empty.docx")
+            : _workspace.WriteSpreadsheet("empty.xlsx", "");
+        if (format == "inline")
+        {
+            RewriteOfficeEntry(path, "xl/worksheets/sheet1.xml", xml =>
+                xml.Replace("<c r=\"A1\" t=\"s\"><v>0</v></c>",
+                    "<c r=\"A1\" t=\"inlineStr\"><is><t/></is></c>", StringComparison.Ordinal));
+        }
+        var service = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile),
+            new LocalQueueAuditSink(_workspace.QueueFile), ExtractorRegistry.CreateDefault(), new VerdictCache());
+        var result = staged
+            ? await service.InspectStagedAsync(TestWorkspace.Operation(path), CancellationToken.None)
+            : await service.InspectAsync(TestWorkspace.Operation(path), CancellationToken.None);
+        Assert.Equal(Verdict.Approved, result.Verdict);
+        Assert.True(result.InScope);
+        Assert.False(result.FromCache);
+        Assert.Null(result.Reason);
+        Assert.Null(result.FailureKind);
+        Assert.Empty(result.Findings);
+    }
+
+    private static void RewriteOfficeEntry(string path, string name, Func<string, string> rewrite)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Update);
+        var entry = archive.GetEntry(name)!;
+        string original;
+        using (var reader = new StreamReader(entry.Open(), Encoding.UTF8)) original = reader.ReadToEnd();
+        string changed = rewrite(original);
+        Assert.NotEqual(original, changed);
+        entry.Delete();
+        using var writer = new StreamWriter(archive.CreateEntry(name).Open(), new UTF8Encoding(false));
+        writer.Write(changed);
     }
 
     /// <summary>

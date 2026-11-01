@@ -1,0 +1,17 @@
+# Build inputs, outputs and secrets never go in Git.
+work/
+output/
+*.qcow2
+*.iso
+*.tfstate
+*.tfstate.*
+.terraform/
+*.auto.tfvars
+secrets/
+collections/
+.venv/
+terraform.tfvars
+*.vhdx
+# This is source, unlike generated .NET bin/ trees ignored at the repository root.
+!bin/
+!bin/mkisofs

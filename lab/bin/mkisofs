@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# terraform-provider-libvirt 0.8.3 invokes mkisofs by name. Use the already required xorriso implementation.
+set -euo pipefail
+exec xorriso -as mkisofs "$@"

@@ -45,7 +45,7 @@ function Run-Installer([string]$Label, [string[]]$Additional) {
 try {
     Require ((Run-Installer 'rejected-http' @('/MODE=FileSystemWatcher', '/ADMINURL=http://remote.example.test/agent/')) -ne 0) 'Remote HTTP must be rejected.'
     Require (-not (Test-Path -LiteralPath $serviceKey)) 'Rejected setup registered a service.'
-    Require ((Run-Installer 'rejected-driver' @('/MODE=Minifilter')) -ne 0) 'Missing minifilter must be rejected.'
+    Require ((Run-Installer 'rejected-drive' @('/MODE=Drive')) -ne 0) 'Drive mode without WinFsp (not installed, not bundled) must be rejected.'
     Require (-not (Test-Path -LiteralPath $serviceKey)) 'Driver preflight failure registered a service.'
     $result.steps += 'unsafe URL and missing driver rejected before service creation'
     Require ((Run-Installer 'install' @('/MODE=FileSystemWatcher')) -eq 0) 'Initial installation failed.'

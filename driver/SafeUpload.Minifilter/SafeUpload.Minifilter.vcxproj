@@ -25,10 +25,7 @@
     <DriverType>WDM</DriverType>
     <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
     <ConfigurationType>Driver</ConfigurationType>
-    <!--
-      Signing is done by hand on the deployment machine, following DEPLOY.md,
-      so the build never touches certificates and stays reproducible.
-    -->
+    <!-- driver/scripts/build-driver.sh signs the result with the test certificate. -->
     <SignMode>Off</SignMode>
   </PropertyGroup>
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -48,15 +45,8 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);POOL_NX_OPTIN=1</PreprocessorDefinitions>
       <ExceptionHandling>
       </ExceptionHandling>
-    </ClCompile>
-    <ClCompile Condition="'$(SafeUploadStagingPrototype)'=='true'">
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);POOL_NX_OPTIN=1;SAFEUPLOAD_STAGING_PROTOTYPE=1</PreprocessorDefinitions>
-    </ClCompile>
-    <ClCompile Condition="'$(SafeUploadStagingPrototype)'=='true' and '$(SafeUploadStageVolumeProbe)'=='true'">
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);POOL_NX_OPTIN=1;SAFEUPLOAD_STAGING_PROTOTYPE=1;SAFEUPLOAD_STAGE_VOLUME_CALLBACK_PROBE=1</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib</AdditionalDependencies>
@@ -66,35 +56,16 @@
     </DriverSign>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Communication.c" />
-    <ClCompile Include="Context.c" />
-    <ClCompile Include="BootPolicy.c" />
-    <ClCompile Include="Filter.c" />
-    <ClCompile Include="Txf.c" />
-    <ClCompile Include="Policy.c" />
-    <ClCompile Include="Override.c" />
-    <ClCompile Include="Taint.c" />
-    <ClCompile Include="DenyRing.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageDirectory.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageStream.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageProtocol.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageSecurity.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageAlias.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageFence.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageWriters.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
-    <ClCompile Include="StageAdmission.c" Condition="'$(SafeUploadStagingPrototype)'=='true'" />
+    <ClCompile Include="Gate.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="GateProtocol.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="SafeUpload.inf" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SafeUpload.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Filter.h" />
-    <ClInclude Include="Protocol.h" />
-    <ClInclude Include="Stage.h" />
-    <ClInclude Include="StageSecurity.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -8,4 +8,9 @@ namespace SafeUpload.Agent.Core.Domain;
 /// </summary>
 /// <param name="Category">Categoria da regra que reconheceu o trecho.</param>
 /// <param name="MaskedSnippet">Trecho mascarado, seguro para exibir e registrar.</param>
-public sealed record Finding(Category Category, string MaskedSnippet);
+public sealed record Finding(Category Category, string MaskedSnippet)
+{
+    /// <summary>Archive diagnostic only; sensitive name components are redacted. Never a filesystem locator.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? MemberName { get; init; }
+}

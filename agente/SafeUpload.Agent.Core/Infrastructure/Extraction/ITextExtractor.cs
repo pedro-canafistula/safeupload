@@ -20,8 +20,23 @@ public interface ITextExtractor
 
     /// <summary>
     /// Lê o fluxo do começo ao fim e devolve o texto encontrado.
-    /// Erros de parsing sobem como exceção: quem orquestra decide o que fazer
-    /// com eles, e pela RN-012 a decisão é liberar a operação, nunca bloquear.
+    /// Erros de parsing sobem como exceção: quem orquestra decide o veredito.
+    /// A inspeção legada libera sem inspecionar (RN-012); staged bloqueia
+    /// quando o conteúdo em escopo não pode ser inspecionado integralmente.
     /// </summary>
     Task<string> ExtractAsync(Stream content, CancellationToken cancellationToken);
+}
+
+/// <summary>Opens a bounded text reader; disposing it must leave the caller's stream open.</summary>
+public interface IStreamingTextExtractor : ITextExtractor
+{
+    /// <summary>No source reopen, whole-file capture or temporary file is permitted.</summary>
+    Task<TextReader> OpenReaderAsync(Stream content, CancellationToken cancellationToken);
+}
+
+/// <summary>Content requires an inspection capability this extractor does not provide.</summary>
+public sealed class UnsupportedContentException : NotSupportedException
+{
+    /// <summary>Creates a failure without carrying source content or parser diagnostics.</summary>
+    public UnsupportedContentException() : base("The file contains unsupported inspection content.") { }
 }

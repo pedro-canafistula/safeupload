@@ -1,5 +1,7 @@
 using SafeUpload.Agent.Core.Domain;
+using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Infrastructure;
+using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
 namespace SafeUpload.Agent.Tests;
 
@@ -22,7 +24,10 @@ public class PolicyTests : IDisposable
     {
         Assert.False(File.Exists(_workspace.PolicyFile));
 
-        var policy = await LoadAsync();
+        var legacy = await LoadAsync();
+        Assert.Equal(20, legacy.MaxFileSizeMb);
+        Assert.Equal(TimeSpan.FromSeconds(5), legacy.InspectionTimeout);
+        var policy = await new LocalPolicyStore(_workspace.PolicyFile).LoadCurrentAsync(CancellationToken.None);
 
         Assert.True(File.Exists(_workspace.PolicyFile));
         Assert.Equal(1, policy.Version);
@@ -30,16 +35,15 @@ public class PolicyTests : IDisposable
         // conferir uma a uma: se uma categoria nova aparecer sem passar por
         // aqui, ela esta ativa na politica padrao sem ninguem ter decidido.
         Assert.Equal(5, policy.ActiveCategories.Count);
-        Assert.Equal(20, policy.MaxFileSizeMb);
-        Assert.Equal(20L * 1024 * 1024, policy.MaxFileSizeBytes);
-        Assert.Equal(TimeSpan.FromSeconds(5), policy.InspectionTimeout);
+        Assert.Equal(4096, policy.MaxFileSizeMb);
+        Assert.Equal(4096L * 1024 * 1024, policy.MaxFileSizeBytes);
+        Assert.Equal(TimeSpan.FromSeconds(900), policy.InspectionTimeout);
         Assert.True(policy.FailOpen);
     }
 
     /// <summary>
-    /// O .pdf entrou na política padrão junto com seu extrator, e a ordem
-    /// importa: monitorar uma extensão sem saber abri-la faz o driver mandar
-    /// requisições que o motor não tem como responder.
+    /// O nome histórico fica estável; a política agora inclui PowerPoint e arquivos compactados.
+    /// Escopo e registro de extratores precisam concordar.
     /// </summary>
     [Fact]
     public async Task Politica_padrao_vigia_os_cinco_formatos()
@@ -51,8 +55,34 @@ public class PolicyTests : IDisposable
         Assert.True(policy.IsMonitoredExtension(".docx"));
         Assert.True(policy.IsMonitoredExtension(".xlsx"));
         Assert.True(policy.IsMonitoredExtension(".pdf"));
+        Assert.True(policy.IsMonitoredExtension(".pptx"));
+        Assert.True(policy.IsMonitoredExtension(".pptm"));
+        Assert.True(policy.IsMonitoredExtension(".potx"));
+        Assert.True(policy.IsMonitoredExtension(".ppsx"));
+        Assert.Equal(11, policy.MonitoredScopes.Extensions.Count);
 
-        Assert.False(policy.IsMonitoredExtension(".zip"));
+        Assert.True(policy.IsMonitoredExtension(".zip"));
+        Assert.True(policy.IsMonitoredExtension(".7z"));
+        Assert.True(policy.MonitoredScopes.Extensions.SetEquals(new[] { ".txt", ".csv", ".docx", ".xlsx", ".pdf", ".pptx", ".pptm", ".potx", ".ppsx", ".zip", ".7z" }));
+    }
+
+    [Theory]
+    [InlineData(".pptx")]
+    [InlineData(".pptm")]
+    [InlineData(".potx")]
+    [InlineData(".ppsx")]
+    public async Task Default_policy_inspects_PowerPoint_without_an_explicit_policy_edit(string extension)
+    {
+        string path = PowerPointFixture.Create(_workspace.Root, extension);
+        var service = new InspectionService(new LocalPolicyStore(_workspace.PolicyFile), new LocalQueueAuditSink(_workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), new VerdictCache());
+        foreach (bool staged in new[] { false, true })
+        {
+            var result = staged ? await service.InspectStagedAsync(TestWorkspace.Operation(path), CancellationToken.None)
+                : await service.InspectAsync(TestWorkspace.Operation(path), CancellationToken.None);
+            Assert.True(result.InScope); Assert.Equal(Verdict.Approved, result.Verdict);
+            Assert.Null(result.Reason); Assert.Empty(result.Findings);
+        }
     }
 
     /// <summary>
@@ -186,6 +216,34 @@ public class PolicyTests : IDisposable
         Assert.Same(applied, retained);
         Assert.False(retained.AuditOnly);
         Assert.Contains("C:\\Protected", retained.MonitoredScopes.DestinationPaths);
+    }
+
+    [Fact]
+    public async Task Current_policy_rejects_weak_acl_even_with_a_valid_fallback_and_recovers_after_repair()
+    {
+        _workspace.WritePolicy("""{"version":7,"activeCategories":["Cpf"]}""");
+        bool trusted = true;
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => trusted);
+        var original = await store.LoadAsync(CancellationToken.None);
+        _workspace.WritePolicy("""{"version":8,"activeCategories":["Secret"]}""");
+        trusted = false;
+        Assert.Same(original, await store.LoadAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<PolicyFileAclRejectedException>(() => store.LoadCurrentAsync(CancellationToken.None));
+        trusted = true;
+        var current = await store.LoadCurrentAsync(CancellationToken.None);
+        Assert.Equal(8, current.Version);
+        Assert.Equal(Category.Secret, Assert.Single(current.ActiveCategories));
+    }
+
+    [Fact]
+    public async Task Missing_current_policy_after_load_cannot_be_replaced_with_a_default()
+    {
+        _workspace.WritePolicy("""{"version":7,"activeCategories":["Cpf"]}""");
+        var store = new LocalPolicyStore(_workspace.PolicyFile);
+        await store.LoadCurrentAsync(CancellationToken.None);
+        File.Delete(_workspace.PolicyFile);
+        await Assert.ThrowsAsync<FileNotFoundException>(() => store.LoadCurrentAsync(CancellationToken.None));
+        Assert.False(File.Exists(_workspace.PolicyFile));
     }
 
     /// <summary>

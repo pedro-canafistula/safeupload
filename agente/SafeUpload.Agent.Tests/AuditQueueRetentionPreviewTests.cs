@@ -128,7 +128,7 @@ public sealed class AuditQueueRetentionPreviewTests
     private static async Task<JsonElement> Query(string path, string request)
     {
         var name = "SafeUpload.Retention.Test." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(),
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance),
             NullLogger<DiagnosticsPipeServer>.Instance, name, auditQueue: new LocalQueueAuditSink(path));
         await server.StartAsync(CancellationToken.None);
         try

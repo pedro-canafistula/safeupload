@@ -91,6 +91,43 @@ public sealed class HttpPolicyStoreTests
         AssertIsDefault(policy);
     }
 
+    [Theory]
+    [InlineData("network")]
+    [InlineData("server")]
+    [InlineData("json")]
+    [InlineData("null")]
+    [InlineData("timeout")]
+    public async Task Current_policy_never_uses_the_legacy_default_after_a_provider_failure(string failure)
+    {
+        var handler = failure switch
+        {
+            "network" => StubHandler.Throwing(new HttpRequestException("unavailable")),
+            "server" => StubHandler.RespondingWith(HttpStatusCode.InternalServerError, "unavailable"),
+            "json" => StubHandler.RespondingWith(HttpStatusCode.OK, "<html>login</html>"),
+            "null" => StubHandler.RespondingWith(HttpStatusCode.OK, "null"),
+            "timeout" => StubHandler.Throwing(new TaskCanceledException("deadline")),
+            _ => throw new ArgumentOutOfRangeException(nameof(failure))
+        };
+        var store = CreateStore(handler);
+        AssertIsDefault(await store.LoadAsync(CancellationToken.None));
+        if (failure is "network" or "server")
+            await Assert.ThrowsAsync<HttpRequestException>(() => store.LoadCurrentAsync(CancellationToken.None));
+        else if (failure == "json")
+            await Assert.ThrowsAsync<System.Text.Json.JsonException>(() => store.LoadCurrentAsync(CancellationToken.None));
+        else if (failure == "null")
+            await Assert.ThrowsAsync<InvalidPolicyException>(() => store.LoadCurrentAsync(CancellationToken.None));
+        else
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.LoadCurrentAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Current_policy_accepts_a_valid_live_response()
+    {
+        var store = CreateStore(StubHandler.RespondingWith(HttpStatusCode.OK, PolicyJson));
+        var current = await store.LoadCurrentAsync(CancellationToken.None);
+        Assert.Equal(7, current.Version); Assert.True(current.OverrideAllowed);
+    }
+
     private static void AssertIsDefault(Policy policy)
     {
         var expected = LocalPolicyStore.CreateDefault();

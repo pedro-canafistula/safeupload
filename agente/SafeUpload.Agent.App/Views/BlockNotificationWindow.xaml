@@ -66,7 +66,14 @@
 
             <StackPanel Grid.Row="1" Margin="16,14,16,16">
 
-                <TextBlock Text="O que foi encontrado" Style="{StaticResource SectionText}" />
+                <TextBlock x:Name="InspectionFailureText"
+                           Style="{StaticResource BodyText}"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed"
+                           Margin="0,0,0,10" />
+
+                <TextBlock x:Name="FindingsHeading"
+                           Text="O que foi encontrado" Style="{StaticResource SectionText}" />
 
                 <!--
                     Só trechos mascarados chegam aqui. O mascaramento acontece no
@@ -105,7 +112,7 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <TextBlock Style="{StaticResource BodyText}"
+                <TextBlock x:Name="GuidanceText" Style="{StaticResource BodyText}"
                            Foreground="{StaticResource TextMuted}"
                            Text="Revise o arquivo, remova ou anonimize as informações e tente novamente."
                            Margin="0,0,0,10" />
@@ -128,7 +135,8 @@
                     <TextBlock x:Name="JustificationTargetText"
                                Style="{StaticResource SectionText}"
                                TextWrapping="Wrap" />
-                    <TextBlock Text="Informe o motivo de negócio para tentar novamente."
+                    <TextBlock x:Name="JustificationHelpText"
+                               Text="Informe o motivo de negócio para tentar novamente."
                                Style="{StaticResource MutedText}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,7" />

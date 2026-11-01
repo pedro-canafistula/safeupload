@@ -50,6 +50,32 @@ public class ContentScannerTests
         Assert.Equal(Category.PaymentCard, finding.Category);
     }
 
+    [Theory]
+    [InlineData("0000000000000000")]
+    [InlineData("0000 0000 0000 0000")]
+    [InlineData("0000-0000-0000-0000")]
+    [InlineData("0000.0000.0000.0000")]
+    [InlineData("0000/0000/0000/0000")]
+    [InlineData("0000.0000-0000/0000")]
+    [InlineData("00000000000000000000000000000000")]
+    public void Numero_todo_zero_nao_produz_achado(string texto)
+    {
+        Assert.Empty(ContentScanner.Scan($"Documento: {texto}", Todas));
+    }
+
+    [Theory]
+    [InlineData("0000000000000000; 4111 1111 1111 1111")]
+    [InlineData("4111 1111 1111 1111; 0000000000000000")]
+    [InlineData("0000.0000-0000/0000\n4111111111111111")]
+    [InlineData("4111111111111111\n0000.0000-0000/0000")]
+    public void Numero_todo_zero_nao_esconde_cartao_real_nem_altera_mascara(string texto)
+    {
+        var finding = Assert.Single(ContentScanner.Scan(texto, Todas));
+
+        Assert.Equal(Category.PaymentCard, finding.Category);
+        Assert.Equal("••••••••••••••11", finding.MaskedSnippet);
+    }
+
     [Fact]
     public void Cpf_formatado_e_sem_formatacao_sao_reconhecidos()
     {

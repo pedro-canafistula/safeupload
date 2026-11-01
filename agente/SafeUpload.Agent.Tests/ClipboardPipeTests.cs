@@ -19,6 +19,7 @@ public class ClipboardPipeTests
     private sealed class FixedPolicyStore(Policy policy) : IPolicyStore
     {
         public Task<Policy> LoadAsync(CancellationToken cancellationToken) => Task.FromResult(policy);
+        public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
     }
 
     private static Policy Politica() =>

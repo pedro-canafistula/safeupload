@@ -150,7 +150,7 @@ public sealed class AuditQueueHealthTests
         await Assert.ThrowsAsync<IOException>(() => sink.WriteAsync(Event(), CancellationToken.None));
         var name = "SafeUpload.Agent.Diagnostics.Test." + Guid.NewGuid().ToString("N");
         var before = JsonSerializer.Serialize(health.Read());
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(), NullLogger<DiagnosticsPipeServer>.Instance, name, auditHealth: health);
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance), NullLogger<DiagnosticsPipeServer>.Instance, name, auditHealth: health);
         await server.StartAsync(CancellationToken.None);
         try
         {
@@ -249,7 +249,7 @@ public sealed class AuditQueueHealthTests
     public async Task Pipe_sem_monitor_retorna_indisponibilidade_sem_inventar_estado_saudavel()
     {
         var name = "SafeUpload.Agent.Health.Unavailable." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(), NullLogger<DiagnosticsPipeServer>.Instance, name);
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance), NullLogger<DiagnosticsPipeServer>.Instance, name);
         await server.StartAsync(CancellationToken.None);
         try
         {

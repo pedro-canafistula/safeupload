@@ -153,7 +153,29 @@ public partial class App : System.Windows.Application
                 break;
             case TransferPhase.Retained:
                 _tray.ShowBalloon("SafeUpload: envio pendente",
-                    $"{fileName} permanece guardado localmente. O envio será tentado novamente.");
+                    transfer.RecoveryAdvice switch
+                    {
+                        StagedRecoveryAdvice.CloseApplication =>
+                            $"{fileName}: os próximos salvamentos continuam privados. Feche o aplicativo que abriu o arquivo; o SafeUpload confere o resultado automaticamente.",
+                        StagedRecoveryAdvice.RestartService =>
+                            $"{fileName}: os próximos salvamentos continuam privados. Reinicie o serviço SafeUpload; a conferência será automática.",
+                        StagedRecoveryAdvice.CollectDiagnostics =>
+                            $"{fileName}: o resultado da exclusão ainda não pôde ser confirmado. Os próximos salvamentos continuam privados. Colete os diagnósticos do SafeUpload para suporte.",
+                        StagedRecoveryAdvice.RestartWindows =>
+                            $"{fileName}: uma falha do volume impediu confirmar o fechamento. Os próximos salvamentos continuam privados. Use Reiniciar no Windows; o SafeUpload confere o resultado automaticamente. Desligar e ligar não substitui Reiniciar.",
+                        StagedRecoveryAdvice.JournalRecovery =>
+                            $"{fileName}: o SafeUpload está concluindo a recuperação automática desta operação. Se o aviso persistir, colete os diagnósticos do SafeUpload para suporte.",
+                        StagedRecoveryAdvice.PublicationUnresolved =>
+                            $"{fileName}: não foi possível confirmar o último salvamento. Novos salvamentos nesse nome estão bloqueados. Colete os diagnósticos do SafeUpload para suporte.",
+                        StagedRecoveryAdvice.PublicationBusy => StagedPublicationPresentation.Busy(fileName),
+                        null when transfer.InspectionFailure == InspectionFailureKind.NotEnoughStagingSpace =>
+                            $"{fileName}: não há espaço de preparação suficiente. Libere espaço ou recupere salvamentos anteriores e tente novamente. O destino não recebeu este salvamento.",
+                        StagedRecoveryAdvice.UnsupportedMetadata => StagedPublicationPresentation.Metadata(fileName, transfer.MetadataFailure),
+                        null when transfer.InspectionFailure is not null =>
+                            $"{fileName}: não foi possível concluir a análise. O arquivo continua guardado localmente e não foi enviado. Se o aviso persistir, colete os diagnósticos do SafeUpload para suporte.",
+                        null => $"{fileName} permanece guardado localmente. O envio será tentado novamente.",
+                        _ => $"{fileName}: os próximos salvamentos continuam privados. Colete os diagnósticos do SafeUpload para suporte."
+                    });
                 break;
             // A janela de bloqueio detalha o motivo; no status, o arquivo
             // continua somente no armazenamento local de staging.
@@ -167,19 +189,22 @@ public partial class App : System.Windows.Application
 
     private void ShowStagedBlockNotification(TransferNotification transfer)
     {
+        transfer = StagedSeedBlockPresentation.ForDisplay(transfer);
         string? eventId = transfer.OverrideAllowed ? transfer.TransferId.ToString("D") : null;
         var findings = transfer.Findings ?? [];
         if (_notification is { IsLoaded: true })
         {
             _notification.Add(transfer.FileName, findings, eventId, quarantined: true, staged: true,
                 handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
-                snapshotSha256Hex: transfer.SnapshotSha256Hex);
+                snapshotSha256Hex: transfer.SnapshotSha256Hex,
+                inspectionFailure: transfer.InspectionFailure, blockReason: transfer.BlockReason);
             return;
         }
         _notification = new BlockNotificationWindow(transfer.FileName, findings,
             eventId, quarantined: true, staged: true,
             handbackPath: transfer.HandbackPath, handbackVerified: transfer.HandbackVerified,
-            snapshotSha256Hex: transfer.SnapshotSha256Hex);
+            snapshotSha256Hex: transfer.SnapshotSha256Hex,
+            inspectionFailure: transfer.InspectionFailure, blockReason: transfer.BlockReason);
         _notification.Closed += (_, _) => _notification = null;
         if (_panel is { IsVisible: true }) _notification.Owner = _panel;
         _notification.Show();

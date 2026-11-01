@@ -91,7 +91,7 @@ public sealed class AuditQueueTemporaryTests
         }
         else await File.WriteAllBytesAsync(queue + "." + Guid.NewGuid().ToString("N") + ".tmp", [1, 2]);
         var name = "SafeUpload.Temporaries.Test." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(),
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance),
             NullLogger<DiagnosticsPipeServer>.Instance, name, auditQueue: new LocalQueueAuditSink(queue));
         await server.StartAsync(CancellationToken.None);
         try

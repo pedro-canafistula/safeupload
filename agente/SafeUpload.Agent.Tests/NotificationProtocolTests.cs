@@ -37,6 +37,24 @@ public class NotificationProtocolTests
         false);
 
     [Fact]
+    public void Seed_private_reason_survives_routing_and_tray_suppresses_return_and_justification()
+    {
+        Assert.Equal(0, (int)StagedBlockReason.ReservedEmptySavePrivate);
+        Assert.Equal(1, (int)StagedBlockReason.SeedExportRestricted);
+        var notice = new TransferNotification(Guid.NewGuid(), "private-log.txt", TransferPhase.Blocked,
+            OverrideAllowed: true, HandbackPath: @"C:\stale-return.txt", HandbackVerified: true,
+            BlockReason: StagedBlockReason.SeedExportRestricted);
+        var restored = Assert.IsType<TransferNotification>(NotificationProtocol.Deserialize(NotificationProtocol.Serialize(notice)));
+        Assert.Equal(notice, restored);
+        var display = SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.ForDisplay(restored);
+        Assert.False(display.OverrideAllowed); Assert.Null(display.HandbackPath); Assert.False(display.HandbackVerified);
+        Assert.Contains("conteúdo anterior", SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.Explanation);
+        Assert.Contains("permanece privada", SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.Explanation);
+        var ordinary = notice with { BlockReason = null };
+        Assert.Equal(ordinary, SafeUpload.Agent.App.Notifications.StagedSeedBlockPresentation.ForDisplay(ordinary));
+    }
+
+    [Fact]
     public void Status_leva_o_discriminador_na_raiz()
     {
         var linha = NotificationProtocol.Serialize(new StatusNotification(7, 4, true));
@@ -101,15 +119,21 @@ public class NotificationProtocolTests
             NotificationProtocol.Deserialize(line.TrimEnd('\n')));
     }
 
-    [Fact]
-    public void Blocked_staged_handback_digest_and_verified_path_survive_the_notification_pipe()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(InspectionFailureKind.TooLarge)]
+    [InlineData(InspectionFailureKind.UnsupportedFormat)]
+    [InlineData(InspectionFailureKind.Timeout)]
+    [InlineData(InspectionFailureKind.ReadOrParse)]
+    public void Blocked_staged_handback_digest_and_verified_path_survive_the_notification_pipe(
+        InspectionFailureKind? failure)
     {
         var original = new TransferNotification(
             Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
             "report.txt", TransferPhase.Blocked, OverrideAllowed: true,
             SnapshotSha256Hex: new string('A', 64),
             HandbackPath: @"C:\Users\sample\SafeUpload\_bloqueados\version.txt",
-            HandbackVerified: true);
+            HandbackVerified: true, InspectionFailure: failure);
 
         string line = NotificationProtocol.Serialize(original);
         var restored = Assert.IsType<TransferNotification>(
@@ -117,6 +141,7 @@ public class NotificationProtocolTests
         Assert.Equal(original.SnapshotSha256Hex, restored.SnapshotSha256Hex);
         Assert.Equal(original.HandbackPath, restored.HandbackPath);
         Assert.True(restored.HandbackVerified);
+        Assert.Equal(failure, restored.InspectionFailure);
     }
 
     /// <summary>

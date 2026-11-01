@@ -2,17 +2,16 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-Reads driver and communication diagnostics from the running SafeUpload service (administrator only, read-only).
+Reads gate, communication and audit queue diagnostics from the running SafeUpload service (administrator only, read-only).
 
 .DESCRIPTION
-The minifilter's communication port accepts a single client and the service holds it, so no other tool can read the
-driver while the product runs. The service exposes read-only queries over the SYSTEM/Administrators-only pipe
+The gate driver's port accepts a single client and the service holds it, so no other tool can read the gate while
+the product runs. The service exposes read-only queries over the SYSTEM/Administrators-only pipe
 \\.\pipe\SafeUpload.Agent.Diagnostics:
 
-TimeoutSeconds (1..300, default 10) is one I/O budget for the entire query, including all deny-ring pages.
+TimeoutSeconds (1..300, default 10) is one I/O budget for the entire query.
 Each reply must be a newline-terminated UTF-8 JSON frame of at most 1 MiB (excluding the newline).
-Timeout, incomplete, oversized or invalid replies fail the query. Completed deny-ring pages may already have
-been emitted if a later page fails; an error is not a complete snapshot.
+Timeout, incomplete, oversized or invalid replies fail the query.
 
   communication-health  policy/heartbeat/audit attempts, results and sanitized failure categories.
                         No network/driver access is performed by this query. Counters reset on restart.
@@ -30,26 +29,18 @@ been emitted if a later page fails; an error is not a complete snapshot.
   audit-retention-preview occurrence-age counts for confirmed lines before -OccurredBeforeUtc (explicit UTC).
                         All three are read-only. No promotion, recovery, deletion or retention policy is applied.
 
-  counters   refusal counters, how often a path that could not resolve a name answered "the whole volume may be in
-             scope", and the writer-state status (registry entries and capacity, reclaim-worker passes, sections,
-             stage streams).
-  deny-ring  the most recent operations the driver completed with an error status: status, operation, requesting
-             process, flags, and the tail of the requested path or rename target. siteOffset is relative to the
-             driver image base; resolve it against SafeUpload.pdb to name the refusing code.
+  counters   writes the gate driver refused (opens, and renames or hard links into protected places) since it loaded.
 
 .EXAMPLE
 .\Get-SafeUploadDiagnostics.ps1 -Query counters
 
 .EXAMPLE
-.\Get-SafeUploadDiagnostics.ps1 -Query deny-ring | Format-Table sequence, statusName, major, processId, name
+.\Get-SafeUploadDiagnostics.ps1 -Query audit-health
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'deny-ring', 'communication-health', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
+    [ValidateSet('counters', 'communication-health', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
     [string] $Query = 'counters',
-
-    # deny-ring: return records with a sequence greater than this value.
-    [uint64] $After = 0,
 
     [string] $OccurredBeforeUtc,
 
@@ -137,22 +128,4 @@ switch ($Query) {
     'communication-health' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'counters' { Invoke-DiagnosticsQuery @{ query = 'counters' } }
     'help' { Invoke-DiagnosticsQuery @{ query = 'help' } }
-    'deny-ring' {
-        $cursor = $After
-        for (;;) {
-            $page = Invoke-DiagnosticsQuery @{ query = 'deny-ring'; after = $cursor }
-            if ($page.gap) { Write-Warning 'Older records were overwritten before they could be read.' }
-            $records = @($page.records)
-            if ($records.Count -eq 0) { break }
-            $next = $cursor
-            foreach ($record in $records) {
-                if ($null -eq $record.sequence -or [uint64]$record.sequence -le $next) {
-                    throw 'SafeUpload diagnostics: deny-ring cursor did not advance.'
-                }
-                $next = [uint64]$record.sequence
-            }
-            $records
-            $cursor = $next
-        }
-    }
 }

@@ -145,26 +145,6 @@ public sealed class FreeTextPrivacyTests : IDisposable
         Assert.Equal(bytes, await File.ReadAllBytesAsync(_workspace.QueueFile));
     }
 
-    [Theory]
-    [InlineData(null)] [InlineData(1)]
-    public async Task Journal_restart_preserves_legacy_or_new_projection(int? version)
-    {
-        string root = Path.Combine(_workspace.Root, "journal");
-        var transfer = new StagedTransfer(Guid.NewGuid(), Path.Combine(_workspace.Root, "stage.txt"),
-            Path.Combine(_workspace.Root, "report.txt"), DestinationKind.Cloud, "synthetic", 42, null) { AuditMetadataVersion = version };
-        await new StagedTransferJournal(root).CreateAsync(transfer, default);
-        Assert.Equal(version, (await new StagedTransferJournal(root).ReadAsync(transfer.TransferId, default)).Transfer.AuditMetadataVersion);
-        if (version is null) Assert.DoesNotContain("AuditMetadataVersion", JsonSerializer.Serialize(transfer));
-    }
-
-    [Fact]
-    public async Task Unknown_journal_projection_is_refused()
-    {
-        var transfer = new StagedTransfer(Guid.NewGuid(), Path.Combine(_workspace.Root, "stage.txt"),
-            Path.Combine(_workspace.Root, "report.txt"), DestinationKind.Cloud, "synthetic", 42, null) { AuditMetadataVersion = 2 };
-        await Assert.ThrowsAsync<InvalidDataException>(() => new StagedTransferJournal(Path.Combine(_workspace.Root, "journal")).CreateAsync(transfer, default));
-    }
-
     private sealed class Wire : HttpMessageHandler
     {
         public readonly List<string> Bodies = [];

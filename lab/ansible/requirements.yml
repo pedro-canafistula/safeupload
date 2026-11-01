@@ -1,0 +1,7 @@
+# Install with: ansible-galaxy collection install -r requirements.yml -p ./collections
+# Windows over SSH needs ansible-core >= 2.18; see ../requirements.txt for the controller.
+collections:
+  - name: ansible.windows
+    version: "2.8.0"
+  - name: community.windows
+    version: "2.4.0"

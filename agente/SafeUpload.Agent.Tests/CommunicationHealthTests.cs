@@ -232,7 +232,7 @@ public sealed class CommunicationHealthTests
     {
         var health = new CommunicationHealth(false);
         string pipeName = "SafeUpload.Communication.Test." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(),
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance),
             NullLogger<DiagnosticsPipeServer>.Instance, pipeName, communicationHealth: available ? health : null);
         await server.StartAsync(CancellationToken.None);
         try

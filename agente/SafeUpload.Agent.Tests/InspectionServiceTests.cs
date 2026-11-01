@@ -38,6 +38,36 @@ public class InspectionServiceTests : IDisposable
     private Task<InspectionResult> InspectAsync(FileOperation operation) =>
         Service().InspectAsync(operation, CancellationToken.None);
 
+    [Theory]
+    [InlineData("inspection")]
+    [InlineData("approval")]
+    [InlineData("justification")]
+    public async Task Staged_decisions_require_current_policy_even_when_legacy_fallback_remains_valid(string decision)
+    {
+        await _policies.LoadAsync(CancellationToken.None);
+        var json = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(_workspace.PolicyFile))!;
+        json["overrideAllowed"] = true;
+        await File.WriteAllTextAsync(_workspace.PolicyFile, json.ToJsonString());
+        bool trusted = true;
+        var store = new LocalPolicyStore(_workspace.PolicyFile, _ => trusted);
+        var service = new InspectionService(store, _sink, ExtractorRegistry.CreateDefault(), _cache);
+        var operation = TestWorkspace.Operation(_workspace.WriteText("current-policy.txt",
+            decision == "justification" ? "CPF: 529.982.247-25" : "Clean private bytes."));
+        InspectionResult? result = null;
+        if (decision != "inspection") result = await service.InspectStagedAsync(operation, CancellationToken.None);
+        else await store.LoadAsync(CancellationToken.None);
+        trusted = false;
+        if (decision == "inspection")
+            await Assert.ThrowsAsync<PolicyFileAclRejectedException>(() => service.InspectStagedAsync(operation, CancellationToken.None));
+        else if (decision == "approval")
+            await Assert.ThrowsAsync<PolicyFileAclRejectedException>(() => service.IsCurrentStagedApprovalAsync(operation, result!, CancellationToken.None));
+        else
+            await Assert.ThrowsAsync<PolicyFileAclRejectedException>(() => service.IsCurrentStagedJustificationAllowedAsync(operation, result!, CancellationToken.None));
+        Assert.Equal(0, service.ActiveInspectionWorkers);
+        Assert.Equal(decision == "justification" ? Verdict.Blocked : Verdict.Approved,
+            (await service.InspectAsync(operation, CancellationToken.None)).Verdict);
+    }
+
     [Fact]
     public async Task Arquivo_limpo_e_aprovado()
     {

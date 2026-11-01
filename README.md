@@ -2,7 +2,7 @@
 
 Protótipo acadêmico de prevenção de vazamento acidental de dados (DLP).
 
-O Centro de Administração usa **Java 21 / Spring Boot + Angular**. O agente Windows continua em **C#/.NET 10**, com driver minifilter em **C** opcional.
+O Centro de Administração usa **Java 21 / Spring Boot + Angular**. O agente Windows continua em **C#/.NET 10**; a proteção de pastas usa unidades WinFsp e um driver minifilter pequeno em **C**.
 
 ## Fluxo funcional
 
@@ -41,7 +41,7 @@ Abra **http://localhost:4200**, crie uma conta de teste e faça login. O Angular
 
 O backend escuta somente em loopback por padrão. O banco é `./data/safeupload`, relativo ao diretório de execução do backend; ao usar o Maven acima, fica em `web/back/data`. Não apague esse diretório para reiniciar. Usuários e registros de acesso também persistem. Não é necessário iniciar o MySQL de `db/` para este fluxo.
 
-No agente, `CentroAdministracao:BaseUrl` está configurada como `http://127.0.0.1:8080/agent/`. A barra final e o prefixo `/agent/` fazem parte da integração. Consulte [agente/README.md](agente/README.md) para execução do serviço, inspeção e interface WPF; [driver/ARQUITETURA.md](driver/ARQUITETURA.md) para o driver.
+No agente, `CentroAdministracao:BaseUrl` está configurada como `http://127.0.0.1:8080/agent/`. A barra final e o prefixo `/agent/` fazem parte da integração. Consulte [agente/README.md](agente/README.md) para execução do serviço, inspeção e interface WPF; [driver/README.md](driver/README.md) para o driver.
 
 ## Testes
 

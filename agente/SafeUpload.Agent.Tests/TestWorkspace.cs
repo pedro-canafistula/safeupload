@@ -117,6 +117,26 @@ public sealed class TestWorkspace : IDisposable
         return path;
     }
 
+    /// <summary>Creates a real raster-image PDF, optionally mixed with a text layer.</summary>
+    public string WritePdfWithImage(string fileName, string? firstPageText = null, string? imagePageText = null)
+    {
+        var builder = new PdfDocumentBuilder();
+        var font = builder.AddStandard14Font(Standard14Font.Helvetica);
+        var page = builder.AddPage(PageSize.A4);
+        if (firstPageText is not null)
+        {
+            page.AddText(firstPageText, 10, new PdfPoint(40, 800), font);
+            page = builder.AddPage(PageSize.A4);
+        }
+        if (imagePageText is not null)
+            page.AddText(imagePageText, 10, new PdfPoint(40, 800), font);
+        // One white RGB pixel: unsupported raster content, without sensitive fixture data.
+        page.AddPng(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"), new PdfRectangle(40, 600, 100, 660));
+        string path = Path.Combine(Root, fileName);
+        File.WriteAllBytes(path, builder.Build());
+        return path;
+    }
+
     public string WriteWordDocument(string fileName, params string[] paragraphs)
     {
         var body = new StringBuilder();

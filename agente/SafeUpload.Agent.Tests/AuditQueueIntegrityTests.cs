@@ -191,7 +191,7 @@ public sealed class AuditQueueIntegrityTests
         await File.WriteAllTextAsync(workspace.QueueFile, "{SENSIVEL\n");
         using var file = locked ? new FileStream(workspace.QueueFile, FileMode.Open, FileAccess.Read, FileShare.None) : null;
         var name = "SafeUpload.Integrity.Test." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(),
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance),
             NullLogger<DiagnosticsPipeServer>.Instance, name, auditQueue: new LocalQueueAuditSink(workspace.QueueFile));
         await server.StartAsync(CancellationToken.None);
         try
@@ -234,7 +234,7 @@ public sealed class AuditQueueIntegrityTests
             item.UserName, item.EndpointId), CancellationToken.None);
         var before = await File.ReadAllBytesAsync(workspace.QueueFile);
         var name = "SafeUpload.Integrity.Privacy." + Guid.NewGuid().ToString("N");
-        using var server = new DiagnosticsPipeServer(new DriverDiagnosticsSource(),
+        using var server = new DiagnosticsPipeServer(new SafeUpload.Agent.Service.Gate.GateClient(Microsoft.Extensions.Logging.Abstractions.NullLogger<SafeUpload.Agent.Service.Gate.GateClient>.Instance),
             NullLogger<DiagnosticsPipeServer>.Instance, name, auditQueue: configured ? sink : null);
         await server.StartAsync(CancellationToken.None);
         try

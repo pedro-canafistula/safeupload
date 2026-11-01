@@ -45,18 +45,17 @@ function Assert-SafeUploadDirectory {
 
 function New-SafeUploadInstallPlan {
     param([Parameter(Mandatory)][string]$InstallRoot,
-          [ValidateSet('Minifilter', 'FileSystemWatcher')][string]$Mode = 'Minifilter',
+          [ValidateSet('Drive', 'FileSystemWatcher')][string]$Mode = 'Drive',
           [AllowEmptyString()][string]$AdminBaseUrl = '')
     if (-not [IO.Path]::IsPathRooted($InstallRoot) -or $InstallRoot -match '["\r\n]') { throw 'Invalid install root.' }
     $url = ConvertTo-SafeUploadAdminUrl $AdminBaseUrl
     $exe = Join-Path $InstallRoot 'service\SafeUpload.Agent.Service.exe'
     $arguments = @('--Interception:Mode=' + $Mode)
-    if ($Mode -eq 'Minifilter') { $arguments += '--Interception:StagingPrototype=true' }
     $arguments += @(('--CentroAdministracao:BaseUrl=' + $url), '--InspecaoTls:Habilitada=false')
     [pscustomobject]@{
         Mode = $Mode; AdminBaseUrl = $url; Executable = $exe
         CommandLine = '"' + $exe + '" ' + ($arguments -join ' ')
-        RestartRequired = ($Mode -eq 'Minifilter')
+        RestartRequired = $false
     }
 }
 
@@ -81,19 +80,19 @@ function Assert-SafeUploadInstallAcl {
 
 function Assert-SafeUploadMachineState {
     param([Parameter(Mandatory)]$State,
-          [ValidateSet('Minifilter', 'FileSystemWatcher')][string]$Mode,
-          [ValidateSet('Install', 'Uninstall')][string]$Operation)
+          [ValidateSet('Drive', 'FileSystemWatcher')][string]$Mode,
+          [ValidateSet('Install', 'Uninstall')][string]$Operation,
+          [bool]$WinFspAvailable = $true)
     if ($Operation -eq 'Install') {
         if ($State.AgentInstalled) { throw 'An agent service already exists. This initial installer does not perform upgrades.' }
-        if ($Mode -eq 'Minifilter' -and (-not $State.DriverInstalled -or $State.DriverState -ne 'Stopped')) {
-            throw 'Minifilter mode requires the driver package installed and its driver stopped. Use a disposable VM.'
+        if ($Mode -eq 'Drive' -and -not $WinFspAvailable) {
+            throw 'Drive mode needs WinFsp: install it first or use an installer that bundles it.'
         }
         if ($Mode -eq 'FileSystemWatcher' -and $State.DriverInstalled) {
             throw 'Driver-free test mode cannot be installed while a SafeUpload driver is registered.'
         }
-    } elseif ($State.DriverInstalled -and ($State.DriverStart -ne 4 -or $State.DriverState -ne 'Stopped')) {
-        throw 'Disable and unload the driver in the approved maintenance procedure before removing the agent. The installer never disables a driver for you.'
     }
+    # Uninstall removes the gate driver together with the agent; nothing to check here.
 }
 
 function Test-SafeUploadPayload {
