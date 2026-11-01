@@ -29,6 +29,9 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
     private readonly ConsolePolicyOptions? _consolePolicy;
     private readonly IPolicyStore? _operationalPolicy;
     private PolicyDocument? _lastConsoleDocument;
+    private RemotePolicyStatus _status = new();
+
+    public RemotePolicyStatus ReadStatus() => Volatile.Read(ref _status);
 
     /// <summary>Origem da última carga concluída, para diagnóstico operacional.</summary>
     public string? LastSource { get; private set; }
@@ -147,6 +150,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                 policy.EnsureValid();
                 var cachedPolicy = cacheDocument?.ToPolicy();
                 cachedPolicy?.EnsureValid();
+                Volatile.Write(ref _status, _status with { LastValidatedRemoteVersion = policy.Version });
 
                 // A política publicada pode ser usada nesta execução mesmo quando
                 // o disco não permite atualizar o cache; a falha fica diagnosticada.
@@ -158,6 +162,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                     if (cacheDocument is not null)
                     {
                         await SaveAsync(cacheDocument, cancellationToken).ConfigureAwait(false);
+                        Volatile.Write(ref _status, _status with { LastWrittenCacheVersion = cacheDocument.Version });
                         persisted = true;
                     }
                 }
@@ -292,6 +297,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         var policy = document.ToPolicy();
         policy.EnsureValid();
         if (_consolePolicy is not null) _lastConsoleDocument = document;
+        Volatile.Write(ref _status, _status with { LastReadCacheVersion = policy.Version });
         return policy;
     }
 

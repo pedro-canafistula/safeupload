@@ -17,21 +17,22 @@ Thiago/equipe: contrato de autenticação/provisionamento/renovação/revogaçã
 
 Pedro: comparar o consumidor de política com qualquer código ainda não publicado, sem manter duas autoridades conflitantes. Vitor: usar pacote/versão identificados do par WinFsp/gate e combinar o aceite real, sem modificar kernel/infraestrutura unilateralmente. Issue #46 precisa ser lida à luz de #78.
 
-## Próxima entrega prioritária
+## Fechamento da primeira versão do núcleo
 
-O ensaio SYSTEM foi ampliado em um cenário separado para selecionar ConsoleByIp e verificar cache protegido/reinício offline e mudança de política no serviço; sua execução remota foi aprovada no commit 8513d5a7. Próximo aceite: conjunto real com WinFsp/gate, dependente de acesso ao laboratório preparado. O cliente do gate agora recusa mensagens que não representem o escopo completo; kernel/protocolo preservados. Separar claramente recebimento da política, persistência do cache e aplicação nas unidades. A fila e os componentes de comunicação já existem; não precisam ser reconstruídos. Retenção destrutiva, autenticação e atualização de instalação exigem suas definições próprias.
+O alvo é um agente pronto para integrar: inspeção/decisão, política válida e last-known-good, fila offline/recibos, autorização vinculada a uma versão, serviço/bandeja e diagnóstico local. Não reconstruir esses componentes nem abrir novas funcionalidades para encerrar essa entrega. O PR #79 reúne o código ainda separado da main; fechamento exige revisar/consolidar esse PR e conferir os checks do SHA final. A regra do repositório também exige aceite na VM para chamar a mudança de concluída; testes isolados não substituem esse aceite.
 
-## Validação deste incremento
+Diagnóstico próprio entregue neste incremento: `Get-SafeUploadDiagnostics.ps1 -Query policy-status`, no pipe administrativo existente. Distingue última política devolvida em `LoadAsync`, última consulta atual bem-sucedida, revisões remotas validadas/cache gravado/cache lido e último escopo aceito pelo transporte do gate. Falha/cancelamento da consulta atual preserva o último sucesso como histórico, sem torná-lo autoridade. Os marcos são independentes e reiniciam com o processo; não são um inventário atual do disco ou confirmação de proteção. A consulta não faz I/O, não inicia driver e não envia ACK ao backend. Não expõe destinos, URL, identificação do host ou conteúdo de política.
 
-107 testes focados aprovados, zero falhas/ignorados: caches, tempo decorrido, cancelamento, leitura atual, vínculo de política e justificativas. Não somar com recortes anteriores, que se sobrepõem. Testes usam relógio controlado, sem alterar o relógio do Windows. Os grupos de cache passam a ser exigidos no workflow de recibos. Não houve VM ou novo ensaio pesado local.
+A instrumentação observa os provedores existentes e mantém a consulta atual separada do snapshot clássico. A composição do serviço mantém o comportamento anterior dos consumidores: no modo remoto, o clipboard continua sem um segundo cache periódico; suas regras de inspeção não mudaram.
 
-[PR #79](https://github.com/pedro-canafistula/safeupload/pull/79) continua separado da main; resultados remotos devem ser conferidos no commit exato. [Política e integração](POLITICA-CENTRAL-20261101.md).
+Retenção automática destrutiva permanece desabilitada na primeira versão, com monitoramento/preview somente leitura já disponíveis. Definir sua regra é evolução operacional da issue #48; não é motivo para criar outra fila ou apagar pendências para declarar conclusão. Autenticação de dispositivo, confirmação no painel e contrato de seleção por IP são integrações conjuntas da issue #47, não APIs a inventar no núcleo.
 
+## Validação e limite do fechamento
 
-## Ordem das próximas entregas independentes
+101 testes focados aprovados, zero falhas/ignorados: diagnóstico, política central, snapshot/consulta atual, gate, comunicação, caches e pipes. Cliente de suporte: 27/27 em PS7.6.5 e 27/27 em PS5.1.26100.9711. Build Release da interface e dependências: zero erros/avisos. O grupo PolicyDiagnosticsTests passa a ser exigido no workflow de recibos. Não houve instalação local de serviço/driver, montagem WinFsp ou ensaio pesado novo.
 
-1. Diagnóstico local: distinguir revisão recebida/cacheada/snapshot clássico e aplicação do escopo ao gate. Comunicação HTTP bem-sucedida não deve ser apresentada como aplicação nas unidades. Reutilizar o pipe administrativo e a saúde existentes, sem inventar ACK ou rota Java.
-2. Preparar regras e validação da retenção/compactação: preservar todos os pendentes e referências evento/justificativa, definir autoridade/base temporal e manter exclusão desabilitada até acordo. O preview somente leitura já existe; não reconstruí-lo.
-3. Integração real do par: conferir decisões e desfecho da publicação, auditoria, reconexão e justificativas nas unidades com o pacote identificado, quando houver acesso ao laboratório. Não substituir por outro ensaio do watcher.
+Checkpoint remoto anterior: todos os workflows do commit `87c55205` aprovados, incluindo recibos, instalador e contrato/serviço SYSTEM. No commit `3c3f57de`, os cenários de serviço SYSTEM e ConsoleByIp já foram aprovados; conferir os demais checks e o novo HEAD separadamente. Esses cenários usam FileSystemWatcher, após gravação, não qualificam prevenção pelas unidades.
 
-Autenticação/renovação/revogação do dispositivo e confirmação no painel continuam sendo contratos conjuntos. A janela de justificativas foi corrigida para tempo decorrido; não ampliar a janela nem substituir vínculo de política por prazo apenas.
+A main remota ainda está em `c6409002` (#78, Vitor/Victor); o fetch de 01/11 não trouxe commit posterior do driver. O aceite do par identificado WinFsp/gate continua sendo o próximo trabalho de integração: decisão versus publicação efetivamente concluída, erros, reconexão, justificativa por versão e Office/USB/SMB. Não tratar o sinal de solicitação/aprovação como prova de cópia final concluída. Acesso ao laboratório preparado e pacote atual são necessários. Windows 10/11, assinatura e upgrade/repair/rollback continuam no aceite de distribuição da issue #45. Não declarar produto inteiro finalizado antes desses aceites.
+
+[PR #79](https://github.com/pedro-canafistula/safeupload/pull/79) continua draft, sem merge para main. [Política e integração](POLITICA-CENTRAL-20261101.md).

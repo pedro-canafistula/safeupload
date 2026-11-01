@@ -97,8 +97,8 @@ public static class Program
         // Clipboard usa diretamente o snapshot remoto, já atualizado em fundo.
         // O cache adicional fica somente no modo local para limitar leituras de disco.
         builder.Services.AddSingleton(provider => new ClipboardInspectionService(
-            provider.GetRequiredService<IPolicyStore>() is RefreshingPolicyStore remotePolicy
-                ? remotePolicy
+            provider.GetService<RefreshingPolicyStore>() is not null
+                ? provider.GetRequiredService<IPolicyStore>()
                 : new CachedPolicyStore(provider.GetRequiredService<IPolicyStore>(),
                     ClipboardInspectionService.PolicyLifetime),
             provider.GetRequiredService<ClipboardCopyStore>(),
@@ -124,7 +124,7 @@ public static class Program
 
         if (administration.BaseUri is null)
         {
-            builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
+            builder.Services.AddSingleton<LocalPolicyStore>();
         }
         else
         {
@@ -146,21 +146,21 @@ public static class Program
                 .RemoveAllLoggers();
             }
 
-            builder.Services.AddSingleton<RefreshingPolicyStore>(provider =>
+            builder.Services.AddSingleton<DurableHttpPolicyStore>(provider =>
             {
                 var factory = provider.GetRequiredService<IHttpClientFactory>();
                 var health = provider.GetRequiredService<CommunicationHealth>();
-                var remote = administration.ConsolePolicy is { } console
+                return administration.ConsolePolicy is { } console
                     ? new DurableHttpPolicyStore(
                         factory.CreateClient(HttpClientName + "AgentApi"), endpointId,
                         Path.Combine(AgentPaths.RootDirectory, "console-policy-cache.json"),
                         health, console, new LocalPolicyStore())
                     : new DurableHttpPolicyStore(factory.CreateClient(HttpClientName), endpointId,
                         Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json"), health);
-                return new RefreshingPolicyStore(remote, TimeSpan.FromSeconds(30),
-                    provider.GetRequiredService<ILogger<RefreshingPolicyStore>>());
             });
-            builder.Services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<RefreshingPolicyStore>());
+            builder.Services.AddSingleton<RefreshingPolicyStore>(provider => new(
+                provider.GetRequiredService<DurableHttpPolicyStore>(), TimeSpan.FromSeconds(30),
+                provider.GetRequiredService<ILogger<RefreshingPolicyStore>>()));
             builder.Services.AddHostedService(provider => provider.GetRequiredService<RefreshingPolicyStore>());
 
             builder.Services.AddHostedService(provider =>
@@ -179,6 +179,13 @@ public static class Program
                             provider.GetRequiredService<CommunicationHealth>())
                 });
         }
+
+        builder.Services.AddSingleton<PolicyDiagnosticsStore>(provider => new(
+            administration.BaseUri is null ? provider.GetRequiredService<LocalPolicyStore>()
+                : provider.GetRequiredService<RefreshingPolicyStore>(),
+            administration.BaseUri is null ? "Local" : administration.ConsolePolicy is null ? "LegacyRemote" : "ConsoleByIp",
+            provider.GetService<DurableHttpPolicyStore>()));
+        builder.Services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<PolicyDiagnosticsStore>());
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma aberta.
         //
@@ -206,7 +213,8 @@ public static class Program
             provider.GetRequiredService<ILogger<DiagnosticsPipeServer>>(),
             communicationHealth: provider.GetRequiredService<CommunicationHealth>(),
             auditQueue: provider.GetRequiredService<LocalQueueAuditSink>(),
-            auditHealth: provider.GetRequiredService<AuditQueueHealth>()));
+            auditHealth: provider.GetRequiredService<AuditQueueHealth>(),
+            policyDiagnostics: provider.GetRequiredService<PolicyDiagnosticsStore>()));
 
         // A entrega das notificacoes aos aplicativos conectados.
         builder.Services.AddSingleton<AuditHistoryReader>();

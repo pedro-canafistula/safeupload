@@ -17,6 +17,10 @@ Timeout, incomplete, oversized or invalid replies fail the query.
                         No network/driver access is performed by this query. Counters reset on restart.
                         Success is not proof of central persistence, applied policy or protection.
 
+  policy-status        last successful snapshot/current-origin reads, remote validation/cache milestones,
+                       and last scope accepted by gate transport. Independent process-local observations;
+                       no I/O, live authority check, disk inventory, mount/protection proof or central ACK.
+
   audit-integrity      explicit read-only scan: line counts, pending/confirmed records, oldest pending UTC,
                        and up to 20 line numbers/reasons; no event content, IDs or paths.
                        A scan exceeding the service deadline returns no partial inventory. No repair/deletion.
@@ -39,7 +43,7 @@ Timeout, incomplete, oversized or invalid replies fail the query.
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('counters', 'communication-health', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
+    [ValidateSet('counters', 'communication-health', 'policy-status', 'audit-health', 'audit-integrity', 'audit-temporaries', 'audit-temporary-classification', 'audit-retention-preview', 'help')]
     [string] $Query = 'counters',
 
     [string] $OccurredBeforeUtc,
@@ -117,6 +121,7 @@ function Invoke-DiagnosticsQuery([hashtable] $Request) {
 }
 
 switch ($Query) {
+    'policy-status' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'audit-health' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'audit-integrity' { Invoke-DiagnosticsQuery @{ query = $Query } }
     'audit-temporaries' { Invoke-DiagnosticsQuery @{ query = $Query } }

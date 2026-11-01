@@ -36,11 +36,12 @@ public sealed class DiagnosticsPipeServer : BackgroundService
     private readonly CommunicationHealth? _communicationHealth;
     private readonly LocalQueueAuditSink? _auditQueue;
     private readonly AuditQueueHealth? _auditHealth;
+    private readonly PolicyDiagnosticsStore? _policyDiagnostics;
 
     /// <param name="pipeName">Only tests pass a name; the service always uses <see cref="PipeName"/>.</param>
     public DiagnosticsPipeServer(GateClient gate, ILogger<DiagnosticsPipeServer> logger,
         string pipeName = PipeName, CommunicationHealth? communicationHealth = null, LocalQueueAuditSink? auditQueue = null,
-        AuditQueueHealth? auditHealth = null)
+        AuditQueueHealth? auditHealth = null, PolicyDiagnosticsStore? policyDiagnostics = null)
     {
         _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -48,6 +49,7 @@ public sealed class DiagnosticsPipeServer : BackgroundService
         _communicationHealth = communicationHealth;
         _auditQueue = auditQueue;
         _auditHealth = auditHealth;
+        _policyDiagnostics = policyDiagnostics;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -105,6 +107,10 @@ public sealed class DiagnosticsPipeServer : BackgroundService
 
             switch (query)
             {
+                case "policy-status":
+                    return _policyDiagnostics is null ? Error(query, "Policy monitoring is unavailable.") :
+                        Ok(query, JsonSerializer.SerializeToNode(_policyDiagnostics.Read(_gate.ReadPolicyStatus()),
+                            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!);
                 case "audit-health":
                     return _auditHealth is null ? Error(query, "Audit monitoring is unavailable.") :
                         Ok(query, JsonSerializer.SerializeToNode(_auditHealth.Read(), new JsonSerializerOptions
@@ -152,7 +158,8 @@ public sealed class DiagnosticsPipeServer : BackgroundService
                 case "help":
                     return Ok(query, new JsonObject
                     {
-                        ["queries"] = new JsonArray("counters", "communication-health", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
+                        ["queries"] = new JsonArray("counters", "communication-health", "policy-status", "audit-health", "audit-integrity", "audit-temporaries", "audit-temporary-classification", "audit-retention-preview", "help"),
+                        ["policyStatus"] = "process-local last successful snapshot/current-origin reads, remote validation/cache milestones and gate transport receipt; independent observations, not an atomic or live authority check, disk inventory, mount/protection proof or central ACK; no I/O",
                         ["temporaryClassification"] = "bounded Windows content scan; structural validity does not prove ownership, complete copy or recovery eligibility; no promotion or deletion",
                         ["retentionPreview"] = "requires explicit occurredBeforeUtc in UTC; occurrence-age counts only, never deletion eligibility",
                         ["auditHealth"] = "process-local operation failures and resumptions; resets on restart; no file scan or proof that failed writes were recovered",

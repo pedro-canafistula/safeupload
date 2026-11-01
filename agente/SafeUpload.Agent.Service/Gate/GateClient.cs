@@ -21,6 +21,10 @@ public sealed class GateClient : IDisposable
     private SafeFileHandle? _port;
     private string? _appliedKey;
     private bool _warned;
+    private GatePolicyStatus _policyStatus = new();
+
+    // Unlike Counters(), this never connects to or starts the driver, nor waits for an Apply lock.
+    public GatePolicyStatus ReadPolicyStatus() => Volatile.Read(ref _policyStatus);
 
     public GateClient(ILogger<GateClient> logger) => _logger = logger;
 
@@ -29,23 +33,44 @@ public sealed class GateClient : IDisposable
     /// <summary>Sends the protected folders (DOS paths) and volume flags, if they changed or after a reconnect.</summary>
     public void Apply(IReadOnlyList<string> folders, bool removable, bool network)
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows())
+        {
+            Volatile.Write(ref _policyStatus, _policyStatus with { LastApplyOutcome = "unsupported_platform" });
+            return;
+        }
         // Validate the complete scope before connecting, starting the driver or sending anything.
-        var policy = GatePolicyMessage.Create(folders, removable, network, ToNtPath);
+        GatePolicyMessage policy;
+        try { policy = GatePolicyMessage.Create(folders, removable, network, ToNtPath); }
+        catch
+        {
+            lock (_gate) Volatile.Write(ref _policyStatus, _policyStatus with { LastApplyOutcome = "invalid_scope" });
+            throw;
+        }
         var key = policy.Key;
         lock (_gate)
         {
-            if (!Connect()) return;
-            if (key == _appliedKey) return;
+            if (!Connect())
+            {
+                Volatile.Write(ref _policyStatus, _policyStatus with { LastApplyOutcome = "unavailable" });
+                return;
+            }
+            if (key == _appliedKey)
+            {
+                Volatile.Write(ref _policyStatus, _policyStatus with { LastApplyOutcome = "accepted" });
+                return;
+            }
             var message = policy.Bytes;
             int hr = FilterSendMessage(_port!, message, (uint)message.Length, null, 0, out _);
             if (hr != 0)
             {
                 _logger.LogWarning("Gate driver refused the policy (HRESULT 0x{Hr:X8}); reconnecting later", hr);
                 Disconnect();
+                Volatile.Write(ref _policyStatus, _policyStatus with { LastApplyOutcome = "rejected" });
                 return;
             }
             _appliedKey = key;
+            Volatile.Write(ref _policyStatus, new("accepted", true,
+                new(key, policy.PathCount, removable, network, DateTimeOffset.UtcNow)));
             _logger.LogInformation("Gate driver protects {Count} folder(s), removable={Removable}, network={Network}: {Paths}",
                 policy.PathCount, removable, network, string.Join(", ", folders));
         }
@@ -108,6 +133,7 @@ public sealed class GateClient : IDisposable
         }
         _port = port;
         _appliedKey = null;
+        Volatile.Write(ref _policyStatus, _policyStatus with { ConnectionHasAcceptedScope = false });
         _warned = false;
         _logger.LogInformation("Connected to the gate driver");
         return true;
@@ -118,6 +144,7 @@ public sealed class GateClient : IDisposable
         _port?.Dispose();
         _port = null;
         _appliedKey = null;
+        Volatile.Write(ref _policyStatus, _policyStatus with { ConnectionHasAcceptedScope = false });
     }
 
     public void Dispose()

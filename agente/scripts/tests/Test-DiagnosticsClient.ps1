@@ -184,6 +184,15 @@ Test-Case 'A service error is reported without returning its data' {
 Test-Case 'The next query succeeds after timeout cleanup' {
     With-Fixture 'reply' $good { Assert-True ($null -ne (Read-Help).text) 'Subsequent query failed.' }
 }
+Test-Case 'Policy status is accepted by parameter binding and forwarded by the production selector' {
+    & $parameterProbe -Query 'policy-status'
+    With-Fixture 'reply' ($utf8.GetBytes('{"ok":true,"query":"policy-status","data":{"mode":"Local"}}' + "`n")) { param($fixture)
+        $Query = 'policy-status'
+        $reply = & $selectQuery
+        Assert-True ($reply.mode -eq 'Local') 'Policy status reply changed.'
+        Assert-True (($fixture.Request | ConvertFrom-Json).query -eq 'policy-status') 'Policy status query was not forwarded.'
+    }
+}
 foreach ($value in @(-1,0,301,[int]::MaxValue)) {
     Test-Case ('Invalid timeout rejected by production parameter binding: ' + $value) {
         Assert-Fails { & $parameterProbe -TimeoutSeconds $value } 'TimeoutSeconds'
