@@ -96,7 +96,7 @@ $operational = @{
     monitoredScopes=@{extensions=@('.txt');destinationPaths=@((Join-Path $workRoot 'Escopo Monitorado'));removableDrives=$false;networkPaths=$false}
 } | ConvertTo-Json -Depth 5
 [IO.File]::WriteAllText($operationalFile, $operational, [Text.UTF8Encoding]::new($false))
-& (Join-Path $PSScriptRoot 'Protect-SafeUploadPolicy.ps1') -PolicyPath $operationalFile | Out-Null
+& (Join-Path $PSScriptRoot '../Protect-SafeUploadPolicy.ps1') -PolicyPath $operationalFile | Out-Null
 Assert-ConsoleCacheAcl $operationalFile
 Check 'central cache does not exist before the service starts' (-not (Test-Path -LiteralPath (Join-Path $agentRoot 'console-policy-cache.json')))
 $operationalHash = (Get-FileHash -LiteralPath $operationalFile -Algorithm SHA256).Hash

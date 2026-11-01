@@ -72,3 +72,6 @@ O CI agora inclui um cenário separado ConsoleByIp no serviço SYSTEM, reaprovei
 Build Release de ContractSmoke aprovado sem erros/avisos; PowerShell e YAML conferidos. O cenário novo ainda depende da execução remota deste commit: código preparado não é aceite concluído. Não foi executado localmente porque o roteiro só aceita runner Windows descartável. O cenário usa FileSystemWatcher (observação após gravação), não WinFsp/gate, e não qualifica bloqueio preventivo ou atualização do status remoto da UI. Os ensaios anteriores de identidade e contrato permanecem preservados.
 
 Uma falha anterior do instalador foi localizada no primeiro teste de resposta válida fragmentada do diagnóstico em PS5.1: 1275 ms excederam o orçamento sintético de 1 s. Apenas esse caso de sucesso passa a ter 5 s para inicialização do runtime; casos negativos e prazo de produção permanecem intactos. Validação local final: 26/26 em PS7.6.5 e 26/26 em PS5.1.26100.9711.
+
+
+Primeira execução do cenário SYSTEM (41352573361): recusada antes do início do serviço porque o helper em scripts/support resolveu o script de ACL relativo à pasta errada. Caminho corrigido para ../Protect-SafeUploadPolicy.ps1 e existência conferida; artefatos originais preservados. Essa falha não é aceite do serviço nem reprovação do consumidor C#.
