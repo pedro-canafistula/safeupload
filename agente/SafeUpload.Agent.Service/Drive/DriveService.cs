@@ -8,6 +8,7 @@ using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Drive;
 using SafeUpload.Agent.Service.Gate;
+using SafeUpload.Agent.Service.Diagnostics;
 using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Service.Drive;
@@ -203,11 +204,19 @@ public sealed class DriveService : BackgroundService
 
         DriveMount? mount;
         lock (_mounts) _mounts.TryGetValue(destination, out mount);
-        if (policy?.AuditOnly == true)
+        if (policy?.AuditOnly == true && mount is not null &&
+            decision.Operation is { } auditOperation && decision.Result is { } auditResult)
         {
-            // Audit mode: record what would have been blocked, but let it through.
-            mount?.FileSystem.Approve(decision.VersionId);
-            return;
+            try
+            {
+                if (await DriveAuditRelease.TryApproveAsync(_policyStore, auditOperation, auditResult,
+                        () => mount.FileSystem.Approve(decision.VersionId), CancellationToken.None).ConfigureAwait(false))
+                    return;
+            }
+            catch (Exception error)
+            {
+                _logger.LogSafeWarning(error, "Audit-mode release refused; the version remains retained.");
+            }
         }
         bool overrideAllowed = policy?.OverrideAllowed == true && mount is not null &&
             writer?.SessionId is not null && writer.UserSid is not null && decision.Result?.PolicyContentFingerprint is not null;
