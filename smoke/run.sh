@@ -39,7 +39,7 @@ cleanup() {
     virsh -c qemu:///system vol-delete --pool default "$usb" >/dev/null 2>&1
     [ "$keep" = --keep ] || bash driver/scripts/vm-session.sh end "$tag"
 }
-bash driver/scripts/vm-session.sh begin "$tag" --office || exit 1
+bash driver/scripts/vm-session.sh begin "$tag" || exit 1
 trap cleanup EXIT
 
 echo "== install"
