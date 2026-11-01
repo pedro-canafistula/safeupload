@@ -192,7 +192,7 @@ tela Políticas. Sem `PolicyProtocol`, continua o formato antigo (`GET /agent/po
 | Da console | No agente |
 |---|---|
 | `regras`: cpf, cnpj, cartao_credito, credenciais, rg, dados_bancarios, dados_saude, documentos_confidenciais, dados_pessoais | categorias ativas (`credenciais` = senha + segredo) |
-| `acao`: bloquear / alertar | bloqueia / só audita (`AuditOnly`) |
+| `acao`: bloquear / alertar | bloqueia / libera e registra o alerta (`AuditOnly`; evento `Approved` com as categorias). Arquivo que não pôde ser inspecionado continua bloqueado nos dois casos |
 | `idPolitica` | versão da política |
 
 A console ainda não publica pastas protegidas, pendrives, compartilhamentos, extensões, limites nem a permissão de
