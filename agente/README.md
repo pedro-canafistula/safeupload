@@ -57,6 +57,13 @@ outro evento, sem reescrever o bloqueio ou a justificativa originais. A publica�
 A resposta de justificativa confirma o agendamento, não a cópia concluída. O resultado aparece no histórico.
 Esses eventos não confirmam flush físico, entrega ao servidor ou persistência após queda de energia.
 
+A autorização também carrega a impressão do conteúdo da política usada na inspeção. As unidades conferem essa
+impressão antes da cópia e novamente antes da substituição do destino; mudança de regras, inclusive sob o mesmo
+número de versão, revoga a aprovação e agenda nova inspeção do stage. Justificativas exigem o mesmo vínculo antes
+e depois de gravar a solicitação na auditoria. Falha de leitura da política mantém a cópia aprovada retida para tentar
+novamente. Na configuração remota essas leituras usam o snapshot validado do serviço de fundo, inclusive offline,
+sem HTTP por arquivo. São reconferências pontuais, não uma transação atômica entre atualização de política e renomeação.
+
 ---
 
 ## Como rodar

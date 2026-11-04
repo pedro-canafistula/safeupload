@@ -164,14 +164,14 @@ public sealed class InspectionService
         // recursão: ler o arquivo dispararia outra inspeção, que leria de novo.
         if (policy.IsExcludedProcess(operation.ProcessName))
         {
-            return OutOfScope(stopwatch, policy, "excluded_process");
+            return OutOfScope(stopwatch, policy, "excluded_process", staged);
         }
 
         // 2. RN-011 — fora do escopo declarado não se inspeciona nada.
         if (!policy.IsInScope(operation) ||
             (!(staged && operation.SizeBytes == 0) && !policy.IsMonitoredExtension(operation.Extension)))
         {
-            return OutOfScope(stopwatch, policy, "out_of_scope");
+            return OutOfScope(stopwatch, policy, "out_of_scope", staged);
         }
 
         // Empty content has nothing to extract, regardless of filename/format.
@@ -493,7 +493,7 @@ public sealed class InspectionService
     /// deliberadamente ignora encheria a fila de ruído e afogaria os eventos
     /// que importam.
     /// </summary>
-    private static InspectionResult OutOfScope(Stopwatch stopwatch, Policy policy, string reason)
+    private static InspectionResult OutOfScope(Stopwatch stopwatch, Policy policy, string reason, bool staged)
     {
         stopwatch.Stop();
 
@@ -504,7 +504,10 @@ public sealed class InspectionService
             stopwatch.ElapsedMilliseconds,
             FromCache: false,
             policy.Version,
-            InScope: false);
+            InScope: false)
+        {
+            PolicyContentFingerprint = staged ? PolicyContentFingerprint.Compute(policy) : null
+        };
     }
 
     private async Task<AuditEvent?> AuditAsync(

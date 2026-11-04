@@ -809,17 +809,29 @@ public sealed class DriveFileSystem : FileSystemBase
     /// Queues a blocked version for publication after authorization. Only that exact version, and only if no newer
     /// version has been approved since. A true result acknowledges queuing, not a completed destination write.
     /// </summary>
-    public bool Approve(Guid versionId)
+    public bool Approve(Guid versionId, DriveApprovalKind kind = DriveApprovalKind.Justification)
     {
         lock (_gate)
         {
             if (!_blocked.TryGetValue(versionId, out var content) || content.Deleted || content.BlockedSnapshot is null ||
-                content.BlockedVersion <= content.ApprovedVersion)
+                content.BlockedVersion <= content.ApprovedVersion || kind is not (DriveApprovalKind.Audit or DriveApprovalKind.Justification) ||
+                content.BlockedDecision is not { } blocked || content.Node?.Parent is null || _stop.IsCancellationRequested)
                 return false;
+            var approved = blocked with { Approved = true, ApprovalKind = kind };
+            try
+            {
+                if (!_inspector.IsPublicationAllowedAsync(approved, BackingPath(content.Node.Parent, content.Node.Name),
+                        _stop.Token).GetAwaiter().GetResult()) return false;
+            }
+            catch (Exception error)
+            {
+                DriveLog.Write($"approval held: policy validation {error.GetType().Name}");
+                return false;
+            }
             if (content.ApprovedSnapshot is not null) TryDelete(content.ApprovedSnapshot);
             content.ApprovedVersion = content.BlockedVersion;
             content.ApprovedSnapshot = content.BlockedSnapshot;
-            content.ApprovedDecision = content.BlockedDecision is { } blocked ? blocked with { Approved = true } : null;
+            content.ApprovedDecision = approved;
             content.PublicationFailed = false;
             content.BlockedSnapshot = null;
             ForgetBlocked(content);
@@ -889,10 +901,12 @@ public sealed class DriveFileSystem : FileSystemBase
                      (content.PublishedVersion != content.ApprovedVersion ||
                       !string.Equals(content.PublishedPath, target, StringComparison.OrdinalIgnoreCase)))
             {
+                if (!ValidatePublication(child, target)) continue;
                 var temp = System.IO.Path.Combine(folder, TempPrefix + Guid.NewGuid().ToString("N"));
                 try
                 {
                     File.Copy(content.ApprovedSnapshot, temp);
+                    if (!ValidatePublication(child, target)) continue;
                     File.Move(temp, target, overwrite: true);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -920,6 +934,39 @@ public sealed class DriveFileSystem : FileSystemBase
             File.Delete(file);
             DriveLog.Write($"publish delete {file}");
         }
+    }
+
+    private bool ValidatePublication(Node node, string target)
+    {
+        if (_stop.IsCancellationRequested) return false;
+        var content = node.Content!;
+        try
+        {
+            if (content.ApprovedDecision is { } decision &&
+                _inspector.IsPublicationAllowedAsync(decision, target, _stop.Token).GetAwaiter().GetResult()) return true;
+        }
+        catch (Exception error)
+        {
+            // An unreadable policy does not revoke the retained snapshot; retry without silently granting authority.
+            DriveLog.Write($"publish held: policy validation {error.GetType().Name}");
+            _reconcileAfter = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            return false;
+        }
+        // The bytes remain in the private stage. Invalidate old approvals/justifications and inspect the current
+        // version again, even when neither the file version nor the human-assigned policy number changed.
+        if (content.ApprovedSnapshot is { } snapshot) TryDelete(snapshot);
+        content.ApprovedSnapshot = null;
+        content.ApprovedDecision = null;
+        content.ApprovedVersion = -1;
+        content.PublicationFailed = false;
+        ForgetBlocked(content);
+        content.BlockedVersion = -1;
+        content.InspectedVersion = -1;
+        content.CleanupSeen = true;
+        content.LastModified = DateTime.UtcNow;
+        _dirty.Add(content);
+        DriveLog.Write("publish held: policy changed; stage queued for inspection");
+        return false;
     }
 
     private void ReportPublication(Node node, string target, bool succeeded)

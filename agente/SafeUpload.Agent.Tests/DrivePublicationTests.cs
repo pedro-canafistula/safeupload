@@ -12,7 +12,7 @@ using SafeUpload.Agent.Service.Gate;
 namespace SafeUpload.Agent.Tests;
 
 // Exercise the real filesystem reconciler and Windows file sharing without mounting a drive or loading a driver.
-public sealed class DrivePublicationTests : IDisposable
+public sealed partial class DrivePublicationTests : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
     public void Dispose() => _workspace.Dispose();
@@ -115,13 +115,13 @@ public sealed class DrivePublicationTests : IDisposable
         var blocked = Assert.Single(f.Observer.Decisions);
         Assert.False(blocked.Approved);
         Assert.Equal(Verdict.Blocked, blocked.Result!.Verdict);
-        await f.Service.HandleDecisionAsync(blocked, f.Policy, () => f.FileSystem.Approve(blocked.VersionId));
+        await f.Service.HandleDecisionAsync(blocked, f.Policy, kind => f.FileSystem.Approve(blocked.VersionId, kind));
         if (alert)
             Assert.Empty(await f.Pending());
         else
         {
             Assert.Equal(blocked.VersionId, Assert.Single(await f.Pending()).EventId);
-            Assert.True(f.Justifications.TryConsume(blocked.VersionId.ToString(), 7, "S-1-5-21-111-222-333-1001", out var approve));
+            Assert.True(f.Justifications.TryConsume(blocked.VersionId.ToString(), 7, "S-1-5-21-111-222-333-1001", PolicyContentFingerprint.Compute(f.Policy), out var approve));
             await f.Sink.RecordOverrideAsync(blocked.VersionId.ToString(), "Authorized synthetic test", CancellationToken.None);
             Assert.True(approve!());
             Assert.False(approve());
@@ -151,7 +151,7 @@ public sealed class DrivePublicationTests : IDisposable
     {
         using var f = Create("CPF: 529.982.247-25", alert: true);
         f.Inspect();
-        await f.Service.HandleDecisionAsync(Assert.Single(f.Observer.Decisions), f.Policy, () => false);
+        await f.Service.HandleDecisionAsync(Assert.Single(f.Observer.Decisions), f.Policy, _ => false);
         Assert.Equal(Verdict.Blocked, Assert.Single(await f.Pending()).Verdict);
         f.Reconcile();
         Assert.Empty(f.Observer.Publications);
@@ -169,7 +169,7 @@ public sealed class DrivePublicationTests : IDisposable
         Assert.False(decision.Approved);
         Assert.NotNull(decision.Result!.Reason);
         bool called = false;
-        await f.Service.HandleDecisionAsync(decision, f.Policy, () => { called = true; return true; });
+        await f.Service.HandleDecisionAsync(decision, f.Policy, _ => { called = true; return true; });
         Assert.False(called);
         Assert.Equal(Verdict.Blocked, Assert.Single(await f.Pending()).Verdict);
         f.Reconcile();
@@ -211,7 +211,7 @@ public sealed class DrivePublicationTests : IDisposable
         Assert.Equal(publication.DestinationPath, audit.DestinationPath);
     }
 
-    private Fixture Create(string bytes, bool alert = false)
+    private Fixture Create(string bytes, bool alert = false, Func<IPolicyStore, IPolicyStore>? wrapPolicy = null)
     {
         var backing = Path.Combine(_workspace.Root, "backing");
         Directory.CreateDirectory(backing);
@@ -221,11 +221,12 @@ public sealed class DrivePublicationTests : IDisposable
             new MonitoredScopes(new HashSet<string> { ".txt", ".zip" }, [], true, false), 10, 5, true,
             new HashSet<string>(), AuditOnly: alert, OverrideAllowed: true);
         var policies = new Policies(policy);
+        var effectivePolicies = wrapPolicy?.Invoke(policies) ?? policies;
         var sink = new LocalQueueAuditSink(_workspace.QueueFile);
-        var engine = new InspectionService(policies, sink, ExtractorRegistry.CreateDefault(), new VerdictCache());
+        var engine = new InspectionService(effectivePolicies, sink, ExtractorRegistry.CreateDefault(), new VerdictCache());
         var observer = new Observer();
         var fs = new DriveFileSystem(backing, Path.Combine(_workspace.Root, "private"), "S:",
-            new ContentInspector(engine, policies), observer, DestinationKind.RemovableDrive, "Synthetic");
+            new ContentInspector(engine, effectivePolicies), observer, DestinationKind.RemovableDrive, "Synthetic");
         Assert.Equal(0, fs.Open(@"\report.txt", 0, 0, out var node, out var handle, out _, out _));
         var content = ((Handle)handle).Node.Content!;
         fs.Close(node, handle);
@@ -236,26 +237,37 @@ public sealed class DrivePublicationTests : IDisposable
         content.Writer = new DriveWriter(123, "explorer.exe", 7, "S-1-5-21-111-222-333-1001", "synthetic-writer");
         var gate = new GateClient(NullLogger<GateClient>.Instance);
         var justifications = new DriveJustifications();
-        var service = new DriveService(policies, engine, NotificationTestHub.Create(), justifications,
+        var service = new DriveService(effectivePolicies, engine, NotificationTestHub.Create(), justifications,
             gate, new ConfigurationBuilder().Build(), NullLogger<DriveService>.Instance);
-        return new Fixture(fs, content, observer, target, policy, sink, service, gate, justifications);
+        return new Fixture(fs, content, observer, target, policies, sink, service, gate, justifications, effectivePolicies as IDisposable);
     }
 
     private sealed record Fixture(DriveFileSystem FileSystem, Content Content, Observer Observer, string Target,
-        Policy Policy, LocalQueueAuditSink Sink, DriveService Service, GateClient Gate, DriveJustifications Justifications) : IDisposable
+        Policies Store, LocalQueueAuditSink Sink, DriveService Service, GateClient Gate, DriveJustifications Justifications,
+        IDisposable? OwnedPolicy) : IDisposable
     {
+        public Policy Policy => Store.Current;
         // No worker is started: deterministic calls exercise the same inspection and reconciler used by it.
         public void Inspect() => Invoke("InspectOne", Content);
         public void Reconcile() => Invoke("Reconcile");
         private void Invoke(string method, params object[] arguments) => typeof(DriveFileSystem)
             .GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(FileSystem, arguments);
         public Task<IReadOnlyList<AuditEvent>> Pending() => Sink.ReadPendingAsync(10, CancellationToken.None);
-        public void Dispose() { Service.Dispose(); Gate.Dispose(); FileSystem.Stop(); }
+        public void Dispose() { Service.Dispose(); Gate.Dispose(); FileSystem.Stop(); OwnedPolicy?.Dispose(); }
     }
 
     private sealed class Policies(Policy policy) : IPolicyStore
     {
-        public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(policy);
+        public Policy Current { get; set; } = policy;
+        public Exception? Failure { get; set; }
+        public Action? BeforeLoad { get; set; }
+        public Task<Policy> LoadAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            BeforeLoad?.Invoke();
+            if (Failure is { } error) throw error;
+            return Task.FromResult(Current);
+        }
     }
 
     private sealed class Observer : IDriveObserver

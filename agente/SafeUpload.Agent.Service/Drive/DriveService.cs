@@ -31,7 +31,6 @@ public sealed class DriveService : BackgroundService
     private readonly string[] _letters;
     private readonly string _privateRoot;
     private readonly Dictionary<string, DriveMount> _mounts = new(StringComparer.OrdinalIgnoreCase);
-    private Policy? _policy;
     private string? _lastStatus;
 
     public DriveService(IPolicyStore policyStore, InspectionService inspection, NotificationHub hub,
@@ -86,7 +85,6 @@ public sealed class DriveService : BackgroundService
     private async Task SyncAsync(CancellationToken token)
     {
         var policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
-        _policy = policy;
         var folders = policy.MonitoredScopes.DestinationPaths
             .Select(path => Path.GetFullPath(path).TrimEnd('\\'))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -188,24 +186,30 @@ public sealed class DriveService : BackgroundService
         });
     }
 
-    private Task HandleDecisionAsync(string destination, DriveDecision decision)
+    private async Task HandleDecisionAsync(string destination, DriveDecision decision)
     {
+        if (decision.Approved) return;
+        Policy? policy = null;
+        try { policy = await _policyStore.LoadCurrentAsync(CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception error) { _logger.LogSafeWarning(error, "Current drive policy unavailable; release stays disabled."); }
         DriveMount? mount;
         lock (_mounts) _mounts.TryGetValue(destination, out mount);
-        return HandleDecisionAsync(decision, _policy,
-            mount is null ? null : () => mount.FileSystem.Approve(decision.VersionId));
+        await HandleDecisionAsync(decision, policy,
+            mount is null ? null : kind => mount.FileSystem.Approve(decision.VersionId, kind)).ConfigureAwait(false);
     }
 
-    internal async Task HandleDecisionAsync(DriveDecision decision, Policy? policy, Func<bool>? approve)
+    internal async Task HandleDecisionAsync(DriveDecision decision, Policy? policy, Func<DriveApprovalKind, bool>? approve)
     {
         // Approval is not a transfer outcome. The reconciler reports it after the destination write.
         if (decision.Approved) return;
         var writer = decision.Writer;
+        bool samePolicy = policy is not null && decision.Result?.PolicyContentFingerprint is { } binding &&
+            string.Equals(binding, PolicyContentFingerprint.Compute(policy), StringComparison.Ordinal);
         // Audit mode (the console's "alertar"): a version whose inspection completed with findings goes through and
         // is audited as an approval with its categories. A failed inspection still blocks (fail closed).
-        bool alert = policy?.AuditOnly == true &&
+        bool alert = samePolicy && policy?.AuditOnly == true &&
             decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
-        if (alert && approve?.Invoke() == true) return;
+        if (alert && approve?.Invoke(DriveApprovalKind.Audit) == true) return;
 
         if (decision.Operation is { } operation && decision.Result is { } result)
         {
@@ -213,11 +217,13 @@ public sealed class DriveService : BackgroundService
                 result, Verdict.Blocked, result.Reason, CancellationToken.None, eventId: decision.VersionId,
                 auditUserName: writer?.UserName).ConfigureAwait(false);
         }
-        bool overrideAllowed = policy?.OverrideAllowed == true && approve is not null &&
+        bool overrideAllowed = samePolicy && policy?.OverrideAllowed == true && approve is not null &&
+            decision.Result is { InScope: true, IsBlocked: true } &&
+            decision.Result.FailureKind != InspectionFailureKind.NotEnoughStagingSpace &&
             writer?.SessionId is not null && writer.UserSid is not null;
         if (overrideAllowed)
             _justifications.Remember(decision.VersionId, writer!.SessionId!.Value, writer.UserSid!,
-                approve!);
+                decision.Result!.PolicyContentFingerprint!, () => approve!(DriveApprovalKind.Justification));
         // The blocked version stays visible to the user on the drive, at DrivePath.
         var notification = new TransferNotification(decision.VersionId, decision.DrivePath, TransferPhase.Blocked,
             decision.Result?.Findings ?? [], overrideAllowed, HandbackPath: decision.DrivePath, HandbackVerified: true,
