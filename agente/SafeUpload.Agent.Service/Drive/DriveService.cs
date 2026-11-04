@@ -31,6 +31,7 @@ public sealed class DriveService : BackgroundService
     private readonly string[] _letters;
     private readonly string _privateRoot;
     private readonly Dictionary<string, DriveMount> _mounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<Task> _reports = [];
     private StatusNotification? _lastStatus;
 
     public DriveService(IPolicyStore policyStore, InspectionService inspection, NotificationHub hub,
@@ -82,7 +83,11 @@ public sealed class DriveService : BackgroundService
         {
             lock (_mounts)
             {
-                foreach (var mount in _mounts.Values) mount.Dispose();
+                foreach (var mount in _mounts.Values)
+                {
+                    try { mount.Dispose(); }
+                    catch (Exception error) { _logger.LogSafeWarning(error, "Could not finish unmounting a SafeUpload drive."); }
+                }
                 _mounts.Clear();
             }
         }
@@ -90,7 +95,18 @@ public sealed class DriveService : BackgroundService
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        try { await base.StopAsync(cancellationToken).ConfigureAwait(false); }
+        try
+        {
+            await base.StopAsync(cancellationToken).ConfigureAwait(false);
+            // BackgroundService may return when the caller's deadline expires, while finally still unmounts.
+            // Wait for every producer to stop before taking the final set of queued audit reports.
+            if (ExecuteTask is { } execution)
+                await Task.WhenAny(execution).WaitAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            Task[] reports;
+            lock (_reports) reports = _reports.ToArray();
+            await Task.WhenAll(reports).WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
         finally { PublishIssue(DriveProtectionIssue.Stopped); }
     }
 
@@ -233,11 +249,7 @@ public sealed class DriveService : BackgroundService
 
     private void OnDecision(string destination, DriveDecision decision)
     {
-        _ = Task.Run(async () =>
-        {
-            try { await HandleDecisionAsync(destination, decision).ConfigureAwait(false); }
-            catch (Exception error) { _logger.LogError(error, "Could not report the decision for {File}", decision.DrivePath); }
-        });
+        QueueReport(() => HandleDecisionAsync(destination, decision), "Could not report the drive decision.");
     }
 
     private async Task HandleDecisionAsync(string destination, DriveDecision decision)
@@ -289,11 +301,22 @@ public sealed class DriveService : BackgroundService
 
     private void OnPublication(DrivePublication publication)
     {
-        _ = Task.Run(async () =>
+        QueueReport(() => HandlePublicationAsync(publication), "Could not report the drive publication outcome.");
+    }
+
+    private void QueueReport(Func<Task> report, string failureMessage)
+    {
+        lock (_reports)
         {
-            try { await HandlePublicationAsync(publication).ConfigureAwait(false); }
-            catch (Exception error) { _logger.LogSafeWarning(error, "Could not report the drive publication outcome."); }
-        });
+            var task = Task.Run(async () =>
+            {
+                try { await report().ConfigureAwait(false); }
+                catch (Exception error) { _logger.LogSafeWarning(error, failureMessage); }
+            });
+            _reports.Add(task);
+            _ = task.ContinueWith(completed => { lock (_reports) _reports.Remove(completed); },
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 
     internal Task HandlePublicationAsync(DrivePublication publication)

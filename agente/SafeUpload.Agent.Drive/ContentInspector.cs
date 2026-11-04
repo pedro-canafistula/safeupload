@@ -64,6 +64,7 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
             }
             return new InspectionOutcome(publish, summary, operation, result);
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception error)
         {
             return new InspectionOutcome(false, $"verdict=Error reason={error.GetType().Name}: {error.Message}");

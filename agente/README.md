@@ -78,6 +78,13 @@ outro evento, sem reescrever o bloqueio ou a justificativa originais. A publica�
 A resposta de justificativa confirma o agendamento, não a cópia concluída. O resultado aparece no histórico.
 Esses eventos não confirmam flush físico, entrega ao servidor ou persistência após queda de energia.
 
+Na parada ordenada, cada unidade cancela e aguarda seu worker antes de desmontar. O serviço aguarda então os relatos
+de decisão/publicação já enfileirados. Cancelamento de inspeção não vira um novo bloqueio. Se o prazo de parada
+terminar, a espera falha e não comprova a conclusão desses relatos; um provedor que ignora cancelamento pode atrasá-la.
+Isso não cria um registro durável entre publicação e auditoria: encerramento abrupto ou falha de gravação ainda têm
+limitações próprias. Stage e snapshots sobrevivem no disco, mas seu vínculo com nomes/estados da unidade ainda é
+mantido em memória; o reinício não restaura automaticamente versões retidas, aprovações ou justificativas.
+
 A autorização também carrega a impressão do conteúdo da política usada na inspeção. As unidades conferem essa
 impressão antes da cópia e novamente antes da substituição do destino; mudança de regras, inclusive sob o mesmo
 número de versão, revoga a aprovação e agenda nova inspeção do stage. Justificativas exigem o mesmo vínculo antes

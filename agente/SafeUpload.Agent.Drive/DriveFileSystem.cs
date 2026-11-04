@@ -86,6 +86,9 @@ public sealed class DriveFileSystem : FileSystemBase
     private DateTime _reconcileAfter = DateTime.MaxValue;
     private readonly HashSet<Content> _dirty = [];   // modified since their last inspection
     private readonly CancellationTokenSource _stop = new();
+    private readonly object _lifecycleGate = new();
+    private Thread? _worker;
+    private bool _stopping;
 
     internal DriveFileSystem(string backing, string privateRoot, string mountPoint, ContentInspector inspector,
         IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label)
@@ -109,8 +112,25 @@ public sealed class DriveFileSystem : FileSystemBase
         _dirSecurity = Sddl("O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;AU)");
     }
 
-    public void StartBackgroundWork() => new Thread(BackgroundLoop) { IsBackground = true, Name = "drive-worker" }.Start();
-    public void Stop() => _stop.Cancel();
+    public void StartBackgroundWork()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_worker is not null || _stopping)
+                throw new InvalidOperationException("Drive worker already started or stopped.");
+            _worker = new Thread(BackgroundLoop) { IsBackground = true, Name = "drive-worker" };
+            _worker.Start();
+        }
+    }
+
+    /// <summary>Stops producing decisions/publications before the mount and its observers are disposed.</summary>
+    public void Stop()
+    {
+        Thread? worker;
+        lock (_lifecycleGate) { _stopping = true; worker = _worker; }
+        _stop.Cancel();
+        if (worker != Thread.CurrentThread) worker?.Join();
+    }
 
     // ---------------------------------------------------------------- WinFsp entry points
 
@@ -734,6 +754,7 @@ public sealed class DriveFileSystem : FileSystemBase
                 if (next is not null) InspectOne(next);
                 else Thread.Sleep(100);
             }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested) { break; }
             catch (Exception error)
             {
                 DriveLog.Write($"worker error {error.GetType().Name}: {error.Message}");
@@ -750,6 +771,7 @@ public sealed class DriveFileSystem : FileSystemBase
         var versionId = Guid.NewGuid();
         lock (_gate)
         {
+            _stop.Token.ThrowIfCancellationRequested();
             _dirty.Remove(content);
             content.CleanupSeen = false;
             if (content.Deleted || content.Node is null || content.Node.Private || content.Version == content.InspectedVersion) return;
@@ -764,13 +786,20 @@ public sealed class DriveFileSystem : FileSystemBase
             content.Inspecting = true;
         }
         var started = DateTime.UtcNow;
-        var outcome = _inspector.InspectAsync(snapshot, target, _kind, name, writer, _stop.Token).GetAwaiter().GetResult();
+        InspectionOutcome outcome;
+        try { outcome = _inspector.InspectAsync(snapshot, target, _kind, name, writer, _stop.Token).GetAwaiter().GetResult(); }
+        catch
+        {
+            lock (_gate) content.Inspecting = false;
+            throw;
+        }
         var decision = new DriveDecision(versionId, destination, name, writer, outcome.Operation, outcome.Result,
             outcome.Publish, outcome.Summary, snapshot);
         bool report = false;
         lock (_gate)
         {
             content.Inspecting = false;
+            _stop.Token.ThrowIfCancellationRequested();
             var ms = (int)(DateTime.UtcNow - started).TotalMilliseconds;
             if (outcome.Publish && !content.Deleted && version > content.ApprovedVersion)
             {
