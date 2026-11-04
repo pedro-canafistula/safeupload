@@ -19,7 +19,7 @@ jobs:
   receipt-regression:
     name: Recibos e cache (Release)
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       SAFEUPLOAD_MACHINE_TESTS: '0'
     steps:

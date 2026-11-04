@@ -38,6 +38,18 @@ $testedBinary = if ($ContractOnly) { $contractDll } else { $serviceExe }
 foreach ($file in @($testedBinary,$contractDll,$jar,$mysql,$mysqld,$mysqlAdmin)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Required test binary missing.' }
 }
+# Register before backend/database preparation so Windows can refresh its event-source
+# configuration before the service's first log entry (CreateEventSource contract).
+# The hosted runner is disposable; never change an existing source's destination.
+if (-not $ContractOnly) {
+    $eventSource = 'SafeUpload.Agent.Service'
+    if (-not [Diagnostics.EventLog]::SourceExists($eventSource)) {
+        [Diagnostics.EventLog]::CreateEventSource($eventSource, 'Application')
+    }
+    if ([Diagnostics.EventLog]::LogNameFromSourceName($eventSource, '.') -ne 'Application') {
+        throw 'Agent event source is registered to an unexpected log.'
+    }
+}
 New-Item -ItemType Directory -Path $results -Force | Out-Null
 $runtime = Join-Path $env:RUNNER_TEMP ('safeupload-host-backend-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $runtime | Out-Null
