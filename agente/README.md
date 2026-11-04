@@ -33,6 +33,15 @@ são migradas automaticamente. ZIP inspeciona cada membro sob orçamento cumulat
 7z permanece recusado com `archive_7z_unavailable`. Veja o escopo e as recusas
 em [INSPECTION-COVERAGE.md](docs/INSPECTION-COVERAGE.md).
 
+O motor confere o limite configurado no arquivo aberto antes de reservar a captura legada para qualquer formato.
+No staging, caminho e read lease exigem entrada somente leitura com o tamanho medido; divergências são retidas
+antes do parser. Tamanho real acima do limite mantém `file_too_large`, inclusive quando a descoberta indicava zero.
+O modo clássico preserva `AllowedWithoutInspection` nas falhas; staging preserva `Blocked`.
+
+O cancelamento é reconferido após política, worker e auditoria. Uma decisão nova só entra no cache depois da tentativa
+de auditoria e da conferência de cancelamento. Evento já gravado e cache válido de uma chamada anterior são mantidos;
+falha comum de auditoria continua preservando o veredito.
+
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver gate (minifiltro), com documentação própria em
 [`../driver/README.md`](../driver/README.md).
