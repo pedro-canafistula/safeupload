@@ -82,8 +82,21 @@ Na parada ordenada, cada unidade cancela e aguarda seu worker antes de desmontar
 de decisão/publicação já enfileirados. Cancelamento de inspeção não vira um novo bloqueio. Se o prazo de parada
 terminar, a espera falha e não comprova a conclusão desses relatos; um provedor que ignora cancelamento pode atrasá-la.
 Isso não cria um registro durável entre publicação e auditoria: encerramento abrupto ou falha de gravação ainda têm
-limitações próprias. Stage e snapshots sobrevivem no disco, mas seu vínculo com nomes/estados da unidade ainda é
-mantido em memória; o reinício não restaura automaticamente versões retidas, aprovações ou justificativas.
+limitações próprias.
+
+O catálogo privado `stage-map.json` registra os arquivos retidos, nomes relativos, localização anterior publicada e
+autor capturado pelo serviço. A gravação usa temporário no mesmo diretório, flush e substituição antes de aceitar
+bytes novos ou alterar nomes/exclusões privadas. O catálogo admite até 1 MiB e 4096 entradas, é associado ao caminho
+e à identidade de volume/diretório informada pelo Windows e só pode ter um filesystem ativo por área privada.
+Catálogo inválido, stage ausente, destino trocado ou redirecionamentos/links incompatíveis impedem a recuperação,
+preservando os arquivos. Arquivos antigos sem catálogo permanecem privados, sem tentativa de adivinhar seus nomes.
+
+Após reinício, versões registradas voltam à unidade e são reinspecionadas com a política atual. Não se restauram
+aprovações ou justificativas; a sessão/processo anterior não concede uma nova liberação. SID e nome capturados são
+mantidos apenas para atribuição de auditoria. Uma publicação concluída retira do catálogo somente a versão atual;
+uma edição mais nova permanece retida. Renomeações registram a intenção antes de mover o backing: após interrupção,
+o nome novo pode ser recuperado mesmo que essa movimentação não tenha terminado. Isso não é um journal completo
+do filesystem, não reproduz exclusões de backing após queda e não qualifica queda de energia ou USB/SMB sem ensaio real.
 
 A autorização também carrega a impressão do conteúdo da política usada na inspeção. As unidades conferem essa
 impressão antes da cópia e novamente antes da substituição do destino; mudança de regras, inclusive sob o mesmo

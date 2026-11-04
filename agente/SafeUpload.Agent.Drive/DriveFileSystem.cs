@@ -77,6 +77,8 @@ public sealed class DriveFileSystem : FileSystemBase
     private readonly IDriveObserver _observer;
     private readonly SafeUpload.Agent.Core.Domain.DestinationKind _kind;
     private readonly string _label;
+    private readonly DriveRecoveryStore _recovery;
+    private readonly Func<int> _operationProcessId;
     private static readonly HashSet<string> PrivateRootNames = new(StringComparer.OrdinalIgnoreCase)
         { "System Volume Information", "$RECYCLE.BIN" };
     private readonly Dictionary<Guid, Content> _blocked = [];
@@ -91,9 +93,11 @@ public sealed class DriveFileSystem : FileSystemBase
     private bool _stopping;
 
     internal DriveFileSystem(string backing, string privateRoot, string mountPoint, ContentInspector inspector,
-        IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label)
+        IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label,
+        Func<int>? operationProcessId = null)
     {
         _observer = observer;
+        _operationProcessId = operationProcessId ?? (() => (int)GetOperationProcessId());
         _kind = kind;
         _label = label.Length <= 32 ? label : label[..32];
         _backing = System.IO.Path.GetFullPath(backing);
@@ -105,11 +109,15 @@ public sealed class DriveFileSystem : FileSystemBase
         Directory.CreateDirectory(_backing);
         Directory.CreateDirectory(_stage);
         Directory.CreateDirectory(_snapshots);
+        DriveRecoveryStore.RejectReparsePoint(_snapshots);
         _root = new Node { Name = "", IsDirectory = true, Id = _nextId++, Attributes = (uint)FileAttributes.Directory };
         StampNow(_root);
         // Every user may work in the drive; access to the backing folder itself is restricted separately.
         _fileSecurity = Sddl("O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;AU)");
         _dirSecurity = Sddl("O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;AU)");
+        _recovery = new DriveRecoveryStore(_backing, privateRoot);
+        try { RestoreRetainedFiles(); }
+        catch { _recovery.Dispose(); throw; }
     }
 
     public void StartBackgroundWork()
@@ -130,6 +138,7 @@ public sealed class DriveFileSystem : FileSystemBase
         lock (_lifecycleGate) { _stopping = true; worker = _worker; }
         _stop.Cancel();
         if (worker != Thread.CurrentThread) worker?.Join();
+        lock (_gate) _recovery.Dispose();
     }
 
     // ---------------------------------------------------------------- WinFsp entry points
@@ -200,6 +209,7 @@ public sealed class DriveFileSystem : FileSystemBase
         fileNode = default!; fileDesc = default!; fileInfo = default; normalizedName = default!;
         lock (_gate)
         {
+            _stop.Token.ThrowIfCancellationRequested();
             var (parent, leaf) = SplitParent(fileName);
             if (parent is null) return STATUS_OBJECT_PATH_NOT_FOUND;
             if (!parent.IsDirectory) return STATUS_NOT_A_DIRECTORY;
@@ -225,12 +235,14 @@ public sealed class DriveFileSystem : FileSystemBase
                     FileShare.ReadWrite | FileShare.Delete);
                 node.Attributes = (fileAttributes & ~(uint)FileAttributes.Normal) | (uint)FileAttributes.Archive;
                 node.Content = new Content { Path = stagePath, IsStage = true, Node = node };
-                node.Content.Writer = _observer.IdentifyWriter((int)GetOperationProcessId());
+                node.Content.Writer = _observer.IdentifyWriter(_operationProcessId());
                 handle = new Handle { Node = node, Stream = stream };
+                try { RememberStage(node); }
+                catch { stream.Dispose(); throw; }
                 Modified(handle, 0);   // a new file, even an empty one, is a version to inspect
             }
             parent.Children[leaf] = node;
-            DriveLog.Write($"create {VirtualPath(node)}{(node.IsDirectory ? "\\" : "")} pid={GetOperationProcessId()}");
+            DriveLog.Write($"create {VirtualPath(node)}{(node.IsDirectory ? "\\" : "")} pid={_operationProcessId()}");
             fileDesc = handle;
             fileInfo = Info(node);
             return STATUS_SUCCESS;
@@ -252,7 +264,7 @@ public sealed class DriveFileSystem : FileSystemBase
                 // the first real modification (WritableStream), not here.
                 handle.Stream = OpenShared(node.Content!.Path, write: false);
                 if ((grantedAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA)) != 0)
-                    node.Content.Writer = _observer.IdentifyWriter((int)GetOperationProcessId());
+                    node.Content.Writer = _observer.IdentifyWriter(_operationProcessId());
             }
             fileDesc = handle;
             fileInfo = Info(node);
@@ -435,6 +447,7 @@ public sealed class DriveFileSystem : FileSystemBase
     {
         lock (_gate)
         {
+            _stop.Token.ThrowIfCancellationRequested();
             var node = ((Handle)fileDesc).Node;
             var (newParent, newLeaf) = SplitParent(newFileName);
             if (newParent is null || !newParent.IsDirectory) return STATUS_OBJECT_PATH_NOT_FOUND;
@@ -443,8 +456,11 @@ public sealed class DriveFileSystem : FileSystemBase
             {
                 if (!replaceIfExists) return STATUS_OBJECT_NAME_COLLISION;
                 if (target.IsDirectory) return STATUS_ACCESS_DENIED;
-                Delete(target);
             }
+            var newRelative = newParent == _root ? newLeaf : Relative(newParent) + "\\" + newLeaf;
+            RememberStages(node); // A fully published stage may have retired its entry before this rename.
+            _recovery.Rename(Relative(node), newRelative);
+            if (target is not null && target != node) Delete(target);
             var oldPath = VirtualPath(node);
             if (node.IsDirectory && !node.Private)
             {
@@ -524,6 +540,94 @@ public sealed class DriveFileSystem : FileSystemBase
 
     // ---------------------------------------------------------------- namespace helpers
 
+    private void RememberStage(Node node)
+    {
+        if (!node.Private && node.Content is { IsStage: true } content)
+            _recovery.Track(content.Path, Relative(node), content.Writer, node.Attributes,
+                content.PublishedPath is { } previous ? System.IO.Path.GetRelativePath(_backing, previous) : null);
+    }
+
+    private void RememberStages(Node node)
+    {
+        RememberStage(node);
+        if (node.Children is not null)
+            foreach (var child in node.Children.Values) RememberStages(child);
+    }
+
+    private void RestoreRetainedFiles()
+    {
+        var entries = _recovery.Entries.ToArray();
+        foreach (var entry in entries)
+        {
+            ValidateRecoveryPath(entry.RelativePath);
+            if (entry.PreviousRelativePath is { } previous) ValidateRecoveryPath(previous);
+        }
+        // Hide a renamed file's old backing name without deleting its previously published bytes on recovery.
+        // Another retained version at that name takes precedence and must never be removed.
+        var names = entries.Select(e => e.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            if (entry.PreviousRelativePath is not { } previous || names.Contains(previous)) continue;
+            var old = Lookup("\\" + previous, out _);
+            if (old is null) continue;
+            if (old.IsDirectory) throw new IOException("Retained source conflicts with a directory.");
+            old.Parent!.Children!.Remove(old.Name);
+        }
+        foreach (var entry in entries)
+        {
+            var parts = entry.RelativePath.Split('\\');
+            var parent = _root;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                EnsureLoaded(parent);
+                bool directory = i < parts.Length - 1;
+                var path = BackingPath(parent, parts[i]);
+                if (File.Exists(path) || Directory.Exists(path)) DriveRecoveryStore.RejectReparsePoint(path);
+                if (parent.Children!.TryGetValue(parts[i], out var existing) && existing.IsDirectory != directory)
+                    throw new IOException("Retained path conflicts with the backing namespace.");
+                if (directory)
+                {
+                    if (existing is null)
+                    {
+                        existing = new Node { Name = parts[i], Parent = parent, IsDirectory = true,
+                            Attributes = (uint)FileAttributes.Directory, Id = _nextId++, Children = new(StringComparer.OrdinalIgnoreCase) };
+                        StampNow(existing);
+                        parent.Children[parts[i]] = existing;
+                    }
+                    parent = existing;
+                    continue;
+                }
+                var info = new System.IO.FileInfo(_recovery.StagePath(entry));
+                var node = new Node { Name = parts[i], Parent = parent, Id = _nextId++,
+                    Attributes = entry.Attributes & ~(uint)FileAttributes.Directory };
+                StampNow(node);
+                node.CreationTime = (ulong)info.CreationTimeUtc.ToFileTimeUtc();
+                node.LastWriteTime = node.ChangeTime = (ulong)info.LastWriteTimeUtc.ToFileTimeUtc();
+                node.Content = new Content { Node = node, Path = info.FullName, IsStage = true, Size = info.Length,
+                    Version = 1, LastModified = DateTime.UtcNow, CleanupSeen = true,
+                    PublishedPath = entry.PreviousRelativePath is { } previous ? System.IO.Path.Combine(_backing, previous) : null,
+                    // Keep captured owner attribution, never a previous process exemption or reusable session.
+                    Writer = entry.Writer is { } writer ? writer with { ProcessId = 0, ProcessName = "", SessionId = null }
+                        : new DriveWriter(0, "", null, null, null) };
+                parent.Children[parts[i]] = node;
+                _dirty.Add(node.Content);
+            }
+        }
+    }
+
+    private void ValidateRecoveryPath(string relative)
+    {
+        string path = _backing;
+        var parts = relative.Split('\\');
+        for (int i = 0; i < parts.Length; i++)
+        {
+            path = System.IO.Path.Combine(path, parts[i]);
+            if (File.Exists(path) || Directory.Exists(path)) DriveRecoveryStore.RejectReparsePoint(path);
+            if (i < parts.Length - 1 && File.Exists(path))
+                throw new IOException("Retained directory conflicts with a backing file.");
+        }
+    }
+
     private Node? Lookup(string fileName, out bool parentMissing)
     {
         parentMissing = false;
@@ -598,6 +702,7 @@ public sealed class DriveFileSystem : FileSystemBase
     /// <summary>A writable stream on the file's private stage copy, making that copy on the first modification.</summary>
     private FileStream WritableStream(Handle handle, bool emptyCopy)
     {
+        _stop.Token.ThrowIfCancellationRequested();
         var content = handle.Node.Content!;
         if (!content.IsStage)
         {
@@ -607,6 +712,7 @@ public sealed class DriveFileSystem : FileSystemBase
             content.Path = stagePath;
             content.IsStage = true;
         }
+        RememberStage(handle.Node); // Commit the name and owner before accepting the first changed byte.
         if (!handle.Stream!.CanWrite || !string.Equals(handle.Stream.Name, content.Path, StringComparison.OrdinalIgnoreCase))
         {
             handle.Stream.Dispose();
@@ -639,6 +745,8 @@ public sealed class DriveFileSystem : FileSystemBase
 
     private void Delete(Node node)
     {
+        _stop.Token.ThrowIfCancellationRequested();
+        if (node.Content is { IsStage: true } retained && !node.Private) _recovery.Remove(retained.Path);
         var path = VirtualPath(node);
         node.Parent?.Children?.Remove(node.Name);
         if (node.IsDirectory && !node.Private)
@@ -952,6 +1060,9 @@ public sealed class DriveFileSystem : FileSystemBase
                 content.PublishedPath = target;
                 content.PublicationFailed = false;
                 ReportPublication(child, target, succeeded: true);
+                // Keep a newer, still-unpublished stage registered while an earlier approved snapshot is published.
+                if (content.Version == content.PublishedVersion) _recovery.Remove(content.Path);
+                else RememberStage(child);
                 ApplyMetadata(child, target);
                 DriveLog.Write($"publish {target} v{content.ApprovedVersion}");
             }
@@ -971,6 +1082,7 @@ public sealed class DriveFileSystem : FileSystemBase
         var content = node.Content!;
         try
         {
+            _recovery.ValidateDestination();
             if (content.ApprovedDecision is { } decision &&
                 _inspector.IsPublicationAllowedAsync(decision, target, _stop.Token).GetAwaiter().GetResult()) return true;
         }

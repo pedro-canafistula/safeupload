@@ -24,16 +24,23 @@ public sealed class DriveMount : IDisposable
         IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label)
     {
         var fileSystem = new DriveFileSystem(destination, privateRoot, mountPoint, inspector, observer, kind, label);
-        var host = new FileSystemHost(fileSystem);
-        int status = host.Mount(mountPoint, null, false, 0);
-        if (status < 0)
+        FileSystemHost? host = null;
+        try
         {
-            host.Dispose();
-            throw new IOException($"Cannot mount {mountPoint} (NTSTATUS 0x{status:X8}). Is WinFsp installed?");
+            host = new FileSystemHost(fileSystem);
+            int status = host.Mount(mountPoint, null, false, 0);
+            if (status < 0)
+                throw new IOException($"Cannot mount {mountPoint} (NTSTATUS 0x{status:X8}). Is WinFsp installed?");
+            fileSystem.StartBackgroundWork();
+            DriveLog.Write($"mounted {mountPoint} -> {destination}");
+            return new DriveMount(host, fileSystem, mountPoint, destination);
         }
-        fileSystem.StartBackgroundWork();
-        DriveLog.Write($"mounted {mountPoint} -> {destination}");
-        return new DriveMount(host, fileSystem, mountPoint, destination);
+        catch
+        {
+            try { host?.Dispose(); }
+            finally { fileSystem.Stop(); }
+            throw;
+        }
     }
 
     public void Dispose()

@@ -48,7 +48,10 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
             var extension = DetectExtension(snapshot, Path.GetExtension(name));
             var effectiveName = Path.GetFileNameWithoutExtension(name) + extension;
             var operation = new FileOperation(snapshot, effectiveName, extension, info.Length, info.LastWriteTimeUtc,
-                writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, kind);
+                writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, kind)
+            {
+                AuditOwnerSid = writer?.UserSid, AuditUserName = writer?.UserName, AuditMetadataVersion = 1
+            };
             var result = await inspection.InspectStagedAsync(operation, token).ConfigureAwait(false);
             var categories = string.Join(",", result.Categories);
             var summary = $"verdict={result.Verdict} type={extension} reason={result.Reason ?? "-"} findings={result.Findings.Count}"

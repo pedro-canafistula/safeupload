@@ -230,7 +230,8 @@ public sealed partial class DrivePublicationTests : IDisposable
         Assert.Equal(0, fs.Open(@"\report.txt", 0, 0, out var node, out var handle, out _, out _));
         var content = ((Handle)handle).Node.Content!;
         fs.Close(node, handle);
-        content.Path = _workspace.WriteText("stage.txt", bytes);
+        content.Path = Path.Combine(_workspace.Root, "private", "stage", Guid.NewGuid().ToString("N"));
+        File.WriteAllText(content.Path, bytes);
         content.IsStage = true;
         content.Size = new FileInfo(content.Path).Length;
         content.Version = 1;
