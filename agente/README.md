@@ -42,6 +42,11 @@ O cancelamento é reconferido após política, worker e auditoria. Uma decisão 
 de auditoria e da conferência de cancelamento. Evento já gravado e cache válido de uma chamada anterior são mantidos;
 falha comum de auditoria continua preservando o veredito.
 
+O envio da auditoria lê o recibo em fluxo, com limite de 16 KiB e profundidade JSON de 16.
+O prazo de `HttpClient.Timeout` cobre envio e leitura completa; cancelamento ou recibo inválido mantém o lote pendente.
+Ambas as contagens `acceptedEvents` e `acceptedOverrides` devem existir uma única vez e corresponder ao lote,
+inclusive quando zero. A confirmação em disco conserva o token de cancelamento do serviço e independe do prazo HTTP.
+
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver gate (minifiltro), com documentação própria em
 [`../driver/README.md`](../driver/README.md).

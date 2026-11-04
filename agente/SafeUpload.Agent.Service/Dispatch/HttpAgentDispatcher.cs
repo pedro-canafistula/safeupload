@@ -28,6 +28,7 @@ public sealed class HttpAgentDispatcher : BackgroundService
 {
     /// <summary>Quantos eventos vão em um POST. A fila sobrevive entre voltas.</summary>
     private const int BatchSize = 100;
+    private const int MaximumReceiptBytes = 16 * 1024;
 
     private static readonly JsonSerializerOptions SendOptions = new()
     {
@@ -175,8 +176,15 @@ public sealed class HttpAgentDispatcher : BackgroundService
         int? receivedStatus = null;
         try
         {
+            // HeadersRead needs an explicit deadline covering the complete receipt body.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (_client.Timeout != Timeout.InfiniteTimeSpan) deadline.CancelAfter(_client.Timeout);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "events")
+            {
+                Content = JsonContent.Create(payload, options: SendOptions)
+            };
             using var response = await _client
-                .PostAsJsonAsync("events", payload, SendOptions, cancellationToken)
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
                 .ConfigureAwait(false);
             receivedStatus = (int)response.StatusCode;
 
@@ -190,9 +198,10 @@ public sealed class HttpAgentDispatcher : BackgroundService
                 return;
             }
 
-            var acknowledgement = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken)
-                .ConfigureAwait(false);
-            if (!IsCompleteAcknowledgement(acknowledgement, pending.Count, overrides.Count))
+            using var receipt = await ReadReceiptAsync(response.Content, deadline.Token).ConfigureAwait(false);
+            bool complete = IsCompleteAcknowledgement(receipt.RootElement, pending.Count, overrides.Count);
+            deadline.Token.ThrowIfCancellationRequested();
+            if (!complete)
             {
                 observation.Failure(CommunicationFailure.InvalidResponse, (int)response.StatusCode);
                 _logger.LogWarning("Confirmação inválida ou incompleta do lote. Registros continuam pendentes.");
@@ -219,6 +228,28 @@ public sealed class HttpAgentDispatcher : BackgroundService
             _logger.LogInformation("{Count} evento(s) entregues ao Centro de Administração.", dispatched.Count);
         }
         catch (Exception exception) { observation.Exception(exception, cancellationToken, receivedStatus); throw; }
+    }
+
+    private static async Task<JsonDocument> ReadReceiptAsync(HttpContent content, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (content.Headers.ContentLength > MaximumReceiptBytes)
+            throw new JsonException("Recibo de auditoria acima do limite.");
+
+        using var stream = await content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        // One extra byte distinguishes an exact-limit body from an oversized body, even without honest headers.
+        var bytes = new byte[MaximumReceiptBytes + 1];
+        int length = 0;
+        while (length < bytes.Length)
+        {
+            int read = await stream.ReadAsync(bytes.AsMemory(length), token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            if (read == 0) break;
+            length += read;
+        }
+        if (length > MaximumReceiptBytes)
+            throw new JsonException("Recibo de auditoria acima do limite.");
+        return JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 16 });
     }
 
     /// <summary>
