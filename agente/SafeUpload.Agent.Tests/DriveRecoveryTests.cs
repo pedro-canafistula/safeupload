@@ -379,7 +379,7 @@ public sealed class DriveRecoveryTests
         Assert.True(error is IOException or UnauthorizedAccessException, error?.ToString());
     }
 
-    private sealed class Fixture : IDisposable
+    internal sealed class Fixture : IDisposable
     {
         public const string Sid = "S-1-5-21-111-222-333-1001";
         public TestWorkspace Work { get; } = new();
@@ -457,12 +457,12 @@ public sealed class DriveRecoveryTests
         }
         public void Dispose() { Fs?.Stop(); Work.Dispose(); }
     }
-    private sealed class Source : IPolicyStore
+    internal sealed class Source : IPolicyStore
     {
         public Policy Current { get; set; } = null!;
         public Task<Policy> LoadAsync(CancellationToken token) { token.ThrowIfCancellationRequested(); return Task.FromResult(Current); }
     }
-    private sealed class Observer : IDriveObserver
+    internal sealed class Observer : IDriveObserver
     {
         public List<DriveDecision> Decisions { get; } = [];
         public List<DrivePublication> Publications { get; } = [];

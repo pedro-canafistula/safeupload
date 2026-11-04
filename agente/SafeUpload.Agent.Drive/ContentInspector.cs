@@ -14,6 +14,19 @@ internal sealed record InspectionOutcome(bool Publish, string Summary, FileOpera
 /// </summary>
 public sealed class ContentInspector(InspectionService inspection, IPolicyStore policies)
 {
+    internal AuditEvent? CreatePublicationAudit(DriveDecision decision, string target, bool succeeded, Guid id, string? hash = null)
+    {
+        if (decision.Operation is not { } operation || decision.Result is not { } result ||
+            succeeded && decision.FileName.StartsWith("~$", StringComparison.Ordinal)) return null;
+        if (!inspection.SupportsPublicationRecovery) throw new NotSupportedException("Recoverable publication audit is unavailable.");
+        var verdict = succeeded ? result.IsBlocked ? Verdict.Approved : result.Verdict : Verdict.Blocked;
+        return inspection.CreateTransferOutcomeEvent(operation with { DestinationPath = target, FileName = decision.FileName },
+            result, verdict, succeeded ? result.Reason : "publication_failed", id, hash, decision.Writer?.UserName);
+    }
+
+    internal Task WritePublicationAuditAsync(AuditEvent item, bool replay, CancellationToken token) =>
+        inspection.WritePublicationAuditAsync(item, replay, token);
+
     /// <summary>Rechecks the locally available validated policy; remote composition supplies its background snapshot.</summary>
     internal async Task<bool> IsPublicationAllowedAsync(DriveDecision decision, string destinationPath,
         CancellationToken token)

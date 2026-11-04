@@ -19,14 +19,15 @@ public sealed class QueueRowViewModel
 
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM HH:mm:ss");
         FileName = AuditSubject.Describe(auditEvent);
-        Verdict = VerdictLabels.Describe(auditEvent.Verdict);
+        Verdict = auditEvent.NotInspectedReason == "publication_outcome_unknown" ? "Não confirmado" : VerdictLabels.Describe(auditEvent.Verdict);
         Categories = auditEvent.Categories.Count == 0
             ? "—"
             : string.Join(", ", auditEvent.Categories.Select(CategoryLabels.Describe));
         MaskedSnippets = auditEvent.MaskedSnippets.Count == 0
             ? "—"
             : string.Join("   ", auditEvent.MaskedSnippets);
-        Reason = auditEvent.NotInspectedReason ?? "—";
+        Reason = auditEvent.NotInspectedReason == "publication_outcome_unknown"
+            ? ReasonLabels.Describe(auditEvent.NotInspectedReason) : auditEvent.NotInspectedReason ?? "—";
         Process = AuditTextPrivacy.Sanitize(auditEvent.ProcessName);
         Destination = AuditTextPrivacy.Sanitize(auditEvent.DestinationPath);
         ElapsedMs = auditEvent.ElapsedMs;
@@ -117,6 +118,7 @@ public static class ReasonLabels
         "inspection_timeout" => "A inspeção passou do prazo da política; liberado sem inspeção.",
         "out_of_scope" => "Destino ou extensão fora do escopo monitorado.",
         "excluded_process" => "Processo excluído pela política; nunca interceptado.",
+        "publication_outcome_unknown" => "Não foi possível confirmar o resultado da publicação após uma interrupção.",
         _ when reason.StartsWith("parse_error:", StringComparison.Ordinal) =>
             $"Falha ao interpretar o arquivo ({reason["parse_error:".Length..]}); liberado sem inspeção.",
         _ => reason

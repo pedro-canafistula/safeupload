@@ -64,7 +64,7 @@ public sealed class AuditQueueHealth
 /// The original caller keeps its existing verdict/error policy. Logging is independent
 /// of queue storage; one failure/recovery log per operation transition avoids storms.
 /// </summary>
-public sealed class MonitoredAuditSink : IAuditSink, IOverrideQueue
+public sealed class MonitoredAuditSink : IAuditSink, IOverrideQueue, IRecoverableAuditSink
 {
     private readonly IAuditSink _inner;
     private readonly IOverrideQueue _overrides;
@@ -81,6 +81,10 @@ public sealed class MonitoredAuditSink : IAuditSink, IOverrideQueue
 
     public Task WriteAsync(AuditEvent item, CancellationToken token) =>
         Observe(AuditQueueOperation.WriteEvent, () => _inner.WriteAsync(item, token), token);
+    public Task WritePublicationAsync(AuditEvent item, bool replay, CancellationToken token) =>
+        Observe(AuditQueueOperation.WriteEvent, () => _inner is IRecoverableAuditSink sink
+            ? sink.WritePublicationAsync(item, replay, token)
+            : throw new NotSupportedException("The queue cannot recover publication events."), token);
     public Task RecordOverrideAsync(string eventId, string justification, CancellationToken token) =>
         Observe(AuditQueueOperation.WriteOverride, () => _inner.RecordOverrideAsync(eventId, justification, token), token);
     public Task RecordOverrideAsync(AuditOverride record, CancellationToken token) =>

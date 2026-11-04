@@ -81,8 +81,21 @@ Esses eventos não confirmam flush físico, entrega ao servidor ou persistência
 Na parada ordenada, cada unidade cancela e aguarda seu worker antes de desmontar. O serviço aguarda então os relatos
 de decisão/publicação já enfileirados. Cancelamento de inspeção não vira um novo bloqueio. Se o prazo de parada
 terminar, a espera falha e não comprova a conclusão desses relatos; um provedor que ignora cancelamento pode atrasá-la.
-Isso não cria um registro durável entre publicação e auditoria: encerramento abrupto ou falha de gravação ainda têm
-limitações próprias.
+Antes de substituir o destino por um snapshot aprovado, a unidade grava uma intenção no registro privado
+`publication-audit`. Ele guarda ID/horário/metadados imutáveis do evento e o hash da cópia preparada,
+sem copiar bytes do arquivo ou diagnósticos brutos; trechos já mascarados seguem o contrato da auditoria. Após a substituição, grava o resultado e tenta
+entregá-lo à fila. Falha na fila mantém o registro para tentar novamente; falha em persistir a intenção impede a cópia final.
+
+Na retomada, uma intenção sem resultado durável registra `publication_outcome_unknown`: o histórico mostra
+"Não confirmado", sem afirmar que a cópia foi impedida, mesmo quando o destino contém os mesmos bytes.
+A recuperação nunca conclui uma cópia antiga nem infere sucesso pela identidade/hash encontrados depois.
+Resultados já gravados não são alterados por mudanças posteriores no destino.
+
+A primeira entrega usa um ID novo; repetições conferem a fila, inclusive eventos já despachados, sem alterar seus bytes
+ou estado de entrega. Um mesmo ID com metadados diferentes mantém a pendência para investigação. O registro usa ordem
+persistida por unidade e admite até 1 MiB por entrada, 16 MiB pendentes e 4096 entradas. Isso cobre retomada do processo
+para publicações de snapshots; não é uma transação de armazenamento, garantia de queda de energia ou journal de todas
+as operações do filesystem. Auditoria de bloqueios e fluxos legados conserva seus contratos próprios.
 
 O catálogo privado `stage-map.json` registra os arquivos retidos, nomes relativos, localização anterior publicada e
 autor capturado pelo serviço. A gravação usa temporário no mesmo diretório, flush e substituição antes de aceitar

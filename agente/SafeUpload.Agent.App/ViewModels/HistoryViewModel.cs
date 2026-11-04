@@ -96,7 +96,8 @@ public sealed class HistoryRowViewModel
         Size = FormatSize(auditEvent.SizeBytes);
         Destination = AuditTextPrivacy.Sanitize(auditEvent.DestinationPath);
         Process = AuditTextPrivacy.Sanitize(auditEvent.ProcessName);
-        Status = StatusPill.For(auditEvent.Verdict);
+        Status = auditEvent.NotInspectedReason == "publication_outcome_unknown"
+            ? new StatusPill("NÃO CONFIRMADO", "PillNotInspectedText") : StatusPill.For(auditEvent.Verdict);
 
         Categories = auditEvent.Categories.Count == 0
             ? "—"

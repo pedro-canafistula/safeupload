@@ -58,6 +58,7 @@ internal sealed class DriveRecoveryStore : IDisposable
     }
 
     internal IEnumerable<RetainedFile> Entries => _entries.Values;
+    internal string DestinationIdentity => _identity;
     internal string StagePath(RetainedFile entry) => Path.Combine(_stage, entry.StageName);
 
     internal void Track(string stagePath, string relative, DriveWriter? writer, uint attributes, string? previousRelative)
@@ -141,7 +142,7 @@ internal sealed class DriveRecoveryStore : IDisposable
         if (entry.PreviousRelativePath is { } previous) ValidateRelativePath(previous);
     }
 
-    private static void ValidateRelativePath(string relative)
+    internal static void ValidateRelativePath(string relative)
     {
         if (string.IsNullOrEmpty(relative)) throw new IOException("Invalid retained relative path.");
         var parts = relative.Split('\\');

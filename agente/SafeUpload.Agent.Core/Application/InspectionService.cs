@@ -140,6 +140,17 @@ public sealed class InspectionService
         => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason },
             cancellationToken, eventId, publishedSha256Hex, auditUserName);
 
+    public AuditEvent CreateTransferOutcomeEvent(FileOperation operation, InspectionResult inspection,
+        Verdict outcome, string? reason, Guid eventId, string? publishedSha256Hex = null, string? auditUserName = null)
+        => CreateAuditEvent(operation, inspection with { Verdict = outcome, Reason = reason },
+            eventId, publishedSha256Hex, auditUserName);
+
+    public bool SupportsPublicationRecovery => _auditSink is IRecoverableAuditSink;
+
+    public Task WritePublicationAuditAsync(AuditEvent item, bool replay, CancellationToken token)
+        => _auditSink is IRecoverableAuditSink sink ? sink.WritePublicationAsync(item, replay, token)
+            : throw new NotSupportedException("Publication audit requires a recoverable sink.");
+
     public Task<InspectionResult> InspectStagedFailureAsync(FileOperation operation, CancellationToken token)
         => InspectCoreAsync(operation, true, token, forcedFailure: "not_enough_staging_space");
 
@@ -526,16 +537,15 @@ public sealed class InspectionService
         };
     }
 
-    private async Task<AuditEvent?> AuditAsync(
+    private AuditEvent CreateAuditEvent(
         FileOperation operation,
         InspectionResult result,
-        CancellationToken cancellationToken,
         Guid? eventId = null,
         string? publishedSha256Hex = null,
         string? auditUserName = null)
     {
         bool minimize = eventId is null || operation.AuditMetadataVersion == 1;
-        var auditEvent = new AuditEvent(
+        return new AuditEvent(
             eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
             _endpointId,
@@ -556,7 +566,13 @@ public sealed class InspectionService
             result.ElapsedMs,
             Dispatched: false,
             PublishedSha256Hex: publishedSha256Hex) { OwnerSid = operation.AuditOwnerSid };
+    }
 
+    private async Task<AuditEvent?> AuditAsync(FileOperation operation, InspectionResult result,
+        CancellationToken cancellationToken, Guid? eventId = null, string? publishedSha256Hex = null,
+        string? auditUserName = null)
+    {
+        var auditEvent = CreateAuditEvent(operation, result, eventId, publishedSha256Hex, auditUserName);
         try
         {
             await _auditSink.WriteAsync(auditEvent, cancellationToken).ConfigureAwait(false);

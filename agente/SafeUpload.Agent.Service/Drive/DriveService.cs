@@ -321,6 +321,7 @@ public sealed class DriveService : BackgroundService
 
     internal Task HandlePublicationAsync(DrivePublication publication)
     {
+        if (publication.AuditJournaled) return Task.CompletedTask; // The filesystem owns durable delivery/replay.
         var decision = publication.Decision;
         if (decision.Operation is not { } operation || decision.Result is not { } result ||
             (publication.Succeeded && decision.FileName.StartsWith("~$", StringComparison.Ordinal)))

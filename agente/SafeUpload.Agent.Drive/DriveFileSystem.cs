@@ -78,6 +78,9 @@ public sealed class DriveFileSystem : FileSystemBase
     private readonly SafeUpload.Agent.Core.Domain.DestinationKind _kind;
     private readonly string _label;
     private readonly DriveRecoveryStore _recovery;
+    private readonly PublicationAuditJournal _publicationAudit;
+    private long _nextAuditRetry;
+    internal Action<PublicationAuditPhase>? AuditFault { get; set; }
     private readonly Func<int> _operationProcessId;
     private static readonly HashSet<string> PrivateRootNames = new(StringComparer.OrdinalIgnoreCase)
         { "System Volume Information", "$RECYCLE.BIN" };
@@ -116,7 +119,12 @@ public sealed class DriveFileSystem : FileSystemBase
         _fileSecurity = Sddl("O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;AU)");
         _dirSecurity = Sddl("O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;AU)");
         _recovery = new DriveRecoveryStore(_backing, privateRoot);
-        try { RestoreRetainedFiles(); }
+        try
+        {
+            _publicationAudit = new PublicationAuditJournal(privateRoot, _backing, _recovery, _inspector,
+                phase => AuditFault?.Invoke(phase));
+            RestoreRetainedFiles();
+        }
         catch { _recovery.Dispose(); throw; }
     }
 
@@ -840,6 +848,15 @@ public sealed class DriveFileSystem : FileSystemBase
         {
             try
             {
+                if (_publicationAudit.HasPending && Environment.TickCount64 >= _nextAuditRetry)
+                {
+                    _nextAuditRetry = Environment.TickCount64 + 5000;
+                    lock (_gate)
+                    {
+                        _publicationAudit.ResolvePrepared();
+                        _publicationAudit.Retry(_stop.Token);
+                    }
+                }
                 Content? next = null;
                 lock (_gate)
                 {
@@ -990,6 +1007,8 @@ public sealed class DriveFileSystem : FileSystemBase
     /// <summary>Makes the backing folder match the namespace, using only approved bytes. Caller holds the lock.</summary>
     private void Reconcile()
     {
+        _publicationAudit.ResolvePrepared();
+        _publicationAudit.Retry(_stop.Token);
         var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectReferenced(_root, referenced);
         ReconcileDirectory(_root, referenced);
@@ -1040,26 +1059,42 @@ public sealed class DriveFileSystem : FileSystemBase
             {
                 if (!ValidatePublication(child, target)) continue;
                 var temp = System.IO.Path.Combine(folder, TempPrefix + Guid.NewGuid().ToString("N"));
+                var decision = content.ApprovedDecision! with { DrivePath = VirtualPath(child), FileName = child.Name };
+                PublicationAuditEntry? intent = null;
+                bool moved = false;
                 try
                 {
                     File.Copy(content.ApprovedSnapshot, temp);
-                    if (!ValidatePublication(child, target)) continue;
+                    using var evidence = new FileStream(temp, FileMode.Open, FileAccess.ReadWrite, FileShare.Read | FileShare.Delete);
+                    intent = _publicationAudit.Prepare(decision, target, temp, evidence);
+                    if (!ValidatePublication(child, target))
+                    {
+                        if (intent is not null) _publicationAudit.Cancel(intent);
+                        continue;
+                    }
                     File.Move(temp, target, overwrite: true);
+                    moved = true;
+                    content.PublishedVersion = content.ApprovedVersion;
+                    content.PublishedPath = target;
+                    content.PublicationFailed = false;
+                    AuditFault?.Invoke(PublicationAuditPhase.Moved);
+                    if (intent is not null) intent = _publicationAudit.Complete(intent, true);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
-                    if (!content.PublicationFailed)
+                    if (!moved && !content.PublicationFailed)
                     {
+                        intent = intent is null ? _publicationAudit.Failed(decision, target) : _publicationAudit.Complete(intent, false);
                         content.PublicationFailed = true;
-                        ReportPublication(child, target, succeeded: false);
+                        ReportPublication(child, target, succeeded: false, intent);
+                        if (intent is not null) _publicationAudit.Deliver(intent, false, _stop.Token);
                     }
+                    else if (!moved && intent is not null) _publicationAudit.Cancel(intent);
                     throw;
                 }
-                finally { TryDelete(temp); }
-                content.PublishedVersion = content.ApprovedVersion;
-                content.PublishedPath = target;
-                content.PublicationFailed = false;
-                ReportPublication(child, target, succeeded: true);
+                finally { if (!_publicationAudit.OwnsPreparedTemporary(temp)) TryDelete(temp); }
+                ReportPublication(child, target, succeeded: true, intent);
+                if (intent is not null) _publicationAudit.Deliver(intent, false, _stop.Token);
                 // Keep a newer, still-unpublished stage registered while an earlier approved snapshot is published.
                 if (content.Version == content.PublishedVersion) _recovery.Remove(content.Path);
                 else RememberStage(child);
@@ -1110,12 +1145,13 @@ public sealed class DriveFileSystem : FileSystemBase
         return false;
     }
 
-    private void ReportPublication(Node node, string target, bool succeeded)
+    private void ReportPublication(Node node, string target, bool succeeded, PublicationAuditEntry? audit)
     {
         if (node.Content?.ApprovedDecision is not { } decision) return;
         // A file may have acquired its final Office name since inspection. Report the destination actually attempted.
         decision = decision with { DrivePath = VirtualPath(node), FileName = node.Name };
-        _observer.OnPublication(new DrivePublication(Guid.NewGuid(), decision, target, succeeded));
+        _observer.OnPublication(new DrivePublication(audit?.Event.EventId ?? Guid.NewGuid(), decision, target, succeeded,
+            AuditJournaled: true));
     }
 
     private static void ApplyMetadata(Node node, string path)
