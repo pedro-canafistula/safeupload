@@ -70,13 +70,28 @@ internal static class CurrentBackendContract
         int target = await Register(endpoint, "10.90.0.21");
         int control = await Register("SMOKE-CONTROL", "10.90.0.22");
         Check("explicit distinct host registration", target > 0 && control > 0 && target != control);
-        var heartbeat = AgentHeartbeatConfiguration.Parse("AgentApi", target.ToString()).CreateSender(agent)!;
+        string work = Path.Combine(Path.GetTempPath(), "safeupload-current-contract-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        string identityFile = Path.Combine(work, "identity.json");
+        int resolved = new RegisteredHostIdentityStore(identityFile, enforceProtectedAcl: false).Resolve(agent.BaseAddress!, target);
+        byte[] identityBefore = await File.ReadAllBytesAsync(identityFile, token);
+        var hostsBefore = (await Get("endpoints")).GetProperty("itens").EnumerateArray().ToArray();
+        var targetBefore = hostsBefore.Single(h => h.GetProperty("hostId").GetInt32() == target).GetProperty("lastSeenUtc").GetDateTimeOffset();
+        string controlBefore = hostsBefore.Single(h => h.GetProperty("hostId").GetInt32() == control).GetRawText();
+        await Task.Delay(1100, token); // Central timestamp must observably advance beyond registration.
+        var heartbeat = AgentHeartbeatConfiguration.Parse("AgentApi", resolved.ToString()).CreateSender(agent)!;
         await heartbeat.SendAsync(token);
+        int restoredId = new RegisteredHostIdentityStore(identityFile, enforceProtectedAcl: false).Resolve(agent.BaseAddress!, null);
+        await new RegisteredAgentHeartbeat(new AgentApiClient(agent), restoredId).SendAsync(token);
+        var hostsAfter = (await Get("endpoints")).GetProperty("itens").EnumerateArray().ToArray();
+        byte[] identityAfter = await File.ReadAllBytesAsync(identityFile, token);
+        Check("reopened identity updates the same host without duplicate registration", restoredId == target && hostsAfter.Length == hostsBefore.Length &&
+            hostsAfter.Single(h => h.GetProperty("hostId").GetInt32() == target).GetProperty("lastSeenUtc").GetDateTimeOffset() > targetBefore &&
+            identityBefore.SequenceEqual(identityAfter));
+        Check("target heartbeat preserves the control host", hostsAfter.Single(h => h.GetProperty("hostId").GetInt32() == control).GetRawText() == controlBefore);
         using (var invalid = await agent.PostAsJsonAsync("heartbeat", new { id_usuario_so = target }, token))
             Check("obsolete heartbeat key rejected", invalid.StatusCode == HttpStatusCode.BadRequest);
 
-        string work = Path.Combine(Path.GetTempPath(), "safeupload-current-contract-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(work);
         var queue = new LocalQueueAuditSink(Path.Combine(work, "queue.jsonl"));
         var local = LocalPolicyStore.CreateDefault() with {
             Clipboard = new ClipboardPolicy(ClipboardMode.Audit, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "chrome.exe" },

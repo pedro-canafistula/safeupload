@@ -220,7 +220,6 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
     // a mutation of the central publication. Destination/format/rules are checked during translation.
     private static bool SameConsolePublication(PolicyDocument left, PolicyDocument right) =>
         left.Version == right.Version && left.AuditOnly == right.AuditOnly &&
-        left.OverrideAllowed == right.OverrideAllowed &&
         (left.ActiveCategories ?? []).SequenceEqual(right.ActiveCategories ?? [], StringComparer.Ordinal);
 
     /// <summary>Inicializa a proteção pelo disco ou padrão existente, sem esperar uma conexão HTTP.</summary>

@@ -29,6 +29,12 @@ if (args.Length == 1 && args[0] == "--current-api")
     return;
 }
 
+if (args.Length == 5 && args[0] == "--console-offline-probe")
+{
+    await ConsolePolicyAcceptance.RunOfflineAsync(args[1], int.Parse(args[2]), args[3], int.Parse(args[4]));
+    return;
+}
+
 if (args.Length > 0 && args[0] == "--reliability-demo")
 {
     await ReliabilityDemo.RunAsync(args);
