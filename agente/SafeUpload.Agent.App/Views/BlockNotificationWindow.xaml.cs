@@ -206,7 +206,7 @@ public partial class BlockNotificationWindow : Window
             {
                 JustificationInput.IsEnabled = false;
                 JustificationStatusText.Text =
-                    _staged ? "Justificativa aceita. A versão devolvida foi enviada."
+                    _staged ? "Justificativa aceita. Publicação agendada; acompanhe o histórico."
                             : "Justificativa aceita. Tente a operação novamente.";
             }
         }

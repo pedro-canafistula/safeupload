@@ -49,6 +49,14 @@ O Service escolhe por configuração (`Interception:Mode` em `appsettings.json`)
   Exige o WinFsp instalado.
 - **`FileSystemWatcher`** — o mock antigo: reage *depois* que o arquivo chega ao destino e o apaga.
 
+Nas unidades SafeUpload, aprovação da inspeção e publicação são etapas distintas. O evento de sucesso só é emitido
+depois de copiar o snapshot e substituir o arquivo no destino. Falha de cópia/substituição gera um evento bloqueado
+com `publication_failed` por versão aprovada; o snapshot fica disponível para nova tentativa. A recuperação gera
+outro evento, sem reescrever o bloqueio ou a justificativa originais. A publicação usa o nome/destino finais do arquivo.
+
+A resposta de justificativa confirma o agendamento, não a cópia concluída. O resultado aparece no histórico.
+Esses eventos não confirmam flush físico, entrega ao servidor ou persistência após queda de energia.
+
 ---
 
 ## Como rodar

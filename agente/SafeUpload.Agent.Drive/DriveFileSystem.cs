@@ -16,6 +16,8 @@ internal sealed class Content
     public long InspectedVersion;         // newest version whose inspection was started
     public long ApprovedVersion = -1;     // newest version approved for the destination
     public string? ApprovedSnapshot;      // exact bytes of ApprovedVersion
+    public DriveDecision? ApprovedDecision;
+    public bool PublicationFailed;       // report a failed publication once, then retry the same snapshot
     public long PublishedVersion = -1;
     public string? PublishedPath;
     public bool Deleted;
@@ -24,6 +26,7 @@ internal sealed class Content
     public Guid? BlockedId;               // newest blocked version, kept for a justification
     public long BlockedVersion = -1;
     public string? BlockedSnapshot;
+    public DriveDecision? BlockedDecision;
     public DateTime LastModified;
     public bool CleanupSeen;              // a handle was closed since the last modification
     public bool Inspecting;
@@ -762,6 +765,8 @@ public sealed class DriveFileSystem : FileSystemBase
         }
         var started = DateTime.UtcNow;
         var outcome = _inspector.InspectAsync(snapshot, target, _kind, name, writer, _stop.Token).GetAwaiter().GetResult();
+        var decision = new DriveDecision(versionId, destination, name, writer, outcome.Operation, outcome.Result,
+            outcome.Publish, outcome.Summary, snapshot);
         bool report = false;
         lock (_gate)
         {
@@ -772,6 +777,8 @@ public sealed class DriveFileSystem : FileSystemBase
                 if (content.ApprovedSnapshot is not null) TryDelete(content.ApprovedSnapshot);
                 content.ApprovedVersion = version;
                 content.ApprovedSnapshot = snapshot;
+                content.ApprovedDecision = decision;
+                content.PublicationFailed = false;
                 DriveLog.Write($"inspect APPROVED {destination} v{version} {outcome.Summary} ({ms} ms)");
                 ScheduleReconcile();
                 report = true;
@@ -782,6 +789,7 @@ public sealed class DriveFileSystem : FileSystemBase
                 content.BlockedId = versionId;
                 content.BlockedVersion = version;
                 content.BlockedSnapshot = snapshot;
+                content.BlockedDecision = decision;
                 _blocked[versionId] = content;
                 DriveLog.Write($"inspect BLOCKED {destination} v{version} {outcome.Summary} ({ms} ms)");
                 report = true;
@@ -794,13 +802,12 @@ public sealed class DriveFileSystem : FileSystemBase
             // A write that arrived during inspection is inspected after its own close.
         }
         if (report)
-            _observer.OnDecision(new DriveDecision(versionId, destination, name, writer, outcome.Operation, outcome.Result,
-                outcome.Publish, outcome.Summary, snapshot));
+            _observer.OnDecision(decision);
     }
 
     /// <summary>
-    /// Publishes a blocked version after the user justified it. Only that exact version, and only if no newer version
-    /// has been approved since. Returns false when the version is gone or superseded.
+    /// Queues a blocked version for publication after authorization. Only that exact version, and only if no newer
+    /// version has been approved since. A true result acknowledges queuing, not a completed destination write.
     /// </summary>
     public bool Approve(Guid versionId)
     {
@@ -812,6 +819,8 @@ public sealed class DriveFileSystem : FileSystemBase
             if (content.ApprovedSnapshot is not null) TryDelete(content.ApprovedSnapshot);
             content.ApprovedVersion = content.BlockedVersion;
             content.ApprovedSnapshot = content.BlockedSnapshot;
+            content.ApprovedDecision = content.BlockedDecision is { } blocked ? blocked with { Approved = true } : null;
+            content.PublicationFailed = false;
             content.BlockedSnapshot = null;
             ForgetBlocked(content);
             DriveLog.Write($"justified {(content.Node is null ? "?" : VirtualPath(content.Node))} v{content.ApprovedVersion}");
@@ -826,6 +835,7 @@ public sealed class DriveFileSystem : FileSystemBase
         if (content.BlockedSnapshot is not null) TryDelete(content.BlockedSnapshot);
         content.BlockedId = null;
         content.BlockedSnapshot = null;
+        content.BlockedDecision = null;
     }
 
     /// <summary>Makes the backing folder match the namespace, using only approved bytes. Caller holds the lock.</summary>
@@ -880,11 +890,26 @@ public sealed class DriveFileSystem : FileSystemBase
                       !string.Equals(content.PublishedPath, target, StringComparison.OrdinalIgnoreCase)))
             {
                 var temp = System.IO.Path.Combine(folder, TempPrefix + Guid.NewGuid().ToString("N"));
-                File.Copy(content.ApprovedSnapshot, temp);
-                File.Move(temp, target, overwrite: true);
-                ApplyMetadata(child, target);
+                try
+                {
+                    File.Copy(content.ApprovedSnapshot, temp);
+                    File.Move(temp, target, overwrite: true);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    if (!content.PublicationFailed)
+                    {
+                        content.PublicationFailed = true;
+                        ReportPublication(child, target, succeeded: false);
+                    }
+                    throw;
+                }
+                finally { TryDelete(temp); }
                 content.PublishedVersion = content.ApprovedVersion;
                 content.PublishedPath = target;
+                content.PublicationFailed = false;
+                ReportPublication(child, target, succeeded: true);
+                ApplyMetadata(child, target);
                 DriveLog.Write($"publish {target} v{content.ApprovedVersion}");
             }
         }
@@ -895,6 +920,14 @@ public sealed class DriveFileSystem : FileSystemBase
             File.Delete(file);
             DriveLog.Write($"publish delete {file}");
         }
+    }
+
+    private void ReportPublication(Node node, string target, bool succeeded)
+    {
+        if (node.Content?.ApprovedDecision is not { } decision) return;
+        // A file may have acquired its final Office name since inspection. Report the destination actually attempted.
+        decision = decision with { DrivePath = VirtualPath(node), FileName = node.Name };
+        _observer.OnPublication(new DrivePublication(Guid.NewGuid(), decision, target, succeeded));
     }
 
     private static void ApplyMetadata(Node node, string path)

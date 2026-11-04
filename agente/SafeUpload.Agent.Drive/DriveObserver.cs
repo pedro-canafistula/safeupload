@@ -6,8 +6,8 @@ namespace SafeUpload.Agent.Drive;
 public sealed record DriveWriter(int ProcessId, string ProcessName, uint? SessionId, string? UserSid, string? UserName);
 
 /// <summary>The decision about one inspected version of a file on a SafeUpload drive.</summary>
-/// <param name="VersionId">Identifies this exact version; also the audit event and justification id.</param>
-/// <param name="Published">True when the version may reach the destination.</param>
+/// <param name="VersionId">Identifies this exact version and its blocked audit event/justification, when present.</param>
+/// <param name="Approved">Inspection permits publication; does not mean the destination was written.</param>
 /// <param name="Snapshot">Private copy of the exact bytes that were inspected (kept while a blocked version may be justified).</param>
 public sealed record DriveDecision(
     Guid VersionId,
@@ -16,13 +16,17 @@ public sealed record DriveDecision(
     DriveWriter? Writer,
     FileOperation? Operation,
     InspectionResult? Result,
-    bool Published,
+    bool Approved,
     string Summary,
     string Snapshot);
+
+/// <summary>An actual publication attempt. Its event id is separate from the blocked version/justification id.</summary>
+public sealed record DrivePublication(Guid EventId, DriveDecision Decision, string DestinationPath, bool Succeeded);
 
 /// <summary>Connects a drive to the rest of the agent (sessions, notifications, audit).</summary>
 public interface IDriveObserver
 {
     DriveWriter? IdentifyWriter(int processId);
     void OnDecision(DriveDecision decision);
+    void OnPublication(DrivePublication publication);
 }

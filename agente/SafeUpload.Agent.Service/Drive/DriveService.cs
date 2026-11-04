@@ -8,6 +8,7 @@ using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Drive;
 using SafeUpload.Agent.Service.Gate;
+using SafeUpload.Agent.Service.Diagnostics;
 using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Service.Drive;
@@ -187,36 +188,36 @@ public sealed class DriveService : BackgroundService
         });
     }
 
-    private async Task HandleDecisionAsync(string destination, DriveDecision decision)
+    private Task HandleDecisionAsync(string destination, DriveDecision decision)
     {
-        var policy = _policy;
-        var writer = decision.Writer;
-        bool ownerFile = decision.FileName.StartsWith("~$", StringComparison.Ordinal);
-        // Audit mode (the console's "alertar"): a version whose inspection completed with findings goes through and
-        // is audited as an approval with its categories. A failed inspection still blocks (fail closed).
-        bool alert = !decision.Published && policy?.AuditOnly == true &&
-            decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
-        if (decision.Operation is { } operation && decision.Result is { } result && !(ownerFile && decision.Published))
-        {
-            var outcome = decision.Published ? result.Verdict : alert ? Verdict.Approved : Verdict.Blocked;
-            await _inspection.RecordTransferOutcomeAsync(operation,
-                result, outcome, result.Reason, CancellationToken.None, eventId: decision.VersionId,
-                auditUserName: writer?.UserName).ConfigureAwait(false);
-        }
-        if (decision.Published) return;
-
         DriveMount? mount;
         lock (_mounts) _mounts.TryGetValue(destination, out mount);
-        if (alert)
+        return HandleDecisionAsync(decision, _policy,
+            mount is null ? null : () => mount.FileSystem.Approve(decision.VersionId));
+    }
+
+    internal async Task HandleDecisionAsync(DriveDecision decision, Policy? policy, Func<bool>? approve)
+    {
+        // Approval is not a transfer outcome. The reconciler reports it after the destination write.
+        if (decision.Approved) return;
+        var writer = decision.Writer;
+        // Audit mode (the console's "alertar"): a version whose inspection completed with findings goes through and
+        // is audited as an approval with its categories. A failed inspection still blocks (fail closed).
+        bool alert = policy?.AuditOnly == true &&
+            decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
+        if (alert && approve?.Invoke() == true) return;
+
+        if (decision.Operation is { } operation && decision.Result is { } result)
         {
-            mount?.FileSystem.Approve(decision.VersionId);
-            return;
+            await _inspection.RecordTransferOutcomeAsync(operation,
+                result, Verdict.Blocked, result.Reason, CancellationToken.None, eventId: decision.VersionId,
+                auditUserName: writer?.UserName).ConfigureAwait(false);
         }
-        bool overrideAllowed = policy?.OverrideAllowed == true && mount is not null &&
+        bool overrideAllowed = policy?.OverrideAllowed == true && approve is not null &&
             writer?.SessionId is not null && writer.UserSid is not null;
         if (overrideAllowed)
             _justifications.Remember(decision.VersionId, writer!.SessionId!.Value, writer.UserSid!,
-                () => mount!.FileSystem.Approve(decision.VersionId));
+                approve!);
         // The blocked version stays visible to the user on the drive, at DrivePath.
         var notification = new TransferNotification(decision.VersionId, decision.DrivePath, TransferPhase.Blocked,
             decision.Result?.Findings ?? [], overrideAllowed, HandbackPath: decision.DrivePath, HandbackVerified: true,
@@ -224,6 +225,33 @@ public sealed class DriveService : BackgroundService
         if (writer?.SessionId is null || writer.UserSid is null)
             _logger.LogWarning("Blocked {File}; no user session to notify", decision.DrivePath);
         _hub.Publish(notification, writer?.SessionId, writer?.UserSid);
+    }
+
+    private void OnPublication(DrivePublication publication)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await HandlePublicationAsync(publication).ConfigureAwait(false); }
+            catch (Exception error) { _logger.LogSafeWarning(error, "Could not report the drive publication outcome."); }
+        });
+    }
+
+    internal Task HandlePublicationAsync(DrivePublication publication)
+    {
+        var decision = publication.Decision;
+        if (decision.Operation is not { } operation || decision.Result is not { } result ||
+            (publication.Succeeded && decision.FileName.StartsWith("~$", StringComparison.Ordinal)))
+            return Task.CompletedTask;
+        // Alertar and justified findings become Approved only after the copy. Preserve the initial blocked event,
+        // which remains the justification's reference: a later outcome gets a separate immutable event id.
+        var verdict = publication.Succeeded
+            ? result.IsBlocked ? Verdict.Approved : result.Verdict
+            : Verdict.Blocked;
+        var reason = publication.Succeeded ? result.Reason : "publication_failed";
+        return _inspection.RecordTransferOutcomeAsync(
+            operation with { DestinationPath = publication.DestinationPath, FileName = decision.FileName },
+            result, verdict, reason, CancellationToken.None, eventId: publication.EventId,
+            auditUserName: decision.Writer?.UserName);
     }
 
     /// <summary>SYSTEM and administrators control the folder; users may only read it (or nothing).</summary>
@@ -270,5 +298,6 @@ public sealed class DriveService : BackgroundService
     {
         public DriveWriter? IdentifyWriter(int processId) => owner.IdentifyWriter(processId);
         public void OnDecision(DriveDecision decision) => owner.OnDecision(destination, decision);
+        public void OnPublication(DrivePublication publication) => owner.OnPublication(publication);
     }
 }

@@ -172,9 +172,9 @@ public sealed class JustificationPipeServer : BackgroundService
 
         // Auditar ANTES de publicar: uma falha aqui nao pode deixar a versao publicada sem registro de quem pediu.
         await RecordJustificationAsync(request, clientSid, cancellationToken).ConfigureAwait(false);
-        bool published = approve();
-        _logger.LogWarning("Versao {EventId} justificada pelo usuario; publicada={Published}.", request.EventId, published);
-        return published;
+        bool queued = approve();
+        _logger.LogWarning("Versao {EventId} justificada pelo usuario; publicacao agendada={Queued}.", request.EventId, queued);
+        return queued;
     }
 
     internal Task RecordJustificationAsync(JustificationRequest request, string? clientSid,
