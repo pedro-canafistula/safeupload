@@ -30,6 +30,7 @@ internal sealed class Content
     public DateTime LastModified;
     public bool CleanupSeen;              // a handle was closed since the last modification
     public bool Inspecting;
+    public long InspectionEpoch;          // a rename/policy invalidation must also supersede an in-flight decision
 }
 
 internal sealed class Node
@@ -466,6 +467,12 @@ public sealed class DriveFileSystem : FileSystemBase
                 if (target.IsDirectory) return STATUS_ACCESS_DENIED;
             }
             var newRelative = newParent == _root ? newLeaf : Relative(newParent) + "\\" + newLeaf;
+            bool inspectRenamedFile = !node.IsDirectory && !node.Private;
+            if (inspectRenamedFile)
+            {
+                node.Content!.Writer = _observer.IdentifyWriter(_operationProcessId());
+                WritableStream((Handle)fileDesc, emptyCopy: false);
+            }
             RememberStages(node); // A fully published stage may have retired its entry before this rename.
             _recovery.Rename(Relative(node), newRelative);
             if (target is not null && target != node) Delete(target);
@@ -486,6 +493,11 @@ public sealed class DriveFileSystem : FileSystemBase
             node.Parent = newParent;
             newParent.Children[newLeaf] = node;
             node.ChangeTime = Now();
+            if (inspectRenamedFile)
+            {
+                Modified((Handle)fileDesc, ((Handle)fileDesc).Stream!.Length);
+                RequireInspection(node.Content!);
+            }
             DriveLog.Write($"rename {oldPath} -> {VirtualPath(node)}");
             ScheduleReconcile();
             return STATUS_SUCCESS;
@@ -891,7 +903,7 @@ public sealed class DriveFileSystem : FileSystemBase
     private void InspectOne(Content content)
     {
         string snapshot, destination, target, name;
-        long version;
+        long version, epoch;
         DriveWriter? writer;
         var versionId = Guid.NewGuid();
         lock (_gate)
@@ -904,6 +916,7 @@ public sealed class DriveFileSystem : FileSystemBase
             snapshot = System.IO.Path.Combine(_snapshots, Guid.NewGuid().ToString("N"));
             CopyShared(content.Path, snapshot);
             version = content.InspectedVersion = content.Version;
+            epoch = content.InspectionEpoch;
             destination = VirtualPath(content.Node);
             target = BackingPath(content.Node.Parent!, content.Node.Name);
             name = content.Node.Name;
@@ -926,7 +939,7 @@ public sealed class DriveFileSystem : FileSystemBase
             content.Inspecting = false;
             _stop.Token.ThrowIfCancellationRequested();
             var ms = (int)(DateTime.UtcNow - started).TotalMilliseconds;
-            if (outcome.Publish && !content.Deleted && version > content.ApprovedVersion)
+            if (outcome.Publish && !content.Deleted && epoch == content.InspectionEpoch && version > content.ApprovedVersion)
             {
                 if (content.ApprovedSnapshot is not null) TryDelete(content.ApprovedSnapshot);
                 content.ApprovedVersion = version;
@@ -937,7 +950,7 @@ public sealed class DriveFileSystem : FileSystemBase
                 ScheduleReconcile();
                 report = true;
             }
-            else if (!outcome.Publish && !content.Deleted && version > content.BlockedVersion)
+            else if (!outcome.Publish && !content.Deleted && epoch == content.InspectionEpoch && version > content.BlockedVersion)
             {
                 ForgetBlocked(content);
                 content.BlockedId = versionId;
@@ -1009,9 +1022,10 @@ public sealed class DriveFileSystem : FileSystemBase
     {
         _publicationAudit.ResolvePrepared();
         _publicationAudit.Retry(_stop.Token);
+        ReconcileDirectory(_root);
         var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectReferenced(_root, referenced);
-        ReconcileDirectory(_root, referenced);
+        DeleteUnreferencedFiles(_root, referenced);
     }
 
     private static void CollectReferenced(Node dir, HashSet<string> referenced)
@@ -1020,37 +1034,27 @@ public sealed class DriveFileSystem : FileSystemBase
         foreach (var child in dir.Children.Values)
         {
             if (child.IsDirectory) CollectReferenced(child, referenced);
-            else if (child.Content is { IsStage: false } c) referenced.Add(c.Path);
+            else if (child.Content is { } c)
+            {
+                if (!c.IsStage) referenced.Add(c.Path);
+                else if (c.PublishedPath is { } previous) referenced.Add(previous);
+            }
         }
     }
 
-    private void ReconcileDirectory(Node dir, HashSet<string> referenced)
+    private void ReconcileDirectory(Node dir)
     {
         if (dir.Children is null) return;   // never loaded: nothing changed below it
         var folder = BackingDirectory(dir);
         Directory.CreateDirectory(folder);
-        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var child in dir.Children.Values)
         {
             if (child.Private) continue;
-            keep.Add(child.Name);
-            if (child.IsDirectory) { ReconcileDirectory(child, referenced); continue; }
+            if (child.IsDirectory) { ReconcileDirectory(child); continue; }
             var content = child.Content!;
             var target = System.IO.Path.Combine(folder, child.Name);
             if (!content.IsStage)
             {
-                if (!string.Equals(content.Path, target, StringComparison.OrdinalIgnoreCase) && File.Exists(content.Path))
-                {
-                    // A published file that was renamed. Copy instead of moving if its old name must stay as it is
-                    // (for example the previous version of a document whose new version is still pending).
-                    var oldName = System.IO.Path.GetFileName(content.Path);
-                    bool oldNameKept = string.Equals(System.IO.Path.GetDirectoryName(content.Path), folder, StringComparison.OrdinalIgnoreCase)
-                        && dir.Children.ContainsKey(oldName);
-                    if (oldNameKept) File.Copy(content.Path, target, overwrite: true);
-                    else File.Move(content.Path, target, overwrite: true);
-                    DriveLog.Write($"publish rename {content.Path} -> {target}");
-                    content.Path = content.PublishedPath = target;
-                }
                 ApplyMetadata(child, target);
             }
             else if (content.ApprovedSnapshot is not null &&
@@ -1102,10 +1106,17 @@ public sealed class DriveFileSystem : FileSystemBase
                 DriveLog.Write($"publish {target} v{content.ApprovedVersion}");
             }
         }
-        foreach (var file in Directory.EnumerateFiles(folder))
+    }
+
+    private void DeleteUnreferencedFiles(Node dir, HashSet<string> referenced)
+    {
+        if (dir.Children is null) return;
+        foreach (var child in dir.Children.Values)
+            if (child.IsDirectory && !child.Private) DeleteUnreferencedFiles(child, referenced);
+        foreach (var file in Directory.EnumerateFiles(BackingDirectory(dir)))
         {
             var name = System.IO.Path.GetFileName(file);
-            if (keep.Contains(name) || referenced.Contains(file)) continue;
+            if (dir.Children.ContainsKey(name) || referenced.Contains(file)) continue;
             File.Delete(file);
             DriveLog.Write($"publish delete {file}");
         }
@@ -1130,6 +1141,14 @@ public sealed class DriveFileSystem : FileSystemBase
         }
         // The bytes remain in the private stage. Invalidate old approvals/justifications and inspect the current
         // version again, even when neither the file version nor the human-assigned policy number changed.
+        RequireInspection(content);
+        DriveLog.Write("publish held: policy changed; stage queued for inspection");
+        return false;
+    }
+
+    private void RequireInspection(Content content)
+    {
+        content.InspectionEpoch++;
         if (content.ApprovedSnapshot is { } snapshot) TryDelete(snapshot);
         content.ApprovedSnapshot = null;
         content.ApprovedDecision = null;
@@ -1141,8 +1160,6 @@ public sealed class DriveFileSystem : FileSystemBase
         content.CleanupSeen = true;
         content.LastModified = DateTime.UtcNow;
         _dirty.Add(content);
-        DriveLog.Write("publish held: policy changed; stage queued for inspection");
-        return false;
     }
 
     private void ReportPublication(Node node, string target, bool succeeded, PublicationAuditEntry? audit)

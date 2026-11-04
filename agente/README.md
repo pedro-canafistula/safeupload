@@ -78,6 +78,12 @@ outro evento, sem reescrever o bloqueio ou a justificativa originais. A publica�
 A resposta de justificativa confirma o agendamento, não a cópia concluída. O resultado aparece no histórico.
 Esses eventos não confirmam flush físico, entrega ao servidor ou persistência após queda de energia.
 
+Renomear um arquivo, inclusive um já publicado, cria um novo contexto de publicação: os bytes ficam no stage,
+aprovações/justificativas anteriores são invalidadas e o nome novo exige nova inspeção. Resultados de inspeções
+iniciadas antes da renomeação são descartados. O arquivo publicado anterior permanece no destino até a nova
+publicação concluir. A janela de dez minutos para justificar usa tempo decorrido e não muda com ajustes na hora.
+Movimentações de diretórios conservam o fluxo próprio de metadados; isso não é recuperação transacional de toda a árvore.
+
 Na parada ordenada, cada unidade cancela e aguarda seu worker antes de desmontar. O serviço aguarda então os relatos
 de decisão/publicação já enfileirados. Cancelamento de inspeção não vira um novo bloqueio. Se o prazo de parada
 terminar, a espera falha e não comprova a conclusão desses relatos; um provedor que ignora cancelamento pode atrasá-la.

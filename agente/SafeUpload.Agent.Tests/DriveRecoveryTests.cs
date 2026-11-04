@@ -460,7 +460,13 @@ public sealed class DriveRecoveryTests
     internal sealed class Source : IPolicyStore
     {
         public Policy Current { get; set; } = null!;
-        public Task<Policy> LoadAsync(CancellationToken token) { token.ThrowIfCancellationRequested(); return Task.FromResult(Current); }
+        public Func<CancellationToken, Task>? BeforeLoad { get; set; }
+        public async Task<Policy> LoadAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            if (BeforeLoad is { } before) await before(token);
+            return Current;
+        }
     }
     internal sealed class Observer : IDriveObserver
     {

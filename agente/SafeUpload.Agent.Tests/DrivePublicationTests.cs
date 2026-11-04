@@ -202,6 +202,9 @@ public sealed partial class DrivePublicationTests : IDisposable
         try { Assert.Equal(0, f.FileSystem.Rename(node, handle, @"\report.txt", @"\final.txt", true)); }
         finally { f.FileSystem.Close(node, handle); }
         f.Reconcile();
+        Assert.Empty(f.Observer.Publications);
+        f.Inspect(); // The new name is a new publication context.
+        f.Reconcile();
         var publication = Assert.Single(f.Observer.Publications);
         Assert.EndsWith(@"\final.txt", publication.DestinationPath);
         Assert.Equal(@"S:\final.txt", publication.Decision.DrivePath);
@@ -226,7 +229,7 @@ public sealed partial class DrivePublicationTests : IDisposable
         var engine = new InspectionService(effectivePolicies, sink, ExtractorRegistry.CreateDefault(), new VerdictCache());
         var observer = new Observer();
         var fs = new DriveFileSystem(backing, Path.Combine(_workspace.Root, "private"), "S:",
-            new ContentInspector(engine, effectivePolicies), observer, DestinationKind.RemovableDrive, "Synthetic");
+            new ContentInspector(engine, effectivePolicies), observer, DestinationKind.RemovableDrive, "Synthetic", () => 123);
         Assert.Equal(0, fs.Open(@"\report.txt", 0, 0, out var node, out var handle, out _, out _));
         var content = ((Handle)handle).Node.Content!;
         fs.Close(node, handle);
@@ -276,7 +279,8 @@ public sealed partial class DrivePublicationTests : IDisposable
         public List<DriveDecision> Decisions { get; } = [];
         public List<DrivePublication> Publications { get; } = [];
         public List<string> BytesAtPublication { get; } = [];
-        public DriveWriter? IdentifyWriter(int processId) => null;
+        public DriveWriter? IdentifyWriter(int processId) =>
+            new(123, "explorer.exe", 7, "S-1-5-21-111-222-333-1001", "synthetic-writer");
         public void OnDecision(DriveDecision decision) => Decisions.Add(decision);
         public void OnPublication(DrivePublication publication)
         {

@@ -1,0 +1,45 @@
+# Núcleo do agente — ponto de integração
+
+O [PR #90](https://github.com/pedro-canafistula/safeupload/pull/90) é o ponto único de revisão da sequência #82–#90.
+Os commits intermediários permanecem no histórico dessa branch. A main de referência é `7dcf139f` (#81).
+Build/testes e checks aprovados são evidência de implementação; o critério do AGENTS.md também exige funcionamento
+na VM antes de concluir o aceite. A integração continua draft enquanto esse ensaio estiver pendente.
+
+## Implementado nesta sequência
+
+- Publicação de snapshots separada da aprovação; resultado de cópia e falha/repetição têm auditoria própria.
+- Publicação/justificativa vinculadas ao conteúdo da política, com snapshot remoto atualizado em segundo plano.
+- Estado de proteção considera aceitação do escopo pelo gate e disponibilidade das unidades esperadas.
+- Tamanho real, cancelamento, campos de política repetidos, prazo/limite de recibos e validade dos caches revisados.
+- Catálogo privado recupera a versão atual do stage com nova inspeção, sem restaurar autoridade anterior.
+- Journal de publicação retoma eventos com o mesmo ID; intenção sem resultado durável aparece como não confirmada.
+- Renomeação de arquivo exige nova inspeção; decisões em andamento e justificativas do nome anterior são invalidadas.
+  O destino anterior fica preservado até a nova publicação. A janela da justificativa usa tempo decorrido.
+
+## Referência histórica do #79
+
+O [PR #79](https://github.com/pedro-canafistula/safeupload/pull/79) não deve ser mesclado em bloco: a main #81 alterou
+a composição remota e ampliou as categorias. Correções compatíveis foram selecionadas na sequência atual.
+A branch `feat/agente-politica-central-20261101`, commit `3a685674caf182d2f4e93dc2c539e8cfa464e443`, permanece preservada.
+
+O diagnóstico `policy-status` ainda existe apenas nessa referência: `RemotePolicyStatus`, `PolicyDiagnosticsStore`,
+`GatePolicyStatus`, cliente PowerShell e seus testes. Uma eventual retomada precisa usar a composição atual, sem
+reintroduzir HTTP por arquivo ou apresentar observações antigas como prova de proteção. Os documentos datados de
+01/11 e os helpers/testes de liberação antigos também permanecem nessa branch; o fluxo atual cobre liberação por
+política em outro desenho. Validação inicial de configuração, mensagens v1 do gate e ensaios ConsoleByIp já estão
+presentes na base; não são trabalho perdido por encerrar o PR histórico.
+
+## Aceite e pendências
+
+- VM: validar o par WinFsp/gate, Office/USB/SMB, política offline, renomeações, justificativa, parada e encerramento
+  abrupto nos pontos de publicação/auditoria. Medir também custo de cópia/hash/flush em arquivos grandes.
+- O journal cobre snapshots publicados; movimentação de diretórios, exclusões de backing e auditoria de bloqueios
+  legados conservam seus contratos próprios. Não é journal completo do filesystem ou aceite de queda de energia.
+- Arquivos legados/snapshots isolados sem catálogo continuam privados, sem nomes inferidos automaticamente.
+- O painel deve apresentar `publication_outcome_unknown` como resultado indeterminado. O enum existente não mudou.
+- Thiago/equipe: autenticação, provisionamento, renovação/revogação, mudança de IP e confirmação de aplicação.
+- Vitor/equipe: laboratório e aceite do par atual. Distribuição Windows 10/11, assinatura e upgrade/rollback mantêm
+  validação própria. Retenção destrutiva e entrega única ao backend não foram qualificadas por esta sequência.
+
+Evidências por SHA, resultados de testes e limites adicionais ficam na descrição do PR consolidado. O fechamento
+dos PRs intermediários organiza a revisão e não substitui merge ou aceite na VM.

@@ -10,16 +10,21 @@ public sealed class DriveJustifications
 {
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(10);
 
-    private sealed record Entry(uint SessionId, string UserSid, string PolicyBinding, DateTimeOffset ExpiresAt, Func<bool> Approve);
+    private sealed record Entry(uint SessionId, string UserSid, string PolicyBinding, long CreatedAt, Func<bool> Approve);
     private readonly ConcurrentDictionary<Guid, Entry> _entries = new();
+    private readonly TimeProvider _clock;
+
+    public DriveJustifications() : this(TimeProvider.System) { }
+    internal DriveJustifications(TimeProvider clock) => _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     public void Remember(Guid versionId, uint sessionId, string userSid, string policyBinding, Func<bool> approve)
     {
-        foreach (var pair in _entries)
-            if (pair.Value.ExpiresAt <= DateTimeOffset.UtcNow)
-                _entries.TryRemove(pair.Key, out _);
         ArgumentException.ThrowIfNullOrWhiteSpace(policyBinding);
-        _entries[versionId] = new Entry(sessionId, userSid, policyBinding, DateTimeOffset.UtcNow + Window, approve);
+        long now = _clock.GetTimestamp();
+        foreach (var pair in _entries)
+            if (_clock.GetElapsedTime(pair.Value.CreatedAt, now) >= Window)
+                _entries.TryRemove(pair.Key, out _);
+        _entries[versionId] = new Entry(sessionId, userSid, policyBinding, now, approve);
     }
 
     /// <summary>Takes the approval for <paramref name="eventId"/> if this caller may use it.</summary>
@@ -28,7 +33,7 @@ public sealed class DriveJustifications
         approve = null;
         if (!Guid.TryParse(eventId, out var id) || !_entries.TryGetValue(id, out var entry)) return false;
         if (entry.SessionId != sessionId || !string.Equals(entry.UserSid, userSid, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(entry.PolicyBinding, policyBinding, StringComparison.Ordinal) || entry.ExpiresAt <= DateTimeOffset.UtcNow)
+            !string.Equals(entry.PolicyBinding, policyBinding, StringComparison.Ordinal) || _clock.GetElapsedTime(entry.CreatedAt) >= Window)
             return false;
         if (!_entries.TryRemove(new KeyValuePair<Guid, Entry>(id, entry))) return false;
         approve = entry.Approve;
