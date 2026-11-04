@@ -241,7 +241,7 @@ public sealed class DriveFileSystem : FileSystemBase
             {
                 var stagePath = NewStagePath();
                 var stream = new FileStream(stagePath, FileMode.CreateNew, FileAccess.ReadWrite,
-                    FileShare.ReadWrite | FileShare.Delete);
+                    FileShare.ReadWrite | FileShare.Delete, bufferSize: 1);
                 node.Attributes = (fileAttributes & ~(uint)FileAttributes.Normal) | (uint)FileAttributes.Archive;
                 node.Content = new Content { Path = stagePath, IsStage = true, Node = node };
                 node.Content.Writer = _observer.IdentifyWriter(_operationProcessId());
@@ -742,7 +742,10 @@ public sealed class DriveFileSystem : FileSystemBase
     }
 
     private static FileStream OpenShared(string path, bool write) =>
-        new(path, FileMode.Open, write ? FileAccess.ReadWrite : FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        // Callbacks share bytes across handles and the inspector opens a separate snapshot reader. A per-handle
+        // managed buffer can hide accepted writes or replay older bytes when a writer closes. Keep OS caching.
+        new(path, FileMode.Open, write ? FileAccess.ReadWrite : FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 1);
 
     /// <summary>File.Copy refuses a source that is open for writing; our own handles keep stage files open.</summary>
     private static void CopyShared(string source, string destination)

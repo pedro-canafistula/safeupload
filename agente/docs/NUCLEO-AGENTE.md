@@ -43,3 +43,14 @@ presentes na base; não são trabalho perdido por encerrar o PR histórico.
 
 Evidências por SHA, resultados de testes e limites adicionais ficam na descrição do PR consolidado. O fechamento
 dos PRs intermediários organiza a revisão e não substitui merge ou aceite na VM.
+
+## Continuação do Agente 1 — 04/11
+
+A branch `fix/agente-stage-io-preventivo-20261104` parte do PR #90 em `88c5f751`, ainda sem merge.
+Corrige buffers por handle que escondiam bytes já aceitos do leitor de snapshot e dos demais handles.
+Cinco regressões falharam antes da correção; os 150 testes relevantes de núcleo passaram depois dela.
+O cache do Windows permanece ativo; isso não qualifica durabilidade em queda de energia.
+
+O [ensaio mínimo](ENSAIO-PREVENTIVO-MINIMO.md) exige WinFsp/gate reais e cobre arquivo limpo, CPF bloqueado,
+recusa de escrita direta, notificação e auditoria local. Continua sem execução com driver: falta o SYS atual
+compilado/assinado, sob responsabilidade de Victor/equipe. O pacote antigo v18 não substitui o gate v1.
