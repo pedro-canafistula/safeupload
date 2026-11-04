@@ -42,6 +42,13 @@ O cancelamento é reconferido após política, worker e auditoria. Uma decisão 
 de auditoria e da conferência de cancelamento. Evento já gravado e cache válido de uma chamada anterior são mantidos;
 falha comum de auditoria continua preservando o veredito.
 
+Os leitores de política local e do formato remoto legado recusam campos repetidos, inclusive variações de caixa e
+nomes escapados, em vez de substituir um valor anterior. JSON ambíguo não sobrescreve a última política remota válida.
+Comentários e vírgulas finais continuam aceitos no arquivo local. O formato da console mantém sua validação existente.
+Os caches de política (`CachedPolicyStore`) e vereditos medem validade por tempo decorrido, independentemente de
+ajustes na hora do sistema. Uma carga cancelada não instala um novo snapshot; consultas atuais delegam ao provedor
+interno sem usar ou substituir esse cache. No modo remoto, as inspeções continuam usando o snapshot atualizado em fundo.
+
 O envio da auditoria lê o recibo em fluxo, com limite de 16 KiB e profundidade JSON de 16.
 O prazo de `HttpClient.Timeout` cobre envio e leitura completa; cancelamento ou recibo inválido mantém o lote pendente.
 Ambas as contagens `acceptedEvents` e `acceptedOverrides` devem existir uma única vez e corresponder ao lote,
