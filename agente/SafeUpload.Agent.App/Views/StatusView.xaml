@@ -154,13 +154,13 @@
                             -->
                             <Ellipse Width="7"
                                      Height="7"
-                                     Fill="{Binding Connected, Converter={StaticResource MonitoringBrush}}"
+                                     Fill="{Binding MonitoringActive, Converter={StaticResource MonitoringBrush}}"
                                      VerticalAlignment="Center" />
                             <TextBlock Text="{Binding MonitoringState}"
                                        FontFamily="{StaticResource UiFont}"
                                        FontSize="11"
                                        FontWeight="SemiBold"
-                                       Foreground="{Binding Connected, Converter={StaticResource MonitoringBrush}}"
+                                       Foreground="{Binding MonitoringActive, Converter={StaticResource MonitoringBrush}}"
                                        Margin="7,0,0,0"
                                        VerticalAlignment="Center" />
                         </StackPanel>

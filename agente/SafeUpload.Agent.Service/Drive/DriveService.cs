@@ -31,7 +31,7 @@ public sealed class DriveService : BackgroundService
     private readonly string[] _letters;
     private readonly string _privateRoot;
     private readonly Dictionary<string, DriveMount> _mounts = new(StringComparer.OrdinalIgnoreCase);
-    private string? _lastStatus;
+    private StatusNotification? _lastStatus;
 
     public DriveService(IPolicyStore policyStore, InspectionService inspection, NotificationHub hub,
         DriveJustifications justifications, GateClient gate, IConfiguration configuration, ILogger<DriveService> logger)
@@ -57,10 +57,11 @@ public sealed class DriveService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         DriveLog.Sink = line => _logger.LogInformation("drive: {Line}", line);
-        Directory.CreateDirectory(_privateRoot);
-        Protect(_privateRoot, usersMayRead: false);
+        PublishIssue(DriveProtectionIssue.Starting);
         try
         {
+            Directory.CreateDirectory(_privateRoot);
+            Protect(_privateRoot, usersMayRead: false);
             while (!stoppingToken.IsCancellationRequested)
             {
                 try { await SyncAsync(stoppingToken).ConfigureAwait(false); }
@@ -72,6 +73,11 @@ public sealed class DriveService : BackgroundService
                 catch (OperationCanceledException) { break; }
             }
         }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            PublishIssue(DriveProtectionIssue.ScopeUnavailable);
+            throw;
+        }
         finally
         {
             lock (_mounts)
@@ -82,19 +88,48 @@ public sealed class DriveService : BackgroundService
         }
     }
 
-    private async Task SyncAsync(CancellationToken token)
+    public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        var policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
+        try { await base.StopAsync(cancellationToken).ConfigureAwait(false); }
+        finally { PublishIssue(DriveProtectionIssue.Stopped); }
+    }
+
+    internal async Task SyncAsync(CancellationToken token)
+    {
+        Policy? policy = null;
+        var failure = DriveProtectionIssue.PolicyUnavailable;
+        try
+        {
+            policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
+            policy.EnsureValid();
+            token.ThrowIfCancellationRequested();
+            failure = DriveProtectionIssue.ScopeUnavailable;
+            ApplyScope(policy, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            if (failure != DriveProtectionIssue.PolicyUnavailable &&
+                error is InvalidPolicyException or ArgumentException or NotSupportedException)
+                failure = DriveProtectionIssue.ScopeInvalid;
+            PublishIssue(failure, policy);
+            throw;
+        }
+    }
+
+    private void ApplyScope(Policy policy, CancellationToken token)
+    {
         var folders = policy.MonitoredScopes.DestinationPaths
-            .Select(path => Path.GetFullPath(path).TrimEnd('\\'))
+            .Select(path => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
         // USB sticks get a SafeUpload drive too; the gate refuses direct writes to them.
         var sticks = policy.MonitoredScopes.RemovableDrives ? RemovableRoots() : [];
-        var wanted = folders.Concat(sticks).ToList();
+        var wanted = folders.Concat(sticks).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         // Close the real places before the drives appear.
-        _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
+        var gateResult = _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
+        string[] mounted;
         lock (_mounts)
         {
             foreach (var gone in _mounts.Keys.Where(k => !wanted.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
@@ -104,6 +139,7 @@ public sealed class DriveService : BackgroundService
             }
             foreach (var destination in wanted.Where(d => !_mounts.ContainsKey(d)))
             {
+                token.ThrowIfCancellationRequested();
                 var letter = FreeLetter();
                 if (letter is null)
                 {
@@ -129,17 +165,35 @@ public sealed class DriveService : BackgroundService
                     _logger.LogError(error, "Could not mount the SafeUpload drive for {Destination}", destination);
                 }
             }
+            token.ThrowIfCancellationRequested();
+            var available = DriveInfo.GetDrives().Select(d => Path.TrimEndingDirectorySeparator(d.Name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            mounted = _mounts.Where(p => available.Contains(p.Value.MountPoint)).Select(p => p.Key).ToArray();
         }
-        bool active = wanted.Count > 0 && _mounts.Count == wanted.Count;
-        PublishStatus(policy, active);
+        // Mounting may take time. Check the accepted connection again before announcing the observation.
+        if (gateResult == GateApplyResult.Applied)
+            gateResult = _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
+        token.ThrowIfCancellationRequested();
+        PublishStatus(DriveProtectionSnapshot.Create(policy, gateResult, wanted, mounted));
     }
 
-    private void PublishStatus(Policy policy, bool active)
+    private void PublishIssue(DriveProtectionIssue issue, Policy? policy = null)
     {
-        var key = $"{policy.Version}|{policy.ActiveCategories.Count}|{active}|{policy.AuditOnly}";
-        if (key == _lastStatus) return;
-        _lastStatus = key;
-        _hub.Publish(new StatusNotification(policy.Version, policy.ActiveCategories.Count, active, policy.AuditOnly));
+        var status = policy is not null && issue != DriveProtectionIssue.PolicyUnavailable
+            ? new StatusNotification(policy.Version, policy.ActiveCategories.Count, false, policy.AuditOnly)
+            : _lastStatus ?? new StatusNotification(0, 0, false);
+        if (issue == DriveProtectionIssue.PolicyUnavailable)
+            status = status with { PolicyVersion = 0, ActiveCategories = 0 };
+        PublishStatus(status with { ProtectionActive = false,
+            DriveProtection = new DriveProtectionStatus(false, 0, 0, issue) });
+    }
+
+    private void PublishStatus(StatusNotification status)
+    {
+        _lastStatus = status;
+        // The hub retains only successfully recorded status. A failed record must be retried on the next poll.
+        if (_hub.CurrentStatus is { } current && current with { Communication = null } == status) return;
+        _hub.Publish(status);
     }
 
     /// <summary>Roots of ready removable volumes ("E:\\"), excluding our own drives.</summary>

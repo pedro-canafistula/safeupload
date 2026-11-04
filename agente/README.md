@@ -64,6 +64,18 @@ e depois de gravar a solicitação na auditoria. Falha de leitura da política m
 novamente. Na configuração remota essas leituras usam o snapshot validado do serviço de fundo, inclusive offline,
 sem HTTP por arquivo. São reconferências pontuais, não uma transação atômica entre atualização de política e renomeação.
 
+O estado das unidades distingue conexão com o serviço de proteção confirmada. Só anuncia proteção completa quando
+o gate aceita o escopo e todas as unidades esperadas aparecem disponíveis no Windows. Nas consultas seguintes ao
+mesmo escopo, usa o comando de contadores existente para verificar a conexão; falha ou resposta incompleta exige
+reconexão e reenvio da política. Ausência de destinos, montagem incompleta, escopo recusado, política indisponível e
+parada do serviço deixam a proteção inativa na notificação. O indicador verde acompanha esse estado, inclusive em
+modo auditoria; conexão com o serviço por si só não o ativa. O detalhe DriveProtection é opcional no contrato do pipe.
+
+É uma observação da sincronização periódica de 30 segundos, não uma prova contínua de todos os volumes/canais.
+O recebimento do escopo pelo gate e a presença das letras não qualificam Office/USB/SMB sem o ensaio real. Se o
+registro durável de uma notificação falhar, sua entrega continua suprimida; a sincronização tenta registrar novamente,
+e a interface pode conservar a última observação até receber outra ou detectar a desconexão.
+
 ---
 
 ## Como rodar
