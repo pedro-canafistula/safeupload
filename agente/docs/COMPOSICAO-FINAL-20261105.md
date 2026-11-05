@@ -123,7 +123,12 @@ Não reenvia notificações de transferência que foram suprimidas.
 Sete casos novos verificam liberação real do lease, retomada do status mais
 recente por amostra/cliente, falha persistente e limitação de tentativas, ACL
 inválida sem reparo, hardlink sem alteração externa, escrita incerta sem trocar
-o gravador e descarte do lease. A seleção afetada local passou 46 testes.
+o gravador e descarte do lease. A seleção afetada local passou 62 testes,
+incluindo os 16 cenários de estado preventivo. A deduplicação do Drive exige
+que não exista status pendente: voltar ao último estado emitido deve substituir
+um estado intermediário cuja gravação falhou. O último status registrado
+continua preservado internamente, mas não autoriza essa deduplicação nem
+o envio ao novo cliente quando há uma observação mais recente pendente.
 A primeira seleção ampliada registrou 88 aprovados e cinco falhas ao criar
 links simbólicos por falta de privilégio no ambiente local (incluindo o caso
 novo, posteriormente substituído por hardlink real); não houve skip nem

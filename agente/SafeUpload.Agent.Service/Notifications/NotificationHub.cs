@@ -71,6 +71,15 @@ public sealed class NotificationHub
         }
     }
 
+    // Producers may deduplicate only if the latest observed state was recorded.
+    // Comparing against an older emitted state could preserve a failed intermediate state.
+    internal bool HasRecordedStatus(StatusNotification status)
+    {
+        lock (_gate)
+            return _pendingStatus is null && _currentStatus is { } current &&
+                current with { Communication = null } == status;
+    }
+
     /// <summary>
     /// Registra um assinante e devolve a fila de onde ele deve ler.
     /// </summary>

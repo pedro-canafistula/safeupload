@@ -158,11 +158,19 @@ public sealed class NotificationAdmissionRecoveryTests : IDisposable
         admitted.Fail = true;
         using var subscription = hub.Subscribe();
         hub.Publish(new StatusNotification(2, 2, false));
+        Assert.True(hub.CurrentStatus!.ProtectionActive);
+        Assert.False(hub.HasRecordedStatus(new StatusNotification(1, 2, true)));
         _clock.Advance();
         Assert.Null(hub.GetRecordedStatus());
         Assert.False(hub.RecordHistory(History(), 1));
         Assert.False(subscription.Reader.TryRead(out _));
         Assert.Equal(1, opens);
+        admitted.Fail = false;
+        // A producer returning to the previous emitted state must supersede
+        // the failed intermediate state rather than deduplicate against it.
+        hub.Publish(new StatusNotification(1, 2, true));
+        Assert.True(subscription.Reader.TryRead(out var delivered));
+        Assert.True(Assert.IsType<StatusNotification>(delivered).ProtectionActive);
     }
 
     [Fact]

@@ -216,7 +216,7 @@ public sealed class DriveService : BackgroundService
     {
         _lastStatus = status;
         // The hub retains only successfully recorded status. A failed record must be retried on the next poll.
-        if (_hub.CurrentStatus is { } current && current with { Communication = null } == status) return;
+        if (_hub.HasRecordedStatus(status)) return;
         _hub.Publish(status);
     }
 
