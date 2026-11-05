@@ -2,6 +2,8 @@ package com.safeupload.domain.entity.app;
 
 import java.time.LocalDateTime;
 
+import com.safeupload.application.dto.AgentContracts.HostRequest;
+
 import jakarta.persistence.*;
 
 @Entity 
@@ -15,8 +17,11 @@ public class Host {
     @Column (name="ip")
     private String ip;
 
-    @Column (name="mascara")
-    private int mascara;
+    @Column (name = "mascara")
+    private Integer mascara;
+
+    @Column (name="chave_publica")
+    private String chavePublica;
 
     @Column (name="hostname")
     private String hostname;
@@ -27,48 +32,35 @@ public class Host {
     @Column (name="versao_so")
     private String versaoSO;
 
-    @Column (name="fabricante")
-    private String fabricante;
-
-    @Column (name="modelo")
-    private String modelo;
-
     @Column (name="mac_address")
     private String macAddress;
-
-    @Column (name="numero_serie")
-    private String numeroSerie;
 
     @Column(name = "visto_por_ultimo", columnDefinition = "TIMESTAMP")
     private LocalDateTime vistoPorUltimo;
 
     @Column(name="ativo")
-    private int ativo;
+    private Integer ativo;
 
     protected Host(){}
 
     public Host (
         String ip,
-        int mascara,
+        Integer mascara,
+        String chavePublica,
         String hostname,
         String sistemaOperacional,
         String versaoSO,
-        String fabricante,
-        String modelo,
         String macAddress,
-        String numeroSerie,
         LocalDateTime vistoPorUltimo,
-        int ativo
+        Integer ativo
     ) {
         this.ip = ip;
         this.mascara = mascara;
+        this.chavePublica = chavePublica;
         this.hostname = hostname;
         this.sistemaOperacional = sistemaOperacional;
         this.versaoSO = versaoSO;
-        this.fabricante = fabricante;
-        this.modelo = modelo;
         this.macAddress = macAddress;
-        this.numeroSerie = numeroSerie;
         this.vistoPorUltimo = vistoPorUltimo;
         this.ativo = ativo;
     }
@@ -81,8 +73,12 @@ public class Host {
         return ip;
     }
 
-    public int getMascara(){
+    public Integer getMascara(){
         return mascara;
+    }
+
+    public String getChavePublica(){
+        return chavePublica;
     }
 
     public String getHostname(){
@@ -97,32 +93,44 @@ public class Host {
         return versaoSO;
     }
 
-    public String getFabricante(){
-        return fabricante;
-    }
-
-    public String getModelo(){
-        return modelo;
-    }
-
     public String getMacAddress(){
         return macAddress;
-    }
-
-    public String getNumeroSerie(){
-        return numeroSerie;
     }
 
     public LocalDateTime getVistoPorUltimo(){
         return vistoPorUltimo;
     }
 
-    public int getAtivo(){
+    public Integer getAtivo(){
         return ativo;
     }
 
-    public void executeHeartbeat(LocalDateTime vistoPorUltimo, int ativo) {
-        this.vistoPorUltimo = vistoPorUltimo;
-        this.ativo = ativo;
+    public void atualizarDados(HostRequest request, LocalDateTime agora) {
+
+        if (request.ip() != null){
+            this.ip = request.ip();
+        }
+        
+        if (request.mascara() != null){
+            this.mascara = request.mascara();
+        }
+
+        if (request.hostname() != null){
+            this.hostname = request.hostname();
+        }
+
+        if (request.sistema_operacional() != null){
+            this.sistemaOperacional = request.sistema_operacional();
+        }
+
+        if (request.versao_so() != null) {
+            this.versaoSO = request.versao_so();
+        }
+
+        if (request.mac_address() != null){
+            this.macAddress = request.mac_address();
+        }
+
+        this.vistoPorUltimo = agora;
     }
 }

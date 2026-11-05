@@ -22,11 +22,11 @@ public class Solicitacao {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
-        name = "fk_id_usuario_so",
+        name = "fk_id_host",
         nullable = true,
-        foreignKey = @ForeignKey (name = "fk_id_usuario_so")
+        foreignKey = @ForeignKey (name = "fk_id_host_03")
     )
-    private UsuarioSo usuarioSo;
+    private Host host;
 
     @Column(name = "fk_id_empresa_designada")
     private Integer empresaDesignada;
@@ -44,13 +44,13 @@ public class Solicitacao {
     }
 
     public Solicitacao(
-            UsuarioSo usuarioSo,
+            Host host,
             Integer empresaDesignada,
             Integer adminDesignado,
             String descricao,
             Integer status) {
 
-        this.usuarioSo = usuarioSo;
+        this.host = host;
         this.empresaDesignada = empresaDesignada;
         this.adminDesignado = adminDesignado;
         this.descricao = descricao;
@@ -61,8 +61,8 @@ public class Solicitacao {
         return idSolicitacao;
     }
 
-    public UsuarioSo getUsuarioSo() {
-        return usuarioSo;
+    public Host getHost() {
+        return host;
     }
 
     public Integer getEmpresaDesignada() {
