@@ -4,9 +4,13 @@ param(
     [Parameter(Mandatory)][string]$MySqlBase,
     [string]$ResultsDirectory = (Join-Path $PSScriptRoot '../../artifacts/host-identity-backend'),
     [switch]$ContractOnly,
-    [switch]$ConsolePolicyAcceptance
+    [switch]$ConsolePolicyAcceptance,
+    [switch]$LegacyBackend
 )
+# LEGACY before backend #96: /agent/synchronize and unsigned AgentApi heartbeat.
+# Current component acceptance: Test-FunctionalAudit.ps1 and Test-Ed25519Backend.ps1.
 $ErrorActionPreference = 'Stop'
+if (-not $LegacyBackend -or $ContractOnly) { throw 'Fixture legado pré-#96. Use Test-FunctionalAudit.ps1 para o contrato atual; este roteiro não qualifica Ed25519/SYSTEM.' }
 if ($ContractOnly -and $ConsolePolicyAcceptance) { throw 'Choose component contract or installed console policy acceptance.' }
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'This service test is restricted to a disposable GitHub-hosted Windows runner.'

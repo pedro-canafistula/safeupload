@@ -41,7 +41,7 @@ jobs:
           MYSQL_CONTAINER: ${{ job.services.mysql.id }}
         run: |
           docker exec -e MYSQL_PWD=synthetic-ci-password "$MYSQL_CONTAINER" mysql -uroot -e "SET GLOBAL time_zone='-03:00'; SET GLOBAL event_scheduler=OFF;"
-          for ddl in 01_schema_acesso.sql 02_schema_app.sql 03_job_usuarios_inativos.sql 05_agent_audit_ingest.sql; do
+          for ddl in 01_schema_acesso.sql 02_schema_app.sql 03_jobs.sql 05_agent_audit_ingest.sql; do
             docker exec -i -e MYSQL_PWD=synthetic-ci-password "$MYSQL_CONTAINER" mysql -uroot < "db/initdb/$ddl"
           done
       - name: Frontend dependencies and build
@@ -79,15 +79,4 @@ jobs:
 
   agent-contract:
     uses: ./.github/workflows/agent-host-identity-backend.yml
-    with:
-      contract-only: true
-
-  installed-service:
-    uses: ./.github/workflows/agent-host-identity-backend.yml
-    with:
-      contract-only: false
-
-  console-policy-service:
-    uses: ./.github/workflows/agent-host-identity-backend.yml
-    with:
-      console-policy: true
+    # Pre-#96 unsigned fixtures remain legacy; candidate SYSTEM/Drive acceptance is separate.

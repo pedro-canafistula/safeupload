@@ -1,10 +1,12 @@
 param(
     [Parameter(Mandatory=$true)][string]$MySqlBasePath,
     [string]$DotNetPath = 'dotnet',
+    [string]$JavaPath = 'java',
     [string]$BackendJarPath,
     [string]$OutputDirectory = (Join-Path ([IO.Path]::GetTempPath()) ('safeupload-functional-' + [guid]::NewGuid().ToString('N')))
 )
 # PowerShell 7. Uses only new disposable MySQL data and owned Java/MySQL processes.
+# Backend #96: explicit token enrollment and AgentApiEd25519; no installed-service/ACL claim.
 # Requires a built ContractSmoke and the unchanged backend JAR from this composition.
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -21,7 +23,7 @@ foreach ($required in @($mysql,(Join-Path $mysqlBase 'bin/mysqld.exe'),$jar,$dll
 $dbArgs = @('--no-defaults','--protocol=TCP','--host=127.0.0.1','--port=13326','--user=root','--skip-password','--batch','--raw','--skip-column-names','--default-character-set=utf8mb4')
 $database = $null
 $backend = $null
-$result = [ordered]@{ passed=$false; nativeDriveQualified=$false; installedServiceQualified=$false; wpfInteractiveQualified=$false }
+$result = [ordered]@{ passed=$false; heartbeatProtocol='AgentApiEd25519'; identityAclQualified=$false; nativeDriveQualified=$false; installedServiceQualified=$false; wpfInteractiveQualified=$false }
 function Wait-Ready([scriptblock]$condition) {
     for ($attempt=0; $attempt -lt 90; $attempt++) {
         if (& $condition) { return }
@@ -30,12 +32,12 @@ function Wait-Ready([scriptblock]$condition) {
     throw 'Readiness timed out.'
 }
 function Query([string]$sql) {
-    $answer = & $mysql @dbArgs --execute $sql 2> (Join-Path $runtime 'mysql-client.log')
+    $answer = $sql | & $mysql @dbArgs 2> (Join-Path $runtime 'mysql-client.log')
     if ($LASTEXITCODE -ne 0) { throw 'Isolated SQL failed.' }
     return ($answer -join "`n")
 }
 function Start-Backend([string]$phase) {
-    $process = Start-Process java -WindowStyle Hidden -PassThru -ArgumentList @('-Duser.timezone=America/Sao_Paulo','-jar',$jar,'--server.port=18080','--server.address=127.0.0.1','--app.datasource.url=jdbc:mysql://127.0.0.1:13326/app?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false','--app.datasource.username=root','--app.datasource.password=','--acesso.datasource.url=jdbc:mysql://127.0.0.1:13326/acesso?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false','--acesso.datasource.username=root','--acesso.datasource.password=','--spring.jpa.show-sql=false') -RedirectStandardOutput (Join-Path $runtime "java-$phase.log") -RedirectStandardError (Join-Path $runtime "java-$phase-errors.log")
+    $process = Start-Process $JavaPath -WindowStyle Hidden -PassThru -ArgumentList @('-Duser.timezone=America/Sao_Paulo','-jar',$jar,'--server.port=18080','--server.address=127.0.0.1','--app.datasource.url=jdbc:mysql://127.0.0.1:13326/app?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false','--app.datasource.username=root','--app.datasource.password=','--acesso.datasource.url=jdbc:mysql://127.0.0.1:13326/acesso?serverTimezone=America/Sao_Paulo&allowPublicKeyRetrieval=true&useSSL=false','--acesso.datasource.username=root','--acesso.datasource.password=','--spring.jpa.show-sql=false','--logging.level.org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration=ERROR') -RedirectStandardOutput (Join-Path $runtime "java-$phase.log") -RedirectStandardError (Join-Path $runtime "java-$phase-errors.log")
     return $process
 }
 function Run-Contract([string]$phase, [string[]]$arguments) {
@@ -56,9 +58,9 @@ try {
     $data = Join-Path $runtime 'data'
     & (Join-Path $mysqlBase 'bin/mysqld.exe') --no-defaults --initialize-insecure "--basedir=$mysqlBase" "--datadir=$data" --console *> (Join-Path $runtime 'mysql-init.log')
     if ($LASTEXITCODE -ne 0) { throw 'MySQL initialization failed.' }
-    $database = Start-Process (Join-Path $mysqlBase 'bin/mysqld.exe') -WindowStyle Hidden -PassThru -ArgumentList @('--no-defaults',"--basedir=$mysqlBase","--datadir=$data",'--port=13326','--bind-address=127.0.0.1','--mysqlx=OFF','--event-scheduler=OFF','--default-time-zone=-03:00','--console') -RedirectStandardOutput (Join-Path $runtime 'mysql.log') -RedirectStandardError (Join-Path $runtime 'mysql-errors.log')
+    $database = Start-Process (Join-Path $mysqlBase 'bin/mysqld.exe') -WindowStyle Hidden -PassThru -ArgumentList @('--no-defaults',"--basedir=$mysqlBase","--datadir=$data",'--port=13326','--bind-address=127.0.0.1','--mysqlx=OFF','--event-scheduler=ON','--default-time-zone=-03:00','--console') -RedirectStandardOutput (Join-Path $runtime 'mysql.log') -RedirectStandardError (Join-Path $runtime 'mysql-errors.log')
     Wait-Ready { try { (Query 'SELECT 1;').Trim() -eq '1' } catch { $false } }
-    foreach ($ddl in @('01_schema_acesso.sql','02_schema_app.sql','03_job_usuarios_inativos.sql','05_agent_audit_ingest.sql')) {
+    foreach ($ddl in @('01_schema_acesso.sql','02_schema_app.sql','03_jobs.sql','05_agent_audit_ingest.sql')) {
         Get-Content -LiteralPath (Join-Path $repo "db/initdb/$ddl") -Raw | & $mysql @dbArgs 2> (Join-Path $runtime 'ddl-errors.log')
         if ($LASTEXITCODE -ne 0) { throw "DDL failed: $ddl" }
     }

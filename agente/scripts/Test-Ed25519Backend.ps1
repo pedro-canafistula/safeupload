@@ -31,7 +31,7 @@ $database = $null
 $backend = $null
 $result = [ordered]@{ passed=$false; productionAclQualified=$false; installedServiceQualified=$false; nativeGateQualified=$false }
 function Query([string]$sql) {
-    $answer = & $mysql @dbArgs --execute $sql 2> (Join-Path $runtime 'mysql-client.log')
+    $answer = $sql | & $mysql @dbArgs 2> (Join-Path $runtime 'mysql-client.log')
     if ($LASTEXITCODE -ne 0) { throw 'Consulta ao banco descartável falhou.' }
     return ($answer -join "`n")
 }
