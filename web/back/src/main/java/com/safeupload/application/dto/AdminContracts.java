@@ -56,4 +56,9 @@ public class AdminContracts {
 
         ) {}
     }
+
+    public record TokenResponse (
+        DefaultPostResponse resposta,
+        String token
+    ){}
 }

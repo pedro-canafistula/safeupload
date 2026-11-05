@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.safeupload.application.AdminService;
 import com.safeupload.application.dto.AdminContracts.DefaultPostResponse;
 import com.safeupload.application.dto.AdminContracts.SetPolicyRequest;
+import com.safeupload.application.dto.AdminContracts.TokenResponse;
 
 import jakarta.validation.Valid;
 
@@ -31,6 +32,14 @@ public class AdminController {
         DefaultPostResponse response = service.setPolicy(request);
         return ResponseEntity
                 .status(HttpStatus.CREATED.value())
+                .body(response);
+    }
+
+    @PostMapping ("/token")
+    public ResponseEntity<TokenResponse> gerarToken(){
+        TokenResponse response = service.gerarToken();
+        return ResponseEntity
+                .status(HttpStatus.OK.value())
                 .body(response);
     }
 

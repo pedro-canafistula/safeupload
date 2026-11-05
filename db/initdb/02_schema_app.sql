@@ -6,28 +6,13 @@ CREATE TABLE IF NOT EXISTS hosts (
     id_host INT PRIMARY KEY AUTO_INCREMENT,
     ip VARCHAR(15),
     mascara INT CHECK(mascara BETWEEN 0 AND 32),
+    chave_publica TEXT NOT NULL,
     hostname VARCHAR(100),
     sistema_operacional VARCHAR(40),
     versao_so VARCHAR(20),
-    fabricante VARCHAR(50),
-    modelo VARCHAR(50),
     mac_address VARCHAR(20),
-    numero_serie VARCHAR(30),
     visto_por_ultimo TIMESTAMP(6),
     ativo INT CHECK (ativo IN (0,1))
-) ENGINE=InnoDB
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_0900_ai_ci;
-
-CREATE TABLE IF NOT EXISTS usuarios_so (
-    id_usuario_so INT PRIMARY KEY AUTO_INCREMENT,
-    sid VARCHAR(50),
-    usuario_so VARCHAR(40) NOT NULL,
-    dominio VARCHAR(50),
-    admin INT,
-    fk_id_host INT NOT NULL,
-    CONSTRAINT fk_id_host_01 FOREIGN KEY (fk_id_host) REFERENCES hosts (id_host)
-    ON DELETE CASCADE
 ) ENGINE=InnoDB
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_0900_ai_ci;
@@ -55,7 +40,7 @@ CREATE TABLE IF NOT EXISTS politicas (
     nome VARCHAR(50),
     fk_id_host INT NOT NULL,
     acao VARCHAR(10),
-    fk_id_regras INT,
+    fk_id_regras INT NOT NULL,
     criadaEm TIMESTAMP,
     origem VARCHAR(30),
     CONSTRAINT fk_id_host_02 FOREIGN KEY (fk_id_host) REFERENCES 
@@ -67,15 +52,25 @@ CHARACTER SET utf8mb4
 COLLATE utf8mb4_0900_ai_ci;
 
 
+CREATE TABLE IF NOT EXISTS tokens (
+    id_token INT PRIMARY KEY AUTO_INCREMENT,
+    token VARCHAR(8) UNIQUE,
+    criadoEm TIMESTAMP,
+    ativo INT CHECK (ativo IN (0,1))
+)ENGINE=InnoDB
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_0900_ai_ci;
+
+
 CREATE TABLE IF NOT EXISTS solicitacoes (
     id_solicitacao INT PRIMARY KEY AUTO_INCREMENT,
-    fk_id_usuario_so INT,
+    fk_id_host INT,
     fk_id_empresa_designada INT,
     fk_id_admin_designado INT,
     descricao LONGTEXT NOT NULL,
     status INT CHECK (status BETWEEN 0 AND 4)
         COMMENT '0=designado, 1=pendente, 2=em andamento, 3=recusado, 4=concluído',
-    CONSTRAINT fk_id_usuario_so FOREIGN KEY (fk_id_usuario_so) REFERENCES usuarios_so(id_usuario_so)
+    CONSTRAINT fk_id_host_03 FOREIGN KEY (fk_id_host) REFERENCES hosts(id_host)
         ON DELETE SET NULL,
     CONSTRAINT fk_id_empresa_designada FOREIGN KEY (fk_id_empresa_designada) REFERENCES acesso.empresas(id_empresa)
         ON DELETE SET NULL,
