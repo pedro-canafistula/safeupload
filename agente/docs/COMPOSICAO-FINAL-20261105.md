@@ -137,3 +137,9 @@ casos de links simbólicos no runner Windows e repetir o instalador.
 Essa correção exige outro SHA/pacote e novo aceite do Agente 1, sem transferir
 resultados nativos das revisões anteriores. Fontes de autenticação, política,
 fila e driver permanecem sem mudança; a falha de migration Java é externa.
+
+No CI de 7a966ce0, instalador e contrato atual passaram; recibos executou
+974 casos, com 973 aprovados e um teste de log ainda esperando emissão única.
+O ajuste posterior é somente de teste: exige mensagem segura após a primeira
+falha e exatamente duas mensagens seguras após a tentativa do novo cliente,
+mantendo recusa de entrega e privacidade. Nenhuma produção mudou nesse ajuste.

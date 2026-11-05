@@ -151,9 +151,12 @@ public sealed class OperationalLoggingTests
         var hub = new NotificationHub(new FailingRecord(), logger);
         using var subscriber = hub.Subscribe();
         hub.Publish(new StatusNotification(7, 1, ProtectionActive: true));
+        Safe(Assert.Single(logger.Entries));
+        // A new client retries the un-emitted status. Both failed appends must
+        // remain closed and log only safe codes, including the second failure.
         Assert.Null(hub.GetRecordedStatus());
         Assert.False(subscriber.Reader.TryRead(out _));
-        Safe(Assert.Single(logger.Entries));
+        Assert.Collection(logger.Entries, Safe, Safe);
     }
 
     [Fact]
