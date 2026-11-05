@@ -40,7 +40,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
             <!-- Faixa de identidade, na cor de perigo da paleta -->
@@ -49,7 +49,7 @@
                     CornerRadius="9,9,0,0"
                     Padding="16,12">
                 <StackPanel>
-                    <TextBlock Text="Conteúdo restrito pela política"
+                    <TextBlock x:Name="HeadingText" Text="Conteúdo restrito pela política"
                                FontFamily="{StaticResource UiFont}"
                                FontSize="15"
                                FontWeight="SemiBold"
@@ -64,7 +64,8 @@
                 </StackPanel>
             </Border>
 
-            <StackPanel Grid.Row="1" Margin="16,14,16,16">
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="16,14,16,16">
 
                 <TextBlock x:Name="InspectionFailureText"
                            Style="{StaticResource BodyText}"
@@ -168,6 +169,7 @@
                         Click="Acknowledge_Click"
                         IsDefault="True" />
             </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </Window>

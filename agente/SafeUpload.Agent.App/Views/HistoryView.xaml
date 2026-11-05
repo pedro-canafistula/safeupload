@@ -27,7 +27,9 @@
                        Foreground="{StaticResource Text}" />
             <TextBlock Text="{Binding AvailabilityMessage}"
                        Style="{StaticResource MutedText}"
-                       Margin="0,3,0,0" />
+                       Margin="0,3,0,0" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding PendingSummary}" Style="{StaticResource MutedText}"
+                       Margin="0,6,0,0" TextWrapping="Wrap" />
         </StackPanel>
 
         <Border Grid.Row="1"
@@ -46,17 +48,12 @@
                           AutoGenerateColumns="False"
                           GridLinesVisibility="Horizontal"
                           HeadersVisibility="Column"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          MinColumnWidth="80"
                           RowHeight="34">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Data e hora" Binding="{Binding OccurredAt}" Width="140" />
-                        <DataGridTextColumn Header="Arquivo" Binding="{Binding FileName}" Width="150" />
-                        <DataGridTextColumn Header="Ext." Binding="{Binding Extension}" Width="56" />
-                        <DataGridTextColumn Header="Tamanho" Binding="{Binding Size}" Width="80" />
-                        <DataGridTextColumn Header="Destino" Binding="{Binding Destination}" Width="150" />
-                        <DataGridTextColumn Header="Processo" Binding="{Binding Process}" Width="110" />
-
                         <!-- O mesmo rótulo do status, para o resultado ser reconhecível nas duas telas. -->
-                        <DataGridTemplateColumn Header="Resultado" Width="150">
+                        <DataGridTemplateColumn Header="Resultado" Width="190" MinWidth="190">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type vm:HistoryRowViewModel}">
                                     <TextBlock Text="{Binding Status.Text}"
@@ -69,7 +66,11 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
+                        <DataGridTextColumn Header="Arquivo" Binding="{Binding FileName}" Width="150" MinWidth="150" />
+                        <DataGridTextColumn Header="Data e hora" Binding="{Binding OccurredAt}" Width="140" MinWidth="140" />
                         <DataGridTextColumn Header="Categorias" Binding="{Binding Categories}" Width="160" />
+                        <DataGridTextColumn Header="Envio da auditoria" Binding="{Binding Delivery}" Width="185" />
+                        <DataGridTextColumn Header="Evento" Binding="{Binding EventId}" Width="290" />
 
                         <!--
                             Trechos mascarados, em monoespaçada para os
@@ -82,6 +83,10 @@
                                             FontFamily="{StaticResource MonoFont}" />
 
                         <DataGridTextColumn Header="Motivo" Binding="{Binding Reason}" Width="*" MinWidth="180" />
+                        <DataGridTextColumn Header="Ext." Binding="{Binding Extension}" Width="80" />
+                        <DataGridTextColumn Header="Tamanho" Binding="{Binding Size}" Width="80" />
+                        <DataGridTextColumn Header="Destino" Binding="{Binding Destination}" Width="150" />
+                        <DataGridTextColumn Header="Processo" Binding="{Binding Process}" Width="110" />
                     </DataGrid.Columns>
                 </DataGrid>
 
