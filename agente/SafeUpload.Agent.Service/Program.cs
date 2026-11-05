@@ -77,16 +77,9 @@ public static class Program
         builder.Services.AddSingleton<INotificationRecord>(services =>
         {
             var logger = services.GetRequiredService<ILogger<NotificationRecord>>();
-            try
-            {
-                return new NotificationRecord(Path.Combine(Environment.GetFolderPath(
-                    Environment.SpecialFolder.CommonApplicationData), "SafeUpload", "notifications"), logger);
-            }
-            catch (Exception ex)
-            {
-                logger.LogSafeError(ex, "Cannot open notification record; all notifications will be suppressed");
-                return new UnavailableNotificationRecord(ex);
-            }
+            return new RecoveringNotificationRecord(() => new NotificationRecord(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "SafeUpload", "notifications"), logger), logger);
         });
         builder.Services.AddSingleton<NotificationHub>();
         builder.Services.AddSingleton<DriveJustifications>();

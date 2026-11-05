@@ -101,3 +101,34 @@ Preparar instalação e cadastro antes de começar. Usar apenas o SHA/pacote ace
 - Latência histórica: manter diagnóstico do #97 e colher durações monotônicas por etapa se houver nova reprodução; não aumentar timeouts, reduzir recibos ou criar filas paralelas como suposta correção.
 
 Resumo para o professor: a candidata reúne proteção preventiva, política central, apresentação Windows e cadastro/heartbeat assinados no contrato atual, preservando cache e auditoria offline. Os testes locais e o CI demonstram recortes específicos; a prova instalada pertence ao SHA ensaiado na VM. O relatório evolutivo e a Trilha registram precisamente o que foi implementado, testado localmente, verificado em CI e observado no ambiente nativo.
+## Correção posterior do registro de notificações
+
+O CI do sucessor ecf5fe8e aprovou recibos/WPF/HTTP sintético e o contrato atual
+C#/Ed25519/Java/MySQL, mas o instalador 42071008851 falhou esperando status.
+O artefato confirmou o peer correto e a recusa de imagem incorreta; uma falha
+de compartilhamento (NativeError 32) ao construir o registro criou um fallback
+permanentemente indisponível. O Agente 2 reproduziu a ausência de recuperação
+em pasta privada, sem identificar o detentor original do arquivo na CI.
+
+A correção C# substitui esse fallback por admissão sob demanda, com intervalo
+mínimo de um segundo entre tentativas. Cada tentativa usa o construtor original,
+mantendo lease exclusivo, ACL, verificação de links e validação da timeline.
+Um gravador já admitido nunca é substituído após falha de escrita: sua recuperação
+estrita continua responsável por operações incertas. Sem append durável, não há
+entrega, replay ou retenção de eventos. O hub guarda separadamente apenas o
+último status ainda não emitido, repetindo a tentativa no próximo cliente ou na
+amostra de comunicação de cinco segundos, mesmo sem mudança da comunicação.
+Não reenvia notificações de transferência que foram suprimidas.
+
+Sete casos novos verificam liberação real do lease, retomada do status mais
+recente por amostra/cliente, falha persistente e limitação de tentativas, ACL
+inválida sem reparo, hardlink sem alteração externa, escrita incerta sem trocar
+o gravador e descarte do lease. A seleção afetada local passou 46 testes.
+A primeira seleção ampliada registrou 88 aprovados e cinco falhas ao criar
+links simbólicos por falta de privilégio no ambiente local (incluindo o caso
+novo, posteriormente substituído por hardlink real); não houve skip nem
+alteração das quatro verificações preexistentes. CI deve executar também os
+casos de links simbólicos no runner Windows e repetir o instalador.
+Essa correção exige outro SHA/pacote e novo aceite do Agente 1, sem transferir
+resultados nativos das revisões anteriores. Fontes de autenticação, política,
+fila e driver permanecem sem mudança; a falha de migration Java é externa.
