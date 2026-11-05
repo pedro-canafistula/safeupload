@@ -6,8 +6,8 @@ using SafeUpload.Agent.Core.Application;
 
 namespace SafeUpload.Agent.Core.Infrastructure;
 
-/// <summary>Contrato publicado em AgentController/AgentContracts na main d6605e4d.
-/// O HttpClient aponta para /agent/; cadastro NÃO tem retentativa automática.
+/// <summary>Cadastro e heartbeat assinados do #96; as operações antigas permanecem explicitamente legadas.
+/// O HttpClient aponta para /agent/; cadastro NÃO tem retentativa automática ou fallback de protocolo.
 /// Não é cliente de política, tickets ou consulta administrativa.
 /// </summary>
 public sealed class AgentApiClient
@@ -15,6 +15,12 @@ public sealed class AgentApiClient
     private readonly HttpClient _http;
     private readonly ICommunicationObserver? _observer;
     private const int MaxReceiptBytes = 16 * 1024;
+    internal Uri BaseUri => _http.BaseAddress!;
+    internal void EnsureSignedTransport()
+    {
+        if (BaseUri.Scheme != Uri.UriSchemeHttps && !BaseUri.IsLoopback)
+            throw new ArgumentException("AgentApiEd25519 exige HTTPS; HTTP é permitido somente em loopback de teste.");
+    }
 
     public AgentApiClient(HttpClient http, ICommunicationObserver? observer = null)
     {
@@ -68,6 +74,76 @@ public sealed class AgentApiClient
         catch (Exception exception) { observation.Exception(exception, token); throw; }
     }
 
+    /// <summary>#96 enrollment. Exactly one request; never tries the removed synchronize endpoint.</summary>
+    public async Task<int> RegisterEd25519Async(string enrollmentToken, string publicKey,
+        AgentHeartbeatHost host, CancellationToken token)
+    {
+        EnsureSignedTransport();
+        if (string.IsNullOrWhiteSpace(enrollmentToken)) throw new ArgumentException("Token de cadastro obrigatório.");
+        ArgumentNullException.ThrowIfNull(host);
+        host.EnsureValid();
+        // Validate the SPKI structure through the same implementation used to produce it.
+        try
+        {
+            if (Org.BouncyCastle.Security.PublicKeyFactory.CreateKey(Convert.FromBase64String(publicKey))
+                is not Org.BouncyCastle.Crypto.Parameters.Ed25519PublicKeyParameters)
+                throw new ArgumentException("Chave pública Ed25519 SPKI obrigatória.");
+        }
+        catch (Exception error) when (error is not ArgumentException)
+        { throw new ArgumentException("Chave pública Ed25519 SPKI inválida."); }
+        using var response = await SendAsync("heartbeat", new
+        {
+            cadastro = new { token = enrollmentToken, chave_publica = publicKey }, host
+        }, HttpStatusCode.OK, token).ConfigureAwait(false);
+        return ReadAuthenticatedReceipt(response.RootElement);
+    }
+
+    /// <summary>#96 signed heartbeat. Signature is Base64 Ed25519 over invariant UTF-8 id_host.</summary>
+    public async Task HeartbeatAuthenticatedAsync(int hostId, string signature, AgentHeartbeatHost host, CancellationToken token)
+    {
+        EnsureSignedTransport();
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(hostId);
+        ArgumentNullException.ThrowIfNull(host);
+        host.EnsureValid();
+        try
+        {
+            if (Convert.FromBase64String(signature).Length != 64) throw new FormatException();
+        }
+        catch (FormatException) { throw new ArgumentException("Assinatura Ed25519 inválida."); }
+        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
+        try
+        {
+            using var response = await SendAsync("heartbeat", new
+            {
+                autenticacao = new { id_host = hostId, assinatura = signature }, host
+            }, HttpStatusCode.OK, token).ConfigureAwait(false);
+            if (ReadAuthenticatedReceipt(response.RootElement) != hostId)
+                throw new AgentApiException("invalid_receipt");
+            observation.Success(200);
+        }
+        catch (AgentApiException error)
+        {
+            var failure = error.Code switch
+            {
+                "http_status" => CommunicationFailure.HttpRejected,
+                "transport" => CommunicationFailure.TransportError,
+                "timeout" => CommunicationFailure.Timeout,
+                "invalid_receipt" or "receipt_too_large" => CommunicationFailure.InvalidResponse,
+                _ => CommunicationFailure.UnexpectedError
+            };
+            observation.Failure(failure, error.StatusCode ??
+                (error.Code is "invalid_receipt" or "receipt_too_large" ? 200 : null));
+            throw;
+        }
+        catch (Exception error) { observation.Exception(error, token); throw; }
+    }
+
+    private static int ReadAuthenticatedReceipt(JsonElement root)
+    {
+        RequireStatus(UniqueField(root, "resposta"), "OK");
+        return PositiveInt(root, "id_host");
+    }
+
     private async Task<JsonDocument> SendAsync<T>(string path, T body, HttpStatusCode expected, CancellationToken token)
     {
         // ResponseHeadersRead encerra o timeout padrão ao receber cabeçalhos.
@@ -90,7 +166,7 @@ public sealed class AgentApiClient
                 if (buffer.Length + count > MaxReceiptBytes) throw new AgentApiException("receipt_too_large");
                 buffer.Write(chunk, 0, count);
             }
-            return JsonDocument.Parse(buffer.ToArray());
+            return JsonDocument.Parse(buffer.ToArray(), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 16 });
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { throw new AgentApiException("timeout"); }

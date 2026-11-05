@@ -116,7 +116,8 @@ public static class Program
         // forma autonoma, e nao ficar esperando um servidor que talvez nunca
         // seja configurado.
         var administration = AdministrationConfiguration.Parse(builder.Configuration,
-            new RegisteredHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "identity", "host-registration.json")));
+            new RegisteredHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "identity", "host-registration.json")),
+            new SignedHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "authentication", "ed25519-identity.dat")));
         string endpointId = Environment.MachineName;
         builder.Services.AddSingleton(new CommunicationHealth(administration.BaseUri is not null));
         builder.Services.AddHostedService<CommunicationStatusPublisher>();
