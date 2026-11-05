@@ -54,3 +54,10 @@ O cache do Windows permanece ativo; isso não qualifica durabilidade em queda de
 O [ensaio mínimo](ENSAIO-PREVENTIVO-MINIMO.md) exige WinFsp/gate reais e cobre arquivo limpo, CPF bloqueado,
 recusa de escrita direta, notificação e auditoria local. Continua sem execução com driver: falta o SYS atual
 compilado/assinado, sob responsabilidade de Victor/equipe. O pacote antigo v18 não substitui o gate v1.
+
+Em 05/11, o gate v1 foi compilado sem alterar C/projeto e assinado com certificado próprio de laboratório.
+Na cópia isolada da VM, a assinatura foi validada nativamente; o serviço iniciou como SYSTEM, conectou ao gate,
+teve um escopo aceito e montou S:. O ensaio revelou que `Path.TrimEndingDirectorySeparator` preserva `S:\`,
+enquanto o host guarda `S:`: o indicador permanecia incompleto. A comparação foi corrigida, com regressão que
+também exige manter incompletos os casos de unidade ausente ou gate indisponível. O ensaio de publicação/bloqueio
+precisa ser repetido com esse binário; a montagem sozinha não comprova o fluxo completo.

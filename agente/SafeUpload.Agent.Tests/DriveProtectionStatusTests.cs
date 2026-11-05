@@ -14,6 +14,23 @@ namespace SafeUpload.Agent.Tests;
 
 public sealed class DriveProtectionStatusTests
 {
+    [Fact]
+    public void Windows_enumeration_roots_match_host_mount_letters_without_hiding_missing_drives()
+    {
+        var hosts = new Dictionary<string, string> { [@"C:\First"] = "s:", [@"C:\Second"] = "T:" };
+        // DriveInfo enumerates roots with a separator; FileSystemHost stores its mount as a drive letter.
+        var mounted = DriveService.AvailableDestinations(hosts, [@"C:\", @"S:\"]);
+        Assert.Equal(new[] { @"C:\First" }, mounted);
+        var ready = DriveProtectionSnapshot.Create(Policy(), GateApplyResult.Applied, [@"C:\First"], mounted);
+        Assert.True(ready.ProtectionActive);
+        var incomplete = DriveProtectionSnapshot.Create(Policy(), GateApplyResult.Applied, hosts.Keys, mounted);
+        Assert.False(incomplete.ProtectionActive);
+        Assert.Equal(1, incomplete.DriveProtection!.MountedDrives);
+        Assert.Equal(DriveProtectionIssue.MountsIncomplete, incomplete.DriveProtection.Issue);
+        var unavailable = DriveProtectionSnapshot.Create(Policy(), GateApplyResult.Unavailable, [@"C:\First"], mounted);
+        Assert.False(unavailable.ProtectionActive);
+    }
+
     [Theory]
     [InlineData(GateApplyResult.Unavailable, false)]
     [InlineData(GateApplyResult.Unavailable, true)]

@@ -76,6 +76,7 @@ try {
     $client.Connect(5000)
     $reader = [IO.StreamReader]::new($client, [Text.UTF8Encoding]::new($false, $true))
     $status = Read-Notification
+    $result.observedStatus = $status
     Check 'Drive scope accepted by gate and mounts available' ($status.type -eq 'status' -and $status.protectionActive -and
         -not $status.auditOnly -and $status.policyVersion -eq $policy.version -and $status.driveProtection.gatePolicyApplied -and
         $status.driveProtection.requiredDrives -gt 0 -and $status.driveProtection.mountedDrives -eq $status.driveProtection.requiredDrives)
