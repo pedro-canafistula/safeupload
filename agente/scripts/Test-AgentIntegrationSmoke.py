@@ -38,7 +38,7 @@ def main():
                 payload = b"".join(parts)
             else:
                 payload = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-            calls.append({"path": self.path, "body": json.loads(payload)})
+            calls.append({"path": self.path, "body": json.loads(payload), "method": "POST"})
             heartbeat = self.path.endswith("/heartbeat")
             status = scenario["heartbeat"] if heartbeat else 200
             body = '{"status":"OK"}' if heartbeat else '{"acceptedEvents":1,"acceptedOverrides":0}'
@@ -86,6 +86,19 @@ def main():
     def case(name):
         results.append({"case": name, "passed": True})
 
+    def invoke_cycle(mode, folder, expected=0, audit=True):
+        start = len(calls)
+        report = invoke(mode, folder, expected=expected)
+        cycle = calls[start:]
+        # Heartbeat and audit run independently; neither arrival order is contractual.
+        require(len(cycle) == (2 if audit else 1), "unexpected cycle request count")
+        require(all(call.get("method") == "POST" for call in cycle), "cycle HTTP method")
+        heartbeats = [call for call in cycle if call["path"] == "/context/agent/heartbeat"]
+        batches = [call for call in cycle if call["path"] == "/context/agent/events"]
+        require(len(heartbeats) == 1 and heartbeats[0]["body"] == {"id_host": 7}, "heartbeat contract")
+        require(len(batches) == (1 if audit else 0), "audit route or duplicate batch")
+        return report, batches[0]["body"] if audit else None
+
     try:
         with tempfile.TemporaryDirectory(prefix="safeupload-meeting-fixture-") as root:
             root = Path(root)
@@ -115,23 +128,19 @@ def main():
             case("offline-network-preserves-pending")
 
             scenario["audit"] = "ambiguous"
-            report = invoke("send", folder, expected=1)
-            first_payload = calls[-1]["body"]
-            require(calls[-2]["path"] == "/context/agent/heartbeat" and calls[-2]["body"] == {"id_host": 7}, "heartbeat contract")
-            require(calls[-1]["path"] == "/context/agent/events", "audit route")
+            report, first_payload = invoke_cycle("send", folder, expected=1)
             require(report["pendingAfter"] == 1 and (folder / "meeting-queue.jsonl").read_bytes() == before, "ambiguous receipt lost pending")
             case("ambiguous-receipt-preserves-bytes")
             scenario["audit"] = "valid"
-            report = invoke("send", folder)
-            require(report["pendingAfter"] == 0 and calls[-1]["body"] == first_payload, "retry changed original event")
+            report, retried = invoke_cycle("send", folder)
+            require(report["pendingAfter"] == 0 and retried == first_payload, "retry changed original event")
             require(not report["centralPersistenceVerified"] and not report["installedServiceTested"], "false qualification")
             case("retry-same-payload-after-process-reopen")
-            count = len(calls)
-            report = invoke("send", folder)
-            require(len(calls) == count + 1 and report["result"] == "already_confirmed", "empty queue invented event")
+            report, _ = invoke_cycle("send", folder, audit=False)
+            require(report["result"] == "already_confirmed", "empty queue invented event")
             case("confirmed-queue-does-not-resend")
-            report = invoke("replay", folder)
-            require(calls[-1]["body"] == first_payload and report["pendingAfter"] == 0, "explicit replay changed identity")
+            report, replayed = invoke_cycle("replay", folder)
+            require(replayed == first_payload and report["pendingAfter"] == 0, "explicit replay changed identity")
             require((folder / "meeting-queue.jsonl").read_bytes() != before, "original queue never confirmed")
             case("explicit-duplicate-uses-original-event")
 
@@ -141,19 +150,18 @@ def main():
                 invoke("prepare", test_folder)
                 queue_before = (test_folder / "meeting-queue.jsonl").read_bytes()
                 scenario["audit"] = audit_mode
-                report = invoke("send", test_folder, expected=1)
-                sent = calls[-1]["body"]
+                report, sent = invoke_cycle("send", test_folder, expected=1)
                 require(report["pendingAfter"] == 1 and (test_folder / "meeting-queue.jsonl").read_bytes() == queue_before, name)
                 require(not any(call.get("method") == "GET" for call in calls), "followed redirect")
                 scenario["audit"] = "valid"
-                report = invoke("send", test_folder)
-                require(report["pendingAfter"] == 0 and calls[-1]["body"] == sent, name + " retry")
+                report, retried = invoke_cycle("send", test_folder)
+                require(report["pendingAfter"] == 0 and retried == sent, name + " retry")
                 case(name)
 
             failed_host = root / "failed-heartbeat"
             invoke("prepare", failed_host)
             scenario["heartbeat"] = 503
-            report = invoke("send", failed_host, expected=1)
+            report, _ = invoke_cycle("send", failed_host, expected=1)
             require(report["pendingAfter"] == 0, "heartbeat blocked audit")
             states = {item["operation"]: item for item in report["communication"]["operations"]}
             require(states["Heartbeat"]["state"] == "Failure" and states["Audit"]["state"] == "Success", "operation independence")
