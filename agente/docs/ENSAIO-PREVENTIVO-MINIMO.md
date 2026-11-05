@@ -56,4 +56,5 @@ Preservar também commit/hash do SYS entregue pelo responsável e versão/build 
 
 Este ensaio cobre um destino NTFS local. Não qualifica Office, USB, SMB, entrega ao backend, queda de energia ou
 recuperação após encerramento abrupto. Parser aprovado ou testes C# sem unidade montada não constituem seu aceite.
-Na sessão de 04/11, o gate compilado não estava disponível; este roteiro ainda não foi executado com o driver real.
+Em 05/11, os três cenários passaram com driver real na VM isolada, serviço `f95f970c`, gate v1 da fonte `07802232`,
+Windows 10 `19045.3803`, política local 9101. O [registro do núcleo](NUCLEO-AGENTE.md) identifica IDs e limites.
