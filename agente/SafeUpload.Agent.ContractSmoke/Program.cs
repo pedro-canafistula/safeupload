@@ -11,6 +11,12 @@ using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
+if (args.Length == 4 && args[0] == "--ed25519-api")
+{
+    await Ed25519BackendAcceptance.RunAsync(args[1], new Uri(args[2]), args[3]);
+    return;
+}
+
 if (args.Length == 3 && args[0] == "--functional-audit")
 {
     await FunctionalAuditAcceptance.ContinueAsync(args[1], args[2]);

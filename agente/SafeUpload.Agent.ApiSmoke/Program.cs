@@ -1,5 +1,11 @@
 using SafeUpload.Agent.Core.Infrastructure;
 
+if (args.FirstOrDefault() == "--ed25519")
+{
+    if (!OperatingSystem.IsWindows()) { Console.Error.WriteLine("Provisionamento disponível somente no Windows."); return 2; }
+    return await Ed25519ProvisioningCommand.RunAsync(args[1..]);
+}
+
 // Uma operação em cadastro EXISTENTE. Não instala serviço, cadastra host,
 // publica política, envia auditoria nem acessa driver/painel administrativo.
 if (args.Length != 4 || args[0] != "--base-url" || args[2] != "--registered-host-id")

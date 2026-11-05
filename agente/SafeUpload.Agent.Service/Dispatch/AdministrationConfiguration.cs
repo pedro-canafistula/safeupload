@@ -8,12 +8,13 @@ internal sealed record AdministrationConfiguration(
     Uri? BaseUri, TimeSpan Timeout, TimeSpan DispatchInterval, AgentHeartbeatConfiguration Heartbeat,
     ConsolePolicyOptions? ConsolePolicy = null)
 {
-    internal static AdministrationConfiguration Parse(IConfiguration configuration, RegisteredHostIdentityStore? identities = null)
+    internal static AdministrationConfiguration Parse(IConfiguration configuration, RegisteredHostIdentityStore? identities = null,
+        SignedHostIdentityStore? signedIdentities = null)
     {
         string? address = configuration["CentroAdministracao:BaseUrl"];
         if (string.IsNullOrWhiteSpace(address))
         {
-            var heartbeat = ReadHeartbeat(configuration, null, identities);
+            var heartbeat = ReadHeartbeat(configuration, null, identities, signedIdentities);
             ReadConsolePolicy(configuration, null, heartbeat);
             if (heartbeat.RegisteredHostId is not null)
                 throw new InvalidOperationException("Heartbeat AgentApi exige CentroAdministracao:BaseUrl.");
@@ -36,11 +37,11 @@ internal sealed record AdministrationConfiguration(
             throw new InvalidOperationException("CentroAdministracao:TimeoutSeconds excede o limite do cliente HTTP.");
         if (interval.TotalMilliseconds > uint.MaxValue - 1)
             throw new InvalidOperationException("CentroAdministracao:DispatchIntervalSeconds excede o limite do temporizador.");
-        var configuredHeartbeat = ReadHeartbeat(configuration, uri, identities);
+        var configuredHeartbeat = ReadHeartbeat(configuration, uri, identities, signedIdentities);
         var consolePolicy = ReadConsolePolicy(configuration, uri, configuredHeartbeat);
         // Reject the entire configuration before committing the initial host binding.
         // Otherwise an invalid policy option can pin an ID from a failed service start.
-        if (configuredHeartbeat.RegisteredHostId is { } hostId && identities is not null)
+        if (configuredHeartbeat.SigningIdentity is null && configuredHeartbeat.RegisteredHostId is { } hostId && identities is not null)
             identities.Resolve(uri, hostId);
         return new(uri, timeout, interval, configuredHeartbeat, consolePolicy);
     }
@@ -68,11 +69,25 @@ internal sealed record AdministrationConfiguration(
     }
 
     private static AgentHeartbeatConfiguration ReadHeartbeat(IConfiguration configuration, Uri? server,
-        RegisteredHostIdentityStore? identities)
+        RegisteredHostIdentityStore? identities, SignedHostIdentityStore? signedIdentities)
     {
         string? protocol = configuration["CentroAdministracao:HeartbeatProtocol"];
         string? host = configuration["CentroAdministracao:RegisteredHostId"];
         string? legacyUser = configuration["CentroAdministracao:RegisteredUserId"];
+        if (protocol == "AgentApiEd25519")
+        {
+            if (server is null || signedIdentities is null)
+                throw new InvalidOperationException("AgentApiEd25519 exige BaseUrl e identidade protegida provisionada.");
+            string? ip = configuration["CentroAdministracao:HostIp"];
+            if (!int.TryParse(configuration["CentroAdministracao:HostMask"], NumberStyles.None,
+                    CultureInfo.InvariantCulture, out int mask) || string.IsNullOrWhiteSpace(ip))
+                throw new InvalidOperationException("AgentApiEd25519 exige HostIp e HostMask explícitos.");
+            string? policyIp = configuration["CentroAdministracao:PolicyHostIp"];
+            if (!string.IsNullOrWhiteSpace(policyIp) && policyIp != ip)
+                throw new InvalidOperationException("HostIp e PolicyHostIp devem identificar o mesmo host.");
+            return AgentHeartbeatConfiguration.Parse(protocol, host, legacyUser, signedIdentities.Load(server),
+                AgentHeartbeatHost.ForMachine(ip, mask));
+        }
         if (protocol == "AgentApi" && string.IsNullOrWhiteSpace(host) && string.IsNullOrWhiteSpace(legacyUser) &&
             identities is not null && server is not null)
             return new(identities.Resolve(server, null));
