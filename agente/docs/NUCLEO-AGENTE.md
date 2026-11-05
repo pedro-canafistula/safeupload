@@ -1,5 +1,32 @@
 # Núcleo do agente — ponto de integração
 
+## Aceite preventivo mínimo — 05/11/2026
+
+**Aprovado com WinFsp/gate reais na cópia isolada da VM**, Windows 10 `19045.3803`:
+serviço `f95f970c6308ca33835c6cd9fd6f3d25e6faed1d`, gate v1 da fonte `07802232`, WinFsp 2.1.25156.
+Gate assinado com certificado próprio de laboratório; SHA256 do SYS
+`21EDD5B0199028789CDB71D76A20F4A3867BDF22589252443BFF0006D67679A1`.
+
+O serviço iniciou como LocalSystem, conectou ao gate, aplicou a política local 9101 e montou S: para
+`C:\SafeUpload\PreventivoPR91`. Arquivo limpo publicado com bytes idênticos; CPF sintético retido com notificação
+na sessão e evento de bloqueio; escrita administrativa direta recusada, contador real do gate de 0 para 1.
+Auditoria local de aprovação/bloqueio e bytes da política conferidos. Sem override, sem processo excluído, sem
+FileSystemWatcher. O resultado foi coletado diretamente da VM com SHA256 conferido.
+
+Ensaio `b492ffeb4fe0466e9de217ce312af62e`, aprovado em 05/11 às 01:41 (Brasília).
+Evento limpo `f6f87c29-b8e7-4054-b59d-9d1982db3fe4`; bloqueio `724acb5c-c05a-433f-9a0a-5d26772cf8f6`.
+O resultado bruto tem SHA256 `9D0A1BBB68CD9B93DD70A5F8A1334E5DA7F906774401A59910512CDAD91C33D7`.
+Os 151 testes Windows Release selecionados também passaram; são evidência distinta do ensaio nativo.
+
+O [PR #91](https://github.com/pedro-canafistula/safeupload/pull/91) contém as correções do stage e do reconhecimento
+de raízes montadas, sobre o #90 ainda sem merge. Esta atualização documental não muda o C# ensaiado em `f95f970c`.
+Agente 2: incorporar esse commit à composição do #92 e repetir o ensaio com política central/auditoria integrada.
+O aceite cobre um escopo NTFS local; Office/USB/SMB, reinício/encerramento abrupto durante publicação, outros formatos
+e entrega ao backend mantêm validação própria. A notificação foi recebida pelo pipe da sessão; o balão WPF não foi
+validado visualmente. Nenhuma falha impeditiva permaneceu nos três cenários mínimos. Sem merge automático.
+
+## Histórico da composição anterior ao aceite
+
 O [PR #90](https://github.com/pedro-canafistula/safeupload/pull/90) é o ponto único de revisão da sequência #82–#90.
 Os commits intermediários permanecem no histórico dessa branch. A main de referência é `7dcf139f` (#81).
 Build/testes e checks aprovados são evidência de implementação; o critério do AGENTS.md também exige funcionamento
