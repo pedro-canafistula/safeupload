@@ -80,11 +80,21 @@ public sealed class HttpAgentDispatcher : BackgroundService
             "Despachante ativo; intervalo de {Seconds:F0} s. Consultar communication-health para resultados.",
             _interval.TotalSeconds);
 
+        // Cada operação mantém sua própria cadência. Uma resposta lenta ou uma
+        // falha de disco na auditoria não pode suspender os próximos heartbeats,
+        // nem o heartbeat pode reter o envio dos lotes. Cada laço é serial.
+        await Task.WhenAll(
+            RunLoopAsync(TrySendHeartbeatAsync, stoppingToken),
+            RunLoopAsync(DispatchPendingAsync, stoppingToken)).ConfigureAwait(false);
+    }
+
+    private async Task RunLoopAsync(Func<CancellationToken, Task> operation, CancellationToken stoppingToken)
+    {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await RunCycleAsync(stoppingToken).ConfigureAwait(false);
+                await operation(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -145,7 +155,10 @@ public sealed class HttpAgentDispatcher : BackgroundService
         catch (Exception exception) { observation.Exception(exception, cancellationToken, receivedStatus); throw; }
     }
 
-    internal async Task RunCycleAsync(CancellationToken cancellationToken)
+    internal Task RunCycleAsync(CancellationToken cancellationToken) => Task.WhenAll(
+        TrySendHeartbeatAsync(cancellationToken), DispatchPendingAsync(cancellationToken));
+
+    private async Task TrySendHeartbeatAsync(CancellationToken cancellationToken)
     {
         try { await SendHeartbeatAsync(cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -153,7 +166,6 @@ public sealed class HttpAgentDispatcher : BackgroundService
         {
             CommunicationLog.Warning(_logger, CommunicationLogStage.Heartbeat, exception);
         }
-        await DispatchPendingAsync(cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task DispatchPendingAsync(CancellationToken cancellationToken)
