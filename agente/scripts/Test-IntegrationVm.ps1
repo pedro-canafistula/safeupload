@@ -1,10 +1,12 @@
 #requires -Version 7.0
 param(
     [string]$RepositoryRoot = (Join-Path $PSScriptRoot '../..'),
-    [string]$ResultsDirectory
+    [string]$ResultsDirectory,
+    [switch]$LegacyBackend
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $LegacyBackend) { throw 'Roteiro legado H2 pré-#96. Para Java/MySQL e Ed25519 atuais, use Test-FunctionalAudit.ps1 e Test-Ed25519Backend.ps1.' }
 $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
 if (-not $ResultsDirectory) {
     $ResultsDirectory = Join-Path $env:TEMP ('safeupload-integration-' + [guid]::NewGuid().ToString('N'))
@@ -68,7 +70,7 @@ try {
         } catch { Start-Sleep -Seconds 1 }
     }
     if (-not $ready) { throw 'Backend nao ficou pronto no prazo.' }
-    Invoke-ValidationStep -Name 'agent-java-contract' -Command 'dotnet' -Arguments @('run', '--project', 'agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj')
+    Invoke-ValidationStep -Name 'agent-java-contract' -Command 'dotnet' -Arguments @('run', '--project', 'agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj', '--', '--legacy-api')
     $results.status = 'passed'
 } catch {
     $results.status = 'failed'

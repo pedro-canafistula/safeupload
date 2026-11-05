@@ -28,14 +28,15 @@ internal static class FunctionalAuditAcceptance
     private const string Endpoint = "SMOKE-AGENT";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
         { Converters = { new JsonStringEnumConverter() } };
-    private sealed record State(int HostId, int ControlId, int Revision, string ControlBefore, List<AuditEvent> Events);
+    private sealed record State(int HostId, int ControlId, int Revision, string ControlBefore, List<AuditEvent> Events,
+        string ServerBase, string PublicKey);
 
-    internal static async Task PrepareAsync(HttpClient agent, int host, int control, string workspace,
+    internal static async Task PrepareAsync(HttpClient agent, SignedAgentIdentity identity, int control, string workspace,
         Func<string, string, Task<int>> publish, Func<string, Task<JsonElement>> get, CancellationToken token)
     {
         string root = Path.Combine(workspace, "functional-audit");
         Directory.CreateDirectory(root);
-        new RegisteredHostIdentityStore(Path.Combine(root, "identity.json"), false).Resolve(agent.BaseAddress!, host);
+        int host = identity.HostId; // Enrollment already happened explicitly; never register during a phase/restart.
         var operational = LocalPolicyStore.CreateDefault() with
         {
             MonitoredScopes = new(new HashSet<string> { ".txt", ".docx", ".zip" }, [Path.Combine(root, "backing")], false, false),
@@ -61,7 +62,8 @@ internal static class FunctionalAuditAcceptance
         Verify(events, persisted);
         string controlBefore = (await get("endpoints")).GetProperty("itens").EnumerateArray()
             .Single(h => h.GetProperty("hostId").GetInt32() == control).GetRawText();
-        await File.WriteAllTextAsync(Path.Combine(root, "state.json"), JsonSerializer.Serialize(new State(host, control, alert, controlBefore, events), Json), token);
+        await File.WriteAllTextAsync(Path.Combine(root, "state.json"), JsonSerializer.Serialize(new State(host, control, alert, controlBefore, events,
+            agent.BaseAddress!.AbsoluteUri, identity.PublicKey), Json), token);
         Console.WriteLine("FUNCTIONAL_AUDIT_ROOT=" + root);
     }
 
@@ -70,10 +72,14 @@ internal static class FunctionalAuditAcceptance
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var token = budget.Token;
         var state = JsonSerializer.Deserialize<State>(await File.ReadAllTextAsync(Path.Combine(root, "state.json"), token), Json)!;
-        using var agent = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:18080/agent/"), Timeout = TimeSpan.FromSeconds(2) };
-        byte[] identityBefore = await File.ReadAllBytesAsync(Path.Combine(root, "identity.json"), token);
-        int host = new RegisteredHostIdentityStore(Path.Combine(root, "identity.json"), false).Resolve(agent.BaseAddress!, null);
-        Check("new process restores the registered host without synchronization", host == state.HostId);
+        var server = new Uri(state.ServerBase);
+        if (!server.IsLoopback) throw new InvalidOperationException("Functional component fixture requires disposable loopback API.");
+        using var agent = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = server, Timeout = TimeSpan.FromSeconds(2) };
+        string identityFile = IdentityFile(root);
+        byte[] identityBefore = await File.ReadAllBytesAsync(identityFile, token);
+        var identity = new SignedHostIdentityStore(identityFile, enforceAcl: false).Load(server, state.HostId);
+        int host = identity.HostId;
+        Check("new process restores the signed host and public key without enrollment", host == state.HostId && identity.PublicKey == state.PublicKey);
         var remote = Remote(agent, root, host);
         byte[] cacheBefore = await File.ReadAllBytesAsync(Path.Combine(root, "cache.json"), token);
         var restored = await remote.LoadCachedOrDefaultAsync(token);
@@ -109,9 +115,11 @@ internal static class FunctionalAuditAcceptance
             Check("second new process finds the same pending identities", (await queue.ReadPendingAsync(100, token)).Select(e => e.EventId)
                 .ToHashSet().SetEquals(state.Events.TakeLast(2).Select(e => e.EventId)));
             using var admin = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
-                { BaseAddress = new Uri("http://127.0.0.1:18080/") };
+                { BaseAddress = new Uri(server.GetLeftPart(UriPartial.Authority)) };
             using var login = await admin.PostAsJsonAsync("auth/login", new { email = "contract-smoke@example.com", senha = "contract-smoke-123" }, token);
             login.EnsureSuccessStatusCode();
+            await CurrentBackendContract.Heartbeat(agent, identity).SendAsync(token);
+            Check("restarted process authenticates with real Ed25519 heartbeat", true);
             await DispatchAsync(root, agent, policies, host, token);
             Check("reconnection confirms the durable queue", (await queue.ReadPendingAsync(100, token)).Count == 0);
             // Simulate a lost receipt after commit: resend identical persisted events, never create new IDs.
@@ -130,21 +138,23 @@ internal static class FunctionalAuditAcceptance
                 hosts.Single(h => h.GetProperty("hostId").GetInt32() == host).GetProperty("policyVersion").GetInt32() == state.Revision);
         }
         else throw new ArgumentException("Expected offline or resume.");
-        byte[] identityAfter = await File.ReadAllBytesAsync(Path.Combine(root, "identity.json"), token);
+        byte[] identityAfter = await File.ReadAllBytesAsync(identityFile, token);
         Check("persisted identity unchanged", identityBefore.SequenceEqual(identityAfter));
-        Console.WriteLine("FunctionalAuditComponent=True;NativeDriveQualified=False;InstalledServiceQualified=False;WpfInteractiveQualified=False");
+        Console.WriteLine("FunctionalAuditComponent=True;HeartbeatProtocol=AgentApiEd25519;IdentityAclQualified=False;NativeDriveQualified=False;InstalledServiceQualified=False;WpfInteractiveQualified=False");
     }
 
     private static DurableHttpPolicyStore Remote(HttpClient agent, string root, int host) =>
         new(agent, Endpoint, Path.Combine(root, "cache.json"), false, consolePolicy: new ConsolePolicyOptions(host, "10.90.0.21"),
             operationalPolicy: new LocalPolicyStore(Path.Combine(root, "operational.json")));
     private static LocalQueueAuditSink Queue(string root) => new(Path.Combine(root, "queue.jsonl"));
+    private static string IdentityFile(string root) => Path.GetFullPath(Path.Combine(root, "..", "identity.dat"));
 
     private static async Task DispatchAsync(string root, HttpClient agent, IPolicyStore policies, int host, CancellationToken token)
     {
         using var dispatcher = new HttpAgentDispatcher(Queue(root), policies, agent, Endpoint, TimeSpan.FromSeconds(30),
             NullLogger<HttpAgentDispatcher>.Instance)
-            { HeartbeatSender = new RegisteredAgentHeartbeat(new AgentApiClient(agent), host) };
+            { HeartbeatSender = CurrentBackendContract.Heartbeat(agent,
+                new SignedHostIdentityStore(IdentityFile(root), enforceAcl: false).Load(agent.BaseAddress!, host)) };
         await dispatcher.RunCycleAsync(token);
     }
 

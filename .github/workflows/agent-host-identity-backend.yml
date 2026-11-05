@@ -1,22 +1,15 @@
-name: Identidade do serviço com Java e MySQL
+name: Contrato atual CSharp Ed25519 Java MySQL
 
 on:
   workflow_call:
-    inputs:
-      contract-only:
-        type: boolean
-        default: false
-      console-policy:
-        type: boolean
-        default: false
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  service-host-identity:
-    name: ${{ inputs.console-policy && 'Política ConsoleByIp e cache SYSTEM' || inputs.contract-only && 'Contrato atual CSharp Java MySQL' || 'Serviço SYSTEM, reinício e backend real' }}
+  current-backend-contract:
+    name: Ed25519, política e offline (componentes; sem aceite SYSTEM/Drive)
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -36,59 +29,37 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Empacotar backend existente e publicar serviço
+      - name: Empacotar backend inalterado e compilar ContractSmoke
         shell: pwsh
         run: |
           mvn -B -f web/back/pom.xml -DskipTests package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Publicar serviço para o aceite LocalSystem
-        if: ${{ !inputs.contract-only }}
-        shell: pwsh
-        run: |
-          dotnet publish agente/SafeUpload.Agent.Service/SafeUpload.Agent.Service.csproj -c Release -r win-x64 --self-contained true -o artifacts/host-identity-service
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Executar suíte do agente e compilar contrato atual
-        if: inputs.contract-only
-        shell: pwsh
-        env:
-          SAFEUPLOAD_MACHINE_TESTS: '0'
-        run: |
-          New-Item -ItemType Directory -Path artifacts/host-identity-backend -Force | Out-Null
-          dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj --verbosity minimal --logger 'trx;LogFileName=agent.trx' --results-directory artifacts/host-identity-backend *> artifacts/host-identity-backend/agent-tests.log
-          $testExit = $LASTEXITCODE
-          Get-Content artifacts/host-identity-backend/agent-tests.log -Tail 25
-          if ($testExit -ne 0) { exit $testExit }
           dotnet build agente/SafeUpload.Agent.ContractSmoke/SafeUpload.Agent.ContractSmoke.csproj -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Preparar MySQL 8.4.13 oficial e conferir hash
         shell: pwsh
         run: |
           $zip = Join-Path $env:RUNNER_TEMP 'mysql-8.4.13-winx64.zip'
-          $destination = Join-Path $env:RUNNER_TEMP 'mysql-host-identity'
+          $destination = Join-Path $env:RUNNER_TEMP 'mysql-agent-current'
           Invoke-WebRequest -Uri 'https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-8.4.13-winx64.zip' -OutFile $zip
-          $expected = 'E9CD98B1D23F122987B1AFCA26AD942EFEC5891481103D48AE3CDE237FA3EA54'
-          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $expected) { throw 'Unexpected MySQL archive hash.' }
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne 'E9CD98B1D23F122987B1AFCA26AD942EFEC5891481103D48AE3CDE237FA3EA54') { throw 'Unexpected MySQL archive hash.' }
           Expand-Archive -LiteralPath $zip -DestinationPath $destination
-      - name: Validar identidade do serviço com banco e backend reais
-        if: ${{ !inputs.contract-only && !inputs.console-policy }}
+      - name: Validar contrato atual, publicação e recuperação em novos processos
         shell: pwsh
         run: |
-          ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend
-      - name: Validar política central e cache no serviço SYSTEM
-        if: inputs.console-policy
+          ./agente/scripts/Test-FunctionalAudit.ps1 -MySqlBasePath (Join-Path $env:RUNNER_TEMP 'mysql-agent-current/mysql-8.4.13-winx64') -OutputDirectory artifacts/agent-current/functional
+      - name: Validar assinatura, tokens e offline com DDL original
         shell: pwsh
         run: |
-          ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend -ConsolePolicyAcceptance
-      - name: Validar contrato C# com banco e backend reais
-        if: inputs.contract-only
-        shell: pwsh
-        run: |
-          ./agente/scripts/Test-HostIdentityBackend.ps1 -MySqlBase (Join-Path $env:RUNNER_TEMP 'mysql-host-identity/mysql-8.4.13-winx64') -ResultsDirectory artifacts/host-identity-backend -ContractOnly
-      - name: Preservar resultados sanitizados inclusive em falha
+          ./agente/scripts/Test-Ed25519Backend.ps1 -MySqlBasePath (Join-Path $env:RUNNER_TEMP 'mysql-agent-current/mysql-8.4.13-winx64') -BackendReferencePath $PWD -JavaPath (Join-Path $env:JAVA_HOME 'bin/java.exe') -OutputDirectory artifacts/agent-current/authentication
+      - name: Preservar resultados, sem banco ou material de identidade
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.console-policy && 'console-policy-system' || inputs.contract-only && 'agent-current-contract' || 'host-identity-backend' }}
-          path: artifacts/host-identity-backend/
+          name: agent-current-contract
+          path: |
+            artifacts/agent-current/functional/result.json
+            artifacts/agent-current/functional/*.log
+            artifacts/agent-current/authentication/result.json
+            artifacts/agent-current/authentication/*.log
+          if-no-files-found: warn

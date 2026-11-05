@@ -7,6 +7,8 @@ Verifies one centrally published CPF policy on an already configured disposable 
 Publish through the panel before each run. This script does not publish policy, install components,
 restart services or grant overrides. Run Bloquear, then Alertar with a newer idPolitica, then offline.
 It leaves unique synthetic files and a JSON result. A watcher cannot pass the Drive/gate prerequisites.
+Backend #96 requires AgentApiEd25519 in the service command, the provisioned RegisteredHostId and
+AgentBaseUri (HTTPS outside loopback). LegacyBackend explicitly selects only the pre-#96 identity format.
 #>
 [CmdletBinding()]
 param(
@@ -17,13 +19,20 @@ param(
     [Parameter(Mandatory=$true)][string] $GatePath,
     [Parameter(Mandatory=$true)][string] $ResultPath,
     [switch] $Offline,
+    [uri] $AgentBaseUri,
+    [int] $RegisteredHostId,
+    [switch] $LegacyBackend,
     [ValidateRange(5,60)][int] $TimeoutSeconds = 30
 )
 $ErrorActionPreference = 'Stop'
 $root = Join-Path $env:ProgramData 'SafeUpload'
 $cachePath = Join-Path $root 'console-policy-cache.json'
-$identityPath = Join-Path $root 'identity\host-registration.json'
-$result = [ordered]@{ passed=$false; atUtc=[DateTime]::UtcNow.ToString('o'); action=$Action; revision=$PolicyVersion; offline=[bool]$Offline; checks=@() }
+$identityPath = if ($LegacyBackend) { Join-Path $root 'identity\host-registration.json' } else { Join-Path $root 'authentication\ed25519-identity.dat' }
+if (-not $LegacyBackend -and ($RegisteredHostId -le 0 -or $null -eq $AgentBaseUri -or
+    -not $AgentBaseUri.IsAbsoluteUri -or ($AgentBaseUri.Scheme -ne 'https' -and -not ($AgentBaseUri.Scheme -eq 'http' -and $AgentBaseUri.IsLoopback)))) {
+    throw 'Current backend requires the provisioned RegisteredHostId and AgentBaseUri (HTTPS outside loopback). Use LegacyBackend only for the pre-#96 composition.'
+}
+$result = [ordered]@{ passed=$false; atUtc=[DateTime]::UtcNow.ToString('o'); action=$Action; revision=$PolicyVersion; offline=[bool]$Offline; legacyBackend=[bool]$LegacyBackend; checks=@() }
 $runId = [guid]::NewGuid().ToString('N')
 $ResultPath = [IO.Path]::GetFullPath($ResultPath)
 if (Test-Path -LiteralPath $ResultPath) { throw 'Choose a new result file.' }
@@ -65,6 +74,7 @@ function Wait-Event([string]$Name) {
 try {
     $service = Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
     Check 'SYSTEM service running with ConsoleByIp' ($service.State -eq 'Running' -and $service.StartName -eq 'LocalSystem' -and $service.PathName -match 'PolicyProtocol=ConsoleByIp')
+    if (-not $LegacyBackend) { Check 'Signed heartbeat explicitly configured' ($service.PathName -match 'HeartbeatProtocol=AgentApiEd25519') }
     $result.processId = $service.ProcessId
     $process = Get-Process -Id $service.ProcessId
     $result.serviceStartedUtc = $process.StartTime.ToUniversalTime().ToString('o')
@@ -73,7 +83,11 @@ try {
     $result.identitySha256 = (Get-FileHash -LiteralPath $identityPath).Hash
     $result.localPolicySha256 = (Get-FileHash -LiteralPath (Join-Path $root 'policy.json')).Hash
     $result.cacheSha256 = (Get-FileHash -LiteralPath $cachePath).Hash
-    $identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+    # Signed identity is verified by the service at startup. Compare the cache to the operator's provisioned context,
+    # and preserve the opaque DPAPI file hash; this script never decrypts or prints private material.
+    $identity = if ($LegacyBackend) { Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json } else {
+        [pscustomobject]@{ registeredHostId=$RegisteredHostId; serverBaseUrl=($AgentBaseUri.AbsoluteUri.TrimEnd('/') + '/') }
+    }
     $cache = Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json
     $local = Get-Content -LiteralPath (Join-Path $root 'policy.json') -Raw | ConvertFrom-Json
     $target = [IO.Path]::GetFullPath($Destination).TrimEnd('\')
@@ -82,7 +96,7 @@ try {
         @($local.monitoredScopes.destinationPaths | Where-Object { [IO.Path]::GetFullPath($_).TrimEnd('\') -eq $target }).Count -eq 1)
     Check 'Test process is inspected' ($local.excludedProcesses -notcontains (Get-Process -Id $PID).ProcessName -and
         $local.excludedProcesses -notcontains ((Get-Process -Id $PID).ProcessName + '.exe'))
-    Check 'Cache bound to identity, CPF and requested revision/action' ($cache.hostId -eq $identity.registeredHostId -and
+    Check 'Cache bound to provisioned context, CPF and requested revision/action' ($cache.hostId -eq $identity.registeredHostId -and
         $cache.server -eq $identity.serverBaseUrl -and $cache.policy.version -eq $PolicyVersion -and
         $cache.policy.activeCategories -contains 'Cpf' -and [bool]$cache.policy.auditOnly -eq ($Action -eq 'Alertar'))
     $route = $cache.server + 'api/policy?ip=' + [Uri]::EscapeDataString($cache.ip)

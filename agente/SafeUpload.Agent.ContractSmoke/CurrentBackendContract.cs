@@ -12,7 +12,7 @@ using SafeUpload.Agent.Service.Clipboard;
 using SafeUpload.Agent.Service.Dispatch;
 using SafeUpload.Agent.Service.Policies;
 
-// Current API acceptance with isolated inspection fixtures, including the opt-in console consumer.
+// Backend #96: explicit token enrollment and AgentApiEd25519, with isolated inspection fixtures.
 // Component checks do not qualify the installed service, cache ACLs or drive/gate protection.
 internal static class CurrentBackendContract
 {
@@ -59,35 +59,41 @@ internal static class CurrentBackendContract
         await Post("auth/login", new { email, senha = password });
         Check("session survives a subsequent request", (await Get("auth/me")).GetProperty("role").GetString() == "root");
         const string endpoint = "SMOKE-AGENT";
-        async Task<int> Register(string name, string ip)
-        {
-            var result = await Post("agent/synchronize", new {
-                host = new { ip, mascara = 24, hostname = name, sistema_operacional = "Windows", versao_so = "11" },
-                usuarioSo = new { sid = "S-TEST-" + name, usuario_so = name, dominio = "SYNTHETIC", admin = 0 }
-            }, HttpStatusCode.Created);
-            return result.GetProperty("id_host").GetInt32();
-        }
-        int target = await Register(endpoint, "10.90.0.21");
-        int control = await Register("SMOKE-CONTROL", "10.90.0.22");
-        Check("explicit distinct host registration", target > 0 && control > 0 && target != control);
         string work = Path.Combine(Path.GetTempPath(), "safeupload-current-contract-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(work);
-        string identityFile = Path.Combine(work, "identity.json");
-        int resolved = new RegisteredHostIdentityStore(identityFile, enforceProtectedAcl: false).Resolve(agent.BaseAddress!, target);
+        async Task<SignedAgentIdentity> Register(string name, string ip, string file)
+        {
+            using var response = await client.PostAsync("admin/token", null, token);
+            response.EnsureSuccessStatusCode();
+            var issued = await response.Content.ReadFromJsonAsync<JsonElement>(token);
+            string enrollmentToken = issued.GetProperty("token").GetString()!;
+            // Real DPAPI in an isolated fixture; this internal constructor does not qualify production ACLs.
+            var store = new SignedHostIdentityStore(file, enforceAcl: false);
+            var identity = await store.RegisterAsync(new AgentApiClient(agent), enrollmentToken, Host(name, ip), token);
+            Check("enrollment token absent from persisted identity", !System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(file, token)).Contains(enrollmentToken));
+            return identity;
+        }
+        string identityFile = Path.Combine(work, "identity.dat");
+        var signed = await Register(endpoint, "10.90.0.21", identityFile);
+        int target = signed.HostId;
+        int control = (await Register("SMOKE-CONTROL", "10.90.0.22", Path.Combine(work, "control-identity.dat"))).HostId;
+        Check("explicit distinct host registration", target > 0 && control > 0 && target != control);
         byte[] identityBefore = await File.ReadAllBytesAsync(identityFile, token);
         var hostsBefore = (await Get("endpoints")).GetProperty("itens").EnumerateArray().ToArray();
         var targetBefore = hostsBefore.Single(h => h.GetProperty("hostId").GetInt32() == target).GetProperty("lastSeenUtc").GetDateTimeOffset();
         string controlBefore = hostsBefore.Single(h => h.GetProperty("hostId").GetInt32() == control).GetRawText();
         await Task.Delay(1100, token); // Central timestamp must observably advance beyond registration.
-        var heartbeat = AgentHeartbeatConfiguration.Parse("AgentApi", resolved.ToString()).CreateSender(agent)!;
+        var heartbeat = Heartbeat(agent, signed);
         await heartbeat.SendAsync(token);
-        int restoredId = new RegisteredHostIdentityStore(identityFile, enforceProtectedAcl: false).Resolve(agent.BaseAddress!, null);
-        await new RegisteredAgentHeartbeat(new AgentApiClient(agent), restoredId).SendAsync(token);
+        var restoredIdentity = new SignedHostIdentityStore(identityFile, enforceAcl: false).Load(agent.BaseAddress!, target);
+        int restoredId = restoredIdentity.HostId;
+        await Heartbeat(agent, restoredIdentity).SendAsync(token);
         var hostsAfter = (await Get("endpoints")).GetProperty("itens").EnumerateArray().ToArray();
         byte[] identityAfter = await File.ReadAllBytesAsync(identityFile, token);
         Check("reopened identity updates the same host without duplicate registration", restoredId == target && hostsAfter.Length == hostsBefore.Length &&
             hostsAfter.Single(h => h.GetProperty("hostId").GetInt32() == target).GetProperty("lastSeenUtc").GetDateTimeOffset() > targetBefore &&
             identityBefore.SequenceEqual(identityAfter));
+        Check("reopened DPAPI identity preserves the signing key", restoredIdentity.PublicKey == signed.PublicKey);
         Check("target heartbeat preserves the control host", hostsAfter.Single(h => h.GetProperty("hostId").GetInt32() == control).GetRawText() == controlBefore);
         using (var invalid = await agent.PostAsJsonAsync("heartbeat", new { id_usuario_so = target }, token))
             Check("obsolete heartbeat key rejected", invalid.StatusCode == HttpStatusCode.BadRequest);
@@ -199,12 +205,16 @@ internal static class CurrentBackendContract
         Check("new metadata survives SQL and replay without duplicate identities", freshRead.Length == 8 && freshRead.Count(e => fresh.Any(f => f.EventId == e.GetProperty("eventId").GetGuid())) == 2 &&
             freshRead.Single(e => e.GetProperty("eventId").GetGuid() == newWeb.EventId).GetProperty("destinationPath").GetString() == "https://example.test" &&
             !string.Join("", freshRead.Select(e => e.GetRawText())).Contains("NEW-METADATA-SECRET"));
-        if (functionalAudit) await FunctionalAuditAcceptance.PrepareAsync(agent, target, control, work, Publish, Get, token);
+        if (functionalAudit) await FunctionalAuditAcceptance.PrepareAsync(agent, signed, control, work, Publish, Get, token);
         using var logout = await client.PostAsJsonAsync("auth/logout", new { }, token);
         Check("logout completes", logout.IsSuccessStatusCode);
         using (var loggedOut = await client.GetAsync("painel", token)) Check("logout revokes administrative reads", loggedOut.StatusCode == HttpStatusCode.Unauthorized);
-        Console.WriteLine("CurrentApiContract=True;ConsolePolicyRead=True;ConsolePolicyAppliedByEngine=True;RemotePolicyCacheComponent=True;InstalledConsolePolicy=Pending;PolicyCacheAclQualified=False;DriverQualified=False");
+        Console.WriteLine("CurrentApiContract=True;HeartbeatProtocol=AgentApiEd25519;DpapiUsed=True;IdentityAclQualified=False;ConsolePolicyRead=True;ConsolePolicyAppliedByEngine=True;RemotePolicyCacheComponent=True;InstalledConsolePolicy=Pending;PolicyCacheAclQualified=False;DriverQualified=False");
     }
+    internal static AgentHeartbeatHost Host(string name = "SMOKE-AGENT", string ip = "10.90.0.21") =>
+        new(ip, 24, name, "Windows", "11", ip.EndsWith("21", StringComparison.Ordinal) ? "001122334421" : "001122334422");
+    internal static IAgentHeartbeat Heartbeat(HttpClient agent, SignedAgentIdentity identity) =>
+        AgentHeartbeatConfiguration.Parse("AgentApiEd25519", null, signingIdentity: identity, host: Host()).CreateSender(agent)!;
     private sealed class FixturePolicy(Policy value) : IPolicyStore
     {
         public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(value);
