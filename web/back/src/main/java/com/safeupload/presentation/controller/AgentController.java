@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
 
 import java.util.List;
-import java.util.Optional;
 
 import org.springframework.http.HttpStatus;
 
@@ -37,17 +36,10 @@ public class AgentController {
         //this.politicaRepository = politicaRepository;
     }
 
-    @PostMapping("/synchronize")
-    public ResponseEntity <SynchronizeResponse> synchronize(@Valid @RequestBody SynchronizeRequest request) {
-        SynchronizeResponse response = service.synchronize(request);
-        return ResponseEntity
-                .status(HttpStatus.CREATED.value())
-                .body(response);
-    }
 
     @PostMapping ("/heartbeat")
-    public ResponseEntity <DefaultResponse> heartbeat(@Valid @RequestBody HeartbeatRequest request){
-        DefaultResponse response = service.heartbeat(request);
+    public ResponseEntity <HeartBeatResponse> heartbeat(@Valid @RequestBody HeartBeatRequest request){
+        HeartBeatResponse response = service.heartbeat(request);
         return ResponseEntity
                 .status(HttpStatus.OK.value())
                 .body(response);
@@ -79,10 +71,4 @@ public class AgentController {
             .map(ResponseEntity::ok)
             .orElseGet(() -> ResponseEntity.notFound().build());
     }
-
-    // @GetMapping ("/policies")
-    // public ResponseEntity <PolicyResponse> policy (@Valid @RequestBody PolicyRequest request){
-    //     List <Politica> politica = politicaRepository.findByFkIdHost_IdHost(request.id_host());
-    //     return ResponseEntity.ok(response);
-    // }
 }

@@ -1,5 +1,6 @@
 package com.safeupload.application;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -9,20 +10,24 @@ import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClient;
 
 import com.safeupload.application.dto.AdminContracts.DefaultPostResponse;
 import com.safeupload.application.dto.AdminContracts.SetPolicyRequest;
+import com.safeupload.application.dto.AdminContracts.TokenResponse;
 import com.safeupload.application.dto.AgentContracts.PolicyDestination;
 import com.safeupload.application.dto.AgentContracts.PolicyResponse;
 import com.safeupload.application.dto.AgentContracts.PolicyRule;
 import com.safeupload.domain.entity.app.Host;
 import com.safeupload.domain.entity.app.Politica;
 import com.safeupload.domain.entity.app.Regras;
+import com.safeupload.domain.entity.app.Token;
 import com.safeupload.infrastructure.repository.app.HostRepository;
 import com.safeupload.infrastructure.repository.app.PoliticaRepository;
 import com.safeupload.infrastructure.repository.app.RegrasRepository;
+import com.safeupload.infrastructure.repository.app.TokenRepository;
 import com.safeupload.presentation.exception.DatabaseErrorException;
+
+import java.security.SecureRandom;
 
 
 
@@ -31,18 +36,22 @@ public class AdminService {
     private final PoliticaRepository politicaRepository;
     private final RegrasRepository regrasRepository;
     private final HostRepository hostRepository;
-    private final RestClient restClient;
+    private final TokenRepository tokenRepository;
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private final Clock clock;
 
     public AdminService (
         PoliticaRepository politicaRepository,
         RegrasRepository regrasRepository,
         HostRepository hostRepository,
-        RestClient restClient
+        TokenRepository tokenRepository,
+        Clock clock
     ){
         this.politicaRepository = politicaRepository;
         this.regrasRepository = regrasRepository;
         this.hostRepository = hostRepository;
-        this.restClient = restClient;
+        this.tokenRepository = tokenRepository;
+        this.clock = clock;
     }
 
     @Transactional(transactionManager = "appTransactionManager")
@@ -168,5 +177,32 @@ public class AdminService {
             dadosPessoais ? 1 : 0,
             documentosConfidenciais ? 1 : 0
         );
+    }
+
+    @Transactional 
+    public TokenResponse gerarToken(){
+        String CARACTERES = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+        String token;
+
+        do {
+            StringBuilder sb = new StringBuilder(8);
+
+            for (int i = 0; i < 8; i++) {
+                int indice = RANDOM.nextInt(CARACTERES.length());
+                sb.append(CARACTERES.charAt(indice));
+            }
+
+            token = sb.toString();
+
+        } while (tokenRepository.existsByToken(token));
+
+        Token tokenGerado = new Token(token, LocalDateTime.now(clock), 1);
+
+        tokenRepository.save(tokenGerado);
+
+        return new TokenResponse(
+            new DefaultPostResponse(HttpStatus.OK, "Token gerado com sucesso"), 
+            token);
     }
 }
