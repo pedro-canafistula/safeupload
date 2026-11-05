@@ -182,15 +182,23 @@ public sealed class DriveService : BackgroundService
                 }
             }
             token.ThrowIfCancellationRequested();
-            var available = DriveInfo.GetDrives().Select(d => Path.TrimEndingDirectorySeparator(d.Name))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            mounted = _mounts.Where(p => available.Contains(p.Value.MountPoint)).Select(p => p.Key).ToArray();
+            mounted = AvailableDestinations(_mounts.Select(p => KeyValuePair.Create(p.Key, p.Value.MountPoint)),
+                DriveInfo.GetDrives().Select(d => d.Name));
         }
         // Mounting may take time. Check the accepted connection again before announcing the observation.
         if (gateResult == GateApplyResult.Applied)
             gateResult = _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
         token.ThrowIfCancellationRequested();
         PublishStatus(DriveProtectionSnapshot.Create(policy, gateResult, wanted, mounted));
+    }
+
+    internal static string[] AvailableDestinations(IEnumerable<KeyValuePair<string, string>> mounts,
+        IEnumerable<string> driveRoots)
+    {
+        // Path.TrimEndingDirectorySeparator deliberately preserves the separator of a root ("S:\\").
+        // WinFsp stores mount letters as "S:", so compare both representations without their separator.
+        var available = driveRoots.Select(root => root.TrimEnd('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return mounts.Where(p => available.Contains(p.Value)).Select(p => p.Key).ToArray();
     }
 
     private void PublishIssue(DriveProtectionIssue issue, Policy? policy = null)
