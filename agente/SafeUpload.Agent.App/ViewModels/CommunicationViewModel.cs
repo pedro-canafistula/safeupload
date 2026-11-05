@@ -9,19 +9,29 @@ public sealed class CommunicationViewModel : ObservableObject
     private string _heartbeat = "Aguardando o serviço";
     private string _audit = "Aguardando o serviço";
     private string _policy = "Aguardando o serviço";
+    private string _summary = "Aguardando informações de comunicação com o backend.";
 
     public string Heartbeat { get => _heartbeat; private set => SetProperty(ref _heartbeat, value); }
     public string Audit { get => _audit; private set => SetProperty(ref _audit, value); }
     public string Policy { get => _policy; private set => SetProperty(ref _policy, value); }
+    public string Summary { get => _summary; private set => SetProperty(ref _summary, value); }
 
     public void Apply(AdministrationCommunicationStatus? status)
     {
         Heartbeat = Describe(status?.Heartbeat);
         Audit = Describe(status?.Audit);
         Policy = Describe(status?.Policy);
+        Summary = status is null ? "Comunicação com o backend não informada pelo serviço." :
+            new[] { status.Heartbeat.State, status.Audit.State, status.Policy.State }.Contains(AdministrationOperationState.Failure)
+                ? "Backend: falha na última tentativa. O estado da proteção local é informado separadamente."
+                : "Comunicação com o backend: resultados das últimas tentativas, sem garantia de conexão contínua.";
     }
 
-    public void SetDisconnected() => Heartbeat = Audit = Policy = "Serviço indisponível";
+    public void SetDisconnected()
+    {
+        Heartbeat = Audit = Policy = "Serviço indisponível";
+        Summary = "Sem comunicação com o serviço Windows; estado do backend desconhecido.";
+    }
 
     private static string Describe(AdministrationOperationStatus? status)
     {

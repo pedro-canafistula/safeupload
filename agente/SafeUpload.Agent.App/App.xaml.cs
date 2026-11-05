@@ -32,6 +32,7 @@ public partial class App : System.Windows.Application
     private AgentWindow? _panel;
     private TrayIconHost? _tray;
     private BlockNotificationWindow? _notification;
+    private readonly TransferNoticeTracker _transfers = new();
 
     /// <inheritdoc />
     protected override void OnStartup(StartupEventArgs e)
@@ -101,12 +102,15 @@ public partial class App : System.Windows.Application
                     break;
 
                 case EventNotification evento:
-                    _agentViewModel.Status.PrependActivity(evento.Event);
-                    bool added = _agentViewModel.History.Prepend(evento.Event);
+                    bool added = _agentViewModel.ApplyEvent(evento.Event);
 
                     // RN-005 — todo bloqueio notifica, com o painel aberto ou
                     // fechado.
-                    if (added && evento.Event.Verdict == Verdict.Blocked)
+                    if (added && evento.Event.NotInspectedReason is "publication_outcome_unknown" or "publication_failed")
+                    {
+                        _tray?.ShowBalloon("SafeUpload: publicação não confirmada", ReasonLabels.Describe(evento.Event.NotInspectedReason));
+                    }
+                    else if (added && evento.Event.Verdict == Verdict.Blocked)
                     {
                         ShowBlockNotification(evento);
                     }
@@ -120,9 +124,9 @@ public partial class App : System.Windows.Application
                 case TransferNotification transfer:
                     if (transfer.Event is { } outcome)
                     {
-                        _agentViewModel.Status.PrependActivity(outcome);
-                        if (!_agentViewModel.History.Prepend(outcome)) break;
+                        if (!_agentViewModel.ApplyEvent(outcome)) break;
                     }
+                    if (!_transfers.ShouldDisplay(transfer)) break;
                     ShowTransferNotification(transfer);
                     break;
             }
@@ -134,7 +138,7 @@ public partial class App : System.Windows.Application
         // Vem da STA do proxy de clipboard; o balão é da interface.
         Current.Dispatcher.BeginInvoke(() => _tray?.ShowBalloon(
             "SafeUpload: colagem bloqueada",
-            $"A cópia contém dado sensível e não foi colada em {destination}."));
+            $"A cópia contém dado sensível e não foi colada em {AuditTextPrivacy.Sanitize(destination)}."));
     }
 
     private void ShowTransferNotification(TransferNotification transfer)
@@ -144,7 +148,15 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        string fileName = Path.GetFileName(transfer.FileName);
+        string fileName = AuditTextPrivacy.Sanitize(Path.GetFileName(transfer.FileName));
+
+        if (transfer.Event?.NotInspectedReason == "publication_outcome_unknown" ||
+            transfer.RecoveryAdvice == StagedRecoveryAdvice.PublicationUnresolved)
+        {
+            _tray.ShowBalloon("SafeUpload: publicação não confirmada",
+                $"{fileName}: não foi possível confirmar o último salvamento. Consulte o histórico ou o administrador.");
+            return;
+        }
 
         switch (transfer.Phase)
         {
@@ -185,7 +197,7 @@ public partial class App : System.Windows.Application
             // A janela de bloqueio detalha o motivo; no status, o arquivo
             // continua somente no armazenamento local de staging.
             case TransferPhase.Blocked:
-                _tray.ShowBalloon("SafeUpload: envio bloqueado",
+                _tray.ShowBalloon(transfer.InspectionFailure is not null ? "SafeUpload: inspeção inconclusiva" : "SafeUpload: envio bloqueado",
                     $"{fileName} não foi enviado ao destino.");
                 ShowStagedBlockNotification(transfer);
                 break;
@@ -251,7 +263,7 @@ public partial class App : System.Windows.Application
                 AuditSubject.Describe(notification.Event),
                 notification.Findings,
                 notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
-                notification.Quarantined);
+                notification.Quarantined, inspectionFailure: StagedPublicationPresentation.FailureFor(notification.Event.NotInspectedReason));
             return;
         }
 
@@ -259,7 +271,8 @@ public partial class App : System.Windows.Application
             AuditSubject.Describe(notification.Event),
             notification.Findings,
             notification.OverrideAllowed ? notification.Event.EventId.ToString("D") : null,
-            quarantined: notification.Quarantined);
+            quarantined: notification.Quarantined,
+            inspectionFailure: StagedPublicationPresentation.FailureFor(notification.Event.NotInspectedReason));
 
         _notification.Closed += (_, _) => _notification = null;
 

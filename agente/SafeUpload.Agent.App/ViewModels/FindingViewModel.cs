@@ -1,3 +1,5 @@
+using SafeUpload.Agent.Core.Domain;
+
 namespace SafeUpload.Agent.App.ViewModels;
 
 /// <summary>
@@ -10,4 +12,13 @@ namespace SafeUpload.Agent.App.ViewModels;
 /// </summary>
 /// <param name="Category">Nome da categoria em português.</param>
 /// <param name="MaskedSnippet">Trecho mascarado.</param>
-public sealed record FindingViewModel(string Category, string MaskedSnippet);
+public sealed record FindingViewModel
+{
+    public FindingViewModel(string category, string maskedSnippet)
+    {
+        Category = AuditTextPrivacy.Sanitize(category);
+        MaskedSnippet = AuditTextPrivacy.Sanitize(maskedSnippet);
+    }
+    public string Category { get; }
+    public string MaskedSnippet { get; }
+}

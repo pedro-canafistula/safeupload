@@ -26,11 +26,14 @@ public sealed class StatusViewModel : ObservableObject
     private string _monitoringState = "AGUARDANDO";
     private bool _connected;
     private bool _monitoringActive;
+    private string _pendingAuditSummary = "Aguardando histórico autorizado; pendências de envio desconhecidas.";
 
 
     /// <summary>As operações recentes, da mais nova para a mais antiga.</summary>
     public ObservableCollection<ActivityRowViewModel> RecentActivity { get; } = [];
     public CommunicationViewModel Communication { get; } = new();
+    public string PendingAuditSummary { get => _pendingAuditSummary; private set => SetProperty(ref _pendingAuditSummary, value); }
+    public void ApplyPendingAudit(string summary) => PendingAuditSummary = summary;
 
     /// <summary>Valor em destaque do cartão de segurança.</summary>
     public string SecurityState
@@ -109,15 +112,15 @@ public sealed class StatusViewModel : ObservableObject
         Communication.Apply(status.Communication);
         PolicyVersion = status.PolicyVersion > 0 ? $"v{status.PolicyVersion}" : "—";
         ActiveCategoriesCaption = status.PolicyVersion > 0 ? $"{status.ActiveCategories} CATEGORIAS ATIVAS" : "POLÍTICA DESCONHECIDA";
-        MonitoringActive = status.ProtectionActive &&
-            status.AdmissionCoverage is not (AdmissionCoverageStatus.Pending or AdmissionCoverageStatus.Degraded);
+        MonitoringActive = status.PolicyVersion > 0 && status.ProtectionActive &&
+            status.AdmissionCoverage == AdmissionCoverageStatus.Ready;
         if (status.DriveProtection is { } drive)
         {
-            MonitoringActive = status.ProtectionActive && drive.Ready;
+            MonitoringActive = status.PolicyVersion > 0 && status.ProtectionActive && drive.Ready;
             if (MonitoringActive)
             {
                 SecurityState = status.AuditOnly ? "Em auditoria" : "Proteção confirmada";
-                SecurityCaption = status.AuditOnly ? "MONITORANDO SEM BLOQUEIO" : "ESCOPO APLICADO E UNIDADES DISPONÍVEIS";
+                SecurityCaption = status.AuditOnly ? "ACHADOS GERAM ALERTA; FALHAS PODEM BLOQUEAR" : "ESCOPO APLICADO E UNIDADES DISPONÍVEIS";
                 MonitoringState = status.AuditOnly ? "AUDITANDO" : "INTERCEPTANDO";
             }
             else
@@ -149,17 +152,17 @@ public sealed class StatusViewModel : ObservableObject
         // pasta inacessível. Exibir "Protegido" nesse caso seria a pior forma
         // de erro possível nesta tela: o usuário confiaria numa proteção que
         // não existe.
-        if (status.ProtectionActive && status.AuditOnly)
+        if (MonitoringActive && status.AuditOnly)
         {
             SecurityState = "Em auditoria";
-            SecurityCaption = "MONITORANDO SEM BLOQUEIO";
+            SecurityCaption = "ACHADOS GERAM ALERTA; FALHAS PODEM BLOQUEAR";
             MonitoringState = "AUDITANDO";
         }
         else if (status.ProtectionActive && status.AdmissionCoverage == AdmissionCoverageStatus.Pending)
         {
             SecurityState = "Cobertura pendente";
             SecurityCaption = "GATES DE DESTINO EM AVALIAÇÃO";
-            MonitoringState = "INTERCEPTANDO";
+            MonitoringState = "COBERTURA PENDENTE";
         }
         else if (status.ProtectionActive && status.AdmissionCoverage == AdmissionCoverageStatus.Degraded)
         {
@@ -167,7 +170,7 @@ public sealed class StatusViewModel : ObservableObject
             SecurityCaption = "ALGUNS DESTINOS NÃO ESTÃO PRONTOS";
             MonitoringState = "VERIFICAR DESTINOS";
         }
-        else if (status.ProtectionActive && status.AdmissionCoverage == AdmissionCoverageStatus.Ready)
+        else if (MonitoringActive)
         {
             SecurityState = "Gates de destino prontos";
             SecurityCaption = "ESCOPO ACEITO COM GATES ATIVOS";
@@ -175,9 +178,9 @@ public sealed class StatusViewModel : ObservableObject
         }
         else if (status.ProtectionActive)
         {
-            SecurityState = "Protegido";
-            SecurityCaption = "DISPOSITIVO SEGURO";
-            MonitoringState = "INTERCEPTANDO";
+            SecurityState = "Cobertura não confirmada";
+            SecurityCaption = "PROTEÇÃO PREVENTIVA NÃO INFORMADA";
+            MonitoringState = "VERIFICAR PROTEÇÃO";
         }
         else
         {
@@ -200,8 +203,8 @@ public sealed class StatusViewModel : ObservableObject
         Communication.SetDisconnected();
         SecurityState = "Serviço indisponível";
         SecurityCaption = "SEM COMUNICAÇÃO COM O SERVIÇO";
-        PolicyVersion = "—";
-        ActiveCategoriesCaption = "POLÍTICA DESCONHECIDA";
+        ActiveCategoriesCaption = PolicyVersion == "—" ? "POLÍTICA DESCONHECIDA" : "ÚLTIMA POLÍTICA INFORMADA; APLICAÇÃO NÃO CONFIRMADA";
+        PendingAuditSummary = "Serviço indisponível; situação de envio não atualizada. Consulte o último histórico recebido.";
         MonitoringState = "SEM SERVIÇO";
     }
 

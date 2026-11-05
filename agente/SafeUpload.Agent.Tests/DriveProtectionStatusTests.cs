@@ -98,6 +98,8 @@ public sealed class DriveProtectionStatusTests
         Assert.True(model.Connected);
         Assert.False(model.MonitoringActive);
         model.ApplyStatus(status with { ProtectionActive = true });
+        Assert.False(model.MonitoringActive); // Legacy monitoring alone does not identify preventive coverage.
+        model.ApplyStatus(status with { ProtectionActive = true, AdmissionCoverage = AdmissionCoverageStatus.Ready });
         Assert.True(model.MonitoringActive);
     }
 

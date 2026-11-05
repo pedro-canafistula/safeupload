@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SafeUpload.Agent.App.Tests" />
     <ProjectReference Include="..\SafeUpload.Agent.Core\SafeUpload.Agent.Core.csproj" />
   </ItemGroup>
 
