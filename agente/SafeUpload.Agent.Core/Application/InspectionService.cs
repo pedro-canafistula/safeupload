@@ -128,7 +128,7 @@ public sealed class InspectionService
             current.IsMonitoredExtension(operation.Extension);
     }
 
-    public Task RecordTransferOutcomeAsync(
+    public Task<AuditEvent?> RecordTransferOutcomeAsync(
         FileOperation operation,
         InspectionResult inspection,
         Verdict outcome,

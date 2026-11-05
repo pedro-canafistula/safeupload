@@ -118,6 +118,11 @@ public partial class App : System.Windows.Application
                     break;
 
                 case TransferNotification transfer:
+                    if (transfer.Event is { } outcome)
+                    {
+                        _agentViewModel.Status.PrependActivity(outcome);
+                        if (!_agentViewModel.History.Prepend(outcome)) break;
+                    }
                     ShowTransferNotification(transfer);
                     break;
             }
@@ -148,8 +153,8 @@ public partial class App : System.Windows.Application
                     $"{fileName} foi salvo localmente. Aguarde a análise antes do envio.");
                 break;
             case TransferPhase.Released:
-                _tray.ShowBalloon("SafeUpload: envio concluído",
-                    $"{fileName} foi analisado e enviado ao destino. SHA-256: {transfer.PublishedSha256Hex ?? "indisponível"}");
+                var released = StagedPublicationPresentation.Released(fileName, transfer);
+                _tray.ShowBalloon(released.Title, released.Message);
                 break;
             case TransferPhase.Retained:
                 _tray.ShowBalloon("SafeUpload: envio pendente",

@@ -77,7 +77,8 @@ public sealed record TransferNotification(
     InspectionFailureKind? InspectionFailure = null,
     StagedBlockReason? BlockReason = null,
     StagedRecoveryAdvice? RecoveryAdvice = null,
-    string? MetadataFailure = null) : AgentNotification
+    string? MetadataFailure = null,
+    AuditEvent? Event = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }

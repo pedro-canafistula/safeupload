@@ -16,7 +16,7 @@ using SafeUpload.Agent.Service.Policies;
 // Component checks do not qualify the installed service, cache ACLs or drive/gate protection.
 internal static class CurrentBackendContract
 {
-    internal static async Task RunAsync()
+    internal static async Task RunAsync(bool functionalAudit = false)
     {
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var token = budget.Token;
@@ -199,6 +199,7 @@ internal static class CurrentBackendContract
         Check("new metadata survives SQL and replay without duplicate identities", freshRead.Length == 8 && freshRead.Count(e => fresh.Any(f => f.EventId == e.GetProperty("eventId").GetGuid())) == 2 &&
             freshRead.Single(e => e.GetProperty("eventId").GetGuid() == newWeb.EventId).GetProperty("destinationPath").GetString() == "https://example.test" &&
             !string.Join("", freshRead.Select(e => e.GetRawText())).Contains("NEW-METADATA-SECRET"));
+        if (functionalAudit) await FunctionalAuditAcceptance.PrepareAsync(agent, target, control, work, Publish, Get, token);
         using var logout = await client.PostAsJsonAsync("auth/logout", new { }, token);
         Check("logout completes", logout.IsSuccessStatusCode);
         using (var loggedOut = await client.GetAsync("painel", token)) Check("logout revokes administrative reads", loggedOut.StatusCode == HttpStatusCode.Unauthorized);

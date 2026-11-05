@@ -1,7 +1,20 @@
+using SafeUpload.Agent.Core.Contracts;
+
 namespace SafeUpload.Agent.App.Notifications;
 
 internal static class StagedPublicationPresentation
 {
+    internal static (string Title, string Message) Released(string fileName, TransferNotification notice)
+    {
+        bool findings = notice.Event?.Categories.Count > 0 || notice.Findings?.Count > 0;
+        bool incomplete = notice.Event?.NotInspectedReason is not null;
+        return (findings || incomplete ? "SafeUpload: envio concluído com alerta" : "SafeUpload: envio concluído",
+            $"{fileName} foi enviado ao destino. " +
+            (incomplete ? "A inspeção não foi concluída; o envio foi autorizado. " :
+             findings ? "Foram detectados dados sensíveis; o envio foi autorizado. " : "Análise concluída. ") +
+            $"SHA-256: {notice.PublishedSha256Hex ?? "indisponível"}");
+    }
+
     internal static string Busy(string fileName) =>
         $"{fileName}: o arquivo está aguardando envio porque outro programa está usando o destino. " +
         "Feche o programa e salve novamente. Esta versão continua guardada localmente.";

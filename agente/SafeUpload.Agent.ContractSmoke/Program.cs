@@ -11,6 +11,12 @@ using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
+if (args.Length == 3 && args[0] == "--functional-audit")
+{
+    await FunctionalAuditAcceptance.ContinueAsync(args[1], args[2]);
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--verify-service-peer")
 {
     await ServicePeerProbe.RunAsync(args[1]);
@@ -23,9 +29,9 @@ if (args.Length == 3 && args[0] == "--console-service-fixture")
     return;
 }
 
-if (args.Length == 1 && args[0] == "--current-api")
+if (args.Length == 1 && args[0] is "--current-api" or "--current-api-functional")
 {
-    await CurrentBackendContract.RunAsync();
+    await CurrentBackendContract.RunAsync(args[0] == "--current-api-functional");
     return;
 }
 

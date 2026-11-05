@@ -1171,7 +1171,7 @@ public sealed class DriveFileSystem : FileSystemBase
         // A file may have acquired its final Office name since inspection. Report the destination actually attempted.
         decision = decision with { DrivePath = VirtualPath(node), FileName = node.Name };
         _observer.OnPublication(new DrivePublication(audit?.Event.EventId ?? Guid.NewGuid(), decision, target, succeeded,
-            AuditJournaled: true));
+            AuditJournaled: true, Event: audit?.Event));
     }
 
     private static void ApplyMetadata(Node node, string path)

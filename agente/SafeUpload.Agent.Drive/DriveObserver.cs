@@ -25,7 +25,7 @@ public sealed record DriveDecision(
 
 /// <summary>An actual publication attempt. Its event id is separate from the blocked version/justification id.</summary>
 public sealed record DrivePublication(Guid EventId, DriveDecision Decision, string DestinationPath, bool Succeeded,
-    bool AuditJournaled = false);
+    bool AuditJournaled = false, AuditEvent? Event = null);
 
 /// <summary>Connects a drive to the rest of the agent (sessions, notifications, audit).</summary>
 public interface IDriveObserver

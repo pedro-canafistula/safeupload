@@ -277,9 +277,10 @@ public sealed class DriveService : BackgroundService
             decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
         if (alert && approve?.Invoke(DriveApprovalKind.Audit) == true) return;
 
+        AuditEvent? audit = null;
         if (decision.Operation is { } operation && decision.Result is { } result)
         {
-            await _inspection.RecordTransferOutcomeAsync(operation,
+            audit = await _inspection.RecordTransferOutcomeAsync(operation,
                 result, Verdict.Blocked, result.Reason, CancellationToken.None, eventId: decision.VersionId,
                 auditUserName: writer?.UserName).ConfigureAwait(false);
         }
@@ -293,7 +294,7 @@ public sealed class DriveService : BackgroundService
         // The blocked version stays visible to the user on the drive, at DrivePath.
         var notification = new TransferNotification(decision.VersionId, decision.DrivePath, TransferPhase.Blocked,
             decision.Result?.Findings ?? [], overrideAllowed, HandbackPath: decision.DrivePath, HandbackVerified: true,
-            SnapshotSha256Hex: Sha256(decision.Snapshot), InspectionFailure: decision.Result?.FailureKind);
+            SnapshotSha256Hex: Sha256(decision.Snapshot), InspectionFailure: decision.Result?.FailureKind, Event: audit);
         if (writer?.SessionId is null || writer.UserSid is null)
             _logger.LogWarning("Blocked {File}; no user session to notify", decision.DrivePath);
         _hub.Publish(notification, writer?.SessionId, writer?.UserSid);
@@ -319,23 +320,33 @@ public sealed class DriveService : BackgroundService
         }
     }
 
-    internal Task HandlePublicationAsync(DrivePublication publication)
+    internal async Task HandlePublicationAsync(DrivePublication publication)
     {
-        if (publication.AuditJournaled) return Task.CompletedTask; // The filesystem owns durable delivery/replay.
         var decision = publication.Decision;
         if (decision.Operation is not { } operation || decision.Result is not { } result ||
             (publication.Succeeded && decision.FileName.StartsWith("~$", StringComparison.Ordinal)))
-            return Task.CompletedTask;
+            return;
         // Alertar and justified findings become Approved only after the copy. Preserve the initial blocked event,
         // which remains the justification's reference: a later outcome gets a separate immutable event id.
         var verdict = publication.Succeeded
             ? result.IsBlocked ? Verdict.Approved : result.Verdict
             : Verdict.Blocked;
         var reason = publication.Succeeded ? result.Reason : "publication_failed";
-        return _inspection.RecordTransferOutcomeAsync(
-            operation with { DestinationPath = publication.DestinationPath, FileName = decision.FileName },
-            result, verdict, reason, CancellationToken.None, eventId: publication.EventId,
-            auditUserName: decision.Writer?.UserName);
+        // The filesystem owns durable delivery/replay. Reuse its immutable event for the UI;
+        // recording another event here would race the journal and change its timestamp/hash.
+        var audit = publication.AuditJournaled ? publication.Event :
+            await _inspection.RecordTransferOutcomeAsync(
+                operation with { DestinationPath = publication.DestinationPath, FileName = decision.FileName },
+                result, verdict, reason, CancellationToken.None, eventId: publication.EventId,
+                auditUserName: decision.Writer?.UserName).ConfigureAwait(false);
+        if (audit is null || audit.EventId != publication.EventId) return;
+        if (publication.Succeeded && audit.PublishedSha256Hex is null) return;
+        // Never broadcast a file outcome to other logged-on users when its owner is unknown.
+        if (decision.Writer is not { SessionId: { } session, UserSid: { } sid }) return;
+        _hub.Publish(new TransferNotification(decision.VersionId, decision.DrivePath,
+            publication.Succeeded ? TransferPhase.Released : TransferPhase.Retained,
+            result.Findings, PublishedSha256Hex: audit.PublishedSha256Hex,
+            Event: audit), session, sid);
     }
 
     /// <summary>SYSTEM and administrators control the folder; users may only read it (or nothing).</summary>
