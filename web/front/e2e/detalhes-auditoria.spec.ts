@@ -9,6 +9,35 @@ const eventos = ['Blocked', 'Approved', 'AllowedWithoutInspection'].map((verdict
   elapsedMs: 0, notInspectedReason: null, maskedSnippets: ['TRECHO_QUE_NAO_DEVE_APARECER']
 }));
 
+for (const scenario of [
+  { verdict: 'Approved', categories: ['Cpf'], reason: null, label: 'Aprovado com achados', description: 'com achados nas categorias indicadas' },
+  { verdict: 'Blocked', categories: [], reason: 'parse_error:InvalidDataException', label: 'Inconclusivo / bloqueado', description: 'inspeção não pôde ser concluída' },
+  { verdict: 'Approved', categories: [], reason: 'inspection_timeout', label: 'Inspeção inconclusiva / liberado', description: 'liberação com inspeção inconclusiva' },
+  { verdict: 'Approved', categories: ['Cpf'], reason: 'publication_outcome_unknown', label: 'Não confirmado', description: 'resultado da publicação não foi confirmado' },
+  { verdict: 'Retained', categories: [], reason: 'publication_outcome_unknown', label: 'Não confirmado apesar de retido', description: 'resultado da publicação não foi confirmado' },
+  { verdict: 'Approved', categories: ['Cpf'], reason: 'publication_failed', label: 'Pendente', description: 'publicação falhou e permanece pendente' }
+]) {
+  test(`auditoria preserva ressalva: ${scenario.label}`, async ({ page }) => {
+    await page.route('**/api/auditoria**', route => route.fulfill({ json: {
+      resumo, endpoint: '', eventos: [{ ...eventos[0], verdict: scenario.verdict,
+        categories: scenario.categories, notInspectedReason: scenario.reason }]
+    } }));
+    await page.goto('/auditoria');
+    const badge = page.locator('app-event-table .pill');
+    await expect(badge).toHaveText(scenario.reason === 'publication_outcome_unknown' ? 'Não confirmado' : scenario.label);
+    await expect(badge).toHaveClass(/warn/);
+    await expect(badge).not.toHaveClass(/\bok\b/);
+    await page.getByRole('button', { name: 'Detalhes de arquivo-0.txt', exact: true }).click();
+    const detail = page.getByRole('region', { name: 'Detalhes de arquivo-0.txt', exact: true });
+    await expect(detail).toContainText(scenario.description);
+    await expect(detail).not.toContainText('não encontraram ocorrências');
+    if (scenario.reason === 'publication_outcome_unknown') {
+      await expect(detail).not.toContainText('Nenhum conteúdo foi liberado');
+    }
+    await expect(page.getByText('TRECHO_QUE_NAO_DEVE_APARECER')).toHaveCount(0);
+  });
+}
+
 test('auditoria filtra eventos reais e exporta CSV sem fórmulas ou trechos sensíveis', async ({ page }) => {
   const clipboard = { ...eventos[0], eventId: 'clipboard-export', channel: 'Clipboard',
     userName: '=1+1', fileName: '', extension: '', verdict: 'AllowedWithoutInspection',
