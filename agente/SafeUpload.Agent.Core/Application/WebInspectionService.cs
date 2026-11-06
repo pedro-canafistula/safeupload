@@ -93,7 +93,7 @@ public sealed class WebInspectionService
     private readonly string _endpointId;
     private readonly string _userName;
     private readonly TimeProvider _clock;
-    private readonly Dictionary<string, DateTimeOffset> _recentTextBlocks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _recentTextBlocks = new(StringComparer.Ordinal);
     private readonly Lock _repeatGate = new();
     private CachedPolicy? _policy;
 
@@ -212,11 +212,11 @@ public sealed class WebInspectionService
             site,
             string.Join(',', found.Select(static f => $"{f.Category}:{f.MaskedSnippet}").Distinct().Order(StringComparer.Ordinal)));
 
-        var now = _clock.GetUtcNow();
+        long now = _clock.GetTimestamp();
 
         lock (_repeatGate)
         {
-            if (_recentTextBlocks.TryGetValue(key, out var last) && now - last < RepeatWindow)
+            if (_recentTextBlocks.TryGetValue(key, out var last) && _clock.GetElapsedTime(last, now) < RepeatWindow)
             {
                 return true;
             }
@@ -244,16 +244,16 @@ public sealed class WebInspectionService
 
     private async Task<Policy> LoadPolicyAsync(CancellationToken cancellationToken)
     {
-        var now = _clock.GetUtcNow();
+        long now = _clock.GetTimestamp();
 
-        if (_policy is { } cached && cached.ExpiresAt > now)
+        if (_policy is { } cached && _clock.GetElapsedTime(cached.LoadedAt, now) < PolicyLifetime)
         {
             return cached.Policy;
         }
 
         // Duas requisições simultâneas podem carregar duas vezes; não faz mal.
         var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        _policy = new CachedPolicy(policy, now + PolicyLifetime);
+        _policy = new CachedPolicy(policy, now);
         return policy;
     }
 
@@ -381,5 +381,5 @@ public sealed class WebInspectionService
     private static string FileNameOnly(string? fileName)
         => AuditMetadata.FileNameOnly(fileName);
 
-    private sealed record CachedPolicy(Policy Policy, DateTimeOffset ExpiresAt);
+    private sealed record CachedPolicy(Policy Policy, long LoadedAt);
 }

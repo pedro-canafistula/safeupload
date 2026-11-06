@@ -252,10 +252,13 @@ public sealed class WebInspectionServiceTests : IDisposable
     private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
     {
         private DateTimeOffset _agora = inicio;
+        private long _elapsed;
 
-        public void Avancar(TimeSpan intervalo) => _agora += intervalo;
+        public void Avancar(TimeSpan intervalo) { _agora += intervalo; _elapsed += intervalo.Ticks; }
 
         public override DateTimeOffset GetUtcNow() => _agora;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _elapsed;
     }
 
     /// <summary>

@@ -58,6 +58,51 @@ public sealed class WebAuditConsistencyTests
         Assert.Equal(2, (await queue.ReadPendingAsync(10, CancellationToken.None)).Count);
     }
 
+    [Fact]
+    public async Task Moving_wall_clock_back_does_not_extend_the_policy_cache()
+    {
+        using var workspace = new TestWorkspace();
+        var store = new Policies { Current = LocalPolicyStore.CreateDefault() with { Version = 7 } };
+        var clock = new Clock();
+        var service = new WebInspectionService(store, new LocalQueueAuditSink(workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), clock: clock) { PolicyLifetime = TimeSpan.FromSeconds(10) };
+        var upload = new WebUpload("https://example.test", "browser", 7, []);
+        Assert.Equal(7, (await service.InspectAsync(upload, CancellationToken.None)).PolicyVersion);
+        store.Current = store.Current with { Version = 8 };
+        clock.Advance(TimeSpan.FromSeconds(11));
+        clock.AdjustWallClock(TimeSpan.FromHours(-2));
+
+        Assert.Equal(8, (await service.InspectAsync(upload, CancellationToken.None)).PolicyVersion);
+    }
+
+    [Fact]
+    public async Task Moving_wall_clock_back_does_not_extend_text_event_suppression()
+    {
+        using var workspace = new TestWorkspace();
+        var store = new Policies { Current = LocalPolicyStore.CreateDefault() };
+        var clock = new Clock();
+        var service = new WebInspectionService(store, new LocalQueueAuditSink(workspace.QueueFile),
+            ExtractorRegistry.CreateDefault(), clock: clock);
+        var upload = new WebUpload("https://example.test", "browser", 7,
+            [new WebUploadPart(null, Encoding.UTF8.GetBytes("meu cpf 529.982.247-25"), false)]);
+        Assert.Single((await service.InspectAsync(upload, CancellationToken.None)).Records);
+        clock.Advance(TimeSpan.FromSeconds(61));
+        clock.AdjustWallClock(TimeSpan.FromHours(-2));
+
+        Assert.Single((await service.InspectAsync(upload, CancellationToken.None)).Records);
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        private DateTimeOffset _utc = DateTimeOffset.UnixEpoch;
+        private long _elapsed;
+        public override DateTimeOffset GetUtcNow() => _utc;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _elapsed;
+        public void Advance(TimeSpan time) { _elapsed += time.Ticks; _utc += time; }
+        public void AdjustWallClock(TimeSpan time) => _utc += time;
+    }
+
     private sealed class Policies : IPolicyStore
     {
         public required Policy Current { get; set; }
