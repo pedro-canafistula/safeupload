@@ -23,7 +23,11 @@ public sealed class TestWorkspace : IDisposable
     /// <summary>Cria a pasta temporária.</summary>
     public TestWorkspace()
     {
-        Root = Path.Combine(Path.GetTempPath(), "safeupload-testes", Guid.NewGuid().ToString("N"));
+        // Random hexadecimal runs can accidentally match a CPF/card in audit metadata.
+        // Keep uniqueness and length, but use a bijective alphabetic encoding for fixture paths.
+        string id = string.Concat(Guid.NewGuid().ToString("N")
+            .Select(c => c is >= '0' and <= '9' ? (char)('g' + c - '0') : c));
+        Root = Path.Combine(Path.GetTempPath(), "safeupload-testes", id);
         Directory.CreateDirectory(Root);
     }
 
