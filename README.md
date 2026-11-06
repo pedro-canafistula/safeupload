@@ -104,8 +104,8 @@ O roteiro cria diretório/banco exclusivos em loopback e controla seus próprios
 
 ## Limites desta entrega
 
-- A assinatura do heartbeat não autentica automaticamente política, auditoria e todas as rotas administrativas. Replay, revogação/rotação e autorização completa continuam em fechamento conjunto. O protótipo não está qualificado para exposição pública.
-- `/painel`, `/auditoria` e `/endpoints` exigem papel ADMIN ou ROOT na configuração atual; isso não implica proteção equivalente de todos os endpoints administrativos.
+- A assinatura do heartbeat não autentica automaticamente política e auditoria. Replay, revogação/rotação e o ciclo completo do dispositivo continuam em fechamento conjunto. O protótipo não está qualificado para exposição pública.
+- `/painel`, `/auditoria`, `/endpoints`, `/admin/**`, `/auth/normalregister/**` e a publicação em `/politicas` exigem sessão ADMIN ou ROOT: sem sessão, 401; perfil sem permissão, 403. O primeiro cadastro mantém o fluxo público `/auth/firstregister`, com a restrição existente de ainda não haver usuários. A autenticação de dispositivo permanece separada da sessão administrativa.
 - O publicador por IP não é uma gestão completa de políticas, escopos e canais. Configurações e exportação de relatórios ainda têm funções pendentes.
 - Justificativas dependem da autorização da política e do canal; fila e recibo de auditoria não representam liberação automática.
 - Retenção, orçamento de disco e operação prolongada continuam pendentes; diagnóstico da fila não implementa limpeza automática.

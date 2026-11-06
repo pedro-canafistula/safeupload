@@ -53,6 +53,8 @@ public class SecurityConfig {
                 ).permitAll()
                 .requestMatchers("/auth/me", "/auth/logout").authenticated()
                 .requestMatchers("/painel", "/auditoria", "/endpoints").hasAnyRole("ADMIN", "ROOT")
+                .requestMatchers("/admin/**", "/auth/normalregister/**", "/politicas", "/politicas/**")
+                    .hasAnyRole("ADMIN", "ROOT")
                 .anyRequest().permitAll()
             )
             .formLogin(form -> form.disable())
