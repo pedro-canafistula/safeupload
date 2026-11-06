@@ -37,7 +37,8 @@
             <span class="checkmark">✓</span><span class="rule-copy"><strong>{{ regra.nome }}</strong><small>{{ regra.descricao }}</small></span>
           </label></div>
           <div class="condition-control"><strong>Como os dados selecionados devem ser combinados?</strong>
-            <div class="segmented-control"><button type="button" [class.active]="combinacao === 'any'" (click)="combinacao = 'any'">Qualquer um (OU)</button><button type="button" [class.active]="combinacao === 'all'" (click)="combinacao = 'all'">Todos juntos (E)</button></div>
+            <div class="segmented-control"><button type="button" class="active" aria-pressed="true">Qualquer um (OU)</button><button type="button" disabled aria-describedby="condition-support">Todos juntos (E)</button></div>
+            <p id="condition-support" class="field-hint">A publicação atual aplica a ação ao encontrar qualquer categoria selecionada. A combinação “Todos juntos” ainda não está disponível.</p>
           </div>
           <div class="condition-readout"><small>LEITURA DA CONDIÇÃO</small><strong>{{ resumoCondicao }}</strong></div>
         </div>
