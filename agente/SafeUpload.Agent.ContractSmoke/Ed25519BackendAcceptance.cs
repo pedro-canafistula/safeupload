@@ -36,7 +36,25 @@ internal static class Ed25519BackendAcceptance
         }
         if (phase == "enroll")
         {
-            using var admin = new HttpClient { BaseAddress = new Uri(server.GetLeftPart(UriPartial.Authority)), Timeout = TimeSpan.FromSeconds(5) };
+            using var admin = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+                { BaseAddress = new Uri(server.GetLeftPart(UriPartial.Authority)), Timeout = TimeSpan.FromSeconds(5) };
+            using var anonymousToken = await admin.PostAsync("/admin/token", null);
+            Check(anonymousToken.StatusCode == System.Net.HttpStatusCode.Unauthorized, "anonymous token issuance refused");
+            using var decision = await admin.GetAsync("/auth/decision");
+            decision.EnsureSuccessStatusCode();
+            using var decisionDocument = JsonDocument.Parse(await decision.Content.ReadAsStringAsync());
+            Check(!decisionDocument.RootElement.GetProperty("existemUsuarios").GetBoolean(), "disposable administrator fixture is empty");
+            var address = new { cep = "70000-000", logradouro = "Rua Sintetica", numero = 1, complemento = "", bairro = "Teste", cidade = "Brasilia", estado = "DF" };
+            const string email = "ed25519-contract@example.com", password = "ed25519-contract-123";
+            using var registration = await admin.PostAsJsonAsync("/auth/firstregister", new {
+                username = "ed25519-contract", email, cpf = "52998224725", senha = password,
+                nome_completo = "Teste Ed25519", data_nascimento = "1990-01-01", endereco = address,
+                empresa = new { razao_social = "Empresa Ed25519 Sintetica", nome_fantasia = "Teste",
+                    cnpj = "11222333000181", email_contato = email, telefone_contato = "61999999999", endereco = address }
+            });
+            Check(registration.StatusCode == System.Net.HttpStatusCode.Created, "synthetic administrator created through first registration");
+            using var login = await admin.PostAsJsonAsync("/auth/login", new { email, senha = password });
+            login.EnsureSuccessStatusCode();
             using var tokenResponse = await admin.PostAsync("/admin/token", null);
             tokenResponse.EnsureSuccessStatusCode();
             using var tokenDocument = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
