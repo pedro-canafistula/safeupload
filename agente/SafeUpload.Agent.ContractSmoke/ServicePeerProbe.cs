@@ -31,6 +31,13 @@ internal static class ServicePeerProbe
                 using var effective = WindowsIdentity.GetCurrent();
                 if (effective.IsSystem || new WindowsPrincipal(effective).IsInRole(WindowsBuiltInRole.Administrator))
                     throw new InvalidOperationException("Probe must have no effective administrator membership.");
+                string uiBinary = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(expectedImage)!, "..", "ui", "SafeUpload.Agent.App.dll"));
+                using (File.OpenRead(expectedImage)) { }
+                using (File.OpenRead(uiBinary)) { }
+                bool writeDenied = false;
+                try { using var forbidden = new FileStream(uiBinary, FileMode.Open, FileAccess.Write, FileShare.ReadWrite); }
+                catch (UnauthorizedAccessException) { writeDenied = true; }
+                if (!writeDenied) throw new InvalidOperationException("An ordinary user can modify the installed UI binary.");
                 using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 using var pipe = new NamedPipeClientStream(".", NotificationProtocol.PipeName, PipeDirection.In, PipeOptions.Asynchronous);
                 await pipe.ConnectAsync(budget.Token);
@@ -42,7 +49,7 @@ internal static class ServicePeerProbe
                 using var reader = new StreamReader(pipe, NotificationProtocol.Encoding);
                 var first = NotificationProtocol.Deserialize((await reader.ReadLineAsync(budget.Token))!);
                 if (first is not StatusNotification) throw new InvalidOperationException("Verified service did not send status.");
-                Console.WriteLine("PeerVerified=True;EffectiveAdministrator=False;WrongImageRejected=True;ContentSent=False");
+                Console.WriteLine("PeerVerified=True;EffectiveAdministrator=False;WrongImageRejected=True;BinariesReadable=True;BinaryWriteDenied=True;ContentSent=False");
             });
         }
     }

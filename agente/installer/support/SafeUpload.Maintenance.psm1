@@ -1,6 +1,21 @@
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 
+function Set-SafeUploadPayloadAccess {
+    param([string]$Path, [string]$OwnerRoot, [switch]$Recurse)
+    # Same-volume moves retain staging ACLs. Seal private copies, then inherit
+    # the installed parent's read-only binary access when activating them.
+    $owner = (Get-Acl -LiteralPath $OwnerRoot).GetOwner([Security.Principal.SecurityIdentifier]).Value
+    $arguments = @($Path, '/setowner', ('*' + $owner), '/Q')
+    if ($Recurse) { $arguments += '/T' }
+    & (Join-Path $env:SystemRoot 'System32/icacls.exe') @arguments | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not set the payload owner.' }
+    $arguments = @($Path, '/reset', '/Q')
+    if ($Recurse) { $arguments += '/T' }
+    & (Join-Path $env:SystemRoot 'System32/icacls.exe') @arguments | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inherit payload access from its trusted parent.' }
+}
+
 function Get-SafeUploadManagedPayload {
     param([Parameter(Mandatory)][string]$Root)
     $manifest = Test-SafeUploadPayload -Root $Root
@@ -62,6 +77,7 @@ function Copy-SafeUploadMaintenancePayload {
         [IO.File]::Copy((Join-Path $Source $file.path), $target, $false)
     }
     [IO.File]::Copy((Join-Path $Source 'payload-manifest.json'), (Join-Path $destinationRoot 'payload-manifest.json'), $false)
+    Set-SafeUploadPayloadAccess $destinationRoot $destinationRoot -Recurse
     $copied = Get-SafeUploadMaintenancePayload $destinationRoot
     if ($copied.commit -ne $manifest.commit -or $copied.version -ne $manifest.version) { throw 'Payload changed during staging.' }
     return $copied
@@ -110,6 +126,7 @@ function Set-SafeUploadMaintenancePayload {
             -not $saved.StartsWith($work + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe maintenance move.' }
         if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $saved }
         Move-Item -LiteralPath (Join-Path $activation $name) -Destination $target
+        Set-SafeUploadPayloadAccess $target $install -Recurse
     }
     foreach ($name in @('LICENSE.txt', 'LEIA-ME.txt', 'payload-manifest.json')) {
         $target = Join-Path $install $name
@@ -119,6 +136,7 @@ function Set-SafeUploadMaintenancePayload {
         }
         if (Test-Path -LiteralPath (Join-Path $activation $name)) {
             Move-Item -LiteralPath (Join-Path $activation $name) -Destination $target
+            Set-SafeUploadPayloadAccess $target $install
         }
     }
     return Get-SafeUploadMaintenancePayload $install

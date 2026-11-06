@@ -179,6 +179,8 @@ try {
     Require (@($receipts | Where-Object state -eq 'rolled-back').Count -eq 2) 'Failed startup did not record automatic rollback.'
     $finalUpgrade=Run-Maintenance 'update-after-recovery' @('-PackagePath',('"'+$candidate+'"'))
     Check-Preserved $candidateManifest.version
+    & dotnet $peerProbe --verify-service-peer (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') *> (Join-Path $ResultsDirectory 'service-peer-after-update.log')
+    Require ($LASTEXITCODE -eq 0) 'Updated service/UI binaries are not safely accessible to an ordinary user.'
     $result.applicationMaintenance=@{update=$upgrade;rollback=$rollback;startupFailureRecovered=$true;finalUpdate=$finalUpgrade}
     $result.steps += 'real service updated, explicitly rolled back, recovered automatically after invalid startup, then updated again; pending event and policy preserved'
     $sentinel = Join-Path $dataRoot 'installer-preservation-test.txt'

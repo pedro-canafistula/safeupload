@@ -43,6 +43,14 @@ try{
  }
  $live=Join-Path $fixture live;$null=Copy-SafeUploadMaintenancePayload $old $live
  $work=Join-Path $fixture transaction;New-Item -ItemType Directory -Path $work|Out-Null
+ # Model the production split: public read-only application, private maintenance.
+ $users=[Security.Principal.SecurityIdentifier]::new('S-1-5-32-545')
+ $liveAcl=Get-Acl $live
+ $liveAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($users,'ReadAndExecute','ContainerInherit,ObjectInherit','None','Allow'))
+ Set-Acl -LiteralPath $live -AclObject $liveAcl
+ $workAcl=Get-Acl $work;$workAcl.SetAccessRuleProtection($true,$false)
+ $workAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.WindowsIdentity]::GetCurrent().User,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
+ Set-Acl -LiteralPath $work -AclObject $workAcl
  Case 'Activation changes binaries while preserving files outside managed directories' {
   [IO.File]::WriteAllText((Join-Path $live unins000.exe),'original uninstaller')
   $result=Set-SafeUploadMaintenancePayload $new $live $work
@@ -54,6 +62,15 @@ try{
   $result=Set-SafeUploadMaintenancePayload $old $live $work
   Require ($result.version -eq '1.0.0' -and -not(Test-Path (Join-Path $live 'service/new-dependency.dll')))
   Require ([IO.File]::ReadAllText((Join-Path $live 'service/SafeUpload.Agent.Service.exe')) -eq '1.0.0:service/SafeUpload.Agent.Service.exe')
+ }
+ Case 'Updated binaries retain ordinary-user read access and the installation owner' {
+  $null=Set-SafeUploadMaintenancePayload $new $live $work
+  $binary=Join-Path $live 'ui/SafeUpload.Agent.App.dll';$acl=Get-Acl $binary
+  $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|Where-Object{$_.IdentityReference.Value -eq $users.Value -and $_.AccessControlType -eq 'Allow'})
+  Require (@($rules|Where-Object{($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadData) -ne 0}).Count -gt 0)
+  Require (@($rules|Where-Object{($_.FileSystemRights -band ([Security.AccessControl.FileSystemRights]::WriteData -bor [Security.AccessControl.FileSystemRights]::ChangePermissions)) -ne 0}).Count -eq 0)
+  Require ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -eq (Get-Acl $live).GetOwner([Security.Principal.SecurityIdentifier]).Value)
+  $null=Set-SafeUploadMaintenancePayload $old $live $work
  }
  Case 'Partially activated trees can be restored after a locked file is released' {
   $held=[IO.FileStream]::new((Join-Path $live 'ui/SafeUpload.Agent.App.exe'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
