@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.17',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.18',
     [Parameter(Mandatory)][ValidateScript({Test-Path -LiteralPath $_ -PathType Leaf})][string]$CompilerPath,
     [switch]$PayloadOnly,
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../../artifacts/installer'),
