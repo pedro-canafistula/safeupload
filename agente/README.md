@@ -277,6 +277,8 @@ Os clientes de política, auditoria e heartbeat não seguem redirecionamentos HT
 
 No canal web, `AuditOnly` libera o envio com achados e registra `Approved` com as categorias, preservando a distinção entre alerta e bloqueio real. O agrupamento de textos repetidos considera a política efetiva: a primeira ocorrência após mudar a regra gera um novo evento. Seus prazos e o cache web de política medem tempo decorrido, sem prolongar a validade ao ajustar a hora do Windows. Registros antigos não são reescritos.
 
+No clipboard, falha ou ausência de resposta à classificação invalida o estado lembrado do canal. Antes de ler e enviar a próxima cópia, o App consulta novamente `state`, sem texto; um serviço reiniciado com o canal Off não recebe essa cópia por causa do estado anterior. A regra existente de liberar em falha e a compatibilidade com uma resposta antiga válida sem `enabled` permanecem.
+
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
 projeto (ver `Interception:Mode` acima, mesma filosofia). A assinatura do heartbeat não autentica automaticamente política e auditoria; o fechamento dessas rotas e do ciclo de chaves permanece pendente com o backend.
 

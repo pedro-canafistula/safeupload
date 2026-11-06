@@ -79,13 +79,27 @@ public class ClipboardChannelGateTests
     }
 
     [Fact]
-    public void Classificacao_sem_resposta_nao_muda_o_que_se_sabia()
+    public void Classificacao_sem_resposta_exige_nova_consulta_antes_do_proximo_texto()
     {
         var porta = new ClipboardChannelGate();
         porta.OnStateResponse(Estado(true));
 
         porta.OnClassifyResponse(null);
 
-        Assert.False(porta.MustAskFirst);
+        Assert.True(porta.MustAskFirst);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Recuperacao_reconfirma_o_estado_atual_sem_reutilizar_o_anterior(bool ligado)
+    {
+        var porta = new ClipboardChannelGate();
+        porta.OnStateResponse(Estado(true));
+        porta.OnClassifyResponse(null);
+
+        Assert.True(porta.MustAskFirst);
+        Assert.Equal(ligado, porta.OnStateResponse(Estado(ligado)));
+        Assert.Equal(!ligado, porta.MustAskFirst);
     }
 }
