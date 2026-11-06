@@ -17,16 +17,24 @@ public sealed class QueueRowViewModel
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
 
+        EventId = auditEvent.EventId;
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM HH:mm:ss");
         FileName = AuditSubject.Describe(auditEvent);
-        Verdict = VerdictLabels.Describe(auditEvent.Verdict);
+        Verdict = auditEvent.NotInspectedReason == "publication_outcome_unknown" ? "Não confirmado" :
+            auditEvent.NotInspectedReason == "publication_failed" ? "Publicação pendente" :
+            auditEvent.Verdict == Core.Domain.Verdict.Blocked && ReasonLabels.IsInspectionFailure(auditEvent.NotInspectedReason) ? "Inconclusivo / bloqueado" :
+            auditEvent.Verdict == Core.Domain.Verdict.Approved && ReasonLabels.IsInspectionFailure(auditEvent.NotInspectedReason) ?
+                auditEvent.PublishedSha256Hex is not null ? "Publicado com ressalva" : "Aprovado / sem inspeção" :
+            auditEvent.Verdict == Core.Domain.Verdict.Approved && auditEvent.Categories.Count > 0 ?
+                auditEvent.PublishedSha256Hex is not null ? "Publicado com alerta" : "Aprovado com achados" :
+            auditEvent.Verdict == Core.Domain.Verdict.Approved && auditEvent.PublishedSha256Hex is not null ? "Publicado" : VerdictLabels.Describe(auditEvent.Verdict);
         Categories = auditEvent.Categories.Count == 0
             ? "—"
             : string.Join(", ", auditEvent.Categories.Select(CategoryLabels.Describe));
         MaskedSnippets = auditEvent.MaskedSnippets.Count == 0
             ? "—"
-            : string.Join("   ", auditEvent.MaskedSnippets);
-        Reason = auditEvent.NotInspectedReason ?? "—";
+            : string.Join("   ", auditEvent.MaskedSnippets.Select(AuditTextPrivacy.Sanitize));
+        Reason = auditEvent.NotInspectedReason is null ? "—" : ReasonLabels.Describe(auditEvent.NotInspectedReason);
         Process = AuditTextPrivacy.Sanitize(auditEvent.ProcessName);
         Destination = AuditTextPrivacy.Sanitize(auditEvent.DestinationPath);
         ElapsedMs = auditEvent.ElapsedMs;
@@ -36,6 +44,7 @@ public sealed class QueueRowViewModel
 
     /// <summary>Momento da decisão, em hora local.</summary>
     public string OccurredAt { get; }
+    public Guid EventId { get; }
 
     /// <summary>Nome do arquivo julgado.</summary>
     public string FileName { get; }
@@ -104,6 +113,11 @@ public static class CategoryLabels
 /// <summary>Explicações dos motivos padronizados de não inspeção.</summary>
 public static class ReasonLabels
 {
+    public static bool IsInspectionFailure(string? reason) => reason is "file_too_large" or "unsupported_format" or
+        "inspection_timeout" or "inspection_limit" or "not_enough_staging_space" or
+        "archive_encrypted" or "archive_unsupported_member" or "archive_unsupported_structure" or "archive_7z_unavailable" ||
+        reason?.StartsWith("parse_error:", StringComparison.Ordinal) == true;
+
     /// <summary>
     /// Traduz o motivo técnico para uma frase legível. Os códigos continuam no
     /// log, porque é o que o Centro de Administração vai agregar; a tradução
@@ -112,13 +126,21 @@ public static class ReasonLabels
     public static string Describe(string? reason) => reason switch
     {
         null => string.Empty,
-        "file_too_large" => "Arquivo acima do limite da política; liberado sem inspeção.",
-        "unsupported_format" => "Formato sem extrator nesta versão; liberado sem inspeção.",
-        "inspection_timeout" => "A inspeção passou do prazo da política; liberado sem inspeção.",
+        "file_too_large" => "Arquivo acima do limite da política; inspeção não concluída.",
+        "unsupported_format" => "Formato sem extrator nesta versão; inspeção não concluída.",
+        "inspection_timeout" => "A inspeção passou do prazo da política; análise inconclusiva.",
+        "inspection_limit" => "O conteúdo excedeu a capacidade de análise completa desta versão.",
+        "not_enough_staging_space" => "Espaço de preparação insuficiente; inspeção não concluída.",
+        "archive_encrypted" => "Arquivo compactado criptografado; inspeção não concluída.",
+        "archive_unsupported_member" => "Um item do arquivo compactado não pôde ser inspecionado.",
+        "archive_unsupported_structure" => "A estrutura do arquivo compactado não permite concluir a inspeção.",
+        "archive_7z_unavailable" => "O componente de leitura de arquivos 7z está indisponível; inspeção não concluída.",
+        "publication_failed" => "Não foi possível concluir a publicação; a versão continua retida localmente.",
         "out_of_scope" => "Destino ou extensão fora do escopo monitorado.",
         "excluded_process" => "Processo excluído pela política; nunca interceptado.",
+        "publication_outcome_unknown" => "Não foi possível confirmar o resultado da publicação após uma interrupção.",
         _ when reason.StartsWith("parse_error:", StringComparison.Ordinal) =>
-            $"Falha ao interpretar o arquivo ({reason["parse_error:".Length..]}); liberado sem inspeção.",
-        _ => reason
+            "Falha ao interpretar o arquivo; inspeção não concluída.",
+        _ => AuditTextPrivacy.Sanitize(reason)
     };
 }

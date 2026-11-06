@@ -11,21 +11,42 @@ using SafeUpload.Agent.Core.Application;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Infrastructure.Extraction;
 
+// Current backend #96 modes are explicit. The historical H2/AgentApi fixture requires --legacy-api.
+
+if (args.Length == 4 && args[0] == "--ed25519-api")
+{
+    await Ed25519BackendAcceptance.RunAsync(args[1], new Uri(args[2]), args[3]);
+    return;
+}
+
+if (args.Length == 3 && args[0] == "--functional-audit")
+{
+    await FunctionalAuditAcceptance.ContinueAsync(args[1], args[2]);
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--verify-service-peer")
 {
     await ServicePeerProbe.RunAsync(args[1]);
     return;
 }
 
-if (args.Length == 3 && args[0] == "--console-service-fixture")
+if (args.Length == 3 && args[0] == "--legacy-console-service-fixture")
 {
+    Console.WriteLine("LegacyBackendContract=True;CurrentBackendQualified=False");
     await ConsoleServiceFixture.RunAsync(args[1], args[2]);
     return;
 }
 
-if (args.Length == 1 && args[0] == "--current-api")
+if (args.Length == 1 && args[0] is "--current-api" or "--current-api-functional")
 {
-    await CurrentBackendContract.RunAsync();
+    await CurrentBackendContract.RunAsync(args[0] == "--current-api-functional");
+    return;
+}
+
+if (args.Length == 5 && args[0] == "--console-offline-probe")
+{
+    await ConsolePolicyAcceptance.RunOfflineAsync(args[1], int.Parse(args[2]), args[3], int.Parse(args[4]));
     return;
 }
 
@@ -50,6 +71,9 @@ if (args.Length > 0 && args[0] == "--protected-cache-probe")
     return;
 }
 
+if (args.Length != 1 || args[0] != "--legacy-api")
+    throw new ArgumentException("Use --current-api, --current-api-functional ou --ed25519-api para o backend #96. O fixture histórico exige --legacy-api e backend anterior ao #96.");
+Console.WriteLine("LegacyBackendContract=True;CurrentBackendQualified=False");
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 var cancellationToken = timeout.Token;
 using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:18080/") };

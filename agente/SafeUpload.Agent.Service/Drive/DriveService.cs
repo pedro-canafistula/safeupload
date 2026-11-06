@@ -8,6 +8,7 @@ using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
 using SafeUpload.Agent.Drive;
 using SafeUpload.Agent.Service.Gate;
+using SafeUpload.Agent.Service.Diagnostics;
 using SafeUpload.Agent.Service.Notifications;
 
 namespace SafeUpload.Agent.Service.Drive;
@@ -30,8 +31,8 @@ public sealed class DriveService : BackgroundService
     private readonly string[] _letters;
     private readonly string _privateRoot;
     private readonly Dictionary<string, DriveMount> _mounts = new(StringComparer.OrdinalIgnoreCase);
-    private Policy? _policy;
-    private string? _lastStatus;
+    private readonly HashSet<Task> _reports = [];
+    private StatusNotification? _lastStatus;
 
     public DriveService(IPolicyStore policyStore, InspectionService inspection, NotificationHub hub,
         DriveJustifications justifications, GateClient gate, IConfiguration configuration, ILogger<DriveService> logger)
@@ -57,10 +58,11 @@ public sealed class DriveService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         DriveLog.Sink = line => _logger.LogInformation("drive: {Line}", line);
-        Directory.CreateDirectory(_privateRoot);
-        Protect(_privateRoot, usersMayRead: false);
+        PublishIssue(DriveProtectionIssue.Starting);
         try
         {
+            Directory.CreateDirectory(_privateRoot);
+            Protect(_privateRoot, usersMayRead: false);
             while (!stoppingToken.IsCancellationRequested)
             {
                 try { await SyncAsync(stoppingToken).ConfigureAwait(false); }
@@ -72,30 +74,78 @@ public sealed class DriveService : BackgroundService
                 catch (OperationCanceledException) { break; }
             }
         }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            PublishIssue(DriveProtectionIssue.ScopeUnavailable);
+            throw;
+        }
         finally
         {
             lock (_mounts)
             {
-                foreach (var mount in _mounts.Values) mount.Dispose();
+                foreach (var mount in _mounts.Values)
+                {
+                    try { mount.Dispose(); }
+                    catch (Exception error) { _logger.LogSafeWarning(error, "Could not finish unmounting a SafeUpload drive."); }
+                }
                 _mounts.Clear();
             }
         }
     }
 
-    private async Task SyncAsync(CancellationToken token)
+    public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        var policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
-        _policy = policy;
+        try
+        {
+            await base.StopAsync(cancellationToken).ConfigureAwait(false);
+            // BackgroundService may return when the caller's deadline expires, while finally still unmounts.
+            // Wait for every producer to stop before taking the final set of queued audit reports.
+            if (ExecuteTask is { } execution)
+                await Task.WhenAny(execution).WaitAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            Task[] reports;
+            lock (_reports) reports = _reports.ToArray();
+            await Task.WhenAll(reports).WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally { PublishIssue(DriveProtectionIssue.Stopped); }
+    }
+
+    internal async Task SyncAsync(CancellationToken token)
+    {
+        Policy? policy = null;
+        var failure = DriveProtectionIssue.PolicyUnavailable;
+        try
+        {
+            policy = await _policyStore.LoadAsync(token).ConfigureAwait(false);
+            policy.EnsureValid();
+            token.ThrowIfCancellationRequested();
+            failure = DriveProtectionIssue.ScopeUnavailable;
+            ApplyScope(policy, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            if (failure != DriveProtectionIssue.PolicyUnavailable &&
+                error is InvalidPolicyException or ArgumentException or NotSupportedException)
+                failure = DriveProtectionIssue.ScopeInvalid;
+            PublishIssue(failure, policy);
+            throw;
+        }
+    }
+
+    private void ApplyScope(Policy policy, CancellationToken token)
+    {
         var folders = policy.MonitoredScopes.DestinationPaths
-            .Select(path => Path.GetFullPath(path).TrimEnd('\\'))
+            .Select(path => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
         // USB sticks get a SafeUpload drive too; the gate refuses direct writes to them.
         var sticks = policy.MonitoredScopes.RemovableDrives ? RemovableRoots() : [];
-        var wanted = folders.Concat(sticks).ToList();
+        var wanted = folders.Concat(sticks).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         // Close the real places before the drives appear.
-        _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
+        var gateResult = _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
+        string[] mounted;
         lock (_mounts)
         {
             foreach (var gone in _mounts.Keys.Where(k => !wanted.Contains(k, StringComparer.OrdinalIgnoreCase)).ToList())
@@ -105,6 +155,7 @@ public sealed class DriveService : BackgroundService
             }
             foreach (var destination in wanted.Where(d => !_mounts.ContainsKey(d)))
             {
+                token.ThrowIfCancellationRequested();
                 var letter = FreeLetter();
                 if (letter is null)
                 {
@@ -130,17 +181,43 @@ public sealed class DriveService : BackgroundService
                     _logger.LogError(error, "Could not mount the SafeUpload drive for {Destination}", destination);
                 }
             }
+            token.ThrowIfCancellationRequested();
+            mounted = AvailableDestinations(_mounts.Select(p => KeyValuePair.Create(p.Key, p.Value.MountPoint)),
+                DriveInfo.GetDrives().Select(d => d.Name));
         }
-        bool active = wanted.Count > 0 && _mounts.Count == wanted.Count;
-        PublishStatus(policy, active);
+        // Mounting may take time. Check the accepted connection again before announcing the observation.
+        if (gateResult == GateApplyResult.Applied)
+            gateResult = _gate.Apply(folders, policy.MonitoredScopes.RemovableDrives, policy.MonitoredScopes.NetworkPaths);
+        token.ThrowIfCancellationRequested();
+        PublishStatus(DriveProtectionSnapshot.Create(policy, gateResult, wanted, mounted));
     }
 
-    private void PublishStatus(Policy policy, bool active)
+    internal static string[] AvailableDestinations(IEnumerable<KeyValuePair<string, string>> mounts,
+        IEnumerable<string> driveRoots)
     {
-        var key = $"{policy.Version}|{policy.ActiveCategories.Count}|{active}|{policy.AuditOnly}";
-        if (key == _lastStatus) return;
-        _lastStatus = key;
-        _hub.Publish(new StatusNotification(policy.Version, policy.ActiveCategories.Count, active, policy.AuditOnly));
+        // Path.TrimEndingDirectorySeparator deliberately preserves the separator of a root ("S:\\").
+        // WinFsp stores mount letters as "S:", so compare both representations without their separator.
+        var available = driveRoots.Select(root => root.TrimEnd('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return mounts.Where(p => available.Contains(p.Value)).Select(p => p.Key).ToArray();
+    }
+
+    private void PublishIssue(DriveProtectionIssue issue, Policy? policy = null)
+    {
+        var status = policy is not null && issue != DriveProtectionIssue.PolicyUnavailable
+            ? new StatusNotification(policy.Version, policy.ActiveCategories.Count, false, policy.AuditOnly)
+            : _lastStatus ?? new StatusNotification(0, 0, false);
+        if (issue == DriveProtectionIssue.PolicyUnavailable)
+            status = status with { PolicyVersion = 0, ActiveCategories = 0 };
+        PublishStatus(status with { ProtectionActive = false,
+            DriveProtection = new DriveProtectionStatus(false, 0, 0, issue) });
+    }
+
+    private void PublishStatus(StatusNotification status)
+    {
+        _lastStatus = status;
+        // The hub retains only successfully recorded status. A failed record must be retried on the next poll.
+        if (_hub.HasRecordedStatus(status)) return;
+        _hub.Publish(status);
     }
 
     /// <summary>Roots of ready removable volumes ("E:\\"), excluding our own drives.</summary>
@@ -180,50 +257,104 @@ public sealed class DriveService : BackgroundService
 
     private void OnDecision(string destination, DriveDecision decision)
     {
-        _ = Task.Run(async () =>
-        {
-            try { await HandleDecisionAsync(destination, decision).ConfigureAwait(false); }
-            catch (Exception error) { _logger.LogError(error, "Could not report the decision for {File}", decision.DrivePath); }
-        });
+        QueueReport(() => HandleDecisionAsync(destination, decision), "Could not report the drive decision.");
     }
 
     private async Task HandleDecisionAsync(string destination, DriveDecision decision)
     {
-        var policy = _policy;
-        var writer = decision.Writer;
-        bool ownerFile = decision.FileName.StartsWith("~$", StringComparison.Ordinal);
-        // Audit mode (the console's "alertar"): a version whose inspection completed with findings goes through and
-        // is audited as an approval with its categories. A failed inspection still blocks (fail closed).
-        bool alert = !decision.Published && policy?.AuditOnly == true &&
-            decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
-        if (decision.Operation is { } operation && decision.Result is { } result && !(ownerFile && decision.Published))
-        {
-            var outcome = decision.Published ? result.Verdict : alert ? Verdict.Approved : Verdict.Blocked;
-            await _inspection.RecordTransferOutcomeAsync(operation,
-                result, outcome, result.Reason, CancellationToken.None, eventId: decision.VersionId,
-                auditUserName: writer?.UserName).ConfigureAwait(false);
-        }
-        if (decision.Published) return;
-
+        if (decision.Approved) return;
+        Policy? policy = null;
+        try { policy = await _policyStore.LoadCurrentAsync(CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception error) { _logger.LogSafeWarning(error, "Current drive policy unavailable; release stays disabled."); }
         DriveMount? mount;
         lock (_mounts) _mounts.TryGetValue(destination, out mount);
-        if (alert)
+        await HandleDecisionAsync(decision, policy,
+            mount is null ? null : kind => mount.FileSystem.Approve(decision.VersionId, kind)).ConfigureAwait(false);
+    }
+
+    internal async Task HandleDecisionAsync(DriveDecision decision, Policy? policy, Func<DriveApprovalKind, bool>? approve)
+    {
+        // Approval is not a transfer outcome. The reconciler reports it after the destination write.
+        if (decision.Approved) return;
+        var writer = decision.Writer;
+        bool samePolicy = policy is not null && decision.Result?.PolicyContentFingerprint is { } binding &&
+            string.Equals(binding, PolicyContentFingerprint.Compute(policy), StringComparison.Ordinal);
+        // Audit mode (the console's "alertar"): a version whose inspection completed with findings goes through and
+        // is audited as an approval with its categories. A failed inspection still blocks (fail closed).
+        bool alert = samePolicy && policy?.AuditOnly == true &&
+            decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
+        if (alert && approve?.Invoke(DriveApprovalKind.Audit) == true) return;
+
+        AuditEvent? audit = null;
+        if (decision.Operation is { } operation && decision.Result is { } result)
         {
-            mount?.FileSystem.Approve(decision.VersionId);
-            return;
+            audit = await _inspection.RecordTransferOutcomeAsync(operation,
+                result, Verdict.Blocked, result.Reason, CancellationToken.None, eventId: decision.VersionId,
+                auditUserName: writer?.UserName).ConfigureAwait(false);
         }
-        bool overrideAllowed = policy?.OverrideAllowed == true && mount is not null &&
+        bool overrideAllowed = samePolicy && policy?.OverrideAllowed == true && approve is not null &&
+            decision.Result is { InScope: true, IsBlocked: true } &&
+            decision.Result.FailureKind != InspectionFailureKind.NotEnoughStagingSpace &&
             writer?.SessionId is not null && writer.UserSid is not null;
         if (overrideAllowed)
             _justifications.Remember(decision.VersionId, writer!.SessionId!.Value, writer.UserSid!,
-                () => mount!.FileSystem.Approve(decision.VersionId));
+                decision.Result!.PolicyContentFingerprint!, () => approve!(DriveApprovalKind.Justification));
         // The blocked version stays visible to the user on the drive, at DrivePath.
         var notification = new TransferNotification(decision.VersionId, decision.DrivePath, TransferPhase.Blocked,
             decision.Result?.Findings ?? [], overrideAllowed, HandbackPath: decision.DrivePath, HandbackVerified: true,
-            SnapshotSha256Hex: Sha256(decision.Snapshot), InspectionFailure: decision.Result?.FailureKind);
+            SnapshotSha256Hex: Sha256(decision.Snapshot), InspectionFailure: decision.Result?.FailureKind, Event: audit);
         if (writer?.SessionId is null || writer.UserSid is null)
             _logger.LogWarning("Blocked {File}; no user session to notify", decision.DrivePath);
         _hub.Publish(notification, writer?.SessionId, writer?.UserSid);
+    }
+
+    private void OnPublication(DrivePublication publication)
+    {
+        QueueReport(() => HandlePublicationAsync(publication), "Could not report the drive publication outcome.");
+    }
+
+    private void QueueReport(Func<Task> report, string failureMessage)
+    {
+        lock (_reports)
+        {
+            var task = Task.Run(async () =>
+            {
+                try { await report().ConfigureAwait(false); }
+                catch (Exception error) { _logger.LogSafeWarning(error, failureMessage); }
+            });
+            _reports.Add(task);
+            _ = task.ContinueWith(completed => { lock (_reports) _reports.Remove(completed); },
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+    }
+
+    internal async Task HandlePublicationAsync(DrivePublication publication)
+    {
+        var decision = publication.Decision;
+        if (decision.Operation is not { } operation || decision.Result is not { } result ||
+            (publication.Succeeded && decision.FileName.StartsWith("~$", StringComparison.Ordinal)))
+            return;
+        // Alertar and justified findings become Approved only after the copy. Preserve the initial blocked event,
+        // which remains the justification's reference: a later outcome gets a separate immutable event id.
+        var verdict = publication.Succeeded
+            ? result.IsBlocked ? Verdict.Approved : result.Verdict
+            : Verdict.Blocked;
+        var reason = publication.Succeeded ? result.Reason : "publication_failed";
+        // The filesystem owns durable delivery/replay. Reuse its immutable event for the UI;
+        // recording another event here would race the journal and change its timestamp/hash.
+        var audit = publication.AuditJournaled ? publication.Event :
+            await _inspection.RecordTransferOutcomeAsync(
+                operation with { DestinationPath = publication.DestinationPath, FileName = decision.FileName },
+                result, verdict, reason, CancellationToken.None, eventId: publication.EventId,
+                auditUserName: decision.Writer?.UserName).ConfigureAwait(false);
+        if (audit is null || audit.EventId != publication.EventId) return;
+        if (publication.Succeeded && audit.PublishedSha256Hex is null) return;
+        // Never broadcast a file outcome to other logged-on users when its owner is unknown.
+        if (decision.Writer is not { SessionId: { } session, UserSid: { } sid }) return;
+        _hub.Publish(new TransferNotification(decision.VersionId, decision.DrivePath,
+            publication.Succeeded ? TransferPhase.Released : TransferPhase.Retained,
+            result.Findings, PublishedSha256Hex: audit.PublishedSha256Hex,
+            Event: audit), session, sid);
     }
 
     /// <summary>SYSTEM and administrators control the folder; users may only read it (or nothing).</summary>
@@ -270,5 +401,6 @@ public sealed class DriveService : BackgroundService
     {
         public DriveWriter? IdentifyWriter(int processId) => owner.IdentifyWriter(processId);
         public void OnDecision(DriveDecision decision) => owner.OnDecision(destination, decision);
+        public void OnPublication(DrivePublication publication) => owner.OnPublication(publication);
     }
 }

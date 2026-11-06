@@ -4,9 +4,13 @@ param(
     [Parameter(Mandatory)][string]$MySqlBase,
     [string]$ResultsDirectory = (Join-Path $PSScriptRoot '../../artifacts/host-identity-backend'),
     [switch]$ContractOnly,
-    [switch]$ConsolePolicyAcceptance
+    [switch]$ConsolePolicyAcceptance,
+    [switch]$LegacyBackend
 )
+# LEGACY before backend #96: /agent/synchronize and unsigned AgentApi heartbeat.
+# Current component acceptance: Test-FunctionalAudit.ps1 and Test-Ed25519Backend.ps1.
 $ErrorActionPreference = 'Stop'
+if (-not $LegacyBackend -or $ContractOnly) { throw 'Fixture legado pré-#96. Use Test-FunctionalAudit.ps1 para o contrato atual; este roteiro não qualifica Ed25519/SYSTEM.' }
 if ($ContractOnly -and $ConsolePolicyAcceptance) { throw 'Choose component contract or installed console policy acceptance.' }
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'This service test is restricted to a disposable GitHub-hosted Windows runner.'
@@ -37,6 +41,18 @@ foreach ($port in @(18080,13316)) {
 $testedBinary = if ($ContractOnly) { $contractDll } else { $serviceExe }
 foreach ($file in @($testedBinary,$contractDll,$jar,$mysql,$mysqld,$mysqlAdmin)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Required test binary missing.' }
+}
+# Register before backend/database preparation so Windows can refresh its event-source
+# configuration before the service's first log entry (CreateEventSource contract).
+# The hosted runner is disposable; never change an existing source's destination.
+if (-not $ContractOnly) {
+    $eventSource = 'SafeUpload.Agent.Service'
+    if (-not [Diagnostics.EventLog]::SourceExists($eventSource)) {
+        [Diagnostics.EventLog]::CreateEventSource($eventSource, 'Application')
+    }
+    if ([Diagnostics.EventLog]::LogNameFromSourceName($eventSource, '.') -ne 'Application') {
+        throw 'Agent event source is registered to an unexpected log.'
+    }
 }
 New-Item -ItemType Directory -Path $results -Force | Out-Null
 $runtime = Join-Path $env:RUNNER_TEMP ('safeupload-host-backend-' + [guid]::NewGuid().ToString('N'))

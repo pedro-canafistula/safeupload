@@ -30,6 +30,7 @@ public sealed class HttpPolicyStore : IPolicyStore
     private static readonly JsonSerializerOptions ReadOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        AllowDuplicateProperties = false,
         Converters = { new JsonStringEnumConverter() }
     };
 

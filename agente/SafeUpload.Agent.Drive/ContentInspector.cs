@@ -14,6 +14,44 @@ internal sealed record InspectionOutcome(bool Publish, string Summary, FileOpera
 /// </summary>
 public sealed class ContentInspector(InspectionService inspection, IPolicyStore policies)
 {
+    internal AuditEvent? CreatePublicationAudit(DriveDecision decision, string target, bool succeeded, Guid id, string? hash = null)
+    {
+        if (decision.Operation is not { } operation || decision.Result is not { } result ||
+            succeeded && decision.FileName.StartsWith("~$", StringComparison.Ordinal)) return null;
+        if (!inspection.SupportsPublicationRecovery) throw new NotSupportedException("Recoverable publication audit is unavailable.");
+        var verdict = succeeded ? result.IsBlocked ? Verdict.Approved : result.Verdict : Verdict.Blocked;
+        return inspection.CreateTransferOutcomeEvent(operation with { DestinationPath = target, FileName = decision.FileName },
+            result, verdict, succeeded ? result.Reason : "publication_failed", id, hash, decision.Writer?.UserName);
+    }
+
+    internal Task WritePublicationAuditAsync(AuditEvent item, bool replay, CancellationToken token) =>
+        inspection.WritePublicationAuditAsync(item, replay, token);
+
+    /// <summary>Rechecks the locally available validated policy; remote composition supplies its background snapshot.</summary>
+    internal async Task<bool> IsPublicationAllowedAsync(DriveDecision decision, string destinationPath,
+        CancellationToken token)
+    {
+        if (decision.Operation is not { } operation || decision.Result is not { PolicyContentFingerprint: { } binding } result)
+            return false;
+        var policy = await policies.LoadCurrentAsync(token).ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        if (!string.Equals(binding, PolicyContentFingerprint.Compute(policy), StringComparison.Ordinal)) return false;
+        operation = operation with { DestinationPath = destinationPath };
+        if (!policy.IsMonitoredDestination(operation)) return false;
+        return decision.ApprovalKind switch
+        {
+            DriveApprovalKind.Inspection => result.Verdict == Verdict.Approved ||
+                (result.Verdict == Verdict.AllowedWithoutInspection &&
+                 ((result.Reason == "excluded_process" && policy.IsExcludedProcess(operation.ProcessName)) ||
+                  (result.Reason == "out_of_scope" && !policy.IsMonitoredExtension(operation.Extension)))),
+            DriveApprovalKind.Audit => policy.AuditOnly && result.InScope && result.IsBlocked &&
+                result.Reason is null && result.Categories.Count > 0,
+            DriveApprovalKind.Justification => policy.OverrideAllowed && result.InScope && result.IsBlocked &&
+                result.FailureKind != InspectionFailureKind.NotEnoughStagingSpace && policy.IsMonitoredExtension(operation.Extension),
+            _ => false
+        };
+    }
+
     internal async Task<InspectionOutcome> InspectAsync(string snapshot, string destinationPath, DestinationKind kind,
         string name, DriveWriter? writer, CancellationToken token)
     {
@@ -23,7 +61,10 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
             var extension = DetectExtension(snapshot, Path.GetExtension(name));
             var effectiveName = Path.GetFileNameWithoutExtension(name) + extension;
             var operation = new FileOperation(snapshot, effectiveName, extension, info.Length, info.LastWriteTimeUtc,
-                writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, kind);
+                writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, kind)
+            {
+                AuditOwnerSid = writer?.UserSid, AuditUserName = writer?.UserName, AuditMetadataVersion = 1
+            };
             var result = await inspection.InspectStagedAsync(operation, token).ConfigureAwait(false);
             var categories = string.Join(",", result.Categories);
             var summary = $"verdict={result.Verdict} type={extension} reason={result.Reason ?? "-"} findings={result.Findings.Count}"
@@ -39,6 +80,7 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
             }
             return new InspectionOutcome(publish, summary, operation, result);
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception error)
         {
             return new InspectionOutcome(false, $"verdict=Error reason={error.GetType().Name}: {error.Message}");

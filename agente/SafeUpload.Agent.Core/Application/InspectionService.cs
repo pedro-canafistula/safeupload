@@ -41,6 +41,7 @@ public sealed class InspectionService
     // that ignores cancellation keeps its slot until it actually finishes.
     // This is a concurrency budget, independent of the file-size policy.
     private const int MaximumConcurrentInspections = 2;
+    private sealed class InputTooLargeException : Exception { }
     private readonly SemaphoreSlim _inspectionSlots = new(MaximumConcurrentInspections, MaximumConcurrentInspections);
     internal int ActiveInspectionWorkers => MaximumConcurrentInspections - _inspectionSlots.CurrentCount;
 
@@ -106,6 +107,7 @@ public sealed class InspectionService
         }
 
         var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         return current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
             string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
@@ -118,6 +120,7 @@ public sealed class InspectionService
     {
         if (!result.InScope || !result.IsBlocked || result.FailureKind == InspectionFailureKind.NotEnoughStagingSpace) return false;
         var current = await _policyStore.LoadCurrentAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         return current.OverrideAllowed && current.Version == result.PolicyVersion && result.PolicyContentFingerprint is not null &&
             string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
@@ -125,7 +128,7 @@ public sealed class InspectionService
             current.IsMonitoredExtension(operation.Extension);
     }
 
-    public Task RecordTransferOutcomeAsync(
+    public Task<AuditEvent?> RecordTransferOutcomeAsync(
         FileOperation operation,
         InspectionResult inspection,
         Verdict outcome,
@@ -137,6 +140,17 @@ public sealed class InspectionService
         => AuditAsync(operation, inspection with { Verdict = outcome, Reason = reason },
             cancellationToken, eventId, publishedSha256Hex, auditUserName);
 
+    public AuditEvent CreateTransferOutcomeEvent(FileOperation operation, InspectionResult inspection,
+        Verdict outcome, string? reason, Guid eventId, string? publishedSha256Hex = null, string? auditUserName = null)
+        => CreateAuditEvent(operation, inspection with { Verdict = outcome, Reason = reason },
+            eventId, publishedSha256Hex, auditUserName);
+
+    public bool SupportsPublicationRecovery => _auditSink is IRecoverableAuditSink;
+
+    public Task WritePublicationAuditAsync(AuditEvent item, bool replay, CancellationToken token)
+        => _auditSink is IRecoverableAuditSink sink ? sink.WritePublicationAsync(item, replay, token)
+            : throw new NotSupportedException("Publication audit requires a recoverable sink.");
+
     public Task<InspectionResult> InspectStagedFailureAsync(FileOperation operation, CancellationToken token)
         => InspectCoreAsync(operation, true, token, forcedFailure: "not_enough_staging_space");
 
@@ -145,6 +159,7 @@ public sealed class InspectionService
         Func<string, IDisposable?>? phaseTiming = null, string? forcedFailure = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var stopwatch = Stopwatch.StartNew();
         Policy policy;
@@ -153,6 +168,7 @@ public sealed class InspectionService
             policy = await (staged ? _policyStore.LoadCurrentAsync(cancellationToken)
                 : _policyStore.LoadAsync(cancellationToken)).ConfigureAwait(false);
         }
+        cancellationToken.ThrowIfCancellationRequested();
         bool auditAndCache = !staged;
         if (forcedFailure is not null)
             return await CompleteAsync(operation, policy, stopwatch, Verdict.Blocked, [], forcedFailure, false, cancellationToken)
@@ -164,14 +180,14 @@ public sealed class InspectionService
         // recursão: ler o arquivo dispararia outra inspeção, que leria de novo.
         if (policy.IsExcludedProcess(operation.ProcessName))
         {
-            return OutOfScope(stopwatch, policy, "excluded_process");
+            return OutOfScope(stopwatch, policy, "excluded_process", staged);
         }
 
         // 2. RN-011 — fora do escopo declarado não se inspeciona nada.
         if (!policy.IsInScope(operation) ||
             (!(staged && operation.SizeBytes == 0) && !policy.IsMonitoredExtension(operation.Extension)))
         {
-            return OutOfScope(stopwatch, policy, "out_of_scope");
+            return OutOfScope(stopwatch, policy, "out_of_scope", staged);
         }
 
         // Empty content has nothing to extract, regardless of filename/format.
@@ -182,16 +198,15 @@ public sealed class InspectionService
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                using var input = OpenStagedInput(operation, openSnapshot);
-                if (input.Length != 0)
-                    throw new IOException("The empty inspection snapshot contains bytes.");
+                using var input = OpenStagedInput(operation, openSnapshot, policy.MaxFileSizeBytes);
                 return await CompleteAsync(operation, policy, stopwatch, Verdict.Approved, [], null,
                     auditAndCache, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InputTooLargeException)
             {
                 return await CompleteAsync(operation, policy, stopwatch, Verdict.Blocked, [],
-                    "parse_error:" + error.GetType().Name, auditAndCache, cancellationToken).ConfigureAwait(false);
+                    error is InputTooLargeException ? "file_too_large" : "parse_error:" + error.GetType().Name,
+                    auditAndCache, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -234,7 +249,9 @@ public sealed class InspectionService
                     FromCache = true,
                     RecordedEvent = null
                 };
-                return fromCache with { RecordedEvent = await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false) };
+                var recorded = await AuditAsync(operation, fromCache, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                return fromCache with { RecordedEvent = recorded };
             }
         }
         catch (StagedParserFailureException failure)
@@ -242,7 +259,7 @@ public sealed class InspectionService
             return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
                 failure.Reason, auditAndCache, cancellationToken).ConfigureAwait(false);
         }
-        catch (ArchiveSizeException)
+        catch (Exception error) when (error is ArchiveSizeException or InputTooLargeException)
         {
             return await CompleteAsync(operation, policy, stopwatch, inspectionFailure, [],
                 "file_too_large", auditAndCache, cancellationToken).ConfigureAwait(false);
@@ -336,6 +353,7 @@ public sealed class InspectionService
             try
             {
                 var inspected = await inspection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
                 // Timers/continuations can themselves run late under load.
                 // Enforce the full queue+work deadline with monotonic time
                 // even when WaitAsync observes an already completed task.
@@ -380,9 +398,10 @@ public sealed class InspectionService
             byte[] bytes;
             await using (var input = OpenInspectionInput(operation.FilePath))
             {
-                if (extractor is ZipArchiveExtractor or SevenZipRefusingExtractor && input.Length > policy.MaxFileSizeBytes)
-                    throw new ArchiveSizeException();
-                bytes = new byte[checked((int)input.Length)];
+                // Discovery metadata may be stale. Bound every opened format before allocating its capture.
+                long length = input.Length;
+                if (length > policy.MaxFileSizeBytes) throw new InputTooLargeException();
+                bytes = new byte[checked((int)length)];
                 await input.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
             }
             // A read handle does not revoke an existing writable mapping.
@@ -400,7 +419,7 @@ public sealed class InspectionService
             // Staged publication owns a separate service-only snapshot and
             // never reuses approval cache entries. Keep this exact file object
             // open through extraction; a replaced name cannot change its bytes.
-            await using var input = OpenStagedInput(operation, openSnapshot);
+            await using var input = OpenStagedInput(operation, openSnapshot, policy.MaxFileSizeBytes);
             if (_stagedParser is not null && extractor is not (PlainTextExtractor or OfficeOwnerFileExtractor))
                 return (await _stagedParser.InspectAsync(operation.Extension, input, policy, cancellationToken)
                     .ConfigureAwait(false), null, null);
@@ -437,13 +456,17 @@ public sealed class InspectionService
         FileAccess.Read, FileShare.Read | FileShare.Delete, 64 * 1024,
         FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-    private static Stream OpenStagedInput(FileOperation operation, Func<Stream>? openSnapshot)
+    private static Stream OpenStagedInput(FileOperation operation, Func<Stream>? openSnapshot, long maximumBytes)
     {
-        if (openSnapshot is null) return OpenInspectionInput(operation.FilePath);
-        Stream input = openSnapshot() ?? throw new IOException("The snapshot read lease is missing.");
+        Stream input = openSnapshot is null ? OpenInspectionInput(operation.FilePath)
+            : openSnapshot() ?? throw new IOException("The snapshot read lease is missing.");
         try
         {
-            if (!input.CanRead || !input.CanSeek || input.CanWrite || input.Length != operation.SizeBytes)
+            if (!input.CanRead || !input.CanSeek || input.CanWrite)
+                throw new IOException("The snapshot read lease is not read-only and seekable.");
+            long length = input.Length;
+            if (length > maximumBytes) throw new InputTooLargeException();
+            if (length != operation.SizeBytes)
                 throw new IOException("The snapshot read lease does not match the measured content.");
             input.Position = 0;
             return input;
@@ -462,6 +485,7 @@ public sealed class InspectionService
         CancellationToken cancellationToken,
         string? fingerprint = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         stopwatch.Stop();
 
         var result = new InspectionResult(
@@ -479,9 +503,12 @@ public sealed class InspectionService
 
         if (auditAndCache)
         {
+            result = result with { RecordedEvent = await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false) };
+            // A sink may complete the write and then observe cancellation, or return without checking it.
+            // Keep any durable event, but check cancellation before installing a new cache entry.
+            cancellationToken.ThrowIfCancellationRequested();
             if (fingerprint is not null && verdict is Verdict.Approved or Verdict.Blocked)
                 _cache.Set(operation, result, fingerprint);
-            result = result with { RecordedEvent = await AuditAsync(operation, result, cancellationToken).ConfigureAwait(false) };
         }
 
         return result;
@@ -493,7 +520,7 @@ public sealed class InspectionService
     /// deliberadamente ignora encheria a fila de ruído e afogaria os eventos
     /// que importam.
     /// </summary>
-    private static InspectionResult OutOfScope(Stopwatch stopwatch, Policy policy, string reason)
+    private static InspectionResult OutOfScope(Stopwatch stopwatch, Policy policy, string reason, bool staged)
     {
         stopwatch.Stop();
 
@@ -504,19 +531,21 @@ public sealed class InspectionService
             stopwatch.ElapsedMilliseconds,
             FromCache: false,
             policy.Version,
-            InScope: false);
+            InScope: false)
+        {
+            PolicyContentFingerprint = staged ? PolicyContentFingerprint.Compute(policy) : null
+        };
     }
 
-    private async Task<AuditEvent?> AuditAsync(
+    private AuditEvent CreateAuditEvent(
         FileOperation operation,
         InspectionResult result,
-        CancellationToken cancellationToken,
         Guid? eventId = null,
         string? publishedSha256Hex = null,
         string? auditUserName = null)
     {
         bool minimize = eventId is null || operation.AuditMetadataVersion == 1;
-        var auditEvent = new AuditEvent(
+        return new AuditEvent(
             eventId ?? Guid.NewGuid(),
             DateTimeOffset.UtcNow,
             _endpointId,
@@ -537,7 +566,13 @@ public sealed class InspectionService
             result.ElapsedMs,
             Dispatched: false,
             PublishedSha256Hex: publishedSha256Hex) { OwnerSid = operation.AuditOwnerSid };
+    }
 
+    private async Task<AuditEvent?> AuditAsync(FileOperation operation, InspectionResult result,
+        CancellationToken cancellationToken, Guid? eventId = null, string? publishedSha256Hex = null,
+        string? auditUserName = null)
+    {
+        var auditEvent = CreateAuditEvent(operation, result, eventId, publishedSha256Hex, auditUserName);
         try
         {
             await _auditSink.WriteAsync(auditEvent, cancellationToken).ConfigureAwait(false);

@@ -77,16 +77,9 @@ public static class Program
         builder.Services.AddSingleton<INotificationRecord>(services =>
         {
             var logger = services.GetRequiredService<ILogger<NotificationRecord>>();
-            try
-            {
-                return new NotificationRecord(Path.Combine(Environment.GetFolderPath(
-                    Environment.SpecialFolder.CommonApplicationData), "SafeUpload", "notifications"), logger);
-            }
-            catch (Exception ex)
-            {
-                logger.LogSafeError(ex, "Cannot open notification record; all notifications will be suppressed");
-                return new UnavailableNotificationRecord(ex);
-            }
+            return new RecoveringNotificationRecord(() => new NotificationRecord(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "SafeUpload", "notifications"), logger), logger);
         });
         builder.Services.AddSingleton<NotificationHub>();
         builder.Services.AddSingleton<DriveJustifications>();
@@ -116,7 +109,8 @@ public static class Program
         // forma autonoma, e nao ficar esperando um servidor que talvez nunca
         // seja configurado.
         var administration = AdministrationConfiguration.Parse(builder.Configuration,
-            new RegisteredHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "identity", "host-registration.json")));
+            new RegisteredHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "identity", "host-registration.json")),
+            new SignedHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "authentication", "ed25519-identity.dat")));
         string endpointId = Environment.MachineName;
         builder.Services.AddSingleton(new CommunicationHealth(administration.BaseUri is not null));
         builder.Services.AddHostedService<CommunicationStatusPublisher>();

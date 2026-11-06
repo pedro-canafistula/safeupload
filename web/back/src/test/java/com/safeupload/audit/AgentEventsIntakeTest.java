@@ -159,10 +159,28 @@ class AgentEventsIntakeTest {
         send(batch(event())).andExpect(status().is5xxServerError());
     }
 
-    @Test void keepsTheExistingThiagoRoutesRegistered() throws Exception {
+    @Test void doesNotRestoreTheRemovedSynchronizeRoute() throws Exception {
         mvc.perform(post("/agent/synchronize").contentType("application/json").content("{}"))
-            .andExpect(status().isBadRequest());
+            .andExpect(status().isNotFound());
+        org.mockito.Mockito.verifyNoInteractions(currentService);
+    }
+
+    @Test void keepsTheCurrentHeartbeatRouteValidated() throws Exception {
         mvc.perform(post("/agent/heartbeat").contentType("application/json").content("{}"))
             .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verifyNoInteractions(currentService);
+    }
+
+    @Test void routesTheCurrentSignedHeartbeatEnvelopeToTheService() throws Exception {
+        mvc.perform(post("/agent/heartbeat").contentType("application/json").content("""
+            {"autenticacao":{"id_host":42,"assinatura":"synthetic-signature"},
+             "host":{"ip":"127.0.0.1","mascara":32,"hostname":"synthetic-host"}}
+            """))
+            .andExpect(status().isOk());
+        // The real service verifies the signature; this test checks HTTP mapping and deserialization.
+        org.mockito.Mockito.verify(currentService).heartbeat(org.mockito.ArgumentMatchers.argThat(request ->
+            request.cadastro() == null && request.autenticacao().id_host() == 42
+                && request.autenticacao().assinatura().equals("synthetic-signature")
+                && request.host().hostname().equals("synthetic-host")));
     }
 }

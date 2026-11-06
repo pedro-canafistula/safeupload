@@ -16,6 +16,8 @@ internal sealed class Content
     public long InspectedVersion;         // newest version whose inspection was started
     public long ApprovedVersion = -1;     // newest version approved for the destination
     public string? ApprovedSnapshot;      // exact bytes of ApprovedVersion
+    public DriveDecision? ApprovedDecision;
+    public bool PublicationFailed;       // report a failed publication once, then retry the same snapshot
     public long PublishedVersion = -1;
     public string? PublishedPath;
     public bool Deleted;
@@ -24,9 +26,11 @@ internal sealed class Content
     public Guid? BlockedId;               // newest blocked version, kept for a justification
     public long BlockedVersion = -1;
     public string? BlockedSnapshot;
+    public DriveDecision? BlockedDecision;
     public DateTime LastModified;
     public bool CleanupSeen;              // a handle was closed since the last modification
     public bool Inspecting;
+    public long InspectionEpoch;          // a rename/policy invalidation must also supersede an in-flight decision
 }
 
 internal sealed class Node
@@ -74,6 +78,11 @@ public sealed class DriveFileSystem : FileSystemBase
     private readonly IDriveObserver _observer;
     private readonly SafeUpload.Agent.Core.Domain.DestinationKind _kind;
     private readonly string _label;
+    private readonly DriveRecoveryStore _recovery;
+    private readonly PublicationAuditJournal _publicationAudit;
+    private long _nextAuditRetry;
+    internal Action<PublicationAuditPhase>? AuditFault { get; set; }
+    private readonly Func<int> _operationProcessId;
     private static readonly HashSet<string> PrivateRootNames = new(StringComparer.OrdinalIgnoreCase)
         { "System Volume Information", "$RECYCLE.BIN" };
     private readonly Dictionary<Guid, Content> _blocked = [];
@@ -83,11 +92,16 @@ public sealed class DriveFileSystem : FileSystemBase
     private DateTime _reconcileAfter = DateTime.MaxValue;
     private readonly HashSet<Content> _dirty = [];   // modified since their last inspection
     private readonly CancellationTokenSource _stop = new();
+    private readonly object _lifecycleGate = new();
+    private Thread? _worker;
+    private bool _stopping;
 
     internal DriveFileSystem(string backing, string privateRoot, string mountPoint, ContentInspector inspector,
-        IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label)
+        IDriveObserver observer, SafeUpload.Agent.Core.Domain.DestinationKind kind, string label,
+        Func<int>? operationProcessId = null)
     {
         _observer = observer;
+        _operationProcessId = operationProcessId ?? (() => (int)GetOperationProcessId());
         _kind = kind;
         _label = label.Length <= 32 ? label : label[..32];
         _backing = System.IO.Path.GetFullPath(backing);
@@ -99,15 +113,42 @@ public sealed class DriveFileSystem : FileSystemBase
         Directory.CreateDirectory(_backing);
         Directory.CreateDirectory(_stage);
         Directory.CreateDirectory(_snapshots);
+        DriveRecoveryStore.RejectReparsePoint(_snapshots);
         _root = new Node { Name = "", IsDirectory = true, Id = _nextId++, Attributes = (uint)FileAttributes.Directory };
         StampNow(_root);
         // Every user may work in the drive; access to the backing folder itself is restricted separately.
         _fileSecurity = Sddl("O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;AU)");
         _dirSecurity = Sddl("O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;AU)");
+        _recovery = new DriveRecoveryStore(_backing, privateRoot);
+        try
+        {
+            _publicationAudit = new PublicationAuditJournal(privateRoot, _backing, _recovery, _inspector,
+                phase => AuditFault?.Invoke(phase));
+            RestoreRetainedFiles();
+        }
+        catch { _recovery.Dispose(); throw; }
     }
 
-    public void StartBackgroundWork() => new Thread(BackgroundLoop) { IsBackground = true, Name = "drive-worker" }.Start();
-    public void Stop() => _stop.Cancel();
+    public void StartBackgroundWork()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_worker is not null || _stopping)
+                throw new InvalidOperationException("Drive worker already started or stopped.");
+            _worker = new Thread(BackgroundLoop) { IsBackground = true, Name = "drive-worker" };
+            _worker.Start();
+        }
+    }
+
+    /// <summary>Stops producing decisions/publications before the mount and its observers are disposed.</summary>
+    public void Stop()
+    {
+        Thread? worker;
+        lock (_lifecycleGate) { _stopping = true; worker = _worker; }
+        _stop.Cancel();
+        if (worker != Thread.CurrentThread) worker?.Join();
+        lock (_gate) _recovery.Dispose();
+    }
 
     // ---------------------------------------------------------------- WinFsp entry points
 
@@ -177,6 +218,7 @@ public sealed class DriveFileSystem : FileSystemBase
         fileNode = default!; fileDesc = default!; fileInfo = default; normalizedName = default!;
         lock (_gate)
         {
+            _stop.Token.ThrowIfCancellationRequested();
             var (parent, leaf) = SplitParent(fileName);
             if (parent is null) return STATUS_OBJECT_PATH_NOT_FOUND;
             if (!parent.IsDirectory) return STATUS_NOT_A_DIRECTORY;
@@ -199,15 +241,17 @@ public sealed class DriveFileSystem : FileSystemBase
             {
                 var stagePath = NewStagePath();
                 var stream = new FileStream(stagePath, FileMode.CreateNew, FileAccess.ReadWrite,
-                    FileShare.ReadWrite | FileShare.Delete);
+                    FileShare.ReadWrite | FileShare.Delete, bufferSize: 1);
                 node.Attributes = (fileAttributes & ~(uint)FileAttributes.Normal) | (uint)FileAttributes.Archive;
                 node.Content = new Content { Path = stagePath, IsStage = true, Node = node };
-                node.Content.Writer = _observer.IdentifyWriter((int)GetOperationProcessId());
+                node.Content.Writer = _observer.IdentifyWriter(_operationProcessId());
                 handle = new Handle { Node = node, Stream = stream };
+                try { RememberStage(node); }
+                catch { stream.Dispose(); throw; }
                 Modified(handle, 0);   // a new file, even an empty one, is a version to inspect
             }
             parent.Children[leaf] = node;
-            DriveLog.Write($"create {VirtualPath(node)}{(node.IsDirectory ? "\\" : "")} pid={GetOperationProcessId()}");
+            DriveLog.Write($"create {VirtualPath(node)}{(node.IsDirectory ? "\\" : "")} pid={_operationProcessId()}");
             fileDesc = handle;
             fileInfo = Info(node);
             return STATUS_SUCCESS;
@@ -229,7 +273,7 @@ public sealed class DriveFileSystem : FileSystemBase
                 // the first real modification (WritableStream), not here.
                 handle.Stream = OpenShared(node.Content!.Path, write: false);
                 if ((grantedAccess & (FILE_WRITE_DATA | FILE_APPEND_DATA)) != 0)
-                    node.Content.Writer = _observer.IdentifyWriter((int)GetOperationProcessId());
+                    node.Content.Writer = _observer.IdentifyWriter(_operationProcessId());
             }
             fileDesc = handle;
             fileInfo = Info(node);
@@ -412,6 +456,7 @@ public sealed class DriveFileSystem : FileSystemBase
     {
         lock (_gate)
         {
+            _stop.Token.ThrowIfCancellationRequested();
             var node = ((Handle)fileDesc).Node;
             var (newParent, newLeaf) = SplitParent(newFileName);
             if (newParent is null || !newParent.IsDirectory) return STATUS_OBJECT_PATH_NOT_FOUND;
@@ -420,8 +465,17 @@ public sealed class DriveFileSystem : FileSystemBase
             {
                 if (!replaceIfExists) return STATUS_OBJECT_NAME_COLLISION;
                 if (target.IsDirectory) return STATUS_ACCESS_DENIED;
-                Delete(target);
             }
+            var newRelative = newParent == _root ? newLeaf : Relative(newParent) + "\\" + newLeaf;
+            bool inspectRenamedFile = !node.IsDirectory && !node.Private;
+            if (inspectRenamedFile)
+            {
+                node.Content!.Writer = _observer.IdentifyWriter(_operationProcessId());
+                WritableStream((Handle)fileDesc, emptyCopy: false);
+            }
+            RememberStages(node); // A fully published stage may have retired its entry before this rename.
+            _recovery.Rename(Relative(node), newRelative);
+            if (target is not null && target != node) Delete(target);
             var oldPath = VirtualPath(node);
             if (node.IsDirectory && !node.Private)
             {
@@ -439,6 +493,11 @@ public sealed class DriveFileSystem : FileSystemBase
             node.Parent = newParent;
             newParent.Children[newLeaf] = node;
             node.ChangeTime = Now();
+            if (inspectRenamedFile)
+            {
+                Modified((Handle)fileDesc, ((Handle)fileDesc).Stream!.Length);
+                RequireInspection(node.Content!);
+            }
             DriveLog.Write($"rename {oldPath} -> {VirtualPath(node)}");
             ScheduleReconcile();
             return STATUS_SUCCESS;
@@ -500,6 +559,94 @@ public sealed class DriveFileSystem : FileSystemBase
     }
 
     // ---------------------------------------------------------------- namespace helpers
+
+    private void RememberStage(Node node)
+    {
+        if (!node.Private && node.Content is { IsStage: true } content)
+            _recovery.Track(content.Path, Relative(node), content.Writer, node.Attributes,
+                content.PublishedPath is { } previous ? System.IO.Path.GetRelativePath(_backing, previous) : null);
+    }
+
+    private void RememberStages(Node node)
+    {
+        RememberStage(node);
+        if (node.Children is not null)
+            foreach (var child in node.Children.Values) RememberStages(child);
+    }
+
+    private void RestoreRetainedFiles()
+    {
+        var entries = _recovery.Entries.ToArray();
+        foreach (var entry in entries)
+        {
+            ValidateRecoveryPath(entry.RelativePath);
+            if (entry.PreviousRelativePath is { } previous) ValidateRecoveryPath(previous);
+        }
+        // Hide a renamed file's old backing name without deleting its previously published bytes on recovery.
+        // Another retained version at that name takes precedence and must never be removed.
+        var names = entries.Select(e => e.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            if (entry.PreviousRelativePath is not { } previous || names.Contains(previous)) continue;
+            var old = Lookup("\\" + previous, out _);
+            if (old is null) continue;
+            if (old.IsDirectory) throw new IOException("Retained source conflicts with a directory.");
+            old.Parent!.Children!.Remove(old.Name);
+        }
+        foreach (var entry in entries)
+        {
+            var parts = entry.RelativePath.Split('\\');
+            var parent = _root;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                EnsureLoaded(parent);
+                bool directory = i < parts.Length - 1;
+                var path = BackingPath(parent, parts[i]);
+                if (File.Exists(path) || Directory.Exists(path)) DriveRecoveryStore.RejectReparsePoint(path);
+                if (parent.Children!.TryGetValue(parts[i], out var existing) && existing.IsDirectory != directory)
+                    throw new IOException("Retained path conflicts with the backing namespace.");
+                if (directory)
+                {
+                    if (existing is null)
+                    {
+                        existing = new Node { Name = parts[i], Parent = parent, IsDirectory = true,
+                            Attributes = (uint)FileAttributes.Directory, Id = _nextId++, Children = new(StringComparer.OrdinalIgnoreCase) };
+                        StampNow(existing);
+                        parent.Children[parts[i]] = existing;
+                    }
+                    parent = existing;
+                    continue;
+                }
+                var info = new System.IO.FileInfo(_recovery.StagePath(entry));
+                var node = new Node { Name = parts[i], Parent = parent, Id = _nextId++,
+                    Attributes = entry.Attributes & ~(uint)FileAttributes.Directory };
+                StampNow(node);
+                node.CreationTime = (ulong)info.CreationTimeUtc.ToFileTimeUtc();
+                node.LastWriteTime = node.ChangeTime = (ulong)info.LastWriteTimeUtc.ToFileTimeUtc();
+                node.Content = new Content { Node = node, Path = info.FullName, IsStage = true, Size = info.Length,
+                    Version = 1, LastModified = DateTime.UtcNow, CleanupSeen = true,
+                    PublishedPath = entry.PreviousRelativePath is { } previous ? System.IO.Path.Combine(_backing, previous) : null,
+                    // Keep captured owner attribution, never a previous process exemption or reusable session.
+                    Writer = entry.Writer is { } writer ? writer with { ProcessId = 0, ProcessName = "", SessionId = null }
+                        : new DriveWriter(0, "", null, null, null) };
+                parent.Children[parts[i]] = node;
+                _dirty.Add(node.Content);
+            }
+        }
+    }
+
+    private void ValidateRecoveryPath(string relative)
+    {
+        string path = _backing;
+        var parts = relative.Split('\\');
+        for (int i = 0; i < parts.Length; i++)
+        {
+            path = System.IO.Path.Combine(path, parts[i]);
+            if (File.Exists(path) || Directory.Exists(path)) DriveRecoveryStore.RejectReparsePoint(path);
+            if (i < parts.Length - 1 && File.Exists(path))
+                throw new IOException("Retained directory conflicts with a backing file.");
+        }
+    }
 
     private Node? Lookup(string fileName, out bool parentMissing)
     {
@@ -575,6 +722,7 @@ public sealed class DriveFileSystem : FileSystemBase
     /// <summary>A writable stream on the file's private stage copy, making that copy on the first modification.</summary>
     private FileStream WritableStream(Handle handle, bool emptyCopy)
     {
+        _stop.Token.ThrowIfCancellationRequested();
         var content = handle.Node.Content!;
         if (!content.IsStage)
         {
@@ -584,6 +732,7 @@ public sealed class DriveFileSystem : FileSystemBase
             content.Path = stagePath;
             content.IsStage = true;
         }
+        RememberStage(handle.Node); // Commit the name and owner before accepting the first changed byte.
         if (!handle.Stream!.CanWrite || !string.Equals(handle.Stream.Name, content.Path, StringComparison.OrdinalIgnoreCase))
         {
             handle.Stream.Dispose();
@@ -593,7 +742,10 @@ public sealed class DriveFileSystem : FileSystemBase
     }
 
     private static FileStream OpenShared(string path, bool write) =>
-        new(path, FileMode.Open, write ? FileAccess.ReadWrite : FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        // Callbacks share bytes across handles and the inspector opens a separate snapshot reader. A per-handle
+        // managed buffer can hide accepted writes or replay older bytes when a writer closes. Keep OS caching.
+        new(path, FileMode.Open, write ? FileAccess.ReadWrite : FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 1);
 
     /// <summary>File.Copy refuses a source that is open for writing; our own handles keep stage files open.</summary>
     private static void CopyShared(string source, string destination)
@@ -616,6 +768,8 @@ public sealed class DriveFileSystem : FileSystemBase
 
     private void Delete(Node node)
     {
+        _stop.Token.ThrowIfCancellationRequested();
+        if (node.Content is { IsStage: true } retained && !node.Private) _recovery.Remove(retained.Path);
         var path = VirtualPath(node);
         node.Parent?.Children?.Remove(node.Name);
         if (node.IsDirectory && !node.Private)
@@ -709,6 +863,15 @@ public sealed class DriveFileSystem : FileSystemBase
         {
             try
             {
+                if (_publicationAudit.HasPending && Environment.TickCount64 >= _nextAuditRetry)
+                {
+                    _nextAuditRetry = Environment.TickCount64 + 5000;
+                    lock (_gate)
+                    {
+                        _publicationAudit.ResolvePrepared();
+                        _publicationAudit.Retry(_stop.Token);
+                    }
+                }
                 Content? next = null;
                 lock (_gate)
                 {
@@ -731,6 +894,7 @@ public sealed class DriveFileSystem : FileSystemBase
                 if (next is not null) InspectOne(next);
                 else Thread.Sleep(100);
             }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested) { break; }
             catch (Exception error)
             {
                 DriveLog.Write($"worker error {error.GetType().Name}: {error.Message}");
@@ -742,11 +906,12 @@ public sealed class DriveFileSystem : FileSystemBase
     private void InspectOne(Content content)
     {
         string snapshot, destination, target, name;
-        long version;
+        long version, epoch;
         DriveWriter? writer;
         var versionId = Guid.NewGuid();
         lock (_gate)
         {
+            _stop.Token.ThrowIfCancellationRequested();
             _dirty.Remove(content);
             content.CleanupSeen = false;
             if (content.Deleted || content.Node is null || content.Node.Private || content.Version == content.InspectedVersion) return;
@@ -754,6 +919,7 @@ public sealed class DriveFileSystem : FileSystemBase
             snapshot = System.IO.Path.Combine(_snapshots, Guid.NewGuid().ToString("N"));
             CopyShared(content.Path, snapshot);
             version = content.InspectedVersion = content.Version;
+            epoch = content.InspectionEpoch;
             destination = VirtualPath(content.Node);
             target = BackingPath(content.Node.Parent!, content.Node.Name);
             name = content.Node.Name;
@@ -761,27 +927,39 @@ public sealed class DriveFileSystem : FileSystemBase
             content.Inspecting = true;
         }
         var started = DateTime.UtcNow;
-        var outcome = _inspector.InspectAsync(snapshot, target, _kind, name, writer, _stop.Token).GetAwaiter().GetResult();
+        InspectionOutcome outcome;
+        try { outcome = _inspector.InspectAsync(snapshot, target, _kind, name, writer, _stop.Token).GetAwaiter().GetResult(); }
+        catch
+        {
+            lock (_gate) content.Inspecting = false;
+            throw;
+        }
+        var decision = new DriveDecision(versionId, destination, name, writer, outcome.Operation, outcome.Result,
+            outcome.Publish, outcome.Summary, snapshot);
         bool report = false;
         lock (_gate)
         {
             content.Inspecting = false;
+            _stop.Token.ThrowIfCancellationRequested();
             var ms = (int)(DateTime.UtcNow - started).TotalMilliseconds;
-            if (outcome.Publish && !content.Deleted && version > content.ApprovedVersion)
+            if (outcome.Publish && !content.Deleted && epoch == content.InspectionEpoch && version > content.ApprovedVersion)
             {
                 if (content.ApprovedSnapshot is not null) TryDelete(content.ApprovedSnapshot);
                 content.ApprovedVersion = version;
                 content.ApprovedSnapshot = snapshot;
+                content.ApprovedDecision = decision;
+                content.PublicationFailed = false;
                 DriveLog.Write($"inspect APPROVED {destination} v{version} {outcome.Summary} ({ms} ms)");
                 ScheduleReconcile();
                 report = true;
             }
-            else if (!outcome.Publish && !content.Deleted && version > content.BlockedVersion)
+            else if (!outcome.Publish && !content.Deleted && epoch == content.InspectionEpoch && version > content.BlockedVersion)
             {
                 ForgetBlocked(content);
                 content.BlockedId = versionId;
                 content.BlockedVersion = version;
                 content.BlockedSnapshot = snapshot;
+                content.BlockedDecision = decision;
                 _blocked[versionId] = content;
                 DriveLog.Write($"inspect BLOCKED {destination} v{version} {outcome.Summary} ({ms} ms)");
                 report = true;
@@ -794,24 +972,37 @@ public sealed class DriveFileSystem : FileSystemBase
             // A write that arrived during inspection is inspected after its own close.
         }
         if (report)
-            _observer.OnDecision(new DriveDecision(versionId, destination, name, writer, outcome.Operation, outcome.Result,
-                outcome.Publish, outcome.Summary, snapshot));
+            _observer.OnDecision(decision);
     }
 
     /// <summary>
-    /// Publishes a blocked version after the user justified it. Only that exact version, and only if no newer version
-    /// has been approved since. Returns false when the version is gone or superseded.
+    /// Queues a blocked version for publication after authorization. Only that exact version, and only if no newer
+    /// version has been approved since. A true result acknowledges queuing, not a completed destination write.
     /// </summary>
-    public bool Approve(Guid versionId)
+    public bool Approve(Guid versionId, DriveApprovalKind kind = DriveApprovalKind.Justification)
     {
         lock (_gate)
         {
             if (!_blocked.TryGetValue(versionId, out var content) || content.Deleted || content.BlockedSnapshot is null ||
-                content.BlockedVersion <= content.ApprovedVersion)
+                content.BlockedVersion <= content.ApprovedVersion || kind is not (DriveApprovalKind.Audit or DriveApprovalKind.Justification) ||
+                content.BlockedDecision is not { } blocked || content.Node?.Parent is null || _stop.IsCancellationRequested)
                 return false;
+            var approved = blocked with { Approved = true, ApprovalKind = kind };
+            try
+            {
+                if (!_inspector.IsPublicationAllowedAsync(approved, BackingPath(content.Node.Parent, content.Node.Name),
+                        _stop.Token).GetAwaiter().GetResult()) return false;
+            }
+            catch (Exception error)
+            {
+                DriveLog.Write($"approval held: policy validation {error.GetType().Name}");
+                return false;
+            }
             if (content.ApprovedSnapshot is not null) TryDelete(content.ApprovedSnapshot);
             content.ApprovedVersion = content.BlockedVersion;
             content.ApprovedSnapshot = content.BlockedSnapshot;
+            content.ApprovedDecision = approved;
+            content.PublicationFailed = false;
             content.BlockedSnapshot = null;
             ForgetBlocked(content);
             DriveLog.Write($"justified {(content.Node is null ? "?" : VirtualPath(content.Node))} v{content.ApprovedVersion}");
@@ -826,14 +1017,18 @@ public sealed class DriveFileSystem : FileSystemBase
         if (content.BlockedSnapshot is not null) TryDelete(content.BlockedSnapshot);
         content.BlockedId = null;
         content.BlockedSnapshot = null;
+        content.BlockedDecision = null;
     }
 
     /// <summary>Makes the backing folder match the namespace, using only approved bytes. Caller holds the lock.</summary>
     private void Reconcile()
     {
+        _publicationAudit.ResolvePrepared();
+        _publicationAudit.Retry(_stop.Token);
+        ReconcileDirectory(_root);
         var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectReferenced(_root, referenced);
-        ReconcileDirectory(_root, referenced);
+        DeleteUnreferencedFiles(_root, referenced);
     }
 
     private static void CollectReferenced(Node dir, HashSet<string> referenced)
@@ -842,59 +1037,141 @@ public sealed class DriveFileSystem : FileSystemBase
         foreach (var child in dir.Children.Values)
         {
             if (child.IsDirectory) CollectReferenced(child, referenced);
-            else if (child.Content is { IsStage: false } c) referenced.Add(c.Path);
+            else if (child.Content is { } c)
+            {
+                if (!c.IsStage) referenced.Add(c.Path);
+                else if (c.PublishedPath is { } previous) referenced.Add(previous);
+            }
         }
     }
 
-    private void ReconcileDirectory(Node dir, HashSet<string> referenced)
+    private void ReconcileDirectory(Node dir)
     {
         if (dir.Children is null) return;   // never loaded: nothing changed below it
         var folder = BackingDirectory(dir);
         Directory.CreateDirectory(folder);
-        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var child in dir.Children.Values)
         {
             if (child.Private) continue;
-            keep.Add(child.Name);
-            if (child.IsDirectory) { ReconcileDirectory(child, referenced); continue; }
+            if (child.IsDirectory) { ReconcileDirectory(child); continue; }
             var content = child.Content!;
             var target = System.IO.Path.Combine(folder, child.Name);
             if (!content.IsStage)
             {
-                if (!string.Equals(content.Path, target, StringComparison.OrdinalIgnoreCase) && File.Exists(content.Path))
-                {
-                    // A published file that was renamed. Copy instead of moving if its old name must stay as it is
-                    // (for example the previous version of a document whose new version is still pending).
-                    var oldName = System.IO.Path.GetFileName(content.Path);
-                    bool oldNameKept = string.Equals(System.IO.Path.GetDirectoryName(content.Path), folder, StringComparison.OrdinalIgnoreCase)
-                        && dir.Children.ContainsKey(oldName);
-                    if (oldNameKept) File.Copy(content.Path, target, overwrite: true);
-                    else File.Move(content.Path, target, overwrite: true);
-                    DriveLog.Write($"publish rename {content.Path} -> {target}");
-                    content.Path = content.PublishedPath = target;
-                }
                 ApplyMetadata(child, target);
             }
             else if (content.ApprovedSnapshot is not null &&
                      (content.PublishedVersion != content.ApprovedVersion ||
                       !string.Equals(content.PublishedPath, target, StringComparison.OrdinalIgnoreCase)))
             {
+                if (!ValidatePublication(child, target)) continue;
                 var temp = System.IO.Path.Combine(folder, TempPrefix + Guid.NewGuid().ToString("N"));
-                File.Copy(content.ApprovedSnapshot, temp);
-                File.Move(temp, target, overwrite: true);
+                var decision = content.ApprovedDecision! with { DrivePath = VirtualPath(child), FileName = child.Name };
+                PublicationAuditEntry? intent = null;
+                bool moved = false;
+                try
+                {
+                    File.Copy(content.ApprovedSnapshot, temp);
+                    using var evidence = new FileStream(temp, FileMode.Open, FileAccess.ReadWrite, FileShare.Read | FileShare.Delete);
+                    intent = _publicationAudit.Prepare(decision, target, temp, evidence);
+                    if (!ValidatePublication(child, target))
+                    {
+                        if (intent is not null) _publicationAudit.Cancel(intent);
+                        continue;
+                    }
+                    File.Move(temp, target, overwrite: true);
+                    moved = true;
+                    content.PublishedVersion = content.ApprovedVersion;
+                    content.PublishedPath = target;
+                    content.PublicationFailed = false;
+                    AuditFault?.Invoke(PublicationAuditPhase.Moved);
+                    if (intent is not null) intent = _publicationAudit.Complete(intent, true);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    if (!moved && !content.PublicationFailed)
+                    {
+                        intent = intent is null ? _publicationAudit.Failed(decision, target) : _publicationAudit.Complete(intent, false);
+                        content.PublicationFailed = true;
+                        ReportPublication(child, target, succeeded: false, intent);
+                        if (intent is not null) _publicationAudit.Deliver(intent, false, _stop.Token);
+                    }
+                    else if (!moved && intent is not null) _publicationAudit.Cancel(intent);
+                    throw;
+                }
+                finally { if (!_publicationAudit.OwnsPreparedTemporary(temp)) TryDelete(temp); }
+                ReportPublication(child, target, succeeded: true, intent);
+                if (intent is not null) _publicationAudit.Deliver(intent, false, _stop.Token);
+                // Keep a newer, still-unpublished stage registered while an earlier approved snapshot is published.
+                if (content.Version == content.PublishedVersion) _recovery.Remove(content.Path);
+                else RememberStage(child);
                 ApplyMetadata(child, target);
-                content.PublishedVersion = content.ApprovedVersion;
-                content.PublishedPath = target;
                 DriveLog.Write($"publish {target} v{content.ApprovedVersion}");
             }
         }
-        foreach (var file in Directory.EnumerateFiles(folder))
+    }
+
+    private void DeleteUnreferencedFiles(Node dir, HashSet<string> referenced)
+    {
+        if (dir.Children is null) return;
+        foreach (var child in dir.Children.Values)
+            if (child.IsDirectory && !child.Private) DeleteUnreferencedFiles(child, referenced);
+        foreach (var file in Directory.EnumerateFiles(BackingDirectory(dir)))
         {
             var name = System.IO.Path.GetFileName(file);
-            if (keep.Contains(name) || referenced.Contains(file)) continue;
+            if (dir.Children.ContainsKey(name) || referenced.Contains(file)) continue;
             File.Delete(file);
             DriveLog.Write($"publish delete {file}");
         }
+    }
+
+    private bool ValidatePublication(Node node, string target)
+    {
+        if (_stop.IsCancellationRequested) return false;
+        var content = node.Content!;
+        try
+        {
+            _recovery.ValidateDestination();
+            if (content.ApprovedDecision is { } decision &&
+                _inspector.IsPublicationAllowedAsync(decision, target, _stop.Token).GetAwaiter().GetResult()) return true;
+        }
+        catch (Exception error)
+        {
+            // An unreadable policy does not revoke the retained snapshot; retry without silently granting authority.
+            DriveLog.Write($"publish held: policy validation {error.GetType().Name}");
+            _reconcileAfter = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            return false;
+        }
+        // The bytes remain in the private stage. Invalidate old approvals/justifications and inspect the current
+        // version again, even when neither the file version nor the human-assigned policy number changed.
+        RequireInspection(content);
+        DriveLog.Write("publish held: policy changed; stage queued for inspection");
+        return false;
+    }
+
+    private void RequireInspection(Content content)
+    {
+        content.InspectionEpoch++;
+        if (content.ApprovedSnapshot is { } snapshot) TryDelete(snapshot);
+        content.ApprovedSnapshot = null;
+        content.ApprovedDecision = null;
+        content.ApprovedVersion = -1;
+        content.PublicationFailed = false;
+        ForgetBlocked(content);
+        content.BlockedVersion = -1;
+        content.InspectedVersion = -1;
+        content.CleanupSeen = true;
+        content.LastModified = DateTime.UtcNow;
+        _dirty.Add(content);
+    }
+
+    private void ReportPublication(Node node, string target, bool succeeded, PublicationAuditEntry? audit)
+    {
+        if (node.Content?.ApprovedDecision is not { } decision) return;
+        // A file may have acquired its final Office name since inspection. Report the destination actually attempted.
+        decision = decision with { DrivePath = VirtualPath(node), FileName = node.Name };
+        _observer.OnPublication(new DrivePublication(audit?.Event.EventId ?? Guid.NewGuid(), decision, target, succeeded,
+            AuditJournaled: true, Event: audit?.Event));
     }
 
     private static void ApplyMetadata(Node node, string path)

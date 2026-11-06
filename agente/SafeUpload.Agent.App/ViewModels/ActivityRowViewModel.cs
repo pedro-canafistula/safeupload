@@ -20,8 +20,8 @@ public sealed class ActivityRowViewModel
         EventId = auditEvent.EventId;
 
         Description = Describe(auditEvent);
-        IconKey = IconFor(auditEvent.Verdict);
-        Status = StatusPill.For(auditEvent.Verdict);
+        Status = StatusPill.For(auditEvent);
+        IconKey = Status.ForegroundKey == "PillNotInspectedText" ? "IconAlert" : IconFor(auditEvent.Verdict);
         OccurredAt = auditEvent.OccurredAtUtc.ToLocalTime().ToString("dd/MM HH:mm");
     }
 
@@ -40,11 +40,20 @@ public sealed class ActivityRowViewModel
 
     // O histórico não registra se um arquivo foi enviado ou impedido antes da
     // gravação. O estado atual do serviço também não descreve uma decisão antiga.
-    private static string Describe(AuditEvent auditEvent) => auditEvent.Verdict switch
+    private static string Describe(AuditEvent auditEvent) => auditEvent switch
     {
-        Verdict.Blocked => $"Restrição pela política: {AuditSubject.Describe(auditEvent)}",
-        Verdict.Approved => $"Inspeção aprovada: {AuditSubject.Describe(auditEvent)}",
-        Verdict.Retained => $"Arquivo retido para análise: {AuditSubject.Describe(auditEvent)}",
+        { NotInspectedReason: "publication_outcome_unknown" } => $"Publicação não confirmada: {AuditSubject.Describe(auditEvent)}",
+        { NotInspectedReason: "publication_failed" } => $"Publicação pendente: {AuditSubject.Describe(auditEvent)}",
+        { Verdict: Verdict.Blocked } when ReasonLabels.IsInspectionFailure(auditEvent.NotInspectedReason) =>
+            $"Inspeção inconclusiva; arquivo bloqueado: {AuditSubject.Describe(auditEvent)}",
+        { Verdict: Verdict.Approved, PublishedSha256Hex: not null } when ReasonLabels.IsInspectionFailure(auditEvent.NotInspectedReason) =>
+            $"Publicado com inspeção inconclusiva: {AuditSubject.Describe(auditEvent)}",
+        { Verdict: Verdict.Approved, PublishedSha256Hex: not null } =>
+            $"{(auditEvent.Categories.Count > 0 ? "Publicado com alerta" : "Publicado")}: {AuditSubject.Describe(auditEvent)}",
+        { Verdict: Verdict.Approved } when auditEvent.Categories.Count > 0 => $"Inspeção com achados: {AuditSubject.Describe(auditEvent)}",
+        { Verdict: Verdict.Blocked } => $"Restrição pela política: {AuditSubject.Describe(auditEvent)}",
+        { Verdict: Verdict.Approved } => $"Inspeção aprovada: {AuditSubject.Describe(auditEvent)}",
+        { Verdict: Verdict.Retained } => $"Arquivo retido para análise: {AuditSubject.Describe(auditEvent)}",
         _ => $"Conteúdo não inspecionado: {AuditSubject.Describe(auditEvent)}"
     };
 
@@ -75,6 +84,22 @@ public sealed class ActivityRowViewModel
 /// <param name="ForegroundKey">Chave do pincel de texto nos tokens da paleta.</param>
 public sealed record StatusPill(string Text, string ForegroundKey)
 {
+    public static StatusPill For(AuditEvent item) => item switch
+    {
+        { NotInspectedReason: "publication_outcome_unknown" } => new("NÃO CONFIRMADO", "PillNotInspectedText"),
+        { NotInspectedReason: "publication_failed" } => new("PENDENTE", "PillNotInspectedText"),
+        { Verdict: Verdict.Blocked } when ReasonLabels.IsInspectionFailure(item.NotInspectedReason) =>
+            new("INCONCLUSIVO / BLOQUEADO", "PillNotInspectedText"),
+        { Verdict: Verdict.Approved, PublishedSha256Hex: not null } when ReasonLabels.IsInspectionFailure(item.NotInspectedReason) =>
+            new("PUBLICADO COM RESSALVA", "PillNotInspectedText"),
+        { Verdict: Verdict.Approved } when ReasonLabels.IsInspectionFailure(item.NotInspectedReason) =>
+            new("APROVADO / SEM INSPEÇÃO", "PillNotInspectedText"),
+        { Verdict: Verdict.Approved, PublishedSha256Hex: not null } when item.Categories.Count > 0 => new("PUBLICADO COM ALERTA", "PillNotInspectedText"),
+        { Verdict: Verdict.Approved } when item.Categories.Count > 0 => new("APROVADO COM ACHADOS", "PillNotInspectedText"),
+        { Verdict: Verdict.Approved, PublishedSha256Hex: not null } => new("PUBLICADO", "PillApprovedText"),
+        _ => For(item.Verdict)
+    };
+
     /// <summary>Rótulo correspondente ao veredito.</summary>
     public static StatusPill For(Verdict verdict) => verdict switch
     {

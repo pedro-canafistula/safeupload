@@ -515,9 +515,3 @@ public sealed record NotificationRecordEntry(int Version, long Sequence, string 
     public StagedBlockReason? BlockReason { get; init; }
 }
 public sealed record NotificationRecordHead(int Version, long Sequence, string Sha256);
-
-internal sealed class UnavailableNotificationRecord(Exception error) : INotificationRecord
-{
-    public void Append(AgentNotification notification, uint? targetSessionId) =>
-        throw new IOException("Notification record unavailable; delivery refused.", error);
-}

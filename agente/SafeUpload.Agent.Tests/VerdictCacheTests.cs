@@ -112,12 +112,31 @@ public class VerdictCacheTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new VerdictCache(TimeSpan.Zero, TimeProvider.System));
 
+    [Theory]
+    [InlineData(-6)]
+    [InlineData(6)]
+    public void Ajuste_do_relogio_civil_nao_altera_prazo_do_veredito(int horas)
+    {
+        var relogio = new RelogioControlado(DateTimeOffset.UtcNow);
+        var cache = new VerdictCache(TimeSpan.FromSeconds(60), relogio);
+        cache.Set(Operacao, Bloqueado);
+        relogio.Avancar(TimeSpan.FromSeconds(59));
+        relogio.AjustarRelogio(TimeSpan.FromHours(horas));
+        Assert.True(cache.TryGet(Operacao, 1, out _));
+        relogio.Avancar(TimeSpan.FromSeconds(1));
+        Assert.False(cache.TryGet(Operacao, 1, out _));
+    }
+
     /// <summary>Relógio de teste, avançado à mão.</summary>
     private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
     {
         private DateTimeOffset _agora = inicio;
 
-        public void Avancar(TimeSpan intervalo) => _agora += intervalo;
+        private long _elapsed;
+        public void Avancar(TimeSpan intervalo) { _agora += intervalo; _elapsed += intervalo.Ticks; }
+        public void AjustarRelogio(TimeSpan ajuste) => _agora += ajuste;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _elapsed;
 
         public override DateTimeOffset GetUtcNow() => _agora;
     }

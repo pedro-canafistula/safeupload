@@ -44,7 +44,7 @@ public sealed class TrayIconHost : IDisposable
         _notifyIcon = new WinForms.NotifyIcon
         {
             Icon = _icon,
-            Text = "SafeUpload — proteção ativa",
+            Text = "SafeUpload — agente Windows",
             Visible = true,
             ContextMenuStrip = menu
         };

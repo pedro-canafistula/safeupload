@@ -33,6 +33,27 @@ são migradas automaticamente. ZIP inspeciona cada membro sob orçamento cumulat
 7z permanece recusado com `archive_7z_unavailable`. Veja o escopo e as recusas
 em [INSPECTION-COVERAGE.md](docs/INSPECTION-COVERAGE.md).
 
+O motor confere o limite configurado no arquivo aberto antes de reservar a captura legada para qualquer formato.
+No staging, caminho e read lease exigem entrada somente leitura com o tamanho medido; divergências são retidas
+antes do parser. Tamanho real acima do limite mantém `file_too_large`, inclusive quando a descoberta indicava zero.
+O modo clássico preserva `AllowedWithoutInspection` nas falhas; staging preserva `Blocked`.
+
+O cancelamento é reconferido após política, worker e auditoria. Uma decisão nova só entra no cache depois da tentativa
+de auditoria e da conferência de cancelamento. Evento já gravado e cache válido de uma chamada anterior são mantidos;
+falha comum de auditoria continua preservando o veredito.
+
+Os leitores de política local e do formato remoto legado recusam campos repetidos, inclusive variações de caixa e
+nomes escapados, em vez de substituir um valor anterior. JSON ambíguo não sobrescreve a última política remota válida.
+Comentários e vírgulas finais continuam aceitos no arquivo local. O formato da console mantém sua validação existente.
+Os caches de política (`CachedPolicyStore`) e vereditos medem validade por tempo decorrido, independentemente de
+ajustes na hora do sistema. Uma carga cancelada não instala um novo snapshot; consultas atuais delegam ao provedor
+interno sem usar ou substituir esse cache. No modo remoto, as inspeções continuam usando o snapshot atualizado em fundo.
+
+O envio da auditoria lê o recibo em fluxo, com limite de 16 KiB e profundidade JSON de 16.
+O prazo de `HttpClient.Timeout` cobre envio e leitura completa; cancelamento ou recibo inválido mantém o lote pendente.
+Ambas as contagens `acceptedEvents` e `acceptedOverrides` devem existir uma única vez e corresponder ao lote,
+inclusive quando zero. A confirmação em disco conserva o token de cancelamento do serviço e independe do prazo HTTP.
+
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver gate (minifiltro), com documentação própria em
 [`../driver/README.md`](../driver/README.md).
@@ -48,6 +69,72 @@ O Service escolhe por configuração (`Interception:Mode` em `appsettings.json`)
   real fica somente leitura para usuários, e o driver gate recusa gravações diretas de qualquer outro processo.
   Exige o WinFsp instalado.
 - **`FileSystemWatcher`** — o mock antigo: reage *depois* que o arquivo chega ao destino e o apaga.
+
+Nas unidades SafeUpload, aprovação da inspeção e publicação são etapas distintas. O evento de sucesso só é emitido
+depois de copiar o snapshot e substituir o arquivo no destino. Falha de cópia/substituição gera um evento bloqueado
+com `publication_failed` por versão aprovada; o snapshot fica disponível para nova tentativa. A recuperação gera
+outro evento, sem reescrever o bloqueio ou a justificativa originais. A publicação usa o nome/destino finais do arquivo.
+
+A resposta de justificativa confirma o agendamento, não a cópia concluída. O resultado aparece no histórico.
+Esses eventos não confirmam flush físico, entrega ao servidor ou persistência após queda de energia.
+
+Renomear um arquivo, inclusive um já publicado, cria um novo contexto de publicação: os bytes ficam no stage,
+aprovações/justificativas anteriores são invalidadas e o nome novo exige nova inspeção. Resultados de inspeções
+iniciadas antes da renomeação são descartados. O arquivo publicado anterior permanece no destino até a nova
+publicação concluir. A janela de dez minutos para justificar usa tempo decorrido e não muda com ajustes na hora.
+Movimentações de diretórios conservam o fluxo próprio de metadados; isso não é recuperação transacional de toda a árvore.
+
+Na parada ordenada, cada unidade cancela e aguarda seu worker antes de desmontar. O serviço aguarda então os relatos
+de decisão/publicação já enfileirados. Cancelamento de inspeção não vira um novo bloqueio. Se o prazo de parada
+terminar, a espera falha e não comprova a conclusão desses relatos; um provedor que ignora cancelamento pode atrasá-la.
+Antes de substituir o destino por um snapshot aprovado, a unidade grava uma intenção no registro privado
+`publication-audit`. Ele guarda ID/horário/metadados imutáveis do evento e o hash da cópia preparada,
+sem copiar bytes do arquivo ou diagnósticos brutos; trechos já mascarados seguem o contrato da auditoria. Após a substituição, grava o resultado e tenta
+entregá-lo à fila. Falha na fila mantém o registro para tentar novamente; falha em persistir a intenção impede a cópia final.
+
+Na retomada, uma intenção sem resultado durável registra `publication_outcome_unknown`: o histórico mostra
+"Não confirmado", sem afirmar que a cópia foi impedida, mesmo quando o destino contém os mesmos bytes.
+A recuperação nunca conclui uma cópia antiga nem infere sucesso pela identidade/hash encontrados depois.
+Resultados já gravados não são alterados por mudanças posteriores no destino.
+
+A primeira entrega usa um ID novo; repetições conferem a fila, inclusive eventos já despachados, sem alterar seus bytes
+ou estado de entrega. Um mesmo ID com metadados diferentes mantém a pendência para investigação. O registro usa ordem
+persistida por unidade e admite até 1 MiB por entrada, 16 MiB pendentes e 4096 entradas. Isso cobre retomada do processo
+para publicações de snapshots; não é uma transação de armazenamento, garantia de queda de energia ou journal de todas
+as operações do filesystem. Auditoria de bloqueios e fluxos legados conserva seus contratos próprios.
+
+O catálogo privado `stage-map.json` registra os arquivos retidos, nomes relativos, localização anterior publicada e
+autor capturado pelo serviço. A gravação usa temporário no mesmo diretório, flush e substituição antes de aceitar
+bytes novos ou alterar nomes/exclusões privadas. O catálogo admite até 1 MiB e 4096 entradas, é associado ao caminho
+e à identidade de volume/diretório informada pelo Windows e só pode ter um filesystem ativo por área privada.
+Catálogo inválido, stage ausente, destino trocado ou redirecionamentos/links incompatíveis impedem a recuperação,
+preservando os arquivos. Arquivos antigos sem catálogo permanecem privados, sem tentativa de adivinhar seus nomes.
+
+Após reinício, versões registradas voltam à unidade e são reinspecionadas com a política atual. Não se restauram
+aprovações ou justificativas; a sessão/processo anterior não concede uma nova liberação. SID e nome capturados são
+mantidos apenas para atribuição de auditoria. Uma publicação concluída retira do catálogo somente a versão atual;
+uma edição mais nova permanece retida. Renomeações registram a intenção antes de mover o backing: após interrupção,
+o nome novo pode ser recuperado mesmo que essa movimentação não tenha terminado. Isso não é um journal completo
+do filesystem, não reproduz exclusões de backing após queda e não qualifica queda de energia ou USB/SMB sem ensaio real.
+
+A autorização também carrega a impressão do conteúdo da política usada na inspeção. As unidades conferem essa
+impressão antes da cópia e novamente antes da substituição do destino; mudança de regras, inclusive sob o mesmo
+número de versão, revoga a aprovação e agenda nova inspeção do stage. Justificativas exigem o mesmo vínculo antes
+e depois de gravar a solicitação na auditoria. Falha de leitura da política mantém a cópia aprovada retida para tentar
+novamente. Na configuração remota essas leituras usam o snapshot validado do serviço de fundo, inclusive offline,
+sem HTTP por arquivo. São reconferências pontuais, não uma transação atômica entre atualização de política e renomeação.
+
+O estado das unidades distingue conexão com o serviço de proteção confirmada. Só anuncia proteção completa quando
+o gate aceita o escopo e todas as unidades esperadas aparecem disponíveis no Windows. Nas consultas seguintes ao
+mesmo escopo, usa o comando de contadores existente para verificar a conexão; falha ou resposta incompleta exige
+reconexão e reenvio da política. Ausência de destinos, montagem incompleta, escopo recusado, política indisponível e
+parada do serviço deixam a proteção inativa na notificação. O indicador verde acompanha esse estado, inclusive em
+modo auditoria; conexão com o serviço por si só não o ativa. O detalhe DriveProtection é opcional no contrato do pipe.
+
+É uma observação da sincronização periódica de 30 segundos, não uma prova contínua de todos os volumes/canais.
+O recebimento do escopo pelo gate e a presença das letras não qualificam Office/USB/SMB sem o ensaio real. Se o
+registro durável de uma notificação falhar, sua entrega continua suprimida; a sincronização tenta registrar novamente,
+e a interface pode conservar a última observação até receber outra ou detectar a desconexão.
 
 ---
 

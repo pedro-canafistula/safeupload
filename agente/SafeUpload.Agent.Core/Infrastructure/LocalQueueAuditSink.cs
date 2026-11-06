@@ -22,7 +22,7 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 /// Todo evento nasce com dispatched igual a falso. O despachante marca
 /// verdadeiro depois da confirmação do servidor, preservando a trilha local.
 /// </summary>
-public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
+public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IRecoverableAuditSink
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -139,7 +139,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
 
     // Uma queda pode deixar a última linha sem terminador. Se anexássemos o
     // próximo evento diretamente, ele se perderia junto com a linha truncada.
-    private async Task AppendLineAsync(string line, CancellationToken cancellationToken)
+    private async Task AppendLineAsync(string line, CancellationToken cancellationToken, bool durable = false)
     {
         await using var stream = OpenQueueAppend();
         if (stream.Length > 0)
@@ -152,6 +152,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue
         }
         await stream.WriteAsync(Utf8NoBom.GetBytes(line + Environment.NewLine), cancellationToken).ConfigureAwait(false);
         await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        if (durable) stream.Flush(flushToDisk: true);
     }
 
     /// <inheritdoc />

@@ -102,7 +102,7 @@ Check 'central cache does not exist before the service starts' (-not (Test-Path 
 $operationalHash = (Get-FileHash -LiteralPath $operationalFile -Algorithm SHA256).Hash
 
 $fixtureFile = Join-Path $results 'console-system-fixture.json'
-& dotnet $contractDll --console-service-fixture setup $fixtureFile *> (Join-Path $results 'console-fixture-setup.log')
+& dotnet $contractDll --legacy-console-service-fixture setup $fixtureFile *> (Join-Path $results 'console-fixture-setup.log')
 Check 'fresh console API fixture was prepared' ($LASTEXITCODE -eq 0)
 $fixture = Get-Content -LiteralPath $fixtureFile -Raw | ConvertFrom-Json
 $targetId = [int]$fixture.hostId
@@ -145,7 +145,7 @@ Check 'offline restart preserves cache, identity and central audit' ((Get-FileHa
     (Get-FileHash -LiteralPath $identityFile -Algorithm SHA256).Hash -eq $identityHash -and (Query 'SELECT COUNT(*) FROM app.agent_audit_ingest;') -eq $centralBeforeOffline)
 $evidence.snapshots.consoleOffline = [ordered]@{service=$second;cacheHash=$cacheHash;audit=$offline}
 Start-Backend 'console-recovered'
-& dotnet $contractDll --console-service-fixture recover $fixtureFile *> (Join-Path $results 'console-fixture-recover.log')
+& dotnet $contractDll --legacy-console-service-fixture recover $fixtureFile *> (Join-Path $results 'console-fixture-recover.log')
 Check 'recovered console published CPF policy' ($LASTEXITCODE -eq 0)
 $recovered = Get-Content -LiteralPath $fixtureFile -Raw | ConvertFrom-Json
 Check 'recovery keeps target context and advances revision' ($recovered.hostId -eq $targetId -and $recovered.revision -gt $revision)

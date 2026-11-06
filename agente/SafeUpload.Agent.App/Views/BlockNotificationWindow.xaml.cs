@@ -57,6 +57,7 @@ public partial class BlockNotificationWindow : Window
         ArgumentNullException.ThrowIfNull(findings);
 
         InitializeComponent();
+        MaxHeight = Math.Max(180, SystemParameters.WorkArea.Height - ScreenMargin * 2);
 
         Add(fileName, findings, justificationEventId, quarantined, staged,
             handbackPath, handbackVerified, snapshotSha256Hex, inspectionFailure, blockReason);
@@ -82,6 +83,9 @@ public partial class BlockNotificationWindow : Window
         StagedBlockReason? blockReason = null)
     {
         ArgumentNullException.ThrowIfNull(findings);
+
+        fileName = AuditTextPrivacy.Sanitize(fileName);
+        handbackPath = handbackPath is null ? null : AuditTextPrivacy.Sanitize(handbackPath);
 
         if (!string.IsNullOrEmpty(fileName))
         {
@@ -111,7 +115,8 @@ public partial class BlockNotificationWindow : Window
         if (privateSeed) justificationEventId = null;
         _justificationEventId = justificationEventId;
         _staged = staged;
-        bool incomplete = staged && inspectionFailure is not null;
+        bool incomplete = inspectionFailure is not null;
+        HeadingText.Text = incomplete ? "Inspeção inconclusiva; envio bloqueado" : "Conteúdo restrito pela política";
         InspectionFailureText.Visibility = incomplete ? Visibility.Visible : Visibility.Collapsed;
         string failureMessage = inspectionFailure switch
         {
@@ -129,7 +134,8 @@ public partial class BlockNotificationWindow : Window
         FindingsHeading.Text = _fileNames.Count == 1 ? "O que foi encontrado" : "Achados nos arquivos bloqueados";
         FindingsList.Visibility = _findings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         GuidanceText.Text = privateSeed ? "Peça ajuda ao administrador para verificar as permissões de leitura e devolução do arquivo." : incomplete
-            ? "A versão não foi enviada ao destino. Tente salvar novamente ou peça ajuda ao administrador para concluir a análise."
+            ? staged ? "A versão não foi enviada ao destino. Tente salvar novamente ou peça ajuda ao administrador para concluir a análise."
+                : "A análise não foi concluída. Peça ajuda ao administrador para verificar o arquivo e a operação."
             : "Revise o arquivo, remova ou anonimize as informações e tente novamente.";
         JustificationHelpText.Text = incomplete
             ? "Informe o motivo de negócio para autorizar o envio desta versão mesmo se sua análise não puder ser concluída."
@@ -137,7 +143,7 @@ public partial class BlockNotificationWindow : Window
         QuarantineText.Visibility = quarantined || privateSeed ? Visibility.Visible : Visibility.Collapsed;
         QuarantineText.Text = privateSeed ? StagedSeedBlockPresentation.Explanation : staged
             ? handbackVerified == true && !string.IsNullOrWhiteSpace(handbackPath)
-                ? $"Devolvido para: {handbackPath}\nSHA-256: {snapshotSha256Hex ?? "indisponível"}"
+                ? $"Versão retida em: {handbackPath}\nSHA-256: {snapshotSha256Hex ?? "indisponível"}"
                 : "Não foi possível devolver o arquivo com segurança. A versão permanece no staging protegido do SafeUpload e não foi enviada ao destino."
             : "O arquivo foi retirado da pasta monitorada e guardado na pasta de bloqueados do SafeUpload.";
         JustificationPanel.Visibility = justificationEventId is null
@@ -206,7 +212,7 @@ public partial class BlockNotificationWindow : Window
             {
                 JustificationInput.IsEnabled = false;
                 JustificationStatusText.Text =
-                    _staged ? "Justificativa aceita. A versão devolvida foi enviada."
+                    _staged ? "Justificativa aceita. Publicação agendada; acompanhe o histórico."
                             : "Justificativa aceita. Tente a operação novamente.";
             }
         }

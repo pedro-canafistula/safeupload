@@ -1,9 +1,34 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+import { generateKeyPairSync, sign } from 'node:crypto';
 
 test.describe.configure({ mode: 'serial' });
 const email = 'migration-e2e@example.com';
 const password = 'migration-e2e-123';
 const endpointId = 'E2E-FINANCEIRO';
+
+async function registerHost(request: APIRequestContext, hostname: string, ip: string): Promise<number> {
+  const api = 'http://127.0.0.1:8080';
+  expect((await request.post(api + '/auth/login', { data: { email, senha: password } })).status()).toBe(200);
+  const issued = await request.post(api + '/admin/token');
+  expect(issued.status()).toBe(200);
+  const { token } = await issued.json();
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const host = { ip, mascara: 24, hostname, sistema_operacional: 'Windows', versao_so: '11 Pro' };
+  const registration = await request.post(api + '/agent/heartbeat', { data: {
+    cadastro: { token, chave_publica: publicKey.export({ type: 'spki', format: 'der' }).toString('base64') },
+    host
+  } });
+  expect(registration.status()).toBe(200);
+  const { id_host } = await registration.json();
+  expect(Number.isInteger(id_host) && id_host > 0).toBeTruthy();
+  const heartbeat = await request.post(api + '/agent/heartbeat', { data: {
+    autenticacao: { id_host, assinatura: sign(null, Buffer.from(String(id_host), 'utf8'), privateKey).toString('base64') },
+    host
+  } });
+  expect(heartbeat.status()).toBe(200);
+  expect((await heartbeat.json()).id_host).toBe(id_host);
+  return id_host;
+}
 
 test('cadastro, login e estado vazio sem indicadores fictícios', async ({ page }) => {
   await page.goto('/cadastro');
@@ -42,15 +67,7 @@ test('cadastro, login e estado vazio sem indicadores fictícios', async ({ page 
 
 test('heartbeat e três eventos reais aparecem no painel, endpoints e auditoria', async ({ page, request }) => {
   const api = 'http://127.0.0.1:8080';
-  const registration = await request.post(api + '/agent/synchronize', { data: {
-    host: { ip: '10.90.0.31', mascara: 24, hostname: endpointId, sistema_operacional: 'Windows', versao_so: '11 Pro' },
-    usuarioSo: { sid: 'S-E2E-FINANCEIRO', usuario_so: 'teste', dominio: 'SYNTHETIC', admin: 0 }
-  } });
-  expect(registration.status()).toBe(201);
-  const { id_host } = await registration.json();
-  expect((await request.post(api + '/agent/heartbeat', { data: {
-    id_host
-  } })).ok()).toBeTruthy();
+  await registerHost(request, endpointId, '10.90.0.31');
   const events = ['Blocked', 'Approved', 'AllowedWithoutInspection'].map((verdict, index) => ({
     eventId: crypto.randomUUID(), occurredAtUtc: new Date(Date.now() - index * 1000).toISOString(),
     endpointId, userName: 'teste', fileName: index === 0 ? '<script>alert(1)</script>.txt' : 'arquivo-' + index + '.txt',
@@ -168,12 +185,7 @@ test('política da console é persistida pelo IP correto; nova publicação não
   const api = 'http://127.0.0.1:8080';
   const hosts: Record<string, number> = {};
   for (const [name, ip] of [['E2E-POLITICA', '10.90.0.41'], ['E2E-CONTROLE', '10.90.0.42']]) {
-    const registered = await request.post(api + '/agent/synchronize', { data: {
-      host: { ip, mascara: 24, hostname: name, sistema_operacional: 'Windows', versao_so: '11' },
-      usuarioSo: { sid: 'S-TEST-' + name, usuario_so: 'teste', dominio: 'SYNTHETIC', admin: 0 }
-    } });
-    expect(registered.status()).toBe(201);
-    hosts[ip] = (await registered.json()).id_host;
+    hosts[ip] = await registerHost(request, name, ip);
   }
   await page.goto('/login');
   await page.getByLabel('E-mail').fill(email);

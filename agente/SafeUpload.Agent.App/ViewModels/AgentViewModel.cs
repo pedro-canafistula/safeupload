@@ -1,6 +1,7 @@
 using System.Reflection;
 using SafeUpload.Agent.App.Mvvm;
 using SafeUpload.Agent.Core.Contracts;
+using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.App.ViewModels;
 
@@ -48,6 +49,15 @@ public sealed class AgentViewModel : ObservableObject
     {
         if (history.Available) Status.ApplyHistory(history.Events);
         History.ApplyHistory(history);
+        Status.ApplyPendingAudit(history.Available ? History.PendingSummary : "Histórico indisponível; pendências de envio desconhecidas.");
+    }
+
+    public bool ApplyEvent(AuditEvent item)
+    {
+        Status.PrependActivity(item);
+        bool added = History.Prepend(item);
+        Status.ApplyPendingAudit(History.PendingSummary);
+        return added;
     }
 
     /// <summary>Os dois itens de navegação da barra lateral.</summary>

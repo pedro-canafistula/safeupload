@@ -22,6 +22,7 @@ public sealed class LocalPolicyStore : IPolicyStore
     private static readonly JsonSerializerOptions ReadOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        AllowDuplicateProperties = false,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         Converters = { new JsonStringEnumConverter() }

@@ -77,7 +77,8 @@ public sealed record TransferNotification(
     InspectionFailureKind? InspectionFailure = null,
     StagedBlockReason? BlockReason = null,
     StagedRecoveryAdvice? RecoveryAdvice = null,
-    string? MetadataFailure = null) : AgentNotification
+    string? MetadataFailure = null,
+    AuditEvent? Event = null) : AgentNotification
 {
     public const string TypeName = "transfer";
 }
@@ -105,6 +106,7 @@ public enum AdmissionCoverageStatus
 /// Se o interceptador está de fato vigiando. Falso quando o serviço subiu mas
 /// não conseguiu observar as pastas — o aplicativo precisa poder distinguir
 /// "protegido" de "serviço no ar, mas cego".
+/// No modo Drive exige escopo aceito pelo gate e todas as unidades esperadas disponíveis na última sincronização.
 /// </param>
 /// <param name="AuditOnly">Há observação ativa, mas nenhuma operação é bloqueada.</param>
 public sealed record StatusNotification(
@@ -115,7 +117,8 @@ public sealed record StatusNotification(
     AdmissionCoverageStatus AdmissionCoverage = AdmissionCoverageStatus.NotAvailable,
     string? AdmissionCoverageReason = null,
     uint? NativePolicyGeneration = null,
-    AdministrationCommunicationStatus? Communication = null) : AgentNotification
+    AdministrationCommunicationStatus? Communication = null,
+    DriveProtectionStatus? DriveProtection = null) : AgentNotification
 {
     /// <summary>Discriminador desta mensagem no NDJSON.</summary>
     public const string TypeName = "status";

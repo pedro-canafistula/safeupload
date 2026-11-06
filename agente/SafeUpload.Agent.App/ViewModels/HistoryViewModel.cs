@@ -15,6 +15,7 @@ namespace SafeUpload.Agent.App.ViewModels;
 /// </summary>
 public sealed class HistoryViewModel : ObservableObject
 {
+    private bool _hasReport;
     private string _emptyMessage = "Aguardando o histórico do serviço";
     public string EmptyMessage
     {
@@ -27,18 +28,24 @@ public sealed class HistoryViewModel : ObservableObject
 
     /// <summary>Verdadeiro quando a trilha ainda está vazia.</summary>
     public bool IsEmpty => Events.Count == 0;
+    public string PendingSummary => !_hasReport ? "Pendências de envio desconhecidas; aguardando histórico autorizado." :
+        $"No histórico recebido: {Events.Count(e => !e.Confirmed)} evento(s) sem confirmação de envio. " +
+        "Situação da última mensagem, limitada aos eventos desta sessão; não é o total da fila.";
 
     /// <summary>Substitui o histórico sem produzir notificações de bloqueio.</summary>
     public void ApplyHistory(HistoryNotification history)
     {
         if (!history.Available) { SetUnavailable(); return; }
+        _hasReport = true;
+        var confirmed = Events.Where(e => e.Confirmed).Select(e => e.EventId).ToHashSet();
         Events.Clear();
         foreach (var auditEvent in history.Events.DistinctBy(e => e.EventId).Take(HistoryNotification.MaximumEvents))
         {
-            Events.Add(new HistoryRowViewModel(auditEvent));
+            Events.Add(new HistoryRowViewModel(confirmed.Contains(auditEvent.EventId) ? auditEvent with { Dispatched = true } : auditEvent));
         }
 
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(PendingSummary));
         EmptyMessage = history.Truncated ? "Parte do histórico não pôde ser exibida" : "Nenhuma operação disponível para esta sessão";
         AvailabilityMessage = history.Truncated ? "Exibindo parte das operações disponíveis para esta sessão." :
             "Operações recentes desta sessão, da mais recente para a mais antiga.";
@@ -65,12 +72,25 @@ public sealed class HistoryViewModel : ObservableObject
     public bool Prepend(AuditEvent auditEvent)
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
+        _hasReport = true;
 
-        if (Events.Any(row => row.EventId == auditEvent.EventId)) return false;
+        var previous = Events.FirstOrDefault(row => row.EventId == auditEvent.EventId);
+        if (previous is not null)
+        {
+            // A buffered pre-confirmation notification can follow a fresh history snapshot.
+            // Receipt confirmation is monotonic for the same immutable event identity.
+            if (!previous.Confirmed && auditEvent.Dispatched)
+            {
+                Events[Events.IndexOf(previous)] = new HistoryRowViewModel(auditEvent);
+                OnPropertyChanged(nameof(PendingSummary));
+            }
+            return false;
+        }
 
         Events.Insert(0, new HistoryRowViewModel(auditEvent));
         while (Events.Count > HistoryNotification.MaximumEvents) Events.RemoveAt(Events.Count - 1);
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(PendingSummary));
         return true;
     }
 }
@@ -96,7 +116,8 @@ public sealed class HistoryRowViewModel
         Size = FormatSize(auditEvent.SizeBytes);
         Destination = AuditTextPrivacy.Sanitize(auditEvent.DestinationPath);
         Process = AuditTextPrivacy.Sanitize(auditEvent.ProcessName);
-        Status = StatusPill.For(auditEvent.Verdict);
+        Status = StatusPill.For(auditEvent);
+        Confirmed = auditEvent.Dispatched;
 
         Categories = auditEvent.Categories.Count == 0
             ? "—"
@@ -104,7 +125,7 @@ public sealed class HistoryRowViewModel
 
         MaskedSnippets = auditEvent.MaskedSnippets.Count == 0
             ? "—"
-            : string.Join("   ", auditEvent.MaskedSnippets);
+            : string.Join("   ", auditEvent.MaskedSnippets.Select(AuditTextPrivacy.Sanitize));
 
         Reason = auditEvent.NotInspectedReason is null
             ? "—"
@@ -114,6 +135,8 @@ public sealed class HistoryRowViewModel
     /// <summary>Data e hora locais da decisão.</summary>
     public string OccurredAt { get; }
     public Guid EventId { get; }
+    public bool Confirmed { get; }
+    public string Delivery => Confirmed ? "Confirmado pelo backend" : "Sem confirmação de envio";
 
     /// <summary>Nome do arquivo.</summary>
     public string FileName { get; }

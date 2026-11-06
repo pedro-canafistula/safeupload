@@ -39,6 +39,9 @@ public sealed class NotificationHub
     private readonly ILogger<NotificationHub> _logger;
 
     private StatusNotification? _currentStatus;
+    // Latest observed state is kept separately from emitted state. It may only
+    // become visible after a successful durable append on a later sample.
+    private StatusNotification? _pendingStatus;
     private AdministrationCommunicationStatus? _communication;
 
     public NotificationHub(INotificationRecord record, ILogger<NotificationHub> logger)
@@ -66,6 +69,15 @@ public sealed class NotificationHub
                 return _currentStatus;
             }
         }
+    }
+
+    // Producers may deduplicate only if the latest observed state was recorded.
+    // Comparing against an older emitted state could preserve a failed intermediate state.
+    internal bool HasRecordedStatus(StatusNotification status)
+    {
+        lock (_gate)
+            return _pendingStatus is null && _currentStatus is { } current &&
+                current with { Communication = null } == status;
     }
 
     /// <summary>
@@ -144,12 +156,13 @@ public sealed class NotificationHub
         lock (_gate)
         {
             if (notification is StatusNotification current)
-                notification = current with { Communication = _communication };
+                notification = _pendingStatus = current with { Communication = _communication };
             if (!TryRecord(notification, targetSessionId)) return;
 
             if (notification is StatusNotification status)
             {
                 _currentStatus = status;
+                _pendingStatus = null;
             }
             else
             {
@@ -176,6 +189,11 @@ public sealed class NotificationHub
     {
         lock (_gate)
         {
+            if (_pendingStatus is { } pending)
+            {
+                Publish(pending);
+                return _pendingStatus is null ? _currentStatus : null;
+            }
             return _currentStatus is { } status && TryRecord(status, null) ? status : null;
         }
     }
@@ -187,7 +205,8 @@ public sealed class NotificationHub
         lock (_gate)
         {
             _communication = communication;
-            if (_currentStatus is { } status && status.Communication != communication)
+            if ((_pendingStatus ?? _currentStatus) is { } status &&
+                (_pendingStatus is not null || status.Communication != communication))
                 Publish(status with { Communication = communication });
         }
     }

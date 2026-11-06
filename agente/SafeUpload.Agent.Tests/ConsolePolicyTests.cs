@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -117,6 +118,34 @@ public sealed class ConsolePolicyTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Alterar_justificativa_local_nao_adultera_a_publicacao_central(bool restart, bool current)
+    {
+        using var client = Client(new Handler { Body = Document(101, "cpf") });
+        string localFile = Path.Combine(_workspace.Root, "operational.json");
+        await File.WriteAllTextAsync(localFile, JsonSerializer.Serialize(PolicyDocument.FromPolicy(Operational)));
+        DurableHttpPolicyStore Open() => new(client, "PC-SINTETICO", Cache, false,
+            consolePolicy: Options, operationalPolicy: new LocalPolicyStore(localFile));
+        var store = Open();
+        Assert.True((await store.LoadAsync(default)).OverrideAllowed);
+
+        // The console does not publish this permission. Revoking it locally must take effect
+        // even when the server still returns the same valid publication, including after restart.
+        var changed = Operational with { OverrideAllowed = false };
+        await File.WriteAllTextAsync(localFile, JsonSerializer.Serialize(PolicyDocument.FromPolicy(changed)));
+        if (restart) store = Open();
+        var applied = current ? await store.LoadCurrentAsync(default) : await store.LoadAsync(default);
+        Assert.Equal(101, applied.Version);
+        Assert.True(applied.ActiveCategories.SetEquals([Category.Cpf]));
+        Assert.False(applied.OverrideAllowed);
+        Assert.Equal("remote", store.LastSource);
+        Assert.False((await Open().LoadCachedOrDefaultAsync(default)).OverrideAllowed);
+    }
+
+    [Theory]
     [InlineData("host")]
     [InlineData("ip")]
     [InlineData("action")]
@@ -130,6 +159,7 @@ public sealed class ConsolePolicyTests : IDisposable
     [InlineData("large")]
     [InlineData("rollback")]
     [InlineData("same_revision_changed")]
+    [InlineData("same_revision_action")]
     public async Task Documento_incompativel_nao_substitui_memoria_ou_cache(string mutation)
     {
         var handler = new Handler { Body = Document(101, "cpf") };
@@ -149,6 +179,10 @@ public sealed class ConsolePolicyTests : IDisposable
             case "missing": changed.AsObject().Remove("idPolitica"); break;
             case "rollback": changed["idPolitica"] = 100; break;
             case "same_revision_changed": changed["idPolitica"] = 101; break;
+            case "same_revision_action":
+                changed = JsonNode.Parse(Document(101, "cpf"))!;
+                changed["acao"] = "alertar";
+                break;
         }
         handler.Body = mutation switch
         {
