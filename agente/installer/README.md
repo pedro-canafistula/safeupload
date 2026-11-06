@@ -1,6 +1,6 @@
 # Instalador do agente Windows — candidato de desenvolvimento
 
-Base do instalador integrada na main pelo #64, com origem nos #42/#49 e correção de remoção com UI aberta da issue #50. Recortes posteriores integraram auditoria/recibos, diagnóstico da fila, histórico e manutenção somente leitura. A versão candidata é 0.1.15; o manifesto de cada build identifica commit e hashes próprios. Ela não herda o aceite do pacote Windows 10 0.1.14. Consulte o resultado do workflow no commit exato antes de executar uma instalação de teste.
+Base do instalador integrada na main pelo #64, com origem nos #42/#49 e correção de remoção com UI aberta da issue #50. Recortes posteriores integraram auditoria/recibos, diagnóstico da fila, histórico e manutenção somente leitura. A versão candidata é 0.1.17; o manifesto de cada build identifica commit e hashes próprios. Ela não herda o aceite do pacote Windows 10 0.1.14. Consulte o resultado do workflow no commit exato antes de executar uma instalação de teste.
 
 Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interface WPF na bandeja, atalho e desinstalador. Os dois executáveis são publicados com runtime .NET próprio; o computador de destino não precisa do SDK. A compilação usa Inno Setup 6.7.3, obtido de uma release oficial imutável, com SHA-256 e assinatura do editor verificados.
 
@@ -28,9 +28,9 @@ O destino é fixo: `%ProgramFiles%\SafeUpload\Agent`, separado em `service`, `ui
 Automação, também em máquina descartável:
 
 ```powershell
-.\SafeUploadAgent-0.1.15-win-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MODE=FileSystemWatcher
+.\SafeUploadAgent-0.1.17-win-x64-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MODE=FileSystemWatcher
 # Unidades SafeUpload (pacote com WinFsp e driver gate):
-.\SafeUploadAgent-0.1.15-win-x64-setup.exe /MODE=Drive /ADMINURL=https://servidor/agent/
+.\SafeUploadAgent-0.1.17-win-x64-setup.exe /MODE=Drive /ADMINURL=https://servidor/agent/
 ```
 
 No modo silencioso, ausência de `/MODE` seleciona `Drive`.
@@ -46,6 +46,24 @@ No modo silencioso, ausência de `/MODE` seleciona `Drive`.
 
 O estado da instalação fica em `setup/installation.json`. O manifesto registra versão, commit, estado de alterações locais e hashes de todos os arquivos empacotados. Dados privados do endpoint não entram no pacote.
 
+## Atualização controlada e reversão
+
+O build também gera `SafeUploadAgent-<versão>-win-x64-update.zip` e seu SHA-256. Confira o hash recebido por um canal confiável, extraia em uma pasta separada e execute **Windows PowerShell 5.1 como administrador**:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Pacotes\SafeUpload\setup\Update-SafeUploadAgent.ps1" -PackagePath "C:\Pacotes\SafeUpload"
+# Para voltar à versão anterior, use o identificador retornado pela atualização:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Pacotes\SafeUpload\setup\Update-SafeUploadAgent.ps1" -Action Rollback -TransactionId <identificador>
+```
+
+Aceita somente instalação gerenciada em `%ProgramFiles%\SafeUpload\Agent`, com versão e commit coerentes, pacote de origem limpa e versão posterior. Instalações manuais e candidatas em outros caminhos precisam de migração própria. O pacote precisa manter os mesmos pré-requisitos de driver/WinFsp; este procedimento atualiza apenas serviço, interface e scripts. Configurações persistentes devem ficar em ProgramData ou nos argumentos do serviço: os arquivos empacotados, incluindo `appsettings.json`, são substituídos.
+
+A cópia anterior e o novo pacote são conferidos antes de parar o serviço. O procedimento encerra a interface da instalação, preserva os argumentos e a identidade do serviço e mantém driver, política, identidade do endpoint, fila e arquivos retidos. Confere o serviço e o canal de status após iniciar; no modo Drive exige também gate e unidades prontos. Se a nova versão não inicia ou não fica pronta, tenta restaurar os binários anteriores. A reversão nunca restaura uma fila ou uma política antiga. Reabra a interface na sessão do usuário ao terminar.
+
+As transações ficam em `%ProgramFiles%\SafeUpload\Maintenance\<identificador>`, acessíveis apenas a administradores e SYSTEM, sem limpeza automática. Uma interrupção de energia ou falha na recuperação exige usar `Rollback` com o identificador de `transaction.json` antes de nova atualização. Arquivos não empacotados dentro de `service`, `ui` e `setup` ficam junto à árvore anterior, fora da instalação ativa; o desinstalador original continua no lugar. A remoção considera o manifesto atual para retirar também dependências introduzidas pela atualização.
+
+Esse é um procedimento manual de manutenção da aplicação. Assinatura do editor, atualização de driver, reparo de instalação danificada e atualização automática continuam fora deste recorte. SHA-256 detecta alteração do pacote, mas não autentica seu autor.
+
 ## Gerar o instalador
 
 Na máquina de desenvolvimento: Windows x64, .NET 10 SDK, PowerShell 7, Git e acesso às dependências NuGet. O compilador é extraído em modo portátil dentro de `artifacts/installer-tools`, sem instalar o agente.
@@ -57,7 +75,7 @@ $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
 ./agente/installer/tests/Test-InstallerArtifact.ps1 -BuildResultPath ./artifacts/installer/build-result.json -ResultsPath ./artifacts/installer-tests/artifact-validation.json
 ```
 
-Saídas em `artifacts/installer/`: `SafeUploadAgent-0.1.15-win-x64-setup.exe`, seu `.sha256`, `build-result.json` e uma pasta de build com payload e logs. O builder cria pastas novas para cada execução e não apaga diretórios existentes. Ele não instala serviços, inicia a UI ou executa o instalador gerado.
+Saídas em `artifacts/installer/`: `SafeUploadAgent-0.1.17-win-x64-setup.exe`, seu `.sha256`, `build-result.json` e uma pasta de build com payload e logs. O builder cria pastas novas para cada execução e não apaga diretórios existentes. Ele não instala serviços, inicia a UI ou executa o instalador gerado.
 
 ## Validação e critérios de aceite
 

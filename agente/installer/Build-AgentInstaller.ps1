@@ -3,6 +3,7 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.17',
     [Parameter(Mandatory)][ValidateScript({Test-Path -LiteralPath $_ -PathType Leaf})][string]$CompilerPath,
+    [switch]$PayloadOnly,
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../../artifacts/installer'),
     # Optional: bundle the gate driver (SafeUpload.sys + .inf from driver/scripts/build-driver.sh) and the WinFsp MSI,
     # so Drive mode installs them. Without them, Drive mode needs WinFsp already installed and runs without the gate.
@@ -30,6 +31,8 @@ $setup = Join-Path $payload 'setup'
 New-Item -ItemType Directory -Path $setup | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'support/Invoke-AgentSetup.ps1'),
     (Join-Path $PSScriptRoot 'support/SafeUpload.Setup.psm1'),
+    (Join-Path $PSScriptRoot 'support/SafeUpload.Maintenance.psm1'),
+    (Join-Path $PSScriptRoot 'support/Update-SafeUploadAgent.ps1'),
     (Join-Path $root 'agente/scripts/Install-SafeUploadAgent.ps1'),
     (Join-Path $root 'agente/scripts/Get-SafeUploadDiagnostics.ps1') -Destination $setup
 if ($DriverDirectory) {
@@ -51,6 +54,18 @@ $manifest = [ordered]@{schemaVersion=1;version=$Version;commit=$commit;sourceDir
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $payload 'payload-manifest.json') -Encoding utf8NoBOM
 Import-Module (Join-Path $PSScriptRoot 'support/SafeUpload.Setup.psm1') -Force
 $null = Test-SafeUploadPayload -Root $payload
+$updatePackage = Join-Path $OutputDirectory "SafeUploadAgent-$Version-win-x64-update.zip"
+if (Test-Path -LiteralPath $updatePackage) { throw 'Update archive already exists; use a new output directory.' }
+Compress-Archive -LiteralPath @(Get-ChildItem -LiteralPath $payload -Force | Select-Object -ExpandProperty FullName) -DestinationPath $updatePackage
+$updateHash = (Get-FileHash -LiteralPath $updatePackage).Hash
+"$updateHash  $([IO.Path]::GetFileName($updatePackage))" | Set-Content -LiteralPath ($updatePackage + '.sha256') -Encoding ascii
+if ($PayloadOnly) {
+    [ordered]@{version=$Version;commit=$commit;sourceDirty=$sourceDirty;buildRoot=$buildRoot;updatePackage=$updatePackage;
+        updateSha256=$updateHash;payloadFiles=$files.Count;signed=$false} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $OutputDirectory 'build-result.json') -Encoding utf8NoBOM
+    Get-Content -LiteralPath (Join-Path $OutputDirectory 'build-result.json')
+    return
+}
 $compilerLog = Join-Path $buildRoot 'compiler.log'
 & $CompilerPath "/DPayloadRoot=$payload" "/DArtifactOutput=$OutputDirectory" "/DAgentVersion=$Version" `
     (Join-Path $PSScriptRoot 'SafeUpload.Agent.iss') *> $compilerLog
@@ -58,6 +73,7 @@ if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed. See $compilerLog
 $installer = Join-Path $OutputDirectory "SafeUploadAgent-$Version-win-x64-setup.exe"
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'The compiler did not produce the installer.' }
 [ordered]@{ installer=$installer; sha256=(Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash;
+    updatePackage=$updatePackage;updateSha256=$updateHash;
     version=$Version; commit=$commit; sourceDirty=$sourceDirty; buildRoot=$buildRoot; payloadFiles=$files.Count; signed=$false
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'build-result.json') -Encoding utf8NoBOM
 $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash

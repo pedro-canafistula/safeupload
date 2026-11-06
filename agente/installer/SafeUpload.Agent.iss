@@ -47,6 +47,7 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Source: "{#PayloadRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "support\Invoke-AgentSetup.ps1"; Flags: dontcopy
 Source: "support\SafeUpload.Setup.psm1"; Flags: dontcopy
+Source: "support\SafeUpload.Maintenance.psm1"; Flags: dontcopy
 
 [Icons]
 Name: "{commonprograms}\SafeUpload Agent\Abrir agente"; Filename: "{app}\ui\SafeUpload.Agent.App.exe"
@@ -127,6 +128,7 @@ var
 begin
   ExtractTemporaryFile('Invoke-AgentSetup.ps1');
   ExtractTemporaryFile('SafeUpload.Setup.psm1');
+  ExtractTemporaryFile('SafeUpload.Maintenance.psm1');
   Answers := '{"mode":"' + SelectedMode + '","adminBaseUrl":"' + JsonEscape(ServerPage.Values[0]) +
     '","winFspBundled":{#WinFspBundled}}';
   if not SaveStringToFile(ExpandConstant('{tmp}\safeupload-answers.json'), UTF8Encode(Answers), False) then begin

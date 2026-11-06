@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 # Windows PowerShell's built-in cmdlets, never incompatible or user modules.
 $env:PSModulePath = $PSHOME + '\Modules'
 Import-Module (Join-Path $PSScriptRoot 'SafeUpload.Setup.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'SafeUpload.Maintenance.psm1') -Force
 $serviceName = 'SafeUploadAgent'
 $serviceKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUploadAgent'
 $driverKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\SafeUpload'
@@ -139,6 +140,7 @@ try {
     } else {
         Assert-SafeUploadMachineState -State $state -Mode Drive -Operation Uninstall
         Assert-OwnedService
+        $null = Get-SafeUploadManagedPayload $InstallRoot
         if ($Action -eq 'Uninstall') {
             $null = Stop-SafeUploadInstalledUi -ExecutablePath (Join-Path $InstallRoot 'ui\SafeUpload.Agent.App.exe')
             Remove-OwnedService; Remove-OwnedStartup
@@ -147,6 +149,7 @@ try {
                 & "$env:SystemRoot\System32\fltmc.exe" unload SafeUpload 2>&1 | Out-Null
                 Invoke-Sc @('delete', 'SafeUpload')
             }
+            Remove-SafeUploadManagedPayload $InstallRoot
         }
     }
     [IO.File]::WriteAllText($ResultPath, 'OK', [Text.UTF8Encoding]::new($false))

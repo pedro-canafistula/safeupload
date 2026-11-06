@@ -31,6 +31,9 @@ jobs:
           ./agente/installer/tests/Test-InstallerEnvironment.ps1 -ResultsPath artifacts/installer-tests/environment.json
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/ps51.json
           if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell installer contracts failed.' }
+          ./agente/installer/tests/Test-MaintenanceContracts.ps1 -ResultsPath artifacts/installer-tests/maintenance-pwsh.json
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-MaintenanceContracts.ps1 -ResultsPath artifacts/installer-tests/maintenance-ps51.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell maintenance contracts failed.' }
       - name: Diagnostics client deadlines and framing in PowerShell 7 and 5.1
         shell: pwsh
         run: |
@@ -42,6 +45,7 @@ jobs:
         run: |
           $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
           ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler
+          ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler -Version 0.1.18 -PayloadOnly -OutputDirectory artifacts/maintenance-candidate
       - name: Verify package identity and payload before installation
         shell: pwsh
         run: |
@@ -58,7 +62,8 @@ jobs:
         shell: pwsh
         run: |
           $build = Get-Content artifacts/installer/build-result.json -Raw | ConvertFrom-Json
-          ./agente/installer/tests/Test-InstallerSmoke.ps1 -InstallerPath $build.installer
+          $candidate = Get-Content artifacts/maintenance-candidate/build-result.json -Raw | ConvertFrom-Json
+          ./agente/installer/tests/Test-InstallerSmoke.ps1 -InstallerPath $build.installer -UpdatePackagePath (Join-Path $candidate.buildRoot 'payload')
       - name: Installer and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,6 +71,7 @@ jobs:
           name: safeupload-agent-installer
           path: |
             artifacts/installer/*-setup.exe
+            artifacts/installer/*-update.zip
             artifacts/installer/*.sha256
             artifacts/installer/build-result.json
             artifacts/installer/build-*/compiler.log
@@ -73,3 +79,5 @@ jobs:
             artifacts/installer/build-*/payload/payload-manifest.json
             artifacts/installer-tests/
             artifacts/installer-smoke/
+            !artifacts/installer-smoke/maintenance-candidate/**
+            !artifacts/installer-smoke/maintenance-broken/**
