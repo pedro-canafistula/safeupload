@@ -1,7 +1,8 @@
 # SafeUpload — Agente Desktop
 
-Veja [Integrações do agente na M2](docs/INTEGRACAO-M2.md) para escopo da entrega,
-fluxo Git, validação e dependências com backend, painel e driver.
+Para a integração atual, consulte [cadastro/heartbeat Ed25519](docs/AUTENTICACAO-ED25519-AGENTE5.md#contrato-implementado),
+[configuração da composição](docs/COMPOSICAO-FINAL-20261105.md#configuração-e-provisionamento) e
+[instalação e manutenção](installer/README.md). O registro de [integração M2](docs/INTEGRACAO-M2.md) preserva seu contexto histórico e não substitui a configuração atual.
 
 Componente instalado no endpoint do usuário: intercepta operações de
 arquivo, decide localmente (CPF, CNPJ, cartão, senha, segredos), e — quando
@@ -12,8 +13,8 @@ Administração web.
 
 ## Visão geral
 
-O instalador (`scripts/Install-SafeUploadAgent.ps1`) instala o WinFsp, o driver gate, o serviço e a bandeja.
-Com `AdminBaseUrl` vazio o agente usa a política local; com uma URL, a política vem do Centro de Administração.
+O [pacote do instalador](installer/README.md) instala serviço e bandeja e pode incluir WinFsp/driver; o script técnico `scripts/Install-SafeUploadAgent.ps1` também permanece disponível para laboratório.
+Sem URL de administração, a configuração padrão usa política local. Uma URL sozinha não provisiona identidade nem seleciona os protocolos exigidos pelo backend atual; veja a configuração de comunicação abaixo.
 
 O agente é composto pelos projetos .NET abaixo mais um **driver de kernel pequeno** (`driver/`):
 
@@ -21,7 +22,7 @@ O agente é composto pelos projetos .NET abaixo mais um **driver de kernel peque
 |---|---|
 | `SafeUpload.Agent.Core` | Domínio: validadores (CPF/CNPJ/Luhn/senha/segredos), motor de decisão (`InspectionService`), extratores de texto/CSV, Word, Excel, PowerPoint, PDF e ZIP, política e auditoria |
 | `SafeUpload.Agent.Service` | Serviço Windows que roda 24/7, intercepta operações de arquivo e chama o Core para decidir |
-| `SafeUpload.Agent.App` | Interface WPF (bandeja do sistema, tela de status/histórico, aviso de bloqueio) — só exibe, não decide nada |
+| `SafeUpload.Agent.App` | Interface WPF (bandeja, status/histórico e avisos) e cliente do canal clipboard; a inspeção de arquivos pertence ao serviço |
 | `SafeUpload.Agent.Tests` | Testes automatizados (xUnit, sem framework de mock) |
 | `SafeUpload.Agent.Drive` | Unidade SafeUpload (WinFsp): o que o usuário grava fica privado até ser inspecionado; só versões aprovadas chegam à pasta protegida |
 | `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1), proxy TLS e parser HTTP/1.1 (Fase 2), desvio dos navegadores (Fase 3); exceções e inspeção nas próximas fases ([arquitetura](../docs/rede/ARQUITETURA-INSPECAO-TLS.md), [plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
@@ -243,24 +244,29 @@ Os ensaios locais usam somente pastas temporárias próprias; o aceite instalado
 
 ## Integração com o Centro de Administração (HU-10)
 
-Com `CentroAdministracao:BaseUrl` vazio, o agente é **autônomo**: lê a política de
+Com `CentroAdministracao:BaseUrl` vazio na configuração local, o agente é **autônomo**: lê a política de
 `%ProgramData%\SafeUpload\policy.json` e só acumula auditoria em
-`queue.jsonl`, localmente. Configurando uma URL em
-`SafeUpload.Agent.Service/appsettings.json`:
+`queue.jsonl`, localmente. Para o backend atual, primeiro faça o [provisionamento explícito](docs/AUTENTICACAO-ED25519-AGENTE5.md#cadastro-explícito-e-recuperação), preservando a identidade protegida. Depois configure os protocolos e os dados correspondentes ao cadastro. Exemplo de laboratório na própria máquina:
 
 ```json
-"CentroAdministracao": {
-  "BaseUrl": "http://127.0.0.1:8000/agent/",
-  "DispatchIntervalSeconds": 30,
-  "TimeoutSeconds": 5
+{
+  "CentroAdministracao": {
+    "BaseUrl": "http://127.0.0.1:8080/agent/",
+    "HeartbeatProtocol": "AgentApiEd25519",
+    "HostIp": "127.0.0.1",
+    "HostMask": 32,
+    "PolicyProtocol": "ConsoleByIp",
+    "PolicyHostIp": "127.0.0.1",
+    "DispatchIntervalSeconds": 30,
+    "TimeoutSeconds": 5
+  }
 }
 ```
 
-o agente passa a:
+O IP e a máscara são exemplos e precisam corresponder ao host provisionado e à política publicada. HTTPS é exigido fora de loopback; a identidade é específica do servidor. O serviço não cadastra no startup nem troca para o protocolo antigo após erro. Com a composição válida, o agente passa a:
 
 - **Buscar a política do painel** a cada 30 s, com cache persistido protegido (ver abaixo).
-- **Mandar heartbeat periódico** (`POST /agent/heartbeat`) — aparece em
-  `/admin/endpoints` no painel.
+- **Mandar heartbeat assinado periódico** (`POST /agent/heartbeat`) — atualiza o cadastro exibido no inventário do painel.
 - **Entregar os eventos de auditoria pendentes** (`POST /agent/events`) — a
   fila local continua sendo a fonte da verdade; o envio é só uma etapa a
   mais. Justificativas também são enviadas; o lote só é marcado como entregue
@@ -268,13 +274,13 @@ o agente passa a:
   tentativa. A gravação da justificativa precede a publicação ou concessão.
 
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
-projeto (ver `Interception:Mode` acima, mesma filosofia).
+projeto (ver `Interception:Mode` acima, mesma filosofia). A assinatura do heartbeat não autentica automaticamente política e auditoria; o fechamento dessas rotas e do ciclo de chaves permanece pendente com o backend.
 
 ### Política publicada pela console web
 
-Com `"PolicyProtocol": "ConsoleByIp"`, `"PolicyHostIp"` (o IP cadastrado do host) e `"RegisteredHostId"` em
-`CentroAdministracao`, o agente lê `GET /agent/api/policy?ip=<PolicyHostIp>`, a política que o administrador publica na
-tela Políticas. Sem `PolicyProtocol`, continua o formato antigo (`GET /agent/policy`).
+Com `"PolicyProtocol": "ConsoleByIp"` e `"PolicyHostIp"` (o IP cadastrado do host) em
+`CentroAdministracao`, e identidade confirmada no armazenamento protegido, o agente lê `GET /agent/api/policy?ip=<PolicyHostIp>`, a política que o administrador publica na
+tela Políticas. O ID é recuperado da identidade protegida; `RegisteredHostId`, quando informado, deve coincidir com ela. Sem `PolicyProtocol`, continua o formato antigo (`GET /agent/policy`), que não atende à API atual.
 
 | Da console | No agente |
 |---|---|
