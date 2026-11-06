@@ -139,6 +139,8 @@ public sealed class ClipboardMonitor : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        // Invalida também as respostas em voo antes de retirar o monitor.
+        Interlocked.Increment(ref _sequence);
         if (_foregroundHook != IntPtr.Zero)
         {
             UnhookWinEvent(_foregroundHook);
@@ -239,14 +241,14 @@ public sealed class ClipboardMonitor : IDisposable
             ClipboardRequest.Classify(text, source),
             ClipboardProtocol.ClassifyTimeout);
 
-        // A resposta também diz se o canal continua ligado; desligado, a próxima
-        // cópia volta a perguntar antes de mandar texto.
-        _gate.OnClassifyResponse(response);
-
         if (sequence != Interlocked.Read(ref _sequence))
         {
             return;
         }
+
+        // Só a cópia atual pode atualizar o estado: uma resposta antiga não
+        // deve reativar o canal após uma classificação mais recente ter falhado.
+        _gate.OnClassifyResponse(response);
 
         // Sem resposta = limpo (RN-013).
         _current = response is { CopyId: not null } answered
