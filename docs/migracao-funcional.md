@@ -1,5 +1,7 @@
 # Migração funcional Java/Angular
 
+> Registro histórico da etapa com H2 e contratos anteriores. A execução e a integração atuais usam MySQL, cadastro/heartbeat Ed25519 e política por IP, conforme o [README principal](../README.md). Os contratos e comandos abaixo pertencem àquela etapa; não são instruções de execução da main atual.
+
 ## Escopo
 
 Recupera a integração web removida com `app/`, preservando os contratos HTTP do agente e os comportamentos da Auditoria, Endpoints e Dashboard. As regras foram recuperadas do histórico Git anterior à remoção e dos testes Python. Cadastro e sessão existentes foram mantidos; `/auth/me` passou a devolver o mesmo DTO de usuário do login.
