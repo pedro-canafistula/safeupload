@@ -147,6 +147,7 @@ try {
         $stdout=Join-Path $ResultsDirectory ($Label+'.json');$stderr=Join-Path $ResultsDirectory ($Label+'.stderr.log')
         $process=Start-Process $legacyPowerShell -WindowStyle Hidden -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ArgumentList (
             @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$maintenanceScript+'"'))+$Arguments)
+        if (($process.ExitCode -eq 0) -ne $ExpectSuccess) { Get-Content -LiteralPath $stderr | Write-Host }
         Require (($process.ExitCode -eq 0) -eq $ExpectSuccess) ('Unexpected maintenance result: '+$Label+'; see '+$stderr)
         if($ExpectSuccess){return Get-Content -LiteralPath $stdout -Raw | ConvertFrom-Json}
     }

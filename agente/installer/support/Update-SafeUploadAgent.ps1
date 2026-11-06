@@ -107,7 +107,7 @@ function Save-Journal {
     $stream = [IO.FileStream]::new($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
     try { $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($journal | ConvertTo-Json -Depth 8)); $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) }
     finally { $stream.Dispose() }
-    if (Test-Path -LiteralPath $path) { [IO.File]::Replace($temporary,$path,$null) }
+    if (Test-Path -LiteralPath $path) { [IO.File]::Replace($temporary,$path,[NullString]::Value) }
     else { [IO.File]::Move($temporary,$path) }
 }
 
