@@ -31,6 +31,17 @@ async function registerHost(request: APIRequestContext, hostname: string, ip: st
   return id_host;
 }
 
+test('operações administrativas sem sessão são recusadas antes do primeiro cadastro', async ({ request }) => {
+  const api = 'http://127.0.0.1:8080';
+  expect((await (await request.get(api + '/auth/decision')).json()).existemUsuarios).toBe(false);
+  for (const path of ['/admin/token', '/admin/policy/set', '/politicas',
+    '/auth/normalregister/empresa/set', '/auth/normalregister/usuario/set']) {
+    expect((await request.post(api + path, { data: {} })).status(), path).toBe(401);
+  }
+  expect((await request.get(api + '/auth/normalregister/empresa/list')).status()).toBe(401);
+  expect((await (await request.get(api + '/auth/decision')).json()).existemUsuarios).toBe(false);
+});
+
 test('cadastro, login e estado vazio sem indicadores fictícios', async ({ page }) => {
   await page.goto('/cadastro');
   await page.getByLabel('Nome completo').fill('Teste Migração');
@@ -64,6 +75,19 @@ test('cadastro, login e estado vazio sem indicadores fictícios', async ({ page 
   await page.reload();
   await expect(page.getByText('Teste Migração')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
+});
+
+test('administrador autenticado abre novos cadastros e consulta empresas reais', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('Senha', { exact: true }).fill(password);
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await expect(page).toHaveURL(/painel/);
+  const companies = page.waitForResponse(r => r.url().endsWith('/api/auth/normalregister/empresa/list'));
+  await page.goto('/novos-cadastros');
+  expect((await companies).status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'Novos Cadastros', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Gerar token', exact: true })).toBeEnabled();
 });
 
 test('heartbeat e três eventos reais aparecem no painel, endpoints e auditoria', async ({ page, request }) => {
