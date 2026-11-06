@@ -14,7 +14,8 @@ export class LayoutComponent {
     { rota: '/painel', titulo: 'Visão geral', icone: '▦' },
     { rota: '/politicas', titulo: 'Políticas', icone: '◧' },
     { rota: '/endpoints', titulo: 'Endpoints', icone: '▣' },
-    { rota: '/auditoria', titulo: 'Auditoria', icone: '◷' }
+    { rota: '/auditoria', titulo: 'Auditoria', icone: '◷' },
+    { rota: '/novos-cadastros', titulo: 'Novos Cadastros', icone: '◫' }
   ];
 
   constructor(public auth: AuthService, private router: Router) {}
