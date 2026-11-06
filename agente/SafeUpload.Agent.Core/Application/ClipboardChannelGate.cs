@@ -12,7 +12,7 @@ namespace SafeUpload.Agent.Core.Application;
 /// ligado, pergunta antes (<c>state</c>, que não leva texto nenhum).</para>
 ///
 /// <para><b>O ciclo.</b> Sem saber o estado (no início, ou depois de ouvir
-/// "desligado"), cada cópia pergunta primeiro. Sabendo que está ligado, manda
+/// "desligado" ou perder uma resposta), cada cópia pergunta primeiro. Sabendo que está ligado, manda
 /// o texto direto, sem a pergunta extra. Quando a resposta de uma classificação
 /// diz "desligado", a porta volta a perguntar a partir da cópia seguinte; o
 /// texto daquela cópia já tinha ido, o que é o custo de um canal desligado no
@@ -55,7 +55,9 @@ public sealed class ClipboardChannelGate
     {
         if (response is null)
         {
-            // Sem resposta não se sabe nada de novo; o próximo pedido decide.
+            // O serviço pode ter reiniciado com o canal desligado. Reconfirma
+            // por state (sem texto) antes de enviar a próxima cópia.
+            _knownEnabled = false;
             return;
         }
 
