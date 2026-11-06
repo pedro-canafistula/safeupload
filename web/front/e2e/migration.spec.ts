@@ -222,3 +222,31 @@ test('política da console é persistida pelo IP correto; nova publicação não
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   await page.screenshot({ path: testInfo.outputPath('politicas-mobile.png'), fullPage: true });
 });
+
+test('alerta web real preserva achados no painel após persistência e reenvio', async ({ page, request }) => {
+  const event = {
+    eventId: crypto.randomUUID(), occurredAtUtc: new Date().toISOString(), endpointId: 'E2E-WEB-ALERTA',
+    userName: 'teste', fileName: '', extension: '', sizeBytes: 28, verdict: 'Approved', channel: 'Web',
+    categories: ['Cpf'], maskedSnippets: ['TRECHO_WEB_NAO_EXIBIR'], processName: 'browser.exe', processId: 42,
+    destinationPath: 'https://example.test', notInspectedReason: null, policyVersion: 8, elapsedMs: 3, dispatched: false
+  };
+  for (const attempt of [1, 2]) {
+    const response = await request.post('http://127.0.0.1:8080/agent/events', { data: { events: [event] } });
+    expect(response.ok(), `Envio ${attempt}`).toBeTruthy();
+    expect((await response.json()).acceptedEvents).toBe(1);
+  }
+  await page.goto('/login');
+  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('Senha', { exact: true }).fill(password);
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await expect(page).toHaveURL(/painel/);
+  await page.goto('/auditoria?endpoint=' + event.endpointId);
+  await expect(page.getByText('Total 1', { exact: true })).toBeVisible();
+  await expect(page.locator('app-event-table .pill')).toHaveText('Aprovado com achados');
+  await page.getByRole('button', { name: 'Detalhes de Envio web', exact: true }).click();
+  const details = page.getByRole('region', { name: 'Detalhes de Envio web', exact: true });
+  await expect(details).toContainText('com achados nas categorias indicadas');
+  await expect(details).toContainText('8');
+  await expect(details).not.toContainText('não encontraram ocorrências');
+  await expect(page.getByText('TRECHO_WEB_NAO_EXIBIR')).toHaveCount(0);
+});

@@ -18,8 +18,8 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
           <td>{{ event.occurredAtUtc | date:'dd/MM/yyyy HH:mm:ss' }}</td>
           <td>{{ event.endpointId }}</td><td>{{ channelLabel(event) }}</td>
           <td>{{ eventLabel(event) }}</td><td>{{ event.sizeBytes | number }} B</td>
-          <td><span class="pill" [class.ok]="event.verdict === 'Approved'" [class.danger]="event.verdict === 'Blocked'"
-            [class.warn]="event.verdict === 'AllowedWithoutInspection' || event.verdict === 'Retained'">{{ isObservation(event) ? 'Monitoramento' : verdicts[event.verdict] }}</span>
+          <td><span class="pill" [class.ok]="result(event).tone === 'ok'" [class.danger]="result(event).tone === 'danger'"
+            [class.warn]="result(event).tone === 'warn'">{{ result(event).label }}</span>
             <small *ngIf="event.notInspectedReason">{{ event.notInspectedReason }}</small></td>
           <td><span *ngFor="let category of event.categories; let last = last">{{ categories[category] }}{{ last ? '' : ', ' }}</span>
             <span *ngIf="!event.categories.length">—</span></td>
@@ -33,11 +33,7 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
             <section *ngIf="expandedEvent as event" class="event-details" [id]="'evento-' + event.eventId" [attr.aria-label]="'Detalhes de ' + eventLabel(event)">
               <h4>Detalhes da inspeção</h4>
               <p>{{ eventLabel(event) }}</p>
-              <p *ngIf="event.verdict === 'Approved'">As regras ativas não encontraram ocorrências no conteúdo analisado. Isso não garante ausência de risco.</p>
-              <p *ngIf="event.verdict === 'Retained'">A transferência foi retida localmente. Nenhum conteúdo foi liberado para o destino protegido.</p>
-              <p *ngIf="event.verdict === 'Blocked'">A operação foi bloqueada por ocorrências nas categorias indicadas. {{ event.channel === 'Clipboard' ? 'Revise o conteúdo copiado antes de tentar novamente.' : event.channel === 'Web' ? 'Revise o conteúdo enviado antes de tentar novamente.' : 'Revise o arquivo antes de tentar novamente.' }}</p>
-              <p *ngIf="isObservation(event)">Clipboard sinalizado ao mudar o foco para um aplicativo de saída. Este registro não confirma colagem nem bloqueio.</p>
-              <p *ngIf="event.verdict === 'AllowedWithoutInspection' && !isObservation(event)">A operação foi liberada sem conclusão da inspeção. Este resultado não equivale a uma aprovação.</p>
+              <p>{{ result(event).description }}</p>
               <dl>
                 <div><dt>Identificador do evento</dt><dd>{{ event.eventId }}</dd></div>
                 <div><dt>Data/hora local</dt><dd>{{ event.occurredAtUtc | date:'dd/MM/yyyy HH:mm:ss Z' }}</dd></div>
@@ -86,6 +82,36 @@ export class EventTableComponent {
 
   isObservation(event: AuditEvent): boolean {
     return event.channel === 'Clipboard' && event.notInspectedReason === 'clipboard_focus_observed';
+  }
+
+  result(event: AuditEvent): { label: string; tone: 'ok' | 'warn' | 'danger'; description: string } {
+    const reason = event.notInspectedReason;
+    if (this.isObservation(event)) return { label: 'Monitoramento', tone: 'warn',
+      description: 'Clipboard sinalizado ao mudar o foco para um aplicativo de saída. Este registro não confirma colagem nem bloqueio.' };
+    if (event.verdict === 'Retained') return { label: 'Retido', tone: 'warn',
+      description: 'A transferência foi retida localmente. Nenhum conteúdo foi liberado para o destino protegido.' };
+    if (reason === 'publication_outcome_unknown') return { label: 'Não confirmado', tone: 'warn',
+      description: 'O resultado da publicação não foi confirmado. Este registro não comprova a conclusão da transferência.' };
+    if (reason === 'publication_failed') return { label: 'Pendente', tone: 'warn',
+      description: 'A publicação falhou e permanece pendente. Este registro não comprova a conclusão da transferência.' };
+    const inspectionFailed = reason?.startsWith('parse_error:') || [
+      'file_too_large', 'unsupported_format', 'inspection_timeout', 'inspection_limit', 'not_enough_staging_space',
+      'archive_encrypted', 'archive_unsupported_member', 'archive_unsupported_structure', 'archive_7z_unavailable'
+    ].includes(reason ?? '');
+    if (inspectionFailed && event.verdict === 'Blocked') return { label: 'Inconclusivo / bloqueado', tone: 'warn',
+      description: 'A inspeção não pôde ser concluída e a operação foi bloqueada. Isso não confirma a presença nem a ausência de dados sensíveis.' };
+    if (inspectionFailed && event.verdict === 'Approved') return { label: 'Inspeção inconclusiva / liberado', tone: 'warn',
+      description: 'O registro indica liberação com inspeção inconclusiva. Este resultado não equivale a uma aprovação de conteúdo.' };
+    if (event.verdict === 'Approved' && event.categories.length) return { label: 'Aprovado com achados', tone: 'warn',
+      description: 'A inspeção permitiu a operação com achados nas categorias indicadas. Isso não significa conteúdo sem dados sensíveis nem confirma a conclusão da transferência.' };
+    if (event.verdict === 'Approved') return { label: this.verdicts.Approved, tone: 'ok',
+      description: 'As regras ativas não encontraram ocorrências no conteúdo analisado. Isso não garante ausência de risco.' };
+    if (event.verdict === 'Blocked') return { label: this.verdicts.Blocked, tone: 'danger',
+      description: 'A operação foi bloqueada por ocorrências nas categorias indicadas. ' +
+        (event.channel === 'Clipboard' ? 'Revise o conteúdo copiado antes de tentar novamente.' :
+          event.channel === 'Web' ? 'Revise o conteúdo enviado antes de tentar novamente.' : 'Revise o arquivo antes de tentar novamente.') };
+    return { label: this.verdicts[event.verdict], tone: 'warn',
+      description: 'A operação foi liberada sem conclusão da inspeção. Este resultado não equivale a uma aprovação.' };
   }
 
   get expandedEvent(): AuditEvent | undefined {
