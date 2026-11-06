@@ -19,7 +19,7 @@ export class PoliticasComponent {
   readonly descricoesEtapas = [
     'Dê um nome claro para identificar esta política.',
     'Escolha o endpoint que receberá a configuração.',
-    'Selecione os classificadores e como combiná-los.',
+    'Selecione os classificadores. Qualquer correspondência aplica a ação.',
     'Defina o comportamento aplicado quando houver correspondência.',
     'Revise exceções e limitações de compatibilidade.',
     'Confira o resultado esperado, os pontos de atenção e o endpoint afetado.'
@@ -40,7 +40,6 @@ export class PoliticasComponent {
   nome = '';
   ip = '';
   regrasSelecionadas: string[] = [];
-  combinacao: 'any' | 'all' = 'any';
   acao: 'bloquear' | 'alertar' = 'bloquear';
   jsonGerado = '';
   jsonPronto = false;
@@ -51,7 +50,7 @@ export class PoliticasComponent {
   get resumoCondicao(): string {
     const nomes = this.regras.filter(regra => this.regrasSelecionadas.includes(regra.id)).map(regra => regra.nome);
     if (nomes.length === 0) return '';
-    return nomes.length === 1 ? nomes[0] : nomes.join(this.combinacao === 'any' ? ' ou ' : ' e ');
+    return nomes.join(' ou ');
   }
 
   get etapaValida(): boolean {
