@@ -93,7 +93,7 @@ public sealed class WebInspectionService
     private readonly string _endpointId;
     private readonly string _userName;
     private readonly TimeProvider _clock;
-    private readonly Dictionary<string, DateTimeOffset> _recentTextBlocks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _recentTextBlocks = new(StringComparer.Ordinal);
     private readonly Lock _repeatGate = new();
     private CachedPolicy? _policy;
 
@@ -153,9 +153,8 @@ public sealed class WebInspectionService
             {
                 findings.AddRange(found);
 
-                // O envio é barrado de qualquer jeito; só o registro é que não
-                // se repete.
-                if (!IsRepeatedTextBlock(upload, found))
+                // A decisão é preservada; só o registro repetido é agrupado.
+                if (!IsRepeatedTextBlock(upload, found, policy))
                 {
                     records.Add(await AuditAsync(
                             upload, policy, stopwatch, string.Empty, string.Empty, textBytes, Verdict.Blocked, found, null, cancellationToken)
@@ -201,22 +200,23 @@ public sealed class WebInspectionService
     /// <summary>
     /// Se este bloqueio de texto repete um já registrado há pouco. A chave é
     /// programa, site (sem o caminho: o texto digitado sai por endereços
-    /// diferentes do mesmo site) e os trechos mascarados encontrados.
+    /// diferentes do mesmo site), política efetiva e trechos mascarados encontrados.
     /// </summary>
-    private bool IsRepeatedTextBlock(WebUpload upload, IReadOnlyList<Finding> found)
+    private bool IsRepeatedTextBlock(WebUpload upload, IReadOnlyList<Finding> found, Policy policy)
     {
         string site = Uri.TryCreate(upload.Destination, UriKind.Absolute, out Uri? uri) ? uri.Host : upload.Destination;
         string key = string.Join(
             '|',
+            policy.EvaluationKey,
             upload.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
             site,
             string.Join(',', found.Select(static f => $"{f.Category}:{f.MaskedSnippet}").Distinct().Order(StringComparer.Ordinal)));
 
-        var now = _clock.GetUtcNow();
+        long now = _clock.GetTimestamp();
 
         lock (_repeatGate)
         {
-            if (_recentTextBlocks.TryGetValue(key, out var last) && now - last < RepeatWindow)
+            if (_recentTextBlocks.TryGetValue(key, out var last) && _clock.GetElapsedTime(last, now) < RepeatWindow)
             {
                 return true;
             }
@@ -244,16 +244,16 @@ public sealed class WebInspectionService
 
     private async Task<Policy> LoadPolicyAsync(CancellationToken cancellationToken)
     {
-        var now = _clock.GetUtcNow();
+        long now = _clock.GetTimestamp();
 
-        if (_policy is { } cached && cached.ExpiresAt > now)
+        if (_policy is { } cached && _clock.GetElapsedTime(cached.LoadedAt, now) < PolicyLifetime)
         {
             return cached.Policy;
         }
 
         // Duas requisições simultâneas podem carregar duas vezes; não faz mal.
         var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        _policy = new CachedPolicy(policy, now + PolicyLifetime);
+        _policy = new CachedPolicy(policy, now);
         return policy;
     }
 
@@ -341,6 +341,10 @@ public sealed class WebInspectionService
         string? reason,
         CancellationToken cancellationToken)
     {
+        // The queue describes the operation that happened, while findings retain
+        // what enforcement would have blocked. This also keeps the tray and panel
+        // from showing an audit-only release as a real block.
+        if (policy.AuditOnly && verdict == Verdict.Blocked) verdict = Verdict.Approved;
         var auditEvent = new AuditEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,
@@ -377,5 +381,5 @@ public sealed class WebInspectionService
     private static string FileNameOnly(string? fileName)
         => AuditMetadata.FileNameOnly(fileName);
 
-    private sealed record CachedPolicy(Policy Policy, DateTimeOffset ExpiresAt);
+    private sealed record CachedPolicy(Policy Policy, long LoadedAt);
 }

@@ -110,6 +110,29 @@ public sealed class WebUploadInspectorTests : IDisposable
         Assert.False(dono.Reader.TryRead(out _));
     }
 
+    [Fact]
+    public async Task Modo_auditoria_libera_e_notifica_achados_sem_afirmar_bloqueio()
+    {
+        await new LocalPolicyStore(_workspace.PolicyFile).LoadAsync(CancellationToken.None);
+        string policy = File.ReadAllText(_workspace.PolicyFile);
+        Assert.Contains("\"auditOnly\": false", policy);
+        _workspace.WritePolicy(policy.Replace("\"auditOnly\": false", "\"auditOnly\": true"));
+        var owner = SessionResolver.GetRequiredProcessIdentity(Environment.ProcessId);
+        using var subscription = _hub.Subscribe(owner.SessionId, owner.UserSid.Value);
+
+        var decision = await _inspector.InspectAsync(
+            Request("{\"prompt\":\"meu cpf 529.982.247-25\"}", Environment.ProcessId), CancellationToken.None);
+
+        Assert.True(decision.Allowed);
+        Assert.True(subscription.Reader.TryRead(out var message));
+        var notification = Assert.IsType<EventNotification>(message);
+        Assert.Equal(Verdict.Approved, notification.Event.Verdict);
+        Assert.Contains(Category.Cpf, notification.Event.Categories);
+        Assert.NotEmpty(notification.Findings);
+        Assert.Equal(notification.Event.EventId,
+            Assert.Single(await _sink.ReadPendingAsync(10, CancellationToken.None)).EventId);
+    }
+
     private sealed class NoRecord : INotificationRecord
     {
         public void Append(AgentNotification notification, uint? targetSessionId)

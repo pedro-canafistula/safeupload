@@ -252,10 +252,13 @@ public sealed class WebInspectionServiceTests : IDisposable
     private sealed class RelogioControlado(DateTimeOffset inicio) : TimeProvider
     {
         private DateTimeOffset _agora = inicio;
+        private long _elapsed;
 
-        public void Avancar(TimeSpan intervalo) => _agora += intervalo;
+        public void Avancar(TimeSpan intervalo) { _agora += intervalo; _elapsed += intervalo.Ticks; }
 
         public override DateTimeOffset GetUtcNow() => _agora;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => _elapsed;
     }
 
     /// <summary>
@@ -287,7 +290,7 @@ public sealed class WebInspectionServiceTests : IDisposable
         }
     }
 
-    /// <summary>Modo de auditoria: registra o bloqueio que faria, mas não nega.</summary>
+    /// <summary>Modo de auditoria: registra liberação com achados, sem afirmar bloqueio real.</summary>
     [Fact]
     public async Task Modo_de_auditoria_registra_mas_nao_bloqueia()
     {
@@ -300,6 +303,6 @@ public sealed class WebInspectionServiceTests : IDisposable
 
         Assert.False(result.IsBlocked);
         Assert.NotEmpty(result.Findings);
-        Assert.Equal(Verdict.Blocked, Assert.Single(await EventsAsync()).Verdict);
+        Assert.Equal(Verdict.Approved, Assert.Single(await EventsAsync()).Verdict);
     }
 }

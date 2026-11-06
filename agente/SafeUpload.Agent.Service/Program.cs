@@ -244,6 +244,7 @@ public static class Program
         {
             client.BaseAddress = adminUri;
             client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-        }).RemoveAllLoggers();
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+        .RemoveAllLoggers();
 
 }
