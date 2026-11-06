@@ -10,6 +10,8 @@ A URL do servidor é opcional. Sem URL, o agente usa política local. A configur
 
 Esta primeira versão aceita instalação inicial e desinstalação; atualizações de instalações existentes exigem um procedimento de manutenção separado.
 
+O ZIP de atualização acompanha o procedimento manual setup/Update-SafeUploadAgent.ps1. Ele exige administrador, instalação gerenciada e pacote de versão posterior; mantém driver, configuração do serviço e dados do endpoint. Guarda a versão anterior e tenta recuperá-la se a nova não fica pronta. Consulte o README do instalador antes de executar. Não há atualização automática, reparo de instalação danificada nem atualização de driver neste procedimento.
+
 Ao remover, a política, o cache, a fila de auditoria e os arquivos monitorados são preservados. O driver gate é removido junto com o agente; o WinFsp continua instalado.
 
 O pacote de desenvolvimento não possui assinatura digital da equipe. Não foi validado para implantação em produção.

@@ -2,6 +2,7 @@
 #Requires -RunAsAdministrator
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$InstallerPath,
+      [Parameter(Mandatory)][string]$UpdatePackagePath,
       [string]$ResultsDirectory = (Join-Path $PSScriptRoot '../../../artifacts/installer-smoke'))
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
@@ -124,6 +125,64 @@ try {
     Require ($after.State -eq 'Running' -and $after.PathName -eq $service.PathName) 'Refused upgrade changed the service.'
     Require ((Get-FileHash -LiteralPath $policy -Algorithm SHA256).Hash -eq $policyHash) 'Refused upgrade changed the policy.'
     $result.steps += 'existing installation refused without changing service or policy'
+    # Exercise real Windows service maintenance, including a package that passes
+    # integrity validation but cannot start. All fixtures remain on this disposable runner.
+    $candidate = Join-Path $ResultsDirectory 'maintenance-candidate'
+    Copy-Item -LiteralPath (Resolve-Path -LiteralPath $UpdatePackagePath).Path -Destination $candidate -Recurse
+    $newAsset = 'service/maintenance-new-file.txt'
+    [IO.File]::WriteAllText((Join-Path $candidate $newAsset),'synthetic dependency introduced by a later release')
+    function Refresh-Manifest([string]$Root) {
+        $path=Join-Path $Root 'payload-manifest.json'
+        $manifest=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $manifest.files=@(Get-ChildItem -LiteralPath $Root -File -Recurse | Where-Object Name -ne 'payload-manifest.json' | ForEach-Object {
+            @{path=[IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}
+        })
+        $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+    }
+    Refresh-Manifest $candidate
+    $candidateManifest=Get-Content (Join-Path $candidate 'payload-manifest.json') -Raw | ConvertFrom-Json
+    $maintenanceScript=Join-Path $candidate 'setup/Update-SafeUploadAgent.ps1'
+    $legacyPowerShell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    function Run-Maintenance([string]$Label,[string[]]$Arguments,[bool]$ExpectSuccess=$true) {
+        $stdout=Join-Path $ResultsDirectory ($Label+'.json');$stderr=Join-Path $ResultsDirectory ($Label+'.stderr.log')
+        $process=Start-Process $legacyPowerShell -WindowStyle Hidden -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ArgumentList (
+            @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$maintenanceScript+'"'))+$Arguments)
+        if (($process.ExitCode -eq 0) -ne $ExpectSuccess) { Get-Content -LiteralPath $stderr | Write-Host }
+        Require (($process.ExitCode -eq 0) -eq $ExpectSuccess) ('Unexpected maintenance result: '+$Label+'; see '+$stderr)
+        if($ExpectSuccess){return Get-Content -LiteralPath $stdout -Raw | ConvertFrom-Json}
+    }
+    function Check-Preserved([string]$Version) {
+        $active=Get-Content (Join-Path $installRoot 'setup/installation.json') -Raw | ConvertFrom-Json
+        Require ($active.version -eq $Version) 'Maintenance recorded the wrong version.'
+        $running=Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
+        Require ($running.State -eq 'Running' -and $running.PathName -eq $service.PathName -and $running.StartName -eq 'LocalSystem') 'Maintenance changed the service configuration.'
+        Require ((Get-ItemProperty -LiteralPath $startupKey).SafeUploadAgentConsole -eq $run.SafeUploadAgentConsole) 'Maintenance changed UI startup.'
+        Require ((Get-FileHash -LiteralPath $policy).Hash -eq $policyHash) 'Maintenance changed the local policy.'
+        $pending=@(Read-AuditEvents $queue | Where-Object eventId -eq $audit.eventId)
+        Require ($pending.Count -eq 1 -and -not $pending[0].dispatched -and $pending[0].occurredAtUtc -eq $audit.occurredAtUtc) 'Maintenance lost or duplicated the pending event.'
+    }
+    $upgrade=Run-Maintenance 'update' @('-PackagePath',('"'+$candidate+'"'))
+    Require ($upgrade.status -eq 'committed' -and -not $upgrade.driverReplaced -and -not $upgrade.endpointDataRestored) 'Update did not commit safely.'
+    Check-Preserved $candidateManifest.version
+    Require (Test-Path -LiteralPath (Join-Path $installRoot $newAsset)) 'Update did not install the new dependency.'
+    $rollback=Run-Maintenance 'rollback' @('-Action','Rollback','-TransactionId',$upgrade.transactionId)
+    Require ($rollback.status -eq 'rolled-back') 'Explicit rollback failed.'
+    Check-Preserved $state.version
+    Require (-not(Test-Path -LiteralPath (Join-Path $installRoot $newAsset))) 'Rollback left the new dependency active.'
+    $broken=Join-Path $ResultsDirectory 'maintenance-broken';Copy-Item -LiteralPath $candidate -Destination $broken -Recurse
+    [IO.File]::WriteAllText((Join-Path $broken 'service/appsettings.json'),'{ invalid configuration')
+    Refresh-Manifest $broken
+    Run-Maintenance 'update-startup-failure' @('-PackagePath',('"'+$broken+'"')) $false
+    Check-Preserved $state.version
+    $transactions=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'SafeUpload/Maintenance'
+    $receipts=@(Get-ChildItem -LiteralPath $transactions -Filter transaction.json -Recurse | ForEach-Object {Get-Content $_.FullName -Raw | ConvertFrom-Json})
+    Require (@($receipts | Where-Object state -eq 'rolled-back').Count -eq 2) 'Failed startup did not record automatic rollback.'
+    $finalUpgrade=Run-Maintenance 'update-after-recovery' @('-PackagePath',('"'+$candidate+'"'))
+    Check-Preserved $candidateManifest.version
+    & dotnet $peerProbe --verify-service-peer (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') *> (Join-Path $ResultsDirectory 'service-peer-after-update.log')
+    Require ($LASTEXITCODE -eq 0) 'Updated service/UI binaries are not safely accessible to an ordinary user.'
+    $result.applicationMaintenance=@{update=$upgrade;rollback=$rollback;startupFailureRecovered=$true;finalUpdate=$finalUpgrade}
+    $result.steps += 'real service updated, explicitly rolled back, recovered automatically after invalid startup, then updated again; pending event and policy preserved'
     $sentinel = Join-Path $dataRoot 'installer-preservation-test.txt'
     [IO.File]::WriteAllText($sentinel, 'synthetic data to preserve')
     $queueHash = (Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash
@@ -140,6 +199,7 @@ try {
     $result.uninstallUi.exitedAfter = $true
     Require (-not (Test-Path -LiteralPath $uiExecutable) -and
         -not (Test-Path -LiteralPath (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe'))) 'Installed executables remain after removal.'
+    Require (-not(Test-Path -LiteralPath (Join-Path $installRoot $newAsset))) 'Original uninstaller left a dependency introduced by the update.'
     $installedUi.Dispose()
     Require (-not (Test-Path -LiteralPath $serviceKey)) 'Agent service remains registered.'
     Require (-not (Get-ItemProperty -LiteralPath $startupKey -Name SafeUploadAgentConsole -ErrorAction SilentlyContinue)) 'UI startup entry remains.'
