@@ -11,6 +11,7 @@ import { AcessoNegadoComponent } from './pages/acesso-negado/acesso-negado.compo
 import { PoliticasComponent } from './pages/politicas/politicas.component';
 import { PlaceholderComponent } from './pages/placeholder/placeholder.component';
 import { AuthEntryComponent } from './features/auth-entry.component';
+import { NovosCadastrosComponent } from './pages/novos-cadastros/novos-cadastros.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'inicio', pathMatch: 'full' },
@@ -29,6 +30,7 @@ export const routes: Routes = [
       { path: 'endpoints', component: EndpointsComponent },
       { path: 'relatorios', component: RelatoriosComponent },
       { path: 'politicas', component: PoliticasComponent },
+      { path: 'novos-cadastros', component: NovosCadastrosComponent },
       { path: 'configuracoes', component: PlaceholderComponent, data: { title: 'Configurações' } }
     ]
   },

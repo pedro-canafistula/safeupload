@@ -29,7 +29,7 @@ nav a:hover, nav a.active, .concept-link.active { background: #3b554a; color: #f
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; min-height: 0; gap: 13px; padding: 12px; }
   .brand { margin-bottom: 0; }
-  nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .nav-caption, .sidebar-concept, .sidebar-note { display: none; }
   nav a { justify-content: center; padding: 8px 5px; }
   .nav-icon { display: none; }

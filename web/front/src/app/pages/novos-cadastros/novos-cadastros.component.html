@@ -1,0 +1,134 @@
+<header class="page-title">
+  <p class="eyebrow">ADMINISTRAÇÃO</p>
+  <h1>Novos Cadastros</h1>
+  <p class="subtitle">Gere tokens de registro e cadastre empresas e usuários do SafeUpload.</p>
+</header>
+
+<div class="sections">
+  <!-- 1. Geração de token -->
+  <section class="panel" aria-labelledby="titulo-token">
+    <div class="panel-heading">
+      <div>
+        <h2 id="titulo-token">Geração de token</h2>
+        <p>O token é usado pelo agente para se cadastrar como novo endpoint e é desativado após o primeiro uso.</p>
+      </div>
+    </div>
+
+    <button type="button" class="button primary" (click)="gerarToken()" [disabled]="gerandoToken">
+      {{ gerandoToken ? 'Gerando...' : token ? 'Gerar outro token' : 'Gerar token' }}
+    </button>
+    <p *ngIf="erroToken" class="error-message" role="alert">{{ erroToken }}</p>
+
+    <ng-container *ngIf="token">
+      <p class="warning-box" role="alert">Aviso: esse token não aparecerá outra vez. Armazene-o de forma segura.</p>
+      <p class="review-label">TOKEN GERADO</p>
+      <div class="token-box">
+        <code class="token-value">{{ token }}</code>
+        <button type="button" class="icon-button" (click)="copiarToken()"
+          [attr.aria-label]="copiado ? 'Token copiado' : 'Copiar token'" [attr.title]="copiado ? 'Token copiado' : 'Copiar token'">
+          <svg *ngIf="!copiado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <svg *ngIf="copiado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        </button>
+      </div>
+      <p class="copy-status" role="status">{{ statusCopia }}</p>
+    </ng-container>
+  </section>
+
+  <!-- 2. Cadastro de empresa -->
+  <section class="panel" aria-labelledby="titulo-empresa">
+    <div class="panel-heading">
+      <div>
+        <h2 id="titulo-empresa">Cadastro de empresa</h2>
+        <p>Cadastre uma nova empresa e o endereço dela. Depois, ela ficará disponível para vincular usuários.</p>
+      </div>
+    </div>
+
+    <form #empresaForm="ngForm" autocomplete="off" [class.tentou]="tentouEmpresa" (ngSubmit)="cadastrarEmpresa(empresaForm)">
+      <div class="form-grid">
+        <label class="field">Razão social<input name="empRazaoSocial" [(ngModel)]="empresa.razao_social" required maxlength="100" /></label>
+        <label class="field">Nome fantasia<input name="empNomeFantasia" [(ngModel)]="empresa.nome_fantasia" required maxlength="100" /></label>
+        <label class="field">CNPJ (14 dígitos)<input name="empCnpj" [(ngModel)]="empresa.cnpj" required pattern="[0-9]{14}" maxlength="14" inputmode="numeric" placeholder="Somente números" /></label>
+        <label class="field">Telefone de contato<input name="empTelefone" [(ngModel)]="empresa.telefone_contato" required maxlength="14" inputmode="tel" placeholder="Ex.: 61999999999" /></label>
+        <label class="field wide">E-mail de contato<input name="empEmail" type="email" email [(ngModel)]="empresa.email_contato" required maxlength="100" /></label>
+      </div>
+
+      <fieldset class="group">
+        <legend>Endereço da empresa</legend>
+        <div class="form-grid">
+          <label class="field">CEP<input name="empCep" [(ngModel)]="empresa.endereco.cep" required pattern="[0-9]{5}-[0-9]{3}" maxlength="9" placeholder="00000-000" /></label>
+          <label class="field">Estado (UF)<input class="uf" name="empUf" [(ngModel)]="empresa.endereco.estado" required pattern="[A-Za-z]{2}" maxlength="2" placeholder="DF" /></label>
+          <label class="field wide">Logradouro<input name="empLogradouro" [(ngModel)]="empresa.endereco.logradouro" required maxlength="40" /></label>
+          <label class="field">Número<input name="empNumero" type="number" min="0" step="1" [(ngModel)]="empresa.endereco.numero" required /></label>
+          <label class="field">Complemento<input name="empComplemento" [(ngModel)]="empresa.endereco.complemento" maxlength="100" /></label>
+          <label class="field">Bairro<input name="empBairro" [(ngModel)]="empresa.endereco.bairro" required maxlength="30" /></label>
+          <label class="field">Cidade<input name="empCidade" [(ngModel)]="empresa.endereco.cidade" required maxlength="40" /></label>
+        </div>
+      </fieldset>
+
+      <p *ngIf="erroEmpresa" class="error-message" role="alert">{{ erroEmpresa }}</p>
+      <p *ngIf="mensagemEmpresa" class="success-message" role="status">{{ mensagemEmpresa }}</p>
+      <div class="form-footer">
+        <button type="submit" class="button primary" [disabled]="enviandoEmpresa">{{ enviandoEmpresa ? 'Cadastrando...' : 'Cadastrar empresa' }}</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 3. Cadastro de usuário -->
+  <section class="panel" aria-labelledby="titulo-usuario">
+    <div class="panel-heading">
+      <div>
+        <h2 id="titulo-usuario">Cadastro de usuário</h2>
+        <p>Cadastre um usuário e vincule-o a uma empresa já cadastrada.</p>
+      </div>
+    </div>
+
+    <form #usuarioForm="ngForm" autocomplete="off" [class.tentou]="tentouUsuario" (ngSubmit)="cadastrarUsuario(usuarioForm)">
+      <div class="form-grid">
+        <label class="field wide">Nome completo<input name="usrNome" [(ngModel)]="usuario.nome_completo" required maxlength="100" /></label>
+        <label class="field">Nome de usuário<input name="usrUsername" [(ngModel)]="usuario.username" required maxlength="50" /></label>
+        <label class="field">E-mail<input name="usrEmail" type="email" email [(ngModel)]="usuario.email" required maxlength="75" /></label>
+        <label class="field">CPF<input name="usrCpf" [(ngModel)]="usuario.cpf" required maxlength="14" placeholder="000.000.000-00" /></label>
+        <label class="field">Data de nascimento<input name="usrNascimento" type="date" [(ngModel)]="usuario.data_nascimento" required /></label>
+        <label class="field">Senha<input name="usrSenha" type="password" autocomplete="new-password" [(ngModel)]="usuario.senha" required maxlength="30" /></label>
+        <label class="field">Confirmar senha<input name="usrConfirmarSenha" type="password" autocomplete="new-password" [(ngModel)]="usuario.confirmarSenha" required maxlength="30" /></label>
+        <label class="field">Empresa
+          <select name="usrEmpresa" [(ngModel)]="usuario.fk_id_empresa" required>
+            <option [ngValue]="null" disabled>Selecione uma empresa</option>
+            <option *ngFor="let item of empresas" [ngValue]="item.id_empresa">{{ item.razao_social }}</option>
+          </select>
+        </label>
+        <label class="field">Perfil de acesso
+          <select name="usrRole" [(ngModel)]="usuario.role" required>
+            <option value="user">Usuário</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+      </div>
+      <p class="field-hint" *ngIf="carregandoEmpresas" role="status">Carregando empresas…</p>
+      <p class="error-message" *ngIf="erroEmpresas" role="alert">{{ erroEmpresas }}
+        <button type="button" class="link-button" (click)="carregarEmpresas()">Tentar novamente</button></p>
+      <p class="field-hint" *ngIf="!carregandoEmpresas && !erroEmpresas && !empresas.length">Nenhuma empresa cadastrada. Cadastre uma empresa na etapa 2 para vincular o usuário.</p>
+      <p class="field-hint">Administradores acessam este painel. A senha aceita até 30 caracteres.</p>
+
+      <fieldset class="group">
+        <legend>Endereço do usuário</legend>
+        <div class="form-grid">
+          <label class="field">CEP<input name="usrCep" [(ngModel)]="usuario.endereco.cep" required pattern="[0-9]{5}-[0-9]{3}" maxlength="9" placeholder="00000-000" /></label>
+          <label class="field">Estado (UF)<input class="uf" name="usrUf" [(ngModel)]="usuario.endereco.estado" required pattern="[A-Za-z]{2}" maxlength="2" placeholder="DF" /></label>
+          <label class="field wide">Logradouro<input name="usrLogradouro" [(ngModel)]="usuario.endereco.logradouro" required maxlength="40" /></label>
+          <label class="field">Número<input name="usrNumero" type="number" min="0" step="1" [(ngModel)]="usuario.endereco.numero" required /></label>
+          <label class="field">Complemento<input name="usrComplemento" [(ngModel)]="usuario.endereco.complemento" maxlength="100" /></label>
+          <label class="field">Bairro<input name="usrBairro" [(ngModel)]="usuario.endereco.bairro" required maxlength="30" /></label>
+          <label class="field">Cidade<input name="usrCidade" [(ngModel)]="usuario.endereco.cidade" required maxlength="40" /></label>
+        </div>
+      </fieldset>
+
+      <p class="field-hint">O cadastro será registrado em nome de <strong>{{ criadoPor || '—' }}</strong>.</p>
+      <p *ngIf="erroUsuario" class="error-message" role="alert">{{ erroUsuario }}</p>
+      <p *ngIf="mensagemUsuario" class="success-message" role="status">{{ mensagemUsuario }}</p>
+      <div class="form-footer">
+        <button type="submit" class="button primary" [disabled]="enviandoUsuario">{{ enviandoUsuario ? 'Cadastrando...' : 'Cadastrar usuário' }}</button>
+      </div>
+    </form>
+  </section>
+</div>
