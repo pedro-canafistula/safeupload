@@ -14,6 +14,7 @@ for (const scenario of [
   { verdict: 'Blocked', categories: [], reason: 'parse_error:InvalidDataException', label: 'Inconclusivo / bloqueado', description: 'inspeção não pôde ser concluída' },
   { verdict: 'Approved', categories: [], reason: 'inspection_timeout', label: 'Inspeção inconclusiva / liberado', description: 'liberação com inspeção inconclusiva' },
   { verdict: 'Approved', categories: ['Cpf'], reason: 'publication_outcome_unknown', label: 'Não confirmado', description: 'resultado da publicação não foi confirmado' },
+  { verdict: 'Retained', categories: [], reason: 'publication_outcome_unknown', label: 'Não confirmado apesar de retido', description: 'resultado da publicação não foi confirmado' },
   { verdict: 'Approved', categories: ['Cpf'], reason: 'publication_failed', label: 'Pendente', description: 'publicação falhou e permanece pendente' }
 ]) {
   test(`auditoria preserva ressalva: ${scenario.label}`, async ({ page }) => {
@@ -23,13 +24,16 @@ for (const scenario of [
     } }));
     await page.goto('/auditoria');
     const badge = page.locator('app-event-table .pill');
-    await expect(badge).toHaveText(scenario.label);
+    await expect(badge).toHaveText(scenario.reason === 'publication_outcome_unknown' ? 'Não confirmado' : scenario.label);
     await expect(badge).toHaveClass(/warn/);
     await expect(badge).not.toHaveClass(/\bok\b/);
     await page.getByRole('button', { name: 'Detalhes de arquivo-0.txt', exact: true }).click();
     const detail = page.getByRole('region', { name: 'Detalhes de arquivo-0.txt', exact: true });
     await expect(detail).toContainText(scenario.description);
     await expect(detail).not.toContainText('não encontraram ocorrências');
+    if (scenario.reason === 'publication_outcome_unknown') {
+      await expect(detail).not.toContainText('Nenhum conteúdo foi liberado');
+    }
     await expect(page.getByText('TRECHO_QUE_NAO_DEVE_APARECER')).toHaveCount(0);
   });
 }

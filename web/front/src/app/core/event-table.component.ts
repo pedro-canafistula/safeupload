@@ -88,10 +88,10 @@ export class EventTableComponent {
     const reason = event.notInspectedReason;
     if (this.isObservation(event)) return { label: 'Monitoramento', tone: 'warn',
       description: 'Clipboard sinalizado ao mudar o foco para um aplicativo de saída. Este registro não confirma colagem nem bloqueio.' };
-    if (event.verdict === 'Retained') return { label: 'Retido', tone: 'warn',
-      description: 'A transferência foi retida localmente. Nenhum conteúdo foi liberado para o destino protegido.' };
     if (reason === 'publication_outcome_unknown') return { label: 'Não confirmado', tone: 'warn',
       description: 'O resultado da publicação não foi confirmado. Este registro não comprova a conclusão da transferência.' };
+    if (event.verdict === 'Retained') return { label: 'Retido', tone: 'warn',
+      description: 'A transferência foi retida localmente. Nenhum conteúdo foi liberado para o destino protegido.' };
     if (reason === 'publication_failed') return { label: 'Pendente', tone: 'warn',
       description: 'A publicação falhou e permanece pendente. Este registro não comprova a conclusão da transferência.' };
     const inspectionFailed = reason?.startsWith('parse_error:') || [
