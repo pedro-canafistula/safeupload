@@ -1,20 +1,39 @@
-.shell { display: grid; grid-template-columns: 235px minmax(0, 1fr); min-height: 100vh; background: #f4f6fa; }
-.sidebar { min-height: 100vh; background: #0a0f1d; border-right: 1px solid #202a43; color: #eef2ff; padding: 22px 12px; display: flex; flex-direction: column; }
-.brand { display: flex; align-items: center; gap: 11px; padding: 0 9px; margin-bottom: 22px; font-size: 16px; font-weight: 750; letter-spacing: -.2px; }
-.brand-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 7px; background: #8294ff; color: #fff; font-size: 15px; font-weight: 800; }
-nav { display: grid; gap: 5px; }
-nav a { padding: 10px 11px; border-radius: 6px; color: #c9d1e8; font-size: 13px; font-weight: 600; }
-nav a.active, nav a:hover { background: #303646; color: #fff; }
-.sidebar-account { display: grid; gap: 8px; margin: auto 8px 0; padding-top: 18px; color: #8d98b7; font-size: 11px; }
-.sidebar-account strong { color: #dfe5f8; font-size: 13px; font-weight: 600; }
-.sidebar-account button { width: fit-content; border: 0; padding: 0; background: transparent; color: #8f9fff; cursor: pointer; font-size: 12px; }
-.content { min-width: 0; padding: 20px 28px 32px; }
-
-@media (max-width: 760px) {
+:host { display: block; }
+.shell { display: grid; grid-template-columns: 166px minmax(0, 1fr); min-height: 100vh; background: #f5f6f3; color: #293532; }
+.sidebar { position: sticky; top: 0; display: flex; flex-direction: column; gap: 27px; height: 100vh; min-height: 620px; padding: 20px 11px 17px; background: #20342e; color: #dfe8e3; }
+.brand { display: flex; align-items: center; gap: 8px; padding: 0 7px; color: #f7faf8; }
+.brand-mark { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: #327c67; color: white; font-size: 19px; font-weight: 800; }
+.brand-name { display: grid; gap: 2px; font-size: 14px; font-weight: 750; letter-spacing: -.3px; }
+.brand-name small { color: #9db3a9; font-size: 7px; letter-spacing: 1.4px; }
+nav, .sidebar-concept { display: grid; gap: 4px; }
+.nav-caption { margin: 0 8px 5px; color: #8da49a; font-size: 8px; font-weight: 800; letter-spacing: 1.2px; }
+nav a, .concept-link { display: flex; align-items: center; gap: 9px; min-height: 29px; padding: 7px 9px; border-radius: 7px; color: #b9c9c1; font-size: 10px; font-weight: 600; }
+nav a:hover, nav a.active, .concept-link.active { background: #3b554a; color: #fff; }
+.nav-icon { display: grid; place-items: center; width: 12px; color: #a8c1b5; font-size: 13px; }
+.sidebar-concept { padding-top: 15px; border-top: 1px solid #34483f; }
+.concept-link { justify-content: space-between; }
+.concept-link b { font-size: 12px; }
+.sidebar-note { display: grid; gap: 5px; margin-top: auto; padding: 10px 9px; border: 1px solid #34483f; border-radius: 9px; color: #9fb2a9; font-size: 8px; line-height: 1.5; }
+.sidebar-note strong { color: #d2ded8; font-size: 8px; }
+.content { min-width: 0; padding: 0 24px 34px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; min-height: 54px; margin: 0 -24px 22px; padding: 0 24px; border-bottom: 1px solid #e8ebe7; background: #fff; }
+.breadcrumb, .topbar-user { display: flex; align-items: center; gap: 10px; font-size: 9px; }
+.breadcrumb { color: #77817c; }
+.breadcrumb b { color: #c2c8c4; }
+.breadcrumb strong { color: #313b36; }
+.topbar-user { color: #737d77; }
+.environment { padding: 5px 9px; border-radius: 999px; background: #edf6f0; color: #39745e; font-size: 8px; font-weight: 700; }
+.user-avatar { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: #e9eeea; color: #547565; font-size: 8px; font-weight: 800; }
+.logout { border: 0; background: transparent; color: #718078; cursor: pointer; font-size: 14px; }
+@media (max-width: 800px) {
   .shell { grid-template-columns: 1fr; }
-  .sidebar { min-height: auto; gap: 12px; }
+  .sidebar { position: static; height: auto; min-height: 0; gap: 13px; padding: 12px; }
   .brand { margin-bottom: 0; }
-  nav { grid-template-columns: repeat(2, 1fr); }
-  .sidebar-account { display: none; }
-  .content { padding: 18px; }
+  nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .nav-caption, .sidebar-concept, .sidebar-note { display: none; }
+  nav a { justify-content: center; padding: 8px 5px; }
+  .nav-icon { display: none; }
+  .content { padding: 0 14px 24px; }
+  .topbar { margin: 0 -14px 18px; padding: 0 14px; }
+  .team-name, .logout { display: none; }
 }

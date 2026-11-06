@@ -11,9 +11,10 @@ import { AuthService } from '../core/auth.service';
 })
 export class LayoutComponent {
   menu = [
-    { rota: '/painel', titulo: 'Painel' },
-    { rota: '/politicas', titulo: 'Políticas' },
-    { rota: '/configuracoes', titulo: 'Configurações' }
+    { rota: '/painel', titulo: 'Visão geral', icone: '▦' },
+    { rota: '/politicas', titulo: 'Políticas', icone: '◧' },
+    { rota: '/endpoints', titulo: 'Endpoints', icone: '▣' },
+    { rota: '/auditoria', titulo: 'Auditoria', icone: '◷' }
   ];
 
   constructor(public auth: AuthService, private router: Router) {}
