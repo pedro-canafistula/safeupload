@@ -287,7 +287,7 @@ public sealed class WebInspectionServiceTests : IDisposable
         }
     }
 
-    /// <summary>Modo de auditoria: registra o bloqueio que faria, mas não nega.</summary>
+    /// <summary>Modo de auditoria: registra liberação com achados, sem afirmar bloqueio real.</summary>
     [Fact]
     public async Task Modo_de_auditoria_registra_mas_nao_bloqueia()
     {
@@ -300,6 +300,6 @@ public sealed class WebInspectionServiceTests : IDisposable
 
         Assert.False(result.IsBlocked);
         Assert.NotEmpty(result.Findings);
-        Assert.Equal(Verdict.Blocked, Assert.Single(await EventsAsync()).Verdict);
+        Assert.Equal(Verdict.Approved, Assert.Single(await EventsAsync()).Verdict);
     }
 }

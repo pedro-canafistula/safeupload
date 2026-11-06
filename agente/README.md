@@ -273,6 +273,10 @@ O IP e a máscara são exemplos e precisam corresponder ao host provisionado e �
   após confirmação compatível do servidor. Falha no heartbeat não impede essa
   tentativa. A gravação da justificativa precede a publicação ou concessão.
 
+Os clientes de política, auditoria e heartbeat não seguem redirecionamentos HTTP. Configure diretamente a URL final do servidor; uma resposta 3xx não confirma entrega nem substitui a última política válida.
+
+No canal web, `AuditOnly` libera o envio com achados e registra `Approved` com as categorias, preservando a distinção entre alerta e bloqueio real. O agrupamento de textos repetidos considera a política efetiva: a primeira ocorrência após mudar a regra gera um novo evento. Registros antigos não são reescritos.
+
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
 projeto (ver `Interception:Mode` acima, mesma filosofia). A assinatura do heartbeat não autentica automaticamente política e auditoria; o fechamento dessas rotas e do ciclo de chaves permanece pendente com o backend.
 
