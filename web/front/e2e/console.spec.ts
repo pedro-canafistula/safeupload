@@ -122,6 +122,8 @@ test('políticas: padrão e de grupo; editar cria uma versão nova no histórico
   await page.getByRole('button', { name: 'Criar política' }).click();
   await expect(page.getByText(/Política criada \(versão \d+\)/)).toBeVisible();
   const primeira = await versaoNaMensagem(page);
+  // A mensagem aparece antes de o editor trocar /politicas/nova por /politicas/<id>.
+  await expect(page).toHaveURL(/\/politicas\/\d+$/);
   const id = Number(/\/politicas\/(\d+)$/.exec(page.url())![1]);
 
   await page.getByRole('group', { name: 'CNPJ', exact: true }).getByLabel('Alertar').check();
