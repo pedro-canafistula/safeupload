@@ -45,6 +45,9 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             : InitializeAsync(cancellationToken);
     }
 
+    /// <summary>A composição offline usa o último snapshot validado, sem HTTP por arquivo.</summary>
+    public Task<DomainPolicy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadAsync(cancellationToken);
+
     private async Task<DomainPolicy> InitializeAsync(CancellationToken token)
     {
         await _initializeGate.WaitAsync(token).ConfigureAwait(false);
@@ -53,6 +56,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
             if (Volatile.Read(ref _current) is { } current) return current;
             var restored = await _restore(token).ConfigureAwait(false);
             restored.EnsureValid();
+            token.ThrowIfCancellationRequested();
             Volatile.Write(ref _current, restored);
             var source = _remote is DurableHttpPolicyStore durable ? durable.LastSource : "local";
             _logger.LogInformation("Política inicial v{Version} disponível sem consulta de rede. Origem={Source}.",
@@ -85,6 +89,7 @@ public sealed class RefreshingPolicyStore : BackgroundService, IPolicyStore
         {
             var refreshed = await _remote.LoadAsync(token).ConfigureAwait(false);
             refreshed.EnsureValid();
+            token.ThrowIfCancellationRequested();
             Volatile.Write(ref _current, refreshed);
             _logger.LogInformation("Política v{Version} disponível após atualização.", refreshed.Version);
         }

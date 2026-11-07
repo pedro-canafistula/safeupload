@@ -125,6 +125,11 @@ e depois de gravar a solicitação na auditoria. Falha de leitura da política m
 novamente. Na configuração remota essas leituras usam o snapshot validado do serviço de fundo, inclusive offline,
 sem HTTP por arquivo. São reconferências pontuais, não uma transação atômica entre atualização de política e renomeação.
 
+`LoadCurrentAsync` respeita a composição: no serviço significa esse snapshot; nos provedores HTTP usados diretamente,
+significa consulta à origem sem fallback. Não confundir disponibilidade offline com confirmação de uma publicação
+remota ainda não recebida. Cargas de inicialização/renovação canceladas não instalam o resultado tardio no snapshot,
+mesmo se a origem não respeitar o cancelamento; uma renovação posterior continua possível.
+
 O estado das unidades distingue conexão com o serviço de proteção confirmada. Só anuncia proteção completa quando
 o gate aceita o escopo e todas as unidades esperadas aparecem disponíveis no Windows. Nas consultas seguintes ao
 mesmo escopo, usa o comando de contadores existente para verificar a conexão; falha ou resposta incompleta exige
