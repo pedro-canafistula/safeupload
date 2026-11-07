@@ -44,8 +44,8 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
                 (result.Verdict == Verdict.AllowedWithoutInspection &&
                  ((result.Reason == "excluded_process" && policy.IsExcludedProcess(operation.ProcessName)) ||
                   (result.Reason == "out_of_scope" && !policy.IsMonitoredExtension(operation.Extension)))),
-            DriveApprovalKind.Audit => policy.AuditOnly && result.InScope && result.IsBlocked &&
-                result.Reason is null && result.Categories.Count > 0,
+            DriveApprovalKind.Audit => policy.ReleasesWithAlert(result.Categories) && result.InScope && result.IsBlocked &&
+                result.Reason is null,
             DriveApprovalKind.Justification => policy.OverrideAllowed && result.InScope && result.IsBlocked &&
                 result.FailureKind != InspectionFailureKind.NotEnoughStagingSpace && policy.IsMonitoredExtension(operation.Extension),
             _ => false

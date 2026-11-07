@@ -7,18 +7,12 @@
       <span class="nav-caption">PAINEL</span>
       <a *ngFor="let item of menu" [routerLink]="item.rota" routerLinkActive="active" [attr.aria-label]="item.titulo"><span class="nav-icon" aria-hidden="true">{{ item.icone }}</span>{{ item.titulo }}</a>
     </nav>
-    <div class="sidebar-concept">
-      <span class="nav-caption">CONCEITO</span>
-      <a class="concept-link active" routerLink="/politicas">Novo criador <b>＋</b></a>
-      <a class="concept-link" routerLink="/politicas" fragment="revisao">Prévia e validação <b>✓</b></a>
-    </div>
-    <div class="sidebar-note"><strong>PROTÓTIPO CONCEITUAL</strong><span>Experiência proposta para debate. Não representa funcionalidades implementadas.</span></div>
   </aside>
 
   <main class="content">
     <header class="topbar">
-      <div class="breadcrumb"><span>Console administrativo</span><b>/</b><strong>Criar política</strong></div>
-      <div class="topbar-user"><span class="environment">● Ambiente de demonstração</span><span class="team-name">{{ auth.usuarioLogado?.nomeCompleto || 'Administrador' }}</span><span class="user-avatar">{{ (auth.usuarioLogado?.nomeCompleto || 'SU').slice(0, 2).toUpperCase() }}</span><button type="button" class="logout" (click)="sair()" aria-label="Sair">↗</button></div>
+      <div class="breadcrumb"><span>Console administrativo</span><b>/</b><strong>{{ paginaAtual }}</strong></div>
+      <div class="topbar-user"><span class="team-name">{{ auth.usuarioLogado?.nomeCompleto || 'Administrador' }}</span><span class="user-avatar">{{ (auth.usuarioLogado?.nomeCompleto || 'SU').slice(0, 2).toUpperCase() }}</span><button type="button" class="logout" (click)="sair()" aria-label="Sair">↗</button></div>
     </header>
     <router-outlet></router-outlet>
   </main>

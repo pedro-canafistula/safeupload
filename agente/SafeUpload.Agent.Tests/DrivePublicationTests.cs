@@ -214,15 +214,16 @@ public sealed partial class DrivePublicationTests : IDisposable
         Assert.Equal(publication.DestinationPath, audit.DestinationPath);
     }
 
-    private Fixture Create(string bytes, bool alert = false, Func<IPolicyStore, IPolicyStore>? wrapPolicy = null)
+    private Fixture Create(string bytes, bool alert = false, Func<IPolicyStore, IPolicyStore>? wrapPolicy = null,
+        IReadOnlySet<Category>? alertCategories = null)
     {
         var backing = Path.Combine(_workspace.Root, "backing");
         Directory.CreateDirectory(backing);
         var target = Path.Combine(backing, "report.txt");
         File.WriteAllText(target, "Previous bytes");
-        var policy = new Policy(1, new HashSet<Category> { Category.Cpf },
+        var policy = new Policy(1, new HashSet<Category> { Category.Cpf, Category.Rg },
             new MonitoredScopes(new HashSet<string> { ".txt", ".zip" }, [], true, false), 10, 5, true,
-            new HashSet<string>(), AuditOnly: alert, OverrideAllowed: true);
+            new HashSet<string>(), AuditOnly: alert, OverrideAllowed: true, AlertCategories: alertCategories);
         var policies = new Policies(policy);
         var effectivePolicies = wrapPolicy?.Invoke(policies) ?? policies;
         var sink = new LocalQueueAuditSink(_workspace.QueueFile);

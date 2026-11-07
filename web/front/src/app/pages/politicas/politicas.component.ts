@@ -1,131 +1,96 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { finalize } from 'rxjs';
+import { RouterLink } from '@angular/router';
+import { Observable, Subject, forkJoin, startWith } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { mensagemErro, reload } from '../../core/load-state';
+import { Grupo, GrupoRequest, PoliticaResumo } from '../../core/models';
 
+/** Lista de políticas e grupos de máquinas. O editor de uma política fica em PoliticaEditorComponent. */
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './politicas.component.html',
   styleUrl: './politicas.component.css'
 })
 export class PoliticasComponent {
-  constructor(private api: ApiService, private router: Router) {}
+  private readonly api = inject(ApiService);
+  readonly refresh = new Subject<void>();
+  readonly state$ = reload(this.refresh.pipe(startWith(undefined)),
+    () => forkJoin({ politicas: this.api.listarPoliticas(), grupos: this.api.listarGrupos() }));
 
-  readonly etapas = ['Identificação', 'Escopo de aplicação', 'Dados e condições', 'Operações e destinos', 'Ação e exceções', 'Revisão da política'];
-  readonly titulosEtapas = ['Identificação', 'Escopo de aplicação', 'Dados e condições', 'Operações e destinos', 'Ação e exceções', 'Revisão da política'];
-  readonly descricoesEtapas = [
-    'Dê um nome claro para identificar esta política.',
-    'Escolha o endpoint que receberá a configuração.',
-    'Selecione os classificadores. Qualquer correspondência aplica a ação.',
-    'Defina o comportamento aplicado quando houver correspondência.',
-    'Revise exceções e limitações de compatibilidade.',
-    'Confira o resultado esperado, os pontos de atenção e o endpoint afetado.'
-  ];
-  readonly regras = [
-    { id: 'cpf', nome: 'CPF', descricao: 'Documento pessoal validado' },
-    { id: 'cnpj', nome: 'CNPJ', descricao: 'Registro empresarial validado' },
-    { id: 'cartao_credito', nome: 'Cartão de pagamento', descricao: 'Validação do número' },
-    { id: 'credenciais', nome: 'Credenciais e segredos', descricao: 'Senhas, tokens e chaves' },
-    { id: 'rg', nome: 'RG', descricao: 'Registro geral de identidade' },
-    { id: 'dados_bancarios', nome: 'Dados bancários', descricao: 'Agência, conta e chave PIX' },
-    { id: 'dados_saude', nome: 'Dados de saúde', descricao: 'Laudos e prontuários' },
-    { id: 'documentos_confidenciais', nome: 'Documentos confidenciais', descricao: 'Arquivos internos e classificados' },
-    { id: 'dados_pessoais', nome: 'Dados pessoais', descricao: 'E-mail, telefone e endereço' }
-  ];
-
-  etapaAtual = 1;
-  nome = '';
-  ip = '';
-  regrasSelecionadas: string[] = [];
-  acao: 'bloquear' | 'alertar' = 'bloquear';
-  jsonGerado = '';
-  jsonPronto = false;
-  enviando = false;
   erro = '';
   mensagem = '';
+  ocupado = false;
+  confirmandoPolitica: number | null = null;
+  confirmandoGrupo: number | null = null;
+  novoGrupo: GrupoRequest = { nome: '', politicaId: null };
+  edicaoGrupo: (GrupoRequest & { id: number }) | null = null;
 
-  get resumoCondicao(): string {
-    const nomes = this.regras.filter(regra => this.regrasSelecionadas.includes(regra.id)).map(regra => regra.nome);
-    if (nomes.length === 0) return '';
-    return nomes.join(' ou ');
+  temPadrao(politicas: PoliticaResumo[]): boolean {
+    return politicas.some(politica => politica.padrao);
   }
 
-  get etapaValida(): boolean {
-    switch (this.etapaAtual) {
-      case 1: return Boolean(this.nome.trim());
-      case 2: return this.ipValido(this.ip);
-      case 3: return this.regrasSelecionadas.length > 0;
-      default: return true;
+  excluirPolitica(politica: PoliticaResumo): void {
+    this.executar(this.api.excluirPolitica(politica.id), `Política ${politica.nome} excluída.`, 'Não foi possível excluir a política.');
+  }
+
+  criarGrupo(): void {
+    const grupo = { nome: this.novoGrupo.nome.trim(), politicaId: this.novoGrupo.politicaId };
+    if (!grupo.nome) {
+      this.erro = 'Informe o nome do grupo.';
+      return;
     }
+    this.executar(this.api.criarGrupo(grupo), `Grupo ${grupo.nome} criado.`, 'Não foi possível criar o grupo.',
+      () => this.novoGrupo = { nome: '', politicaId: null });
   }
 
-  alternarRegra(id: string, marcado: boolean): void {
-    this.regrasSelecionadas = marcado
-      ? [...new Set([...this.regrasSelecionadas, id])]
-      : this.regrasSelecionadas.filter(regraId => regraId !== id);
+  editarGrupo(grupo: Grupo): void {
+    this.limparAvisos();
+    this.edicaoGrupo = { id: grupo.id, nome: grupo.nome, politicaId: grupo.politicaId };
   }
 
-  continuar(): void {
-    if (!this.etapaValida || this.etapaAtual >= 6) return;
-    this.erro = '';
-    this.etapaAtual += 1;
-  }
-
-  voltar(): void {
-    if (this.etapaAtual > 1) this.etapaAtual -= 1;
-    this.erro = '';
-  }
-
-  irParaEtapa(etapa: number): void {
-    if (etapa < this.etapaAtual && etapa >= 1) {
-      this.etapaAtual = etapa;
-      this.erro = '';
+  salvarGrupo(): void {
+    const edicao = this.edicaoGrupo;
+    if (!edicao) return;
+    const grupo = { nome: edicao.nome.trim(), politicaId: edicao.politicaId };
+    if (!grupo.nome) {
+      this.erro = 'Informe o nome do grupo.';
+      return;
     }
+    this.executar(this.api.atualizarGrupo(edicao.id, grupo), `Grupo ${grupo.nome} salvo.`, 'Não foi possível salvar o grupo.',
+      () => this.edicaoGrupo = null);
   }
 
-  enviarPolitica(): void {
-    if (!this.nome.trim() || !this.ipValido(this.ip) || !this.regrasSelecionadas.length) return;
+  excluirGrupo(grupo: Grupo): void {
+    this.executar(this.api.excluirGrupo(grupo.id), `Grupo ${grupo.nome} excluído.`, 'Não foi possível excluir o grupo.');
+  }
+
+  limparAvisos(): void {
     this.erro = '';
     this.mensagem = '';
-    const politica = {
-      versao: '1.0', nome: this.nome.trim(), destino: { ip: this.ip.trim() }, acao: this.acao,
-      regras: this.regrasSelecionadas.map(id => ({ tipo: id, nome: this.regras.find(regra => regra.id === id)!.nome })),
-      criadaEm: new Date().toISOString(), origem: 'console-administrativo'
-    };
-    this.jsonGerado = JSON.stringify(politica, null, 2);
-    this.enviando = true;
-    this.api.publicarPolitica(politica).pipe(finalize(() => this.enviando = false)).subscribe({
-      next: response => {
-        this.mensagem = response.mensagem || 'Política enviada ao servidor.';
-        this.jsonPronto = true;
+  }
+
+  private executar(acao: Observable<unknown>, sucesso: string, falha: string, depois?: () => void): void {
+    this.limparAvisos();
+    this.ocupado = true;
+    acao.subscribe({
+      next: () => {
+        this.ocupado = false;
+        this.confirmandoPolitica = null;
+        this.confirmandoGrupo = null;
+        this.mensagem = sucesso;
+        depois?.();
+        this.refresh.next();
       },
-      error: error => {
-        this.erro = error?.error?.mensagem ?? error?.error?.erro ?? 'Não foi possível enviar a política ao servidor.';
+      error: (erro: HttpErrorResponse) => {
+        this.ocupado = false;
+        this.confirmandoPolitica = null;
+        this.confirmandoGrupo = null;
+        this.erro = mensagemErro(erro, falha);
       }
     });
-  }
-
-  fechar(): void {
-    this.router.navigate(['/painel']);
-  }
-
-  private ipValido(valor: string): boolean {
-    const octetos = valor.trim().split('.');
-    return octetos.length === 4 && octetos.every(octeto =>
-      /^\d{1,3}$/.test(octeto) && Number(octeto) >= 0 && Number(octeto) <= 255
-    );
-  }
-
-  baixarJson(): void {
-    const arquivo = new Blob([this.jsonGerado], { type: 'application/json' });
-    const url = URL.createObjectURL(arquivo);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'politica-safeupload.json';
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }

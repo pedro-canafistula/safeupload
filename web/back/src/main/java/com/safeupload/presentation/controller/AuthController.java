@@ -24,6 +24,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
 
 import java.util.Locale;
+import com.safeupload.presentation.config.CurrentUser;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 @RestController
@@ -34,14 +36,17 @@ public class AuthController {
     private final UsuarioRepository usuarioRepository;
     private final AuthService service;
     private final SecurityContextRepository securityContextRepository;
+    private final CurrentUser currentUser;
 
 
     public AuthController(
         EmpresaRepository empresaRepository,
         UsuarioRepository usuarioRepository,
         AuthService service,
-        SecurityContextRepository securityContextRepository
+        SecurityContextRepository securityContextRepository,
+        CurrentUser currentUser
     ){
+        this.currentUser = currentUser;
         this.empresaRepository = empresaRepository;
         this.usuarioRepository = usuarioRepository;
         this.service = service;
@@ -88,9 +93,11 @@ public class AuthController {
     }
 
     @GetMapping("/normalregister/empresa/list")
-    public ResponseEntity<List<ListEmpresaResponse>> listEmpresa(){
+    public ResponseEntity<List<ListEmpresaResponse>> listEmpresa(Authentication authentication){
+        var usuario = currentUser.of(authentication);
         List<ListEmpresaResponse> response = empresaRepository.findAll()
                 .stream()
+                .filter(empresa -> usuario.root() || empresa.getIdEmpresa().equals(usuario.idEmpresa()))
                 .map(empresa -> new ListEmpresaResponse(
                     empresa.getIdEmpresa(),
                     empresa.getRazaoSocial()
@@ -100,7 +107,17 @@ public class AuthController {
     }
 
     @PostMapping ("/normalregister/usuario/set")
-    public ResponseEntity<DefaultPostResponse> normalRegisterUsuario(@Valid @RequestBody UsuarioRegister request){
+    public ResponseEntity<DefaultPostResponse> normalRegisterUsuario(@Valid @RequestBody UsuarioRegister request,
+                                                                     Authentication authentication){
+        // ADMIN cadastra só na própria empresa e só admin/user; ROOT cadastra em qualquer empresa.
+        var criador = currentUser.of(authentication);
+        String role = request.role().trim().toLowerCase(Locale.ROOT);
+        if (!List.of("root", "admin", "user").contains(role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Perfil inválido: use root, admin ou user.");
+        }
+        if (!criador.root() && (role.equals("root") || !request.fk_id_empresa().equals(criador.idEmpresa()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrador só cadastra admin/user na própria empresa.");
+        }
         if (usuarioRepository.existsByUsername(request.username())){
             throw new DatabaseErrorException("Usuário já existe.");
         };
@@ -113,7 +130,7 @@ public class AuthController {
             throw new DatabaseErrorException("O CPF já está em uso.");
         };
 
-        DefaultPostResponse response = service.normalRegisterUsuario(request);
+        DefaultPostResponse response = service.normalRegisterUsuario(request, role, criador.username());
 
         return ResponseEntity
                 .status(HttpStatus.CREATED.value())

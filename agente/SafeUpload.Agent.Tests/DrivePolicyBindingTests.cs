@@ -256,6 +256,24 @@ public sealed partial class DrivePublicationTests
     }
 
     [Fact]
+    public void Alert_category_releases_a_finding_with_audit()
+    {
+        using var f = Create("CPF: 529.982.247-25", alertCategories: new HashSet<Category> { Category.Cpf });
+        f.Inspect();
+        var decision = Assert.Single(f.Observer.Decisions);
+        Assert.True(f.FileSystem.Approve(decision.VersionId, DriveApprovalKind.Audit));
+    }
+
+    [Fact]
+    public void Blocking_category_still_blocks_when_another_category_only_alerts()
+    {
+        using var f = Create("CPF: 529.982.247-25", alertCategories: new HashSet<Category> { Category.Rg });
+        f.Inspect();
+        var decision = Assert.Single(f.Observer.Decisions);
+        Assert.False(f.FileSystem.Approve(decision.VersionId, DriveApprovalKind.Audit));
+    }
+
+    [Fact]
     public void Policy_changed_after_alertar_was_queued_prevents_publication()
     {
         using var f = Create("CPF: 529.982.247-25", alert: true);

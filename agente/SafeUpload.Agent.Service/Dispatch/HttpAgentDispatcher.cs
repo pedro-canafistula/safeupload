@@ -121,38 +121,8 @@ public sealed class HttpAgentDispatcher : BackgroundService
 
     private async Task SendHeartbeatAsync(CancellationToken cancellationToken)
     {
-        if (HeartbeatSender is {} sender)
-        {
-            await sender.SendAsync(cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        var policy = await _policyStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-
-        var heartbeat = new HeartbeatRequest(
-            _endpointId,
-            Environment.MachineName,
-            RuntimeInformation.OSDescription,
-            AgentVersion,
-            policy.Version);
-
-        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
-        int? receivedStatus = null;
-        try
-        {
-            using var response = await _client
-                .PostAsJsonAsync("heartbeat", heartbeat, SendOptions, cancellationToken)
-                .ConfigureAwait(false);
-            receivedStatus = (int)response.StatusCode;
-
-            if (!response.IsSuccessStatusCode)
-            {
-                observation.Failure(CommunicationFailure.HttpRejected, (int)response.StatusCode);
-                _logger.LogWarning("Heartbeat recusado pelo servidor: {Status}.", (int)response.StatusCode);
-            }
-            else observation.Success((int)response.StatusCode);
-        }
-        catch (Exception exception) { observation.Exception(exception, cancellationToken, receivedStatus); throw; }
+        // Sem cadastro não há heartbeat: o servidor só aceita requisições assinadas pela máquina.
+        if (HeartbeatSender is {} sender) await sender.SendAsync(cancellationToken).ConfigureAwait(false);
     }
 
     internal Task RunCycleAsync(CancellationToken cancellationToken) => Task.WhenAll(
@@ -268,17 +238,14 @@ public sealed class HttpAgentDispatcher : BackgroundService
     /// Versão do serviço efetivamente compilado, mesmo quando hospedado por um
     /// utilitário ou test runner. Preserva o sufixo de revisão quando o SDK o inclui.
     /// </summary>
-    private static readonly string AgentVersion =
+    internal static readonly string AgentVersion = Limit(
         typeof(HttpAgentDispatcher).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
         ?? typeof(HttpAgentDispatcher).Assembly.GetName().Version?.ToString()
-        ?? "unknown";
+        ?? "unknown");
 
-    private sealed record HeartbeatRequest(
-        string EndpointId,
-        string Hostname,
-        string Os,
-        string AgentVersion,
-        int PolicyVersion);
+    private static string Limit(string version) => version.Length <= 50 ? version : version[..50];
+
+
 
     private static bool IsCompleteAcknowledgement(JsonElement receipt, int events, int overrides)
     {

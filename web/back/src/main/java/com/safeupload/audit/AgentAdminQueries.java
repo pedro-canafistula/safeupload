@@ -1,8 +1,8 @@
 package com.safeupload.audit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -25,12 +25,13 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Reads persisted intake metadata; never changes registration, policy or queue acknowledgements. */
+/** Leituras do painel, auditoria e endpoints. Tudo limitado à empresa do usuário (hosts.fk_id_empresa). */
 @Service
 public class AgentAdminQueries {
     private static final int PAGE = 500;
     private static final int LIMIT = 1000;
-    private static final int ONLINE_SECONDS = 120;
+    public static final int ONLINE_SECONDS = 120;
+    private static final String EXPECTED_POLICY = com.safeupload.policy.PolicyStore.EXPECTED_POLICY;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final Clock clock;
@@ -48,22 +49,28 @@ public class AgentAdminQueries {
     private <T> T read(Supplier<T> action) { return snapshot.execute(ignored -> action.get()); }
     private Timestamp since() { return Timestamp.from(LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC)
         .minusDays(6).atStartOfDay(ZoneOffset.UTC).toInstant()); }
-    private JsonNode document(String text) {
-        try { return mapper.readTree(text); }
-        catch (JsonProcessingException ex) {
+
+    /** Evento gravado + host autenticado que o enviou. */
+    private ObjectNode document(String text, int hostId, String hostname) {
+        try {
+            var node = (ObjectNode) mapper.readTree(text);
+            node.put("hostId", hostId);
+            node.put("hostname", hostname);
+            return node;
+        } catch (JsonProcessingException | ClassCastException ex) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Registro de auditoria inválido.");
         }
     }
-    private void bounded(String text) {
-        if (text == null || text.length() > 255 || text.chars().anyMatch(Character::isISOControl))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Filtro inválido.");
+
+    private String where(Integer host) {
+        return " FROM agent_audit_ingest a JOIN hosts h ON h.id_host = a.fk_id_host WHERE h.fk_id_empresa = ?" +
+            " AND a.kind = ? AND a.occurred_at_utc >= ?" + (host == null ? "" : " AND a.fk_id_host = ?");
     }
-    private String where(String endpoint) { return "kind='audit' AND occurred_at_utc >= ?" +
-        (endpoint.isEmpty() ? "" : " AND endpoint_id = ?"); }
-    private List<Object> arguments(String endpoint) {
-        var args = new ArrayList<Object>(); args.add(since());
-        if (!endpoint.isEmpty()) args.add(endpoint);
-        return args;
+    private Object[] arguments(int empresa, String kind, Integer host, Object... extra) {
+        var args = new ArrayList<Object>(List.of(empresa, kind, since()));
+        if (host != null) args.add(host);
+        args.addAll(List.of(extra));
+        return args.toArray();
     }
 
     private final class Totals {
@@ -74,7 +81,7 @@ public class AgentAdminQueries {
             var today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
             for (int ago = 6; ago >= 0; ago--) days.put(today.minusDays(ago).toString(), 0L);
         }
-        void add(JsonNode event) {
+        void add(ObjectNode event) {
             total++;
             String verdict = event.path("verdict").asText();
             switch (verdict) {
@@ -94,25 +101,28 @@ public class AgentAdminQueries {
             "aprovados", approved, "liberadosSemInspecao", uninspected, "retidos", retained); }
     }
 
-    // Keyset pages bound the in-memory data while statistics cover the complete seven-day window.
-    private Totals totals(String endpoint) {
+    // Páginas por chave limitam a memória; as estatísticas cobrem a janela inteira de sete dias.
+    private Totals totals(int empresa, Integer host) {
         var totals = new Totals();
         String after = "";
         while (true) {
-            var args = arguments(endpoint); args.add(after);
-            var rows = jdbc.queryForList("SELECT record_key,payload FROM agent_audit_ingest WHERE " +
-                where(endpoint) + " AND record_key > ? ORDER BY record_key LIMIT " + PAGE, args.toArray());
-            for (var row : rows) totals.add(document((String)row.get("payload")));
+            var rows = jdbc.query("SELECT a.record_key, a.payload, a.fk_id_host, h.hostname" + where(host) +
+                " AND a.record_key > ? ORDER BY a.record_key LIMIT " + PAGE,
+                (rs, n) -> Map.entry(rs.getString(1), document(rs.getString(2), rs.getInt(3), rs.getString(4))),
+                arguments(empresa, "audit", host, after));
+            for (var row : rows) totals.add(row.getValue());
             if (rows.size() < PAGE) return totals;
-            after = (String)rows.getLast().get("record_key");
+            after = rows.getLast().getKey();
         }
     }
-    private List<JsonNode> events(String endpoint, int limit) {
-        return jdbc.query("SELECT payload FROM agent_audit_ingest WHERE " + where(endpoint) +
-            " ORDER BY occurred_at_utc DESC,record_key LIMIT " + limit,
-            (rs, number) -> document(rs.getString(1)), arguments(endpoint).toArray());
+
+    private List<ObjectNode> rows(int empresa, String kind, Integer host, int limit) {
+        return jdbc.query("SELECT a.payload, a.fk_id_host, h.hostname" + where(host) +
+            " ORDER BY a.occurred_at_utc DESC, a.record_key LIMIT " + limit,
+            (rs, n) -> document(rs.getString(1), rs.getInt(2), rs.getString(3)), arguments(empresa, kind, host));
     }
-    private String categoryName(String key) {
+
+    public static String categoryName(String key) {
         return switch (key) {
             case "Cpf" -> "CPF"; case "Cnpj" -> "CNPJ"; case "PaymentCard" -> "Cartão de pagamento";
             case "Password" -> "Senha em texto claro"; case "Secret" -> "Segredo/credencial";
@@ -120,77 +130,140 @@ public class AgentAdminQueries {
             case "ConfidentialDocument" -> "Documento confidencial"; case "PersonalData" -> "Dados pessoais"; default -> key;
         };
     }
-    public Map<String, Object> dashboard() { return read(() -> {
-        var totals = totals("");
+
+    public Map<String, Object> dashboard(int empresa) { return read(() -> {
+        var totals = totals(empresa, null);
         var trend = totals.days.entrySet().stream().map(e -> Map.of("data", e.getKey(), "quantidade", e.getValue())).toList();
         var categories = totals.categories.entrySet().stream().map(e -> Map.of(
             "codigo", e.getKey(), "nome", categoryName(e.getKey()), "quantidade", e.getValue())).toList();
-        // Observed categories are not proof of the policy currently applied by an agent.
-        return Map.of("periodo", "Últimos 7 dias (UTC)", "resumo", totals.summary(), "tendencia", trend,
-            "categoriasBloqueadas", categories, "recentes", events("", 6), "categoriasAtivas", List.of(), "politicaEfetivaConfirmada", false);
+        var defaults = jdbc.query("""
+            SELECT p.id_politica, p.nome, (SELECT MAX(id_versao) FROM politica_versoes v WHERE v.fk_id_politica = p.id_politica)
+            FROM politicas p WHERE p.fk_id_empresa = ? AND p.padrao = 1""",
+            (rs, n) -> Map.of("id", rs.getInt(1), "nome", rs.getString(2), "versao", rs.getInt(3)), empresa);
+        var machines = endpointRows(empresa, "all", "");
+        long online = machines.stream().filter(m -> m.get("status").equals("online")).count();
+        long outdated = machines.stream().filter(m -> Boolean.TRUE.equals(m.get("politicaDesatualizada"))).count();
+        var result = new LinkedHashMap<String, Object>();
+        result.put("periodo", "Últimos 7 dias (UTC)");
+        result.put("resumo", totals.summary());
+        result.put("tendencia", trend);
+        result.put("categoriasBloqueadas", categories);
+        result.put("recentes", rows(empresa, "audit", null, 6));
+        result.put("politicaPadrao", defaults.isEmpty() ? null : defaults.getFirst());
+        result.put("maquinas", Map.of("total", machines.size(), "online", online, "politicaDesatualizada", outdated));
+        return result;
     }); }
-    public Map<String, Object> audit(String endpoint) {
-        bounded(endpoint);
+
+    public Map<String, Object> audit(int empresa, Integer host) {
         return read(() -> {
-            var totals = totals(endpoint);
-            var rows = events(endpoint, LIMIT);
-            var args = arguments(endpoint);
-            var overrides = jdbc.query("SELECT payload FROM agent_audit_ingest WHERE kind='override' AND occurred_at_utc >= ?" +
-                (endpoint.isEmpty() ? "" : " AND endpoint_id = ?") + " ORDER BY occurred_at_utc DESC,record_key LIMIT " + LIMIT,
-                (rs, number) -> document(rs.getString(1)), args.toArray());
-            return Map.of("resumo", totals.summary(), "eventos", rows, "endpoint", endpoint,
-                "justificativas", overrides, "limit", LIMIT, "truncated", totals.total > rows.size());
+            var totals = totals(empresa, host);
+            var events = rows(empresa, "audit", host, LIMIT);
+            var result = new LinkedHashMap<String, Object>();
+            result.put("resumo", totals.summary());
+            result.put("eventos", events);
+            result.put("host", host);
+            result.put("justificativas", rows(empresa, "override", host, LIMIT));
+            result.put("limit", LIMIT);
+            result.put("truncated", totals.total > events.size());
+            return result;
         });
     }
-    public Map<String, Object> endpoints(String status, String os, String q) {
-        bounded(q);
-        if (!List.of("all", "online", "offline").contains(status) || !List.of("all", "win10", "win11", "other").contains(os))
+
+    /** CSV dos últimos 7 dias (UTF-8 com BOM, separador ";", para abrir direto no Excel). */
+    public String exportCsv(int empresa, Integer host) {
+        var events = read(() -> rows(empresa, "audit", host, 100_000));
+        var csv = new StringBuilder("﻿");
+        csv.append("data_utc;maquina;usuario;canal;arquivo;tamanho_bytes;resultado;categorias;processo;destino;versao_politica;motivo_nao_inspecao\r\n");
+        for (var event : events) {
+            var categories = new ArrayList<String>();
+            event.path("categories").forEach(c -> categories.add(categoryName(c.asText())));
+            csv.append(String.join(";", List.of(
+                cell(event.path("occurredAtUtc").asText()), cell(event.path("hostname").asText()),
+                cell(event.path("userName").asText()), cell(event.path("channel").asText()),
+                cell(event.path("fileName").asText()), cell(event.path("sizeBytes").asText()),
+                cell(verdictName(event.path("verdict").asText())), cell(String.join(", ", categories)),
+                cell(event.path("processName").asText()), cell(event.path("destinationPath").asText()),
+                cell(event.path("policyVersion").asText()), cell(event.path("notInspectedReason").asText(""))))).append("\r\n");
+        }
+        return csv.toString();
+    }
+
+    private static String verdictName(String verdict) {
+        return switch (verdict) {
+            case "Blocked" -> "Bloqueado"; case "Approved" -> "Aprovado";
+            case "AllowedWithoutInspection" -> "Liberado sem inspeção"; case "Retained" -> "Retido"; default -> verdict;
+        };
+    }
+
+    /** Aspas sempre; prefixo ' em células que o Excel interpretaria como fórmula. */
+    private static String cell(String value) {
+        String text = value == null ? "" : value;
+        if (!text.isEmpty() && "=+-@\t\r".indexOf(text.charAt(0)) >= 0) text = "'" + text;
+        return "\"" + text.replace("\"", "\"\"") + "\"";
+    }
+
+    public Map<String, Object> endpoints(int empresa, String status, String q) {
+        if (q == null || q.length() > 100 || q.chars().anyMatch(Character::isISOControl))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Filtro inválido.");
+        if (!List.of("all", "online", "offline", "revogado").contains(status))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Filtro inválido.");
         return read(() -> {
-            Instant now = clock.instant();
-            var filter = new StringBuilder(" WHERE 1=1");
-            var args = new ArrayList<Object>();
-            if (!status.equals("all")) {
-                filter.append(" AND CASE WHEN h.ativo=1 AND h.visto_por_ultimo>=? AND h.visto_por_ultimo<=? THEN 'online' ELSE 'offline' END=?");
-                args.add(Timestamp.from(now.minusSeconds(ONLINE_SECONDS))); args.add(Timestamp.from(now.plusSeconds(5))); args.add(status);
-            }
-            String systemText = "LOWER(CONCAT(COALESCE(h.sistema_operacional,''),' ',COALESCE(h.versao_so,'')))";
-            if (os.equals("win10")) filter.append(" AND " + systemText + " LIKE '%windows 10%'");
-            if (os.equals("win11")) filter.append(" AND " + systemText + " LIKE '%windows 11%'");
-            if (os.equals("other")) filter.append(" AND " + systemText + " NOT LIKE '%windows 10%' AND " + systemText + " NOT LIKE '%windows 11%'");
-            if (!q.isEmpty()) {
-                filter.append(" AND LOWER(CONCAT(COALESCE(h.hostname,''),' host:',h.id_host)) LIKE ? ESCAPE '!'");
-                args.add("%" + q.toLowerCase(Locale.ROOT).replace("!","!!").replace("%","!%").replace("_","!_") + "%");
-            }
-            var all = jdbc.query("SELECT h.id_host,h.hostname,h.sistema_operacional,h.versao_so,h.visto_por_ultimo,h.ativo," +
-                "(SELECT COUNT(*) FROM hosts n WHERE n.hostname=h.hostname) name_count FROM hosts h" + filter + " ORDER BY h.id_host LIMIT " + LIMIT,
-                (rs, number) -> {
-                    int id = rs.getInt("id_host");
-                    String hostname = rs.getString("hostname");
-                    boolean ambiguous = hostname == null || hostname.isBlank() || rs.getInt("name_count") != 1;
-                    String endpoint = ambiguous ? "host:" + id : hostname;
-                    Timestamp seen = rs.getTimestamp("visto_por_ultimo");
-                    long age = seen == null ? Long.MAX_VALUE : Duration.between(seen.toInstant(), now).getSeconds();
-                    String state = rs.getInt("ativo") == 1 && age >= -5 && age <= ONLINE_SECONDS ? "online" : "offline";
-                    String system = String.join(" ", java.util.Objects.toString(rs.getString("sistema_operacional"), ""),
-                        java.util.Objects.toString(rs.getString("versao_so"), "")).trim();
-                    var latest = ambiguous ? List.<Map<String,Object>>of() : jdbc.queryForList(
-                        "SELECT agent_version,payload FROM agent_audit_ingest WHERE kind='audit' AND endpoint_id=? ORDER BY occurred_at_utc DESC,record_key LIMIT 1", endpoint);
-                    var row = new LinkedHashMap<String,Object>();
-                    row.put("endpointId", endpoint); row.put("hostId", id); row.put("identityAmbiguous", ambiguous);
-                    row.put("hostname", hostname == null ? endpoint : hostname); row.put("os", system);
-                    row.put("agentVersion", latest.isEmpty() || latest.getFirst().get("agent_version") == null ? "Não informado" : latest.getFirst().get("agent_version"));
-                    row.put("policyVersion", latest.isEmpty() ? null : document((String)latest.getFirst().get("payload")).path("policyVersion").asInt());
-                    row.put("lastSeenUtc", seen == null ? null : seen.toInstant().toString()); row.put("status", state);
-                    row.put("inspecoes7d", ambiguous ? 0L : jdbc.queryForObject("SELECT COUNT(*) FROM agent_audit_ingest WHERE kind='audit' AND endpoint_id=? AND occurred_at_utc>=?", Long.class, endpoint, since()));
-                    return row;
-                }, args.toArray());
-            long total = jdbc.queryForObject("SELECT COUNT(*) FROM hosts", Long.class);
-            long online = jdbc.queryForObject("SELECT COUNT(*) FROM hosts WHERE ativo=1 AND visto_por_ultimo>=? AND visto_por_ultimo<=?", Long.class,
-                Timestamp.from(now.minusSeconds(ONLINE_SECONDS)), Timestamp.from(now.plusSeconds(5)));
-            long filtered = jdbc.queryForObject("SELECT COUNT(*) FROM hosts h" + filter, Long.class, args.toArray());
-            return Map.of("resumo", Map.of("total", total, "online", online, "offline", total-online),
-                "itens", all, "onlineThresholdSeconds", ONLINE_SECONDS, "limit", LIMIT, "truncated", filtered > all.size());
+            var all = endpointRows(empresa, "all", "");
+            var items = endpointRows(empresa, status, q);
+            long online = all.stream().filter(m -> m.get("status").equals("online")).count();
+            long revoked = all.stream().filter(m -> m.get("status").equals("revogado")).count();
+            return Map.of("resumo", Map.of("total", all.size(), "online", online, "offline", all.size() - online - revoked,
+                    "revogados", revoked),
+                "itens", items.size() > LIMIT ? items.subList(0, LIMIT) : items,
+                "onlineThresholdSeconds", ONLINE_SECONDS, "limit", LIMIT, "truncated", items.size() > LIMIT);
         });
+    }
+
+    private List<Map<String, Object>> endpointRows(int empresa, String status, String q) {
+        Instant now = clock.instant();
+        var args = new ArrayList<Object>(List.of(since(), empresa));
+        String filter = "";
+        if (!q.isEmpty()) {
+            filter = " AND LOWER(CONCAT(COALESCE(h.hostname,''),' ',COALESCE(h.ip,''),' host:',h.id_host)) LIKE ? ESCAPE '!'";
+            args.add("%" + q.toLowerCase(Locale.ROOT).replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%");
+        }
+        List<Map<String, Object>> rows = jdbc.query("""
+            SELECT h.id_host, h.hostname, h.ip, h.sistema_operacional, h.versao_so, h.versao_agente, h.politica_aplicada,
+                   h.visto_por_ultimo, h.revogado_em, g.id_grupo, g.nome grupo, e.id_politica, e.nome politica, e.versao,
+                   (SELECT COUNT(*) FROM agent_audit_ingest a WHERE a.fk_id_host = h.id_host AND a.kind = 'audit'
+                      AND a.occurred_at_utc >= ?) inspecoes
+            FROM hosts h
+            LEFT JOIN grupos g ON g.id_grupo = h.fk_id_grupo
+            LEFT JOIN (SELECT p.id_politica, p.nome, MAX(v.id_versao) versao FROM politicas p
+                       JOIN politica_versoes v ON v.fk_id_politica = p.id_politica GROUP BY p.id_politica, p.nome) e
+              ON e.id_politica = """ + EXPECTED_POLICY + """
+
+            WHERE h.fk_id_empresa = ?""" + filter + " ORDER BY h.hostname, h.id_host", (rs, n) -> {
+            Timestamp seen = rs.getTimestamp("visto_por_ultimo");
+            long age = seen == null ? Long.MAX_VALUE : Duration.between(seen.toInstant(), now).getSeconds();
+            String state = rs.getTimestamp("revogado_em") != null ? "revogado"
+                : age >= -5 && age <= ONLINE_SECONDS ? "online" : "offline";
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("hostId", rs.getInt("id_host"));
+            row.put("hostname", rs.getString("hostname"));
+            row.put("ip", rs.getString("ip"));
+            row.put("os", String.join(" ", java.util.Objects.toString(rs.getString("sistema_operacional"), ""),
+                java.util.Objects.toString(rs.getString("versao_so"), "")).trim());
+            row.put("agentVersion", rs.getString("versao_agente"));
+            row.put("grupo", rs.getObject("id_grupo") == null ? null
+                : Map.of("id", rs.getInt("id_grupo"), "nome", rs.getString("grupo")));
+            Integer expected = rs.getObject("id_politica") == null ? null : rs.getInt("versao");
+            row.put("politicaEsperada", expected == null ? null
+                : Map.of("id", rs.getInt("id_politica"), "nome", rs.getString("politica"), "versao", expected));
+            Integer applied = (Integer) rs.getObject("politica_aplicada");
+            row.put("politicaAplicada", applied);
+            // Máquina revogada não busca mais política: não conta como desatualizada.
+            row.put("politicaDesatualizada", !state.equals("revogado") && expected != null && !expected.equals(applied));
+            row.put("lastSeenUtc", seen == null ? null : seen.toInstant().toString());
+            row.put("status", state);
+            row.put("inspecoes7d", rs.getLong("inspecoes"));
+            return row;
+        }, args.toArray());
+        return status.equals("all") ? rows : rows.stream().filter(r -> r.get("status").equals(status)).toList();
     }
 }

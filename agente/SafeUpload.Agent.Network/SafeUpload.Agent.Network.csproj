@@ -2,7 +2,7 @@
 
   <!--
     A inspecao do trafego web: CA local, certificados por host e, nas proximas
-    fases, o proxy TLS e o desvio do trafego (docs/rede/PLANO-INSPECAO-TLS.md).
+    fases, o proxy TLS e o desvio do trafego (docs/rede/ARQUITETURA-INSPECAO-TLS.md).
 
     Fica fora do Core pelo mesmo motivo do Minifilter: o Core e o dominio -
     regras, extracao, mascaramento - e nao sabe por onde o dado chegou. Este

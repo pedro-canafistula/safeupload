@@ -1,0 +1,91 @@
+name: Agent
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ['agente/**', '.github/workflows/agent.yml']
+  push:
+    branches: [main]
+    paths: ['agente/**', '.github/workflows/agent.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Enable long paths
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: agente
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        run: dotnet build agente/SafeUpload.Agent.sln -c Release
+      - name: Agent tests
+        run: dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj -c Release --no-build --logger 'trx;LogFileName=agent.trx' --results-directory artifacts/tests
+      - name: Tray app tests
+        run: dotnet test agente/SafeUpload.Agent.App.Tests/SafeUpload.Agent.App.Tests.csproj -c Release --logger 'trx;LogFileName=app.trx' --results-directory artifacts/tests
+      - name: Test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-tests
+          path: artifacts/tests/
+
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Enable long paths
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: agente
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Installer scripts in PowerShell 7 and Windows PowerShell 5.1
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts/installer-tests -Force | Out-Null
+          ./agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/pwsh.json
+          ./agente/installer/tests/Test-InstallerEnvironment.ps1 -ResultsPath artifacts/installer-tests/environment.json
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-InstallerContracts.ps1 -ResultsPath artifacts/installer-tests/ps51.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell installer scripts failed.' }
+          ./agente/installer/tests/Test-MaintenanceContracts.ps1 -ResultsPath artifacts/installer-tests/maintenance-pwsh.json
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File agente/installer/tests/Test-MaintenanceContracts.ps1 -ResultsPath artifacts/installer-tests/maintenance-ps51.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell maintenance scripts failed.' }
+          ./agente/scripts/tests/Test-DiagnosticsClient.ps1 -ResultsPath artifacts/installer-tests/diagnostics-pwsh.json
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $compiler = ./agente/installer/Initialize-InnoCompiler.ps1
+          ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler
+          ./agente/installer/Build-AgentInstaller.ps1 -CompilerPath $compiler -Version 0.1.19 -PayloadOnly -OutputDirectory artifacts/maintenance-candidate
+          ./agente/installer/tests/Test-InstallerArtifact.ps1 -BuildResultPath artifacts/installer/build-result.json -ResultsPath artifacts/installer-tests/artifact-validation.json
+      - name: Install, update, roll back and uninstall on the throwaway runner
+        shell: pwsh
+        run: |
+          $build = Get-Content artifacts/installer/build-result.json -Raw | ConvertFrom-Json
+          $candidate = Get-Content artifacts/maintenance-candidate/build-result.json -Raw | ConvertFrom-Json
+          ./agente/installer/tests/Test-InstallerSmoke.ps1 -InstallerPath $build.installer -UpdatePackagePath (Join-Path $candidate.buildRoot 'payload')
+      - name: Installer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safeupload-agent-installer
+          path: |
+            artifacts/installer/*-setup.exe
+            artifacts/installer/*-update.zip
+            artifacts/installer/*.sha256
+            artifacts/installer/build-result.json
+            artifacts/installer-tests/
+            artifacts/installer-smoke/
+            !artifacts/installer-smoke/maintenance-candidate/**
+            !artifacts/installer-smoke/maintenance-broken/**

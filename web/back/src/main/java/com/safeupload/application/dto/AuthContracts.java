@@ -154,7 +154,7 @@ public class AuthContracts {
         @Size(max=20)
         String role,
 
-        @NotBlank 
+        // Ignorado: o backend usa o usuário da sessão. Mantido para clientes antigos.
         @Size(max=50)
         String criado_por
     ){}

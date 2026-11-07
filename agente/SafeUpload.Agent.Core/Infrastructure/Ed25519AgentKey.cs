@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Security.Cryptography;
-using System.Text;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.X509;
 using Ed25519 = Org.BouncyCastle.Math.EC.Rfc8032.Ed25519;
@@ -12,6 +10,7 @@ internal static class Ed25519AgentKey
 {
     internal static byte[] GenerateSeed() => RandomNumberGenerator.GetBytes(32);
 
+    /// <summary>Public key as Base64 SubjectPublicKeyInfo (DER), the format the server stores.</summary>
     internal static string PublicKey(byte[] seed)
     {
         if (seed.Length != 32) throw new CryptographicException();
@@ -21,11 +20,9 @@ internal static class Ed25519AgentKey
             new Ed25519PublicKeyParameters(publicKey, 0)).GetDerEncoded());
     }
 
-    internal static string SignHost(byte[] seed, int hostId)
+    internal static string Sign(byte[] seed, byte[] message)
     {
         if (seed.Length != 32) throw new CryptographicException();
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(hostId);
-        byte[] message = Encoding.UTF8.GetBytes(hostId.ToString(CultureInfo.InvariantCulture));
         byte[] signature = new byte[64];
         Ed25519.Sign(seed, 0, message, 0, message.Length, signature, 0);
         return Convert.ToBase64String(signature);

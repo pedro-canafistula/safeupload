@@ -1,0 +1,79 @@
+<header class="page-title">
+  <div><p class="eyebrow">POLÍTICAS</p><h1>{{ id === null ? 'Nova política' : 'Editar política' }}</h1>
+    <p class="subtitle" *ngIf="id === null">A política vale para as máquinas dos grupos que apontam para ela, ou para todas as máquinas sem grupo se for a padrão.</p>
+    <p class="subtitle" *ngIf="id !== null && versao !== null">Versão atual v{{ versao }}. Salvar cria a versão seguinte; justificativas dadas na versão anterior deixam de valer.</p></div>
+  <div class="page-actions"><a class="button secondary" routerLink="/politicas">Voltar para políticas</a></div>
+</header>
+
+<p role="status" *ngIf="carregando && versao === null">Carregando política…</p>
+<p role="alert" class="error-message" *ngIf="erroCarga">{{ erroCarga }}</p>
+<p role="status" class="success-message" *ngIf="mensagem">{{ mensagem }}</p>
+
+<div class="editor-layout" *ngIf="!erroCarga && (id === null || versao !== null)">
+  <form class="panel" #form="ngForm" autocomplete="off" [class.tentou]="tentou" (ngSubmit)="salvar(form)" aria-label="Configuração da política">
+    <div class="form-grid">
+      <label class="field wide">Nome da política<input name="nome" [(ngModel)]="nome" required maxlength="80" placeholder="Ex.: Proteção financeira" /></label>
+      <label class="check wide"><input type="checkbox" name="padrao" [(ngModel)]="padrao" /> Política padrão da empresa
+        <small>Vale para máquinas sem grupo e para grupos sem política. Só uma política é padrão: marcar esta desmarca a anterior.</small></label>
+    </div>
+
+    <fieldset class="group">
+      <legend>Categorias de dados</legend>
+      <p class="field-hint">Bloquear impede que o arquivo chegue ao destino. Alertar libera e registra na auditoria. Ignorar não procura a categoria.</p>
+      <div class="category-list">
+        <fieldset class="category-row" *ngFor="let categoria of categoriasLista">
+          <legend>{{ categoria.nome }}</legend>
+          <div class="segmented">
+            <label *ngFor="let acao of acoes" [class.selected]="config.categorias[categoria.codigo] === acao.valor">
+              <input type="radio" [name]="'categoria-' + categoria.codigo" [value]="acao.valor" [(ngModel)]="config.categorias[categoria.codigo]" />{{ acao.nome }}</label>
+          </div>
+        </fieldset>
+      </div>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Onde proteger</legend>
+      <label class="field">Pastas protegidas (uma por linha)
+        <textarea name="pastas" rows="4" [(ngModel)]="pastasTexto" placeholder="C:\Dados\Financeiro&#10;\\servidor\compartilhamento"></textarea></label>
+      <p class="field-hint">Caminhos absolutos, até 32. Cada pasta vira uma unidade SafeUpload na máquina.</p>
+      <label class="check"><input type="checkbox" name="pendrives" [(ngModel)]="config.pendrives" /> Proteger pendrives</label>
+      <label class="check"><input type="checkbox" name="rede" [(ngModel)]="config.rede" /> Proteger compartilhamentos de rede</label>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Inspeção</legend>
+      <div class="form-grid">
+        <label class="field wide">Extensões inspecionadas (separadas por vírgula ou linha)
+          <textarea name="extensoes" rows="2" [(ngModel)]="extensoesTexto" required></textarea></label>
+        <label class="field">Tamanho máximo (MB)<input name="tamanhoMaximoMb" type="number" min="1" max="4096" step="1" [(ngModel)]="config.tamanhoMaximoMb" required /></label>
+        <label class="field">Tempo limite da inspeção (s)<input name="tempoLimiteSegundos" type="number" min="5" max="3600" step="1" [(ngModel)]="config.tempoLimiteSegundos" required /></label>
+      </div>
+      <p class="field-hint">Arquivos maiores que o limite, ou cuja inspeção falha ou passa do tempo, são bloqueados.</p>
+      <label class="check"><input type="checkbox" name="permitirJustificativa" [(ngModel)]="config.permitirJustificativa" /> Permitir justificativa
+        <small>O usuário pode liberar um arquivo bloqueado explicando o motivo. A justificativa vale só para aquela versão do arquivo.</small></label>
+      <label class="field narrow">Área de transferência (clipboard)
+        <select name="clipboard" [(ngModel)]="config.clipboard">
+          <option *ngFor="let modo of modosClipboard" [value]="modo.valor">{{ modo.nome }}</option>
+        </select></label>
+    </fieldset>
+
+    <p *ngIf="erro" class="error-message" role="alert">{{ erro }}</p>
+    <div class="form-footer">
+      <a class="button secondary" routerLink="/politicas">Cancelar</a>
+      <button type="submit" class="button primary" [disabled]="salvando">{{ salvando ? 'Salvando...' : id === null ? 'Criar política' : 'Salvar nova versão' }}</button>
+    </div>
+  </form>
+
+  <section class="panel history" *ngIf="id !== null" aria-labelledby="titulo-historico">
+    <h2 id="titulo-historico">Histórico de versões</h2>
+    <table>
+      <caption class="sr-only">Versões da política</caption>
+      <thead><tr><th scope="col">Versão</th><th scope="col">Criada em</th><th scope="col">Por</th></tr></thead>
+      <tbody><tr *ngFor="let item of historico; let primeira = first">
+        <td>v{{ item.versao }} <span class="badge" *ngIf="primeira">Atual</span></td>
+        <td>{{ item.criadaEm | date:'dd/MM/yyyy HH:mm:ss' }}</td>
+        <td>{{ item.criadaPor }}</td>
+      </tr></tbody>
+    </table>
+  </section>
+</div>

@@ -34,7 +34,7 @@ public sealed record ClipboardReadDecision(ClipboardReadAction Action, string? D
 
 /// <summary>
 /// As regras do proxy que decide a colagem na hora (Fase 3), medidas na Fase 2
-/// (<c>docs/clipboard/FASE-2-TESTES.md</c>).
+/// (<c>docs/clipboard/README.md</c>).
 ///
 /// <para><b>Quem lê não diz para onde vai.</b> Durante o pedido ao proxy,
 /// <c>GetOpenClipboardWindow</c> aponta ninguém para o Edge, o Chrome, o Teams e o

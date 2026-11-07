@@ -5,7 +5,7 @@ namespace SafeUpload.Agent.Tests;
 
 /// <summary>
 /// As regras do proxy da colagem (Fase 3). Cada caso é um comportamento medido
-/// na Fase 2 (<c>docs/clipboard/FASE-2-TESTES.md</c>).
+/// na Fase 2 (<c>docs/clipboard/README.md</c>).
 /// </summary>
 public class ClipboardPasteGuardRulesTests
 {

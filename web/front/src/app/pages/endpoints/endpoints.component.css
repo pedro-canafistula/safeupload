@@ -1,5 +1,14 @@
-.resumo { display: flex; gap: 18px; margin-bottom: 10px; font-weight: 600; }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 10px; border-bottom: 1px solid #edf2f8; text-align: left; font-size: 14px; }
-small { color: #6f8197; }
-
+:host { display: block; color: var(--ink); }
+.card { max-width: 1240px; }
+.hint { margin: 0 0 8px; color: var(--muted); }
+.filters .clear { align-self: end; padding-bottom: 9px; color: var(--muted); }
+.host { color: var(--ink); font-weight: 600; }
+td small.pill { display: inline-block; margin-top: 5px; }
+select.cell-select { max-width: 170px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 200px; }
+.actions a { color: var(--accent); font-weight: 600; text-decoration: underline; white-space: nowrap; }
+.actions .btn-secondary, .actions .btn-primary { min-height: 28px; padding: 0 10px; font-size: 11px; }
+.confirm { display: grid; gap: 6px; max-width: 260px; }
+.confirm small { margin: 0; color: var(--danger); }
+.confirm .buttons { display: flex; gap: 6px; }
+.success { color: var(--ok); font-size: 12px; }

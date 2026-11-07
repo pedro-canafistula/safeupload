@@ -6,9 +6,9 @@ using SafeUpload.Agent.Core.Application;
 
 namespace SafeUpload.Agent.Core.Infrastructure;
 
-/// <summary>Cadastro e heartbeat assinados do #96; as operações antigas permanecem explicitamente legadas.
-/// O HttpClient aponta para /agent/; cadastro NÃO tem retentativa automática ou fallback de protocolo.
-/// Não é cliente de política, tickets ou consulta administrativa.
+/// <summary>
+/// Cadastro e heartbeat (docs/console-agente.md). O HttpClient aponta para .../agent/; o heartbeat precisa de um
+/// cliente com <see cref="SignedRequestHandler"/>. Cadastro é uma tentativa só, sem retentativa automática.
 /// </summary>
 public sealed class AgentApiClient
 {
@@ -16,109 +16,34 @@ public sealed class AgentApiClient
     private readonly ICommunicationObserver? _observer;
     private const int MaxReceiptBytes = 16 * 1024;
     internal Uri BaseUri => _http.BaseAddress!;
-    internal void EnsureSignedTransport()
-    {
-        if (BaseUri.Scheme != Uri.UriSchemeHttps && !BaseUri.IsLoopback)
-            throw new ArgumentException("AgentApiEd25519 exige HTTPS; HTTP é permitido somente em loopback de teste.");
-    }
 
     public AgentApiClient(HttpClient http, ICommunicationObserver? observer = null)
     {
         ArgumentNullException.ThrowIfNull(http);
-        var uri = http.BaseAddress;
-        if (uri is null || !uri.IsAbsoluteUri ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-            !uri.AbsolutePath.EndsWith("/agent/", StringComparison.Ordinal) ||
-            uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0)
-            throw new ArgumentException("Cliente AgentApi exige base HTTP(S) terminada em /agent/, sem credenciais, query ou fragmento.", nameof(http));
+        if (http.BaseAddress is null) throw new ArgumentException("Cliente sem BaseAddress.", nameof(http));
+        AgentHttp.ServerUri(http.BaseAddress.AbsoluteUri);
         _http = http;
         _observer = observer;
     }
 
-    /// <summary>Somente para provisionamento controlado. Resposta perdida não autoriza novo cadastro.</summary>
-    public async Task<AgentRegistration> SynchronizeAsync(AgentSynchronization request, CancellationToken token)
+    /// <summary>POST enroll: token de uso único + chave pública → id_host.</summary>
+    public async Task<int> EnrollAsync(string enrollmentToken, string publicKey, AgentHeartbeatHost host, CancellationToken token)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        request.EnsureValid();
-        using var document = await SendAsync("synchronize", request, HttpStatusCode.Created, token).ConfigureAwait(false);
-        var root = document.RootElement;
-        RequireStatus(root, "CREATED");
-        return new AgentRegistration(PositiveInt(root, "id_host"), PositiveInt(root, "id_usuario_so"));
+        using var response = await SendAsync("enroll",
+            new { token = enrollmentToken, chave_publica = publicKey, host }, HttpStatusCode.Created, token).ConfigureAwait(false);
+        return HostId(response.RootElement);
     }
 
-    public async Task HeartbeatAsync(int registeredHostId, CancellationToken token)
+    /// <summary>POST heartbeat assinado, com a versão da política do console em uso (null = política local).</summary>
+    public async Task HeartbeatAsync(int hostId, AgentHeartbeatHost host, int? appliedPolicy, string agentVersion,
+        CancellationToken token)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(registeredHostId);
         using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
         try
         {
-            using var document = await SendAsync("heartbeat", new HeartbeatBody(registeredHostId),
-                HttpStatusCode.OK, token).ConfigureAwait(false);
-            RequireStatus(document.RootElement, "OK");
-            observation.Success(200);
-        }
-        catch (AgentApiException exception)
-        {
-            bool receiptFailure = exception.Code is "invalid_receipt" or "receipt_too_large";
-            var failure = exception.Code switch
-            {
-                "http_status" => CommunicationFailure.HttpRejected,
-                "transport" => CommunicationFailure.TransportError,
-                "timeout" => CommunicationFailure.Timeout,
-                "invalid_receipt" or "receipt_too_large" => CommunicationFailure.InvalidResponse,
-                _ => CommunicationFailure.UnexpectedError
-            };
-            observation.Failure(failure, exception.StatusCode ?? (receiptFailure ? 200 : null));
-            throw;
-        }
-        catch (Exception exception) { observation.Exception(exception, token); throw; }
-    }
-
-    /// <summary>#96 enrollment. Exactly one request; never tries the removed synchronize endpoint.</summary>
-    public async Task<int> RegisterEd25519Async(string enrollmentToken, string publicKey,
-        AgentHeartbeatHost host, CancellationToken token)
-    {
-        EnsureSignedTransport();
-        if (string.IsNullOrWhiteSpace(enrollmentToken)) throw new ArgumentException("Token de cadastro obrigatório.");
-        ArgumentNullException.ThrowIfNull(host);
-        host.EnsureValid();
-        // Validate the SPKI structure through the same implementation used to produce it.
-        try
-        {
-            if (Org.BouncyCastle.Security.PublicKeyFactory.CreateKey(Convert.FromBase64String(publicKey))
-                is not Org.BouncyCastle.Crypto.Parameters.Ed25519PublicKeyParameters)
-                throw new ArgumentException("Chave pública Ed25519 SPKI obrigatória.");
-        }
-        catch (Exception error) when (error is not ArgumentException)
-        { throw new ArgumentException("Chave pública Ed25519 SPKI inválida."); }
-        using var response = await SendAsync("heartbeat", new
-        {
-            cadastro = new { token = enrollmentToken, chave_publica = publicKey }, host
-        }, HttpStatusCode.OK, token).ConfigureAwait(false);
-        return ReadAuthenticatedReceipt(response.RootElement);
-    }
-
-    /// <summary>#96 signed heartbeat. Signature is Base64 Ed25519 over invariant UTF-8 id_host.</summary>
-    public async Task HeartbeatAuthenticatedAsync(int hostId, string signature, AgentHeartbeatHost host, CancellationToken token)
-    {
-        EnsureSignedTransport();
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(hostId);
-        ArgumentNullException.ThrowIfNull(host);
-        host.EnsureValid();
-        try
-        {
-            if (Convert.FromBase64String(signature).Length != 64) throw new FormatException();
-        }
-        catch (FormatException) { throw new ArgumentException("Assinatura Ed25519 inválida."); }
-        using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
-        try
-        {
-            using var response = await SendAsync("heartbeat", new
-            {
-                autenticacao = new { id_host = hostId, assinatura = signature }, host
-            }, HttpStatusCode.OK, token).ConfigureAwait(false);
-            if (ReadAuthenticatedReceipt(response.RootElement) != hostId)
-                throw new AgentApiException("invalid_receipt");
+            using var response = await SendAsync("heartbeat",
+                new HeartbeatBody(host, appliedPolicy, agentVersion), HttpStatusCode.OK, token).ConfigureAwait(false);
+            if (HostId(response.RootElement) != hostId) throw new AgentApiException("invalid_receipt");
             observation.Success(200);
         }
         catch (AgentApiException error)
@@ -138,16 +63,9 @@ public sealed class AgentApiClient
         catch (Exception error) { observation.Exception(error, token); throw; }
     }
 
-    private static int ReadAuthenticatedReceipt(JsonElement root)
-    {
-        RequireStatus(UniqueField(root, "resposta"), "OK");
-        return PositiveInt(root, "id_host");
-    }
-
     private async Task<JsonDocument> SendAsync<T>(string path, T body, HttpStatusCode expected, CancellationToken token)
     {
-        // ResponseHeadersRead encerra o timeout padrão ao receber cabeçalhos.
-        // Estende o mesmo orçamento à leitura do recibo para evitar corpo lento infinito.
+        // O mesmo prazo do HttpClient vale para a leitura do recibo: corpo lento não prende o laço.
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         if (_http.Timeout != Timeout.InfiniteTimeSpan) deadline.CancelAfter(_http.Timeout);
         var boundedToken = deadline.Token;
@@ -175,40 +93,21 @@ public sealed class AgentApiClient
         catch (JsonException) { throw new AgentApiException("invalid_receipt"); }
     }
 
-    private static JsonElement UniqueField(JsonElement root, string name)
+    private static int HostId(JsonElement root)
     {
-        if (root.ValueKind != JsonValueKind.Object) throw new AgentApiException("invalid_receipt");
-        JsonElement found = default;
-        int matches = 0;
-        foreach (var property in root.EnumerateObject())
-        {
-            if (!string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) continue;
-            matches++;
-            found = property.Value;
-        }
-        if (matches != 1) throw new AgentApiException("invalid_receipt");
-        return found;
-    }
-
-    private static int PositiveInt(JsonElement root, string name)
-    {
-        var value = UniqueField(root, name);
-        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int result) || result <= 0)
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("id_host", out var value) ||
+            value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int id) || id <= 0)
             throw new AgentApiException("invalid_receipt");
-        return result;
+        return id;
     }
 
-    private static void RequireStatus(JsonElement root, string expected)
-    {
-        var value = UniqueField(root, "status");
-        if (value.ValueKind != JsonValueKind.String || value.GetString() != expected)
-            throw new AgentApiException("invalid_receipt");
-    }
-
-    private sealed record HeartbeatBody([property: JsonPropertyName("id_host")] int HostId);
+    private sealed record HeartbeatBody(
+        [property: JsonPropertyName("host")] AgentHeartbeatHost Host,
+        [property: JsonPropertyName("politica_aplicada")] int? AppliedPolicy,
+        [property: JsonPropertyName("versao_agente")] string AgentVersion);
 }
 
-/// <summary>Erro sanitizado: não guarda URL, corpo HTTP, SID, mensagem do servidor ou exceção interna.</summary>
+/// <summary>Erro sanitizado: não guarda URL, corpo HTTP, mensagem do servidor ou exceção interna.</summary>
 public sealed class AgentApiException(string code, int? statusCode = null)
     : Exception($"AgentApi: {code}; HTTP={statusCode?.ToString() ?? "none"}.")
 {
@@ -216,54 +115,10 @@ public sealed class AgentApiException(string code, int? statusCode = null)
     public int? StatusCode { get; } = statusCode;
 }
 
-public sealed record AgentRegistration(int HostId, int UserId);
-
-public sealed record AgentSynchronization(
-    [property: JsonPropertyName("host")] AgentHost Host,
-    [property: JsonPropertyName("usuarioSo")] AgentOsUser User)
+/// <summary>Heartbeat periódico: dados atuais da máquina + versão da política do console em uso.</summary>
+public sealed class SignedAgentHeartbeat(AgentApiClient client, int hostId, Func<int?> appliedPolicy, string agentVersion)
+    : IAgentHeartbeat
 {
-    internal void EnsureValid()
-    {
-        ArgumentNullException.ThrowIfNull(Host);
-        ArgumentNullException.ThrowIfNull(User);
-        ArgumentOutOfRangeException.ThrowIfNegative(Host.Mask);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(Host.Mask, 32);
-        if (User.Admin is not (0 or 1)) throw new ArgumentOutOfRangeException(nameof(User.Admin));
-        Check(Host.Ip, 15); Check(Host.Hostname, 100); Check(Host.OperatingSystem, 40);
-        Check(Host.OsVersion, 20); Check(Host.Manufacturer, 50); Check(Host.Model, 50);
-        Check(Host.MacAddress, 20); Check(Host.SerialNumber, 30);
-        Check(User.Sid, 50); Check(User.Username, 40); Check(User.Domain, 50);
-    }
-
-    private static void Check(string? value, int maximum)
-    {
-        if (value?.Length > maximum) throw new ArgumentException("Campo de cadastro excede o limite do contrato AgentApi.");
-    }
-}
-
-public sealed record AgentHost(
-    [property: JsonPropertyName("ip")] string? Ip,
-    [property: JsonPropertyName("mascara")] int Mask,
-    [property: JsonPropertyName("hostname")] string? Hostname,
-    [property: JsonPropertyName("sistema_operacional")] string? OperatingSystem,
-    [property: JsonPropertyName("versao_so")] string? OsVersion,
-    [property: JsonPropertyName("fabricante")] string? Manufacturer,
-    [property: JsonPropertyName("modelo")] string? Model,
-    [property: JsonPropertyName("mac_address")] string? MacAddress,
-    [property: JsonPropertyName("numero_serie")] string? SerialNumber);
-
-public sealed record AgentOsUser(
-    [property: JsonPropertyName("sid")] string? Sid,
-    [property: JsonPropertyName("usuario_so")] string? Username,
-    [property: JsonPropertyName("dominio")] string? Domain,
-    [property: JsonPropertyName("admin")] int Admin);
-
-/// <summary>Identificador fornecido pelo provisionamento; não confundir com SID ou endpointId.</summary>
-public sealed class RegisteredAgentHeartbeat(AgentApiClient client, int registeredHostId) : IAgentHeartbeat
-{
-    private readonly AgentApiClient _client = client ?? throw new ArgumentNullException(nameof(client));
-    private readonly int _hostId = registeredHostId > 0 ? registeredHostId :
-        throw new ArgumentOutOfRangeException(nameof(registeredHostId));
-
-    public Task SendAsync(CancellationToken cancellationToken) => _client.HeartbeatAsync(_hostId, cancellationToken);
+    public Task SendAsync(CancellationToken token) =>
+        client.HeartbeatAsync(hostId, AgentHeartbeatHost.Detect(), appliedPolicy(), agentVersion, token);
 }

@@ -123,7 +123,7 @@ public sealed class DispatcherRecoverySchedulingTests
     private static HttpAgentDispatcher Dispatcher(LocalQueueAuditSink queue, HttpClient client, CommunicationHealth health) =>
         new(queue, new Policies(), client, "PC-SYNTHETIC", TimeSpan.FromMilliseconds(30),
             NullLogger<HttpAgentDispatcher>.Instance, health)
-        { HeartbeatSender = new RegisteredAgentHeartbeat(new AgentApiClient(client), 7) };
+        { HeartbeatSender = new SignedAgentHeartbeat(new AgentApiClient(client), 7, () => null, "test") };
 
     private static async Task WaitForEmpty(LocalQueueAuditSink queue)
     {

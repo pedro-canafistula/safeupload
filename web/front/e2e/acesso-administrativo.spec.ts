@@ -1,13 +1,5 @@
 import { expect, test } from '@playwright/test';
-
-const administrador = {
-  idUsuario: 1, nomeCompleto: 'Administrador de teste', username: 'admin-teste',
-  email: 'admin@example.com', role: 'admin'
-};
-const painel = {
-  periodo: 'Últimos 7 dias', resumo: { total: 0, bloqueados: 0, aprovados: 0, liberadosSemInspecao: 0 },
-  tendencia: [], categoriasBloqueadas: [], recentes: [], categoriasAtivas: []
-};
+import { administradorSimulado as administrador, painelVazio as painel } from './support/sessao';
 
 for (const perfil of ['user', 'desconhecido', '']) {
   test(`perfil '${perfil}' não acessa telas nem consulta dados administrativos`, async ({ page }) => {
@@ -20,7 +12,7 @@ for (const perfil of ['user', 'desconhecido', '']) {
         await route.fulfill({ status: 403, json: {} });
       }
     });
-    for (const tela of ['painel', 'auditoria', 'endpoints', 'relatorios', 'politicas', 'novos-cadastros']) {
+    for (const tela of ['painel', 'auditoria', 'endpoints', 'relatorios', 'politicas', 'politicas/nova', 'novos-cadastros', 'configuracoes']) {
       await page.goto('/' + tela);
       await expect(page).toHaveURL(/acesso-negado$/);
       await expect(page.getByRole('heading', { name: 'Acesso restrito à administração' })).toBeVisible();
@@ -94,4 +86,51 @@ test('falha ao verificar sessão após login permite tentar novamente', async ({
   await page.route('**/api/painel', route => route.fulfill({ json: painel }));
   await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
+});
+
+test('painel, endpoints e auditoria se atualizam a cada 30 s e param ao sair da tela', async ({ page }) => {
+  await page.clock.install();
+  const consultas = { painel: 0, endpoints: 0, auditoria: 0 };
+  await page.route('**/api/auth/me', route => route.fulfill({ json: administrador }));
+  await page.route('**/api/painel', route => { consultas.painel++; return route.fulfill({ json: painel }); });
+  await page.route('**/api/endpoints**', route => { consultas.endpoints++; return route.fulfill({ json: {
+    resumo: { total: 0, online: 0, offline: 0, revogados: 0 }, itens: [], onlineThresholdSeconds: 120 } }); });
+  await page.route('**/api/grupos', route => route.fulfill({ json: [] }));
+  await page.route('**/api/auditoria**', route => { consultas.auditoria++; return route.fulfill({ json: {
+    resumo: painel.resumo, eventos: [], host: null, justificativas: [] } }); });
+
+  await page.goto('/painel');
+  await expect.poll(() => consultas.painel).toBe(1);
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => consultas.painel).toBe(2);
+  await page.getByRole('button', { name: 'Atualizar' }).click();
+  await expect.poll(() => consultas.painel).toBe(3);
+
+  await page.getByRole('link', { name: 'Endpoints', exact: true }).click();
+  await expect.poll(() => consultas.endpoints).toBe(1);
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => consultas.endpoints).toBe(2);
+
+  await page.getByRole('link', { name: 'Auditoria', exact: true }).click();
+  await expect.poll(() => consultas.auditoria).toBe(1);
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => consultas.auditoria).toBe(2);
+  // As telas fechadas não consultam mais.
+  expect(consultas.painel).toBe(3);
+  expect(consultas.endpoints).toBe(2);
+});
+
+test('endpoints não filtram por sistema operacional', async ({ page }) => {
+  await page.route('**/api/auth/me', route => route.fulfill({ json: administrador }));
+  await page.route('**/api/endpoints**', route => route.fulfill({ json: {
+    resumo: { total: 1, online: 1, offline: 0, revogados: 0 }, onlineThresholdSeconds: 120, itens: [{
+      hostId: 3, hostname: 'PC-01', ip: '10.0.0.3', os: 'Windows 10.0.19045', agentVersion: '0.2.0', grupo: null,
+      politicaEsperada: null, politicaAplicada: null, politicaDesatualizada: false, lastSeenUtc: '2026-11-07T12:00:00Z',
+      status: 'online', inspecoes7d: 0 }] } }));
+  await page.route('**/api/grupos', route => route.fulfill({ json: [] }));
+  await page.goto('/endpoints');
+  await expect(page.getByRole('cell', { name: /^PC-01/ })).toBeVisible();
+  await expect(page.getByText('Sem política')).toBeVisible();
+  await expect(page.getByLabel('Sistema')).toHaveCount(0);
+  expect(page.url()).not.toContain('os=');
 });

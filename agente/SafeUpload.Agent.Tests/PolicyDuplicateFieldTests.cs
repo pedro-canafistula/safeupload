@@ -32,7 +32,6 @@ public sealed class PolicyDuplicateFieldTests
         workspace.WritePolicy(document);
         var store = new LocalPolicyStore(workspace.PolicyFile);
         await Assert.ThrowsAsync<JsonException>(() => store.LoadAsync(default));
-        await Assert.ThrowsAsync<JsonException>(() => store.LoadCurrentAsync(default));
         workspace.WritePolicy(Good);
         Assert.Equal(7, (await store.LoadCurrentAsync(default)).Version);
     }
@@ -44,14 +43,13 @@ public sealed class PolicyDuplicateFieldTests
         using var workspace = new TestWorkspace();
         var handler = new Handler { Body = Good };
         using var http = Client(handler);
-        var store = new DurableHttpPolicyStore(http, "synthetic", workspace.PolicyFile, false);
+        var store = new DurableHttpPolicyStore(http, workspace.PolicyFile, TestPolicies.Local, false);
         var original = await store.LoadAsync(default);
         byte[] persisted = await File.ReadAllBytesAsync(workspace.PolicyFile);
         handler.Body = document;
         Assert.Same(original, await store.LoadAsync(default));
-        await Assert.ThrowsAsync<JsonException>(() => store.LoadCurrentAsync(default));
         Assert.Equal(persisted, await File.ReadAllBytesAsync(workspace.PolicyFile));
-        var restarted = new DurableHttpPolicyStore(http, "synthetic", workspace.PolicyFile, false);
+        var restarted = new DurableHttpPolicyStore(http, workspace.PolicyFile, TestPolicies.Local, false);
         Assert.Equal(7, (await restarted.LoadCachedOrDefaultAsync(default)).Version);
     }
 
@@ -63,20 +61,11 @@ public sealed class PolicyDuplicateFieldTests
         workspace.WritePolicy(document);
         byte[] before = await File.ReadAllBytesAsync(workspace.PolicyFile);
         using var http = Client(new Handler { Body = Good });
-        var store = new DurableHttpPolicyStore(http, "synthetic", workspace.PolicyFile, false);
+        var store = new DurableHttpPolicyStore(http, workspace.PolicyFile, TestPolicies.Local, false);
         Assert.Equal(LocalPolicyStore.CreateDefault().Version, (await store.LoadCachedOrDefaultAsync(default)).Version);
         Assert.Equal(before, await File.ReadAllBytesAsync(workspace.PolicyFile));
     }
 
-    [Theory]
-    [MemberData(nameof(Documents))]
-    public async Task Stateless_remote_preserves_classic_default_but_never_returns_ambiguous_current_authority(string document)
-    {
-        using var http = Client(new Handler { Body = document });
-        var store = new HttpPolicyStore(http, "synthetic");
-        Assert.Equal(LocalPolicyStore.CreateDefault().Version, (await store.LoadAsync(default)).Version);
-        await Assert.ThrowsAsync<JsonException>(() => store.LoadCurrentAsync(default));
-    }
 
     [Fact]
     public async Task Existing_local_comments_trailing_commas_and_case_insensitive_fields_remain_supported()

@@ -29,6 +29,9 @@ public static class PolicyContentFingerprint
             WriteStrings(writer, policy.ExcludedProcesses);
             writer.Write(policy.AuditOnly);
             writer.Write(policy.OverrideAllowed);
+            var alerts = policy.AlertOnlyCategories.Order().ToArray();
+            writer.Write(alerts.Length);
+            foreach (var category in alerts) writer.Write((int)category);
             var clipboard = policy.EffectiveClipboard;
             writer.Write((int)clipboard.Mode);
             WriteStrings(writer, clipboard.EgressDestinations);

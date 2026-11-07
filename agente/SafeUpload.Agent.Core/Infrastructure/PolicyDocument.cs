@@ -25,6 +25,11 @@ internal sealed record PolicyDocument
     [JsonPropertyName("activeCategories")]
     public string[]? ActiveCategories { get; init; }
 
+    /// <summary>Subconjunto de activeCategories que só alerta (ação "alertar" do console).</summary>
+    [JsonPropertyName("alertCategories")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? AlertCategories { get; init; }
+
     [JsonPropertyName("monitoredScopes")]
     public MonitoredScopesDocument? MonitoredScopes { get; init; }
 
@@ -78,6 +83,8 @@ internal sealed record PolicyDocument
     {
         Version = policy.Version,
         ActiveCategories = policy.ActiveCategories.Order().Select(c => c.ToString()).ToArray(),
+        AlertCategories = policy.AlertCategories is { Count: > 0 } alerts
+            ? alerts.Order().Select(c => c.ToString()).ToArray() : null,
         MonitoredScopes = new MonitoredScopesDocument
         {
             Extensions = policy.MonitoredScopes.Extensions.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -107,19 +114,8 @@ internal sealed record PolicyDocument
     /// </summary>
     public Policy ToPolicy(bool staged = false)
     {
-        var categories = new HashSet<Category>();
-        foreach (var name in ActiveCategories ?? [])
-        {
-            // Categoria desconhecida no documento é ignorada em vez de derrubar
-            // o agente: um painel mais novo pode publicar uma categoria que esta
-            // versão ainda não implementa. Se sobrar zero, a RN-009 pega.
-            if (Enum.TryParse<Category>(name, ignoreCase: true, out var category) &&
-                Enum.IsDefined(category) && !int.TryParse(name, out _))
-            {
-                categories.Add(category);
-            }
-        }
-
+        var categories = ParseCategories(ActiveCategories);
+        var alerts = ParseCategories(AlertCategories);
         var scopes = MonitoredScopes ?? MonitoredScopesDocument.Default;
 
         var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -154,7 +150,25 @@ internal sealed record PolicyDocument
             excluded,
             AuditOnly,
             OverrideAllowed,
-            MapClipboard(Clipboard));
+            MapClipboard(Clipboard),
+            AlertCategories is null ? null : alerts);
+    }
+
+    private static HashSet<Category> ParseCategories(string[]? names)
+    {
+        var categories = new HashSet<Category>();
+        foreach (var name in names ?? [])
+        {
+            // Categoria desconhecida no documento é ignorada em vez de derrubar
+            // o agente: um painel mais novo pode publicar uma categoria que esta
+            // versão ainda não implementa. Se sobrar zero, a RN-009 pega.
+            if (Enum.TryParse<Category>(name, ignoreCase: true, out var category) &&
+                Enum.IsDefined(category) && !int.TryParse(name, out _))
+            {
+                categories.Add(category);
+            }
+        }
+        return categories;
     }
 
     /// <summary>
@@ -181,10 +195,13 @@ internal sealed record PolicyDocument
                 $"clipboard.mode \"{document.Mode}\" não é válido. Use Off, Audit ou Block.");
         }
 
+        // O console envia só o modo: sem listas, valem as do padrão.
         return new ClipboardPolicy(
             mode,
-            new HashSet<string>(document.EgressDestinations ?? [], StringComparer.OrdinalIgnoreCase),
-            new HashSet<string>(document.ExcludedSources ?? [], StringComparer.OrdinalIgnoreCase),
+            new HashSet<string>(document.EgressDestinations ?? ClipboardDocument.Default.EgressDestinations ?? [],
+                StringComparer.OrdinalIgnoreCase),
+            new HashSet<string>(document.ExcludedSources ?? ClipboardDocument.Default.ExcludedSources ?? [],
+                StringComparer.OrdinalIgnoreCase),
             document.MaxTextLength,
             document.OversizedTextIsDirty);
     }
@@ -211,8 +228,8 @@ internal sealed record ClipboardDocument
     // Desligado, mas preenchido: quem abrir o arquivo padrão vê o bloco e
     // o que ligar, em vez de ter de descobrir a chave no código. Os nomes
     // de executável são exemplos e precisam ser conferidos na máquina; a
-    // comparação é exata. Conferidos no Windows 11: chrome, msedge, ms-teams
-    // e WhatsApp.Root (o WhatsApp para Windows, que não casa com "WhatsApp").
+    // comparação é exata. WhatsApp.Root é o WhatsApp para Windows, que não
+    // casa com "WhatsApp".
     public static ClipboardDocument Default { get; } = new()
     {
         Mode = nameof(ClipboardMode.Off),

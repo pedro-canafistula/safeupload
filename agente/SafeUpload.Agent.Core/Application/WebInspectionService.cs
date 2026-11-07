@@ -188,7 +188,9 @@ public sealed class WebInspectionService
                 .ConfigureAwait(false));
         }
 
-        return new WebInspectionResult(findings, policy.AuditOnly, policy.Version, records);
+        return new WebInspectionResult(findings,
+            findings.Count == 0 ? policy.AuditOnly : policy.ReleasesWithAlert(findings.Select(static f => f.Category)),
+            policy.Version, records);
     }
 
     /// <summary>
@@ -344,7 +346,8 @@ public sealed class WebInspectionService
         // The queue describes the operation that happened, while findings retain
         // what enforcement would have blocked. This also keeps the tray and panel
         // from showing an audit-only release as a real block.
-        if (policy.AuditOnly && verdict == Verdict.Blocked) verdict = Verdict.Approved;
+        if (verdict == Verdict.Blocked && (policy.AuditOnly || policy.ReleasesWithAlert(findings.Select(static f => f.Category))))
+            verdict = Verdict.Approved;
         var auditEvent = new AuditEvent(
             Guid.NewGuid(),
             DateTimeOffset.UtcNow,

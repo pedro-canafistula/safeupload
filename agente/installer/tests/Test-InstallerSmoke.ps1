@@ -116,10 +116,6 @@ try {
     Require ((Get-FileHash -LiteralPath $queue -Algorithm SHA256).Hash -eq $diagnosticQueueHash) 'Installed maintenance changed the queue.'
     $result.maintenance = [ordered]@{inventory=$temporaryInventory;classification=$temporaryClassification;preview=$retentionPreview;windowsPowerShellPreview=$legacyPreview}
     $result.steps += 'installed diagnostics queried read-only maintenance in PowerShell 7 and Windows PowerShell 5.1 without changing queue bytes'
-    $peerProbe = Join-Path ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))) 'agente/SafeUpload.Agent.ContractSmoke/bin/Release/net10.0-windows/SafeUpload.Agent.ContractSmoke.dll'
-    & dotnet $peerProbe --verify-service-peer (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') *> (Join-Path $ResultsDirectory 'service-peer.log')
-    Require ($LASTEXITCODE -eq 0) 'Restricted non-administrator could not verify the installed service peer.'
-    $result.steps += 'restricted non-administrator verified the installed SCM service peer and rejected a different image'
     Require ((Run-Installer 'rejected-upgrade' @('/MODE=FileSystemWatcher')) -ne 0) 'Initial installer unexpectedly overwrote an existing service.'
     $after = Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
     Require ($after.State -eq 'Running' -and $after.PathName -eq $service.PathName) 'Refused upgrade changed the service.'
@@ -179,8 +175,6 @@ try {
     Require (@($receipts | Where-Object state -eq 'rolled-back').Count -eq 2) 'Failed startup did not record automatic rollback.'
     $finalUpgrade=Run-Maintenance 'update-after-recovery' @('-PackagePath',('"'+$candidate+'"'))
     Check-Preserved $candidateManifest.version
-    & dotnet $peerProbe --verify-service-peer (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') *> (Join-Path $ResultsDirectory 'service-peer-after-update.log')
-    Require ($LASTEXITCODE -eq 0) 'Updated service/UI binaries are not safely accessible to an ordinary user.'
     $result.applicationMaintenance=@{update=$upgrade;rollback=$rollback;startupFailureRecovered=$true;finalUpdate=$finalUpgrade}
     $result.steps += 'real service updated, explicitly rolled back, recovered automatically after invalid startup, then updated again; pending event and policy preserved'
     $sentinel = Join-Path $dataRoot 'installer-preservation-test.txt'

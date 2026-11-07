@@ -1,0 +1,53 @@
+<header class="page-title">
+  <p class="eyebrow">ADMINISTRAÇÃO</p>
+  <h1>Configurações</h1>
+  <p class="subtitle">Cadastro de máquinas no console.</p>
+</header>
+
+<section class="panel" aria-labelledby="titulo-tokens">
+  <div class="panel-heading">
+    <div>
+      <h2 id="titulo-tokens">Tokens de cadastro</h2>
+      <p>Cada máquina se cadastra uma vez com um token. O token vale 15 minutos, serve para um único cadastro e coloca a máquina na sua empresa.</p>
+    </div>
+    <button type="button" class="button primary" (click)="gerarToken()" [disabled]="gerando">{{ gerando ? 'Gerando...' : 'Gerar token' }}</button>
+  </div>
+  <p *ngIf="erro" class="error-message" role="alert">{{ erro }}</p>
+
+  <div *ngIf="gerado as novo" class="generated" aria-label="Token gerado" role="region">
+    <p class="review-label">TOKEN GERADO</p>
+    <p class="token-line"><code class="token-value">{{ novo.token }}</code><span>expira em {{ novo.expiraEm | date:'dd/MM/yyyy HH:mm:ss' }}</span></p>
+    <p class="field-hint">Na máquina, em um prompt de administrador, rode (troque SERVIDOR pelo nome ou IP do servidor do console):</p>
+    <div class="token-box">
+      <code class="command">{{ comando(novo.token) }}</code>
+      <button type="button" class="button secondary" (click)="copiar(comando(novo.token))">Copiar comando</button>
+    </div>
+    <p class="copy-status" role="status">{{ statusCopia }}</p>
+    <p class="warning-box">O token vale 15 minutos e serve para um único cadastro. Depois de usado ou expirado, gere outro.</p>
+  </div>
+
+  <ng-container *ngIf="tokens$ | async as estado">
+    <p role="status" *ngIf="estado.loading && !estado.data">Carregando tokens…</p>
+    <p role="alert" class="error-message" *ngIf="estado.error">{{ estado.error }}</p>
+    <ng-container *ngIf="estado.data as tokens">
+      <p class="field-hint" *ngIf="!tokens.length">Nenhum token gerado.</p>
+      <div class="table-scroll" *ngIf="tokens.length">
+        <table>
+          <caption class="sr-only">Tokens de cadastro</caption>
+          <thead><tr><th scope="col">Estado</th><th scope="col">Token</th><th scope="col">Criado por</th><th scope="col">Criado em</th><th scope="col">Expira em</th><th scope="col">Usado em</th><th scope="col">Máquina</th><th scope="col">Ações</th></tr></thead>
+          <tbody><tr *ngFor="let token of tokens">
+            <td><span class="pill" [class.ok]="token.estado === 'ativo'" [class.warn]="token.estado === 'expirado'">{{ estados[token.estado] }}</span></td>
+            <td><code *ngIf="token.token; else oculto">{{ token.token }}</code><ng-template #oculto>—</ng-template></td>
+            <td>{{ token.criadoPor }}</td>
+            <td>{{ token.criadoEm | date:'dd/MM/yyyy HH:mm:ss' }}</td>
+            <td>{{ token.expiraEm | date:'dd/MM/yyyy HH:mm:ss' }}</td>
+            <td>{{ token.usadoEm ? (token.usadoEm | date:'dd/MM/yyyy HH:mm:ss') : '—' }}</td>
+            <td><a *ngIf="token.hostId !== null; else semMaquina" routerLink="/auditoria" [queryParams]="{ host: token.hostId }">{{ token.maquina }}</a><ng-template #semMaquina>—</ng-template></td>
+            <td><button *ngIf="token.estado !== 'usado'" type="button" class="link-button" [disabled]="excluindo === token.id"
+              [attr.aria-label]="'Excluir token de ' + (token.criadoEm | date:'dd/MM/yyyy HH:mm:ss')" (click)="excluir(token)">Excluir</button></td>
+          </tr></tbody>
+        </table>
+      </div>
+    </ng-container>
+  </ng-container>
+</section>

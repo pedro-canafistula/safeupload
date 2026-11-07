@@ -1,10 +1,12 @@
 <section class="dashboard">
-  <header class="dashboard-topbar"><div><h1>Visão geral</h1><p>Indicadores calculados a partir dos eventos recebidos.</p></div><div class="toolbar"><button type="button" class="theme-button" (click)="refresh.next()">Atualizar</button></div></header>
+  <header class="page-title">
+    <div><p class="eyebrow">Painel</p><h1>Visão geral</h1><p class="subtitle">Indicadores dos eventos recebidos nos últimos 7 dias (UTC). Atualiza a cada 30 segundos.</p></div>
+    <div class="page-actions"><button type="button" class="button secondary" (click)="refresh.next()">Atualizar</button></div>
+  </header>
   <ng-container *ngIf="state$ | async as state">
-    <p role="status" *ngIf="state.loading">Carregando painel…</p>
+    <p role="status" *ngIf="state.loading && !state.data">Carregando painel…</p>
     <p role="alert" class="data-error" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
     <ng-container *ngIf="state.data as dados">
-      <p>{{ dados.periodo }}</p>
       <div class="kpi-grid metrics">
         <section class="metric-card"><h3>Inspeções</h3><strong>{{ dados.resumo.total | number }}</strong></section>
         <section class="metric-card"><h3>Bloqueados</h3><strong>{{ dados.resumo.bloqueados | number }}</strong><small>{{ percentage(dados.resumo.bloqueados, dados.resumo.total) | number:'1.1-1' }}% do total</small></section>
@@ -14,8 +16,20 @@
       <div class="dashboard-grid">
         <section class="panel-card chart-card"><h2>Inspeções por dia</h2><div class="bar-chart" aria-label="Inspeções por dia"><div class="bar-column" *ngFor="let day of dados.tendencia"><strong>{{ day.quantidade }}</strong><span class="bar" [style.height.%]="barHeight(day.quantidade, dados.tendencia)"></span><span class="bar-label">{{ day.data | date:'dd/MM':'UTC' }}</span></div></div></section>
         <section class="panel-card categories-card"><h2>Categorias em arquivos bloqueados</h2><p *ngIf="!dados.categoriasBloqueadas.length">Nenhum bloqueio no período.</p><ul><li *ngFor="let category of dados.categoriasBloqueadas"><strong>{{ category.nome }}</strong>: {{ category.quantidade }}</li></ul></section>
-        <section class="panel-card recent-card"><div class="card-heading"><h2>Últimas 6 inspeções recebidas</h2><a routerLink="/auditoria">Ver todas</a></div><app-event-table [events]="dados.recentes" /></section>
-        <section class="panel-card policy-card"><h2>Categorias da política vigente</h2><div class="policy-tags"><span *ngFor="let category of dados.categoriasAtivas">{{ categories[category] }}</span></div><h3>Transferências retidas</h3><strong>{{ dados.resumo.retidos ?? 0 }}</strong></section>
+        <section class="panel-card recent-card"><div class="card-heading"><h2>Últimas 6 inspeções recebidas</h2><a class="text-link" routerLink="/auditoria">Ver todas</a></div><app-event-table [events]="dados.recentes" /></section>
+        <section class="panel-card policy-card" aria-label="Política e máquinas">
+          <h2>Política padrão</h2>
+          <p *ngIf="dados.politicaPadrao as padrao; else semPadrao"><a [routerLink]="['/politicas', padrao.id]">{{ padrao.nome }} v{{ padrao.versao }}</a></p>
+          <ng-template #semPadrao><p>Nenhuma política padrão. Máquinas sem grupo usam a política local. <a routerLink="/politicas">Definir</a></p></ng-template>
+          <h2>Máquinas</h2>
+          <dl class="machine-counts">
+            <div><dt>Total</dt><dd>{{ dados.maquinas.total }}</dd></div>
+            <div><dt>Online</dt><dd>{{ dados.maquinas.online }}</dd></div>
+            <div><dt>Política desatualizada</dt><dd [class.negative]="dados.maquinas.politicaDesatualizada > 0">{{ dados.maquinas.politicaDesatualizada }}</dd></div>
+          </dl>
+          <a routerLink="/endpoints">Ver endpoints</a>
+          <h2>Transferências retidas</h2><strong>{{ dados.resumo.retidos ?? 0 }}</strong>
+        </section>
       </div>
     </ng-container>
   </ng-container>

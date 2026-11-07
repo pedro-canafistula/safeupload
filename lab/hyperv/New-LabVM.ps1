@@ -3,7 +3,7 @@
 .SYNOPSIS
 Create a private local Hyper-V development VM from the generalized lab image.
 .DESCRIPTION
-Run in elevated Windows PowerShell 5.1 on a Windows 10/11 Pro/Enterprise Hyper-V host.
+Run in elevated Windows PowerShell 5.1 on a Windows Pro/Enterprise Hyper-V host.
 Uses an existing switch; never enables Hyper-V, changes networking, or touches another VM.
 The seed VHDX contains the administrator password. Keep the VM directory private.
 Use -ValidateOnly for read-only preflight. The VM is left off unless -Start is supplied.

@@ -1,234 +1,160 @@
-# SafeUpload — Agente Desktop
+# SafeUpload — agente Windows
 
-Para a integração atual, consulte [cadastro/heartbeat Ed25519](docs/AUTENTICACAO-ED25519-AGENTE5.md#contrato-implementado),
-[configuração da composição](docs/COMPOSICAO-FINAL-20261105.md#configuração-e-provisionamento) e
-[instalação e manutenção](installer/README.md). O registro de [integração M2](docs/INTEGRACAO-M2.md) preserva seu contexto histórico e não substitui a configuração atual.
+Serviço Windows e aplicativo de bandeja que impedem que arquivos com dados sensíveis cheguem a pastas protegidas,
+pendrives e compartilhamentos. Alvo: Windows 10 x64 (22H2). O driver gate fica em [`../driver`](../driver/README.md);
+a conversa com o console está em [`../docs/console-agente.md`](../docs/console-agente.md).
 
-Componente instalado no endpoint do usuário: intercepta operações de
-arquivo, decide localmente (CPF, CNPJ, cartão, senha, segredos), e — quando
-configurado — sincroniza política e auditoria com o Centro de
-Administração web.
+## Projetos (`SafeUpload.Agent.sln`)
 
----
-
-## Visão geral
-
-O [pacote do instalador](installer/README.md) instala serviço e bandeja e pode incluir WinFsp/driver; o script técnico `scripts/Install-SafeUploadAgent.ps1` também permanece disponível para laboratório.
-Sem URL de administração, a configuração padrão usa política local. Uma URL sozinha não provisiona identidade nem seleciona os protocolos exigidos pelo backend atual; veja a configuração de comunicação abaixo.
-
-O agente é composto pelos projetos .NET abaixo mais um **driver de kernel pequeno** (`driver/`):
-
-| Projeto | O que é |
+| Projeto | O que faz |
 |---|---|
-| `SafeUpload.Agent.Core` | Domínio: validadores (CPF/CNPJ/Luhn/senha/segredos), motor de decisão (`InspectionService`), extratores de texto/CSV, Word, Excel, PowerPoint, PDF e ZIP, política e auditoria |
-| `SafeUpload.Agent.Service` | Serviço Windows que roda 24/7, intercepta operações de arquivo e chama o Core para decidir |
-| `SafeUpload.Agent.App` | Interface WPF (bandeja, status/histórico e avisos) e cliente do canal clipboard; a inspeção de arquivos pertence ao serviço |
-| `SafeUpload.Agent.Tests` | Testes automatizados (xUnit, sem framework de mock) |
-| `SafeUpload.Agent.Drive` | Unidade SafeUpload (WinFsp): o que o usuário grava fica privado até ser inspecionado; só versões aprovadas chegam à pasta protegida |
-| `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local e certificados por host (Fase 1), proxy TLS e parser HTTP/1.1 (Fase 2), desvio dos navegadores (Fase 3); exceções e inspeção nas próximas fases ([arquitetura](../docs/rede/ARQUITETURA-INSPECAO-TLS.md), [plano](../docs/rede/PLANO-INSPECAO-TLS.md)) |
+| `SafeUpload.Agent.Core` | Inspeção: validadores (CPF e CNPJ com dígito verificador, cartão por Luhn, senhas, segredos, e detectores por rótulo para RG, dados bancários, saúde, documentos confidenciais e dados pessoais), extratores (texto/CSV, Word, Excel, PowerPoint, PDF, ZIP), motor de decisão (`InspectionService`), política e fila de auditoria. Não depende de Windows. |
+| `SafeUpload.Agent.Service` | Serviço `SafeUploadAgent` (LocalSystem): carrega a política, monta as unidades SafeUpload, fala com o gate, atende a bandeja e o clipboard por pipes, sobe a inspeção TLS e conversa com o console. O mesmo executável tem os comandos `cadastrar`, `ca` e `desvio`. |
+| `SafeUpload.Agent.Drive` | Sistema de arquivos WinFsp da unidade SafeUpload: stage privado, snapshot, inspeção e publicação no destino real. |
+| `SafeUpload.Agent.App` | Bandeja WPF: estado da proteção, histórico, aviso de bloqueio com justificativa, monitor e proxy OLE do clipboard. |
+| `SafeUpload.Agent.Network` | Inspeção TLS do tráfego web: CA local, proxy HTTP/1.1 e desvio dos navegadores. |
+| `SafeUpload.Agent.Tests` | Testes xUnit do Core, do serviço, da unidade e da rede. `SafeUpload.Agent.App.Tests` (fora da solução) testa a bandeja. |
+| `SafeUpload.Fixtures` | Gerador de arquivos de teste (.docx, .xlsx, .pdf). |
 
-As extensões padrão, tanto na política criada pelo agente quanto na política
-servida pelo backend, são `.txt`, `.csv`, `.docx`, `.xlsx`, `.pdf`, `.pptx`,
-`.pptm`, `.potx`, `.ppsx`, `.zip` e `.7z`. Políticas explícitas existentes não
-são migradas automaticamente. ZIP inspeciona cada membro sob orçamento cumulativo;
-7z permanece recusado com `archive_7z_unavailable`. Veja o escopo e as recusas
-em [INSPECTION-COVERAGE.md](docs/INSPECTION-COVERAGE.md).
+`installer/` tem o instalador ([README](installer/README.md)); `scripts/` tem a instalação manual, usada pelo
+instalador e pelo `smoke/`.
 
-O motor confere o limite configurado no arquivo aberto antes de reservar a captura legada para qualquer formato.
-No staging, caminho e read lease exigem entrada somente leitura com o tamanho medido; divergências são retidas
-antes do parser. Tamanho real acima do limite mantém `file_too_large`, inclusive quando a descoberta indicava zero.
-O modo clássico preserva `AllowedWithoutInspection` nas falhas; staging preserva `Blocked`.
+## Como protege
 
-O cancelamento é reconferido após política, worker e auditoria. Uma decisão nova só entra no cache depois da tentativa
-de auditoria e da conferência de cancelamento. Evento já gravado e cache válido de uma chamada anterior são mantidos;
-falha comum de auditoria continua preservando o veredito.
+1. **Unidade SafeUpload** (`Interception:Mode = Drive`, padrão; exige WinFsp). Cada pasta de `destinationPaths`
+   (local `C:\...` ou compartilhamento `\\servidor\...`) e, com `removableDrives`, cada pendrive aparece como uma
+   unidade (S:, T:, ...; letras em `Drive:Letters`). O que o usuário grava vai para um stage privado. Quando um
+   arquivo alterado é fechado, o serviço inspeciona um snapshot: versão limpa é copiada para a pasta real; versão com
+   dado sensível nunca chega lá (a pasta mantém a versão anterior) e a bandeja mostra o aviso.
+2. **Gate** (`driver/`): recusa gravações diretas nesses lugares para todo processo que não seja o agente. Leituras
+   nunca são recusadas. Com o agente parado, os lugares protegidos ficam fechados até ele voltar.
 
-Os leitores de política local e do formato remoto legado recusam campos repetidos, inclusive variações de caixa e
-nomes escapados, em vez de substituir um valor anterior. JSON ambíguo não sobrescreve a última política remota válida.
-Comentários e vírgulas finais continuam aceitos no arquivo local. O formato da console mantém sua validação existente.
-Os caches de política (`CachedPolicyStore`) e vereditos medem validade por tempo decorrido, independentemente de
-ajustes na hora do sistema. Uma carga cancelada não instala um novo snapshot; consultas atuais delegam ao provedor
-interno sem usar ou substituir esse cache. No modo remoto, as inspeções continuam usando o snapshot atualizado em fundo.
+Regras:
 
-O envio da auditoria lê o recibo em fluxo, com limite de 16 KiB e profundidade JSON de 16.
-O prazo de `HttpClient.Timeout` cobre envio e leitura completa; cancelamento ou recibo inválido mantém o lote pendente.
-Ambas as contagens `acceptedEvents` e `acceptedOverrides` devem existir uma única vez e corresponder ao lote,
-inclusive quando zero. A confirmação em disco conserva o token de cancelamento do serviço e independe do prazo HTTP.
+- **Falha fecha.** Inspeção que falha, estoura `inspectionTimeoutSeconds`, arquivo acima de `maxFileSizeMb` ou
+  formato sem leitor: a versão é bloqueada.
+- **Categorias em alerta** (`alertCategories`) liberam a versão e registram o achado.
+- **Justificativa** (com `overrideAllowed`): no aviso de bloqueio, o usuário tem 10 minutos para justificar. A
+  justificativa vale para aquela versão exata, do mesmo usuário e sessão, sob a mesma política. Nova edição,
+  renomeação ou mudança de política exigem nova inspeção.
+- **Reinício:** versões retidas no stage voltam à unidade e são inspecionadas de novo com a política atual;
+  aprovações e justificativas anteriores não são restauradas.
 
-Falhas dos destinos de log operacional, incluindo o Event Log do Windows, não encerram a proteção. Os loggers
-tipados do serviço isolam essas exceções e tentam registrar novamente nas chamadas seguintes; os demais destinos
-configurados continuam recebendo os registros. Isso não confirma auditoria entregue nem altera as exceções das
-operações de inspeção, política ou persistência.
+`Interception:Mode = FileSystemWatcher` é um modo de teste sem WinFsp nem gate: reage depois que o arquivo chegou ao
+destino e o move para `C:\SafeUpload\_bloqueados`. Não é proteção preventiva.
 
-Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
-lógica) — e `driver/` na raiz do repositório, o driver gate (minifiltro), com documentação própria em
-[`../driver/README.md`](../driver/README.md).
+### O que a inspeção lê
 
-### Como o agente protege
+Texto e CSV; Word, Excel e PowerPoint (`.docx`, `.xlsx`, `.pptx`, `.pptm`, `.potx`, `.ppsx`), incluindo
+cabeçalhos, comentários, propriedades, gráficos e slides ocultos; PDF (texto das páginas, anotações, formulários,
+metadados); ZIP, membro a membro, até três níveis, com o mesmo limite de tamanho para a soma descompactada. O que não
+tem leitor é recusado, e recusa bloqueia: imagens (sem OCR), objetos OLE embutidos, macros, `.ppt` binário, ZIP
+criptografado, `.7z` (`archive_7z_unavailable`), PDF com anexos, JavaScript ou XFA. Cartão é qualquer número de 16
+dígitos válido por Luhn, exceto `0000000000000000`. As categorias sem dígito verificador próprio exigem rótulo ou
+formato validável (`Core/Domain/Validators/ContextDetectors.cs`).
 
-O Service escolhe por configuração (`Interception:Mode` em `appsettings.json`):
+### Outros canais
 
-- **`Drive`** (padrão) — cada pasta protegida da política aparece como uma unidade SafeUpload (S:, T:, ...),
-  e cada pendrive conectado também, quando a política protege mídia removível. O usuário salva na unidade; ao
-  fechar o arquivo, o agente inspeciona uma cópia e só então a copia para a pasta real. Versões bloqueadas não
-  chegam lá (a pasta mantém a versão anterior) e a bandeja mostra o aviso com a opção de justificativa. A pasta
-  real fica somente leitura para usuários, e o driver gate recusa gravações diretas de qualquer outro processo.
-  Exige o WinFsp instalado.
-- **`FileSystemWatcher`** — o mock antigo: reage *depois* que o arquivo chega ao destino e o apaga.
+- **Clipboard** (desligado por padrão): bloqueia a colagem de texto sensível em navegadores e mensageiros. Desenho em
+  [`docs/clipboard`](../docs/clipboard/README.md).
+- **Web/TLS** (desligado por padrão, `InspecaoTls:Habilitada`): proxy local que inspeciona uploads dos navegadores.
+  Diferente da unidade, libera quando a inspeção falha. Desenho e operação em
+  [`docs/rede`](../docs/rede/ARQUITETURA-INSPECAO-TLS.md). Comandos (administrador):
+  `SafeUpload.Agent.Service.exe ca install|status|remove` e `desvio status|remove` (devolve a internet aos
+  navegadores se o serviço morrer com o desvio ligado).
 
-Nas unidades SafeUpload, aprovação da inspeção e publicação são etapas distintas. O evento de sucesso só é emitido
-depois de copiar o snapshot e substituir o arquivo no destino. Falha de cópia/substituição gera um evento bloqueado
-com `publication_failed` por versão aprovada; o snapshot fica disponível para nova tentativa. A recuperação gera
-outro evento, sem reescrever o bloqueio ou a justificativa originais. A publicação usa o nome/destino finais do arquivo.
+### Privacidade da auditoria
 
-A resposta de justificativa confirma o agendamento, não a cópia concluída. O resultado aparece no histórico.
-Esses eventos não confirmam flush físico, entrega ao servidor ou persistência após queda de energia.
+O conteúdo dos arquivos e o texto copiado nunca entram em evento ou log; achados saem mascarados. O evento guarda só
+o nome do arquivo (sem diretórios) e, na web, só a origem do site. Campos livres (nome, processo, destino,
+justificativa) que contêm um valor reconhecido pelos validadores são omitidos inteiros. A bandeja só troca dados com
+o processo do serviço `SafeUploadAgent` registrado no Windows.
 
-Renomear um arquivo, inclusive um já publicado, cria um novo contexto de publicação: os bytes ficam no stage,
-aprovações/justificativas anteriores são invalidadas e o nome novo exige nova inspeção. Resultados de inspeções
-iniciadas antes da renomeação são descartados. O arquivo publicado anterior permanece no destino até a nova
-publicação concluir. A janela de dez minutos para justificar usa tempo decorrido e não muda com ajustes na hora.
-Movimentações de diretórios conservam o fluxo próprio de metadados; isso não é recuperação transacional de toda a árvore.
+## Política local (`policy.json`)
 
-Na parada ordenada, cada unidade cancela e aguarda seu worker antes de desmontar. O serviço aguarda então os relatos
-de decisão/publicação já enfileirados. Cancelamento de inspeção não vira um novo bloqueio. Se o prazo de parada
-terminar, a espera falha e não comprova a conclusão desses relatos; um provedor que ignora cancelamento pode atrasá-la.
-Antes de substituir o destino por um snapshot aprovado, a unidade grava uma intenção no registro privado
-`publication-audit`. Ele guarda ID/horário/metadados imutáveis do evento e o hash da cópia preparada,
-sem copiar bytes do arquivo ou diagnósticos brutos; trechos já mascarados seguem o contrato da auditoria. Após a substituição, grava o resultado e tenta
-entregá-lo à fila. Falha na fila mantém o registro para tentar novamente; falha em persistir a intenção impede a cópia final.
-
-Na retomada, uma intenção sem resultado durável registra `publication_outcome_unknown`: o histórico mostra
-"Não confirmado", sem afirmar que a cópia foi impedida, mesmo quando o destino contém os mesmos bytes.
-A recuperação nunca conclui uma cópia antiga nem infere sucesso pela identidade/hash encontrados depois.
-Resultados já gravados não são alterados por mudanças posteriores no destino.
-
-A primeira entrega usa um ID novo; repetições conferem a fila, inclusive eventos já despachados, sem alterar seus bytes
-ou estado de entrega. Um mesmo ID com metadados diferentes mantém a pendência para investigação. O registro usa ordem
-persistida por unidade e admite até 1 MiB por entrada, 16 MiB pendentes e 4096 entradas. Isso cobre retomada do processo
-para publicações de snapshots; não é uma transação de armazenamento, garantia de queda de energia ou journal de todas
-as operações do filesystem. Auditoria de bloqueios e fluxos legados conserva seus contratos próprios.
-
-O catálogo privado `stage-map.json` registra os arquivos retidos, nomes relativos, localização anterior publicada e
-autor capturado pelo serviço. A gravação usa temporário no mesmo diretório, flush e substituição antes de aceitar
-bytes novos ou alterar nomes/exclusões privadas. O catálogo admite até 1 MiB e 4096 entradas, é associado ao caminho
-e à identidade de volume/diretório informada pelo Windows e só pode ter um filesystem ativo por área privada.
-Catálogo inválido, stage ausente, destino trocado ou redirecionamentos/links incompatíveis impedem a recuperação,
-preservando os arquivos. Arquivos antigos sem catálogo permanecem privados, sem tentativa de adivinhar seus nomes.
-
-Após reinício, versões registradas voltam à unidade e são reinspecionadas com a política atual. Não se restauram
-aprovações ou justificativas; a sessão/processo anterior não concede uma nova liberação. SID e nome capturados são
-mantidos apenas para atribuição de auditoria. Uma publicação concluída retira do catálogo somente a versão atual;
-uma edição mais nova permanece retida. Renomeações registram a intenção antes de mover o backing: após interrupção,
-o nome novo pode ser recuperado mesmo que essa movimentação não tenha terminado. Isso não é um journal completo
-do filesystem, não reproduz exclusões de backing após queda e não qualifica queda de energia ou USB/SMB sem ensaio real.
-
-A autorização também carrega a impressão do conteúdo da política usada na inspeção. As unidades conferem essa
-impressão antes da cópia e novamente antes da substituição do destino; mudança de regras, inclusive sob o mesmo
-número de versão, revoga a aprovação e agenda nova inspeção do stage. Justificativas exigem o mesmo vínculo antes
-e depois de gravar a solicitação na auditoria. Falha de leitura da política mantém a cópia aprovada retida para tentar
-novamente. Na configuração remota essas leituras usam o snapshot validado do serviço de fundo, inclusive offline,
-sem HTTP por arquivo. São reconferências pontuais, não uma transação atômica entre atualização de política e renomeação.
-
-`LoadCurrentAsync` respeita a composição: no serviço significa esse snapshot; nos provedores HTTP usados diretamente,
-significa consulta à origem sem fallback. Não confundir disponibilidade offline com confirmação de uma publicação
-remota ainda não recebida. Cargas de inicialização/renovação canceladas não instalam o resultado tardio no snapshot,
-mesmo se a origem não respeitar o cancelamento; uma renovação posterior continua possível.
-
-O estado das unidades distingue conexão com o serviço de proteção confirmada. Só anuncia proteção completa quando
-o gate aceita o escopo e todas as unidades esperadas aparecem disponíveis no Windows. Nas consultas seguintes ao
-mesmo escopo, usa o comando de contadores existente para verificar a conexão; falha ou resposta incompleta exige
-reconexão e reenvio da política. Ausência de destinos, montagem incompleta, escopo recusado, política indisponível e
-parada do serviço deixam a proteção inativa na notificação. O indicador verde acompanha esse estado, inclusive em
-modo auditoria; conexão com o serviço por si só não o ativa. O detalhe DriveProtection é opcional no contrato do pipe.
-
-É uma observação da sincronização periódica de 30 segundos, não uma prova contínua de todos os volumes/canais.
-O recebimento do escopo pelo gate e a presença das letras não qualificam Office/USB/SMB sem o ensaio real. Se o
-registro durável de uma notificação falhar, sua entrega continua suprimida; a sincronização tenta registrar novamente,
-e a interface pode conservar a última observação até receber outra ou detectar a desconexão.
-
----
-
-## Como rodar
-
-### Pré-requisitos
-
-- Windows
-- .NET 10 SDK (`winget install Microsoft.DotNet.SDK.10`)
-
-### Rodar o serviço em modo console (para depurar)
-
-```powershell
-cd SafeUpload.Agent.Service
-dotnet run
-```
-
-### Rodar a interface
-
-```powershell
-cd SafeUpload.Agent.App
-dotnet run
-```
-
-Abre minimizada na bandeja do sistema — dê duplo clique no ícone para ver o
-painel.
-
-### CA da inspeção TLS
-
-A inspeção TLS usa uma CA gerada na própria máquina. Num terminal de
-administrador:
-
-```powershell
-cd SafeUpload.Agent.Service
-dotnet run -- ca install   # cria a CA (chave não exportável) e a põe em LocalMachine\Root
-dotnet run -- ca status    # mostra a CA e se está confiável
-dotnet run -- ca remove    # remove CA, confiança e chave (desinstalação)
-```
-
-`ca install` também liga a política `ImportEnterpriseRoots` do Firefox, que
-por padrão ignora as raízes do Windows.
-
-### Proxy de inspeção TLS
-
-Desligado por padrão. Em `SafeUpload.Agent.Service/appsettings.json`:
+`%ProgramData%\SafeUpload\policy.json` usa o mesmo formato do documento de política do console
+([Documento de política](../docs/console-agente.md#documento-de-política)), com o bloco opcional `clipboard`
+descrito em [`docs/clipboard`](../docs/clipboard/README.md#política-bloco-clipboard). Exemplo mínimo:
 
 ```json
-"InspecaoTls": { "Habilitada": true, "Porta": 8877 }
+{
+  "version": 1,
+  "activeCategories": ["Cpf", "Cnpj", "PaymentCard", "Password", "Secret"],
+  "monitoredScopes": {
+    "extensions": [".txt", ".csv", ".docx", ".xlsx", ".pdf", ".pptx", ".zip"],
+    "destinationPaths": ["C:\\SafeUpload\\Escopo Monitorado"],
+    "removableDrives": true,
+    "networkPaths": true
+  },
+  "overrideAllowed": true
+}
 ```
 
-Com isso o serviço cria a CA (se ainda não existir), sobe o proxy em
-`127.0.0.1:8877` e desvia os navegadores para ele: políticas de proxy do
-Chrome, Edge e Firefox, mais filtros WFP que impedem os navegadores de sair
-direto pelas portas 80 e 443. Os outros programas não são afetados. Ao parar,
-o serviço desfaz tudo. Com `"DesviarNavegadores": false` o desvio não é feito,
-e o navegador precisa ser apontado à mão (`msedge --proxy-server=http://127.0.0.1:8877`).
+- Sem o arquivo, o serviço grava um padrão parecido com esse (com justificativa desligada e clipboard `Off`).
+- Comentários e vírgulas finais são aceitos; chave repetida invalida o arquivo.
+- A pasta e o arquivo precisam de ACL explícita, sem herança, com controle total só para SYSTEM e Administradores
+  (`scripts/Protect-SafeUploadPolicy.ps1` aplica). Arquivo inválido ou com ACL diferente é recusado e a última
+  política válida continua valendo.
+- Mudanças valem nas inspeções seguintes; unidades e gate seguem as pastas novas em até 30 s.
 
-Se o serviço morrer sem parar direito, os filtros somem sozinhos, mas as
-políticas continuam apontando para o proxy fora do ar. Para devolver a
-internet aos navegadores, num terminal de administrador:
+Com o agente cadastrado, a política do console tem precedência; o `policy.json` vale quando o console responde que
+o host não tem política (`404`). Sem console alcançável, vale a última política do console guardada em cache.
 
-```powershell
-SafeUpload.Agent.Service.exe desvio status
-SafeUpload.Agent.Service.exe desvio remove
-``` Nesta fase o proxy só registra no log os
-envios que veria (site, tamanho, tipo e processo) e libera tudo; o bloqueio
-de verdade vem com a Fase 5.
+## Cadastro no console
 
-### Rodar os testes
+Como administrador, com um token gerado no console (Configurações → Tokens de cadastro):
 
 ```powershell
-cd agente
-dotnet test SafeUpload.Agent.sln
+& "$env:ProgramFiles\SafeUpload\Agent\service\SafeUpload.Agent.Service.exe" cadastrar https://servidor:8443/agent/ <token> --certificado <sha256>
 ```
 
-O teste que instala uma CA em `LocalMachine\Root` só roda com
-`SAFEUPLOAD_MACHINE_TESTS=1`, como administrador, numa máquina de teste.
+O comando reinicia o serviço, que lê a identidade ao iniciar. Para trocar de servidor, rode de novo com
+`--substituir` e um token novo. Assinatura, rotas, heartbeat e
+envio de eventos: [`docs/console-agente.md`](../docs/console-agente.md).
 
----
+## Onde ficam os dados
 
-### Instalar como serviço
+| Caminho | Conteúdo |
+|---|---|
+| `%ProgramFiles%\SafeUpload\Agent\` | Binários: `service\`, `ui\`, `setup\` (instalador) |
+| `%ProgramData%\SafeUpload\policy.json` | Política local |
+| `%ProgramData%\SafeUpload\queue.jsonl` | Fila de auditoria; é a fonte da verdade. Um evento só sai dela depois do recibo do console |
+| `%ProgramData%\SafeUpload\console-policy-cache.json` | Última política válida recebida do console |
+| `%ProgramData%\SafeUpload\authentication\ed25519-identity.dat` | Identidade do cadastro (chave, URL, `id_host`, certificado), protegida com DPAPI de máquina |
+| `%ProgramData%\SafeUpload\drive\` | Uma pasta por destino: stage, snapshots, catálogo `stage-map.json` e registro de publicação |
+| `%ProgramData%\SafeUpload\notifications\` | Registro das notificações emitidas para a bandeja |
+| `C:\SafeUpload\` | Pasta protegida padrão (`Escopo Monitorado`) e quarentena do modo `FileSystemWatcher` |
 
-Numa máquina de teste com test signing ligado, em PowerShell **elevado**:
+`%ProgramData%\SafeUpload` só é acessível a SYSTEM e Administradores. Logs do serviço: Visualizador de Eventos →
+Aplicativo. A desinstalação não apaga esses dados.
+
+## Configuração do serviço
+
+`service\appsettings.json` (substituído a cada atualização): `Interception:Mode` (`Drive` ou `FileSystemWatcher`),
+`Drive:Letters`, e o bloco `InspecaoTls` (`Habilitada`, `Porta`, `DesviarNavegadores`, `Excecoes`).
+
+## Build e testes
+
+```bash
+# Linux, com o SDK local (WPF precisa de EnableWindowsTargeting)
+dotnet build agente/SafeUpload.Agent.sln -p:EnableWindowsTargeting=true
+# Testes: rodam no Windows. No Linux cerca de um em oito falha por usar APIs do Windows (pipes, ACLs, certificados).
+dotnet test agente/SafeUpload.Agent.Tests/SafeUpload.Agent.Tests.csproj
+dotnet test agente/SafeUpload.Agent.App.Tests/SafeUpload.Agent.App.Tests.csproj
+```
+
+Os testes que mexem na máquina (CA em `LocalMachine\Root`, filtros WFP) só rodam com `SAFEUPLOAD_MACHINE_TESTS=1`,
+como administrador, numa VM de teste. O teste ponta a ponta com o driver é `smoke/run.sh` (ver
+[`driver/README.md`](../driver/README.md)).
+
+Para depurar, `dotnet run --project agente/SafeUpload.Agent.Service` roda o serviço em console (administrador; o
+modo `Drive` precisa do WinFsp e do gate carregados). A bandeja só se conecta ao serviço registrado no Windows, não a
+um processo de console.
+
+## Instalar
+
+Na VM de teste (test signing ligado), use o instalador: [installer/README.md](installer/README.md). Sem
+instalador, a partir de um pacote publicado:
 
 ```powershell
 dotnet publish agente\SafeUpload.Agent.Service -c Release -r win-x64 --self-contained true -o pkg
@@ -237,148 +163,3 @@ dotnet publish agente\SafeUpload.Agent.App -c Release -r win-x64 --self-containe
 ```
 
 O driver vem de `driver/scripts/build-driver.sh`. Para remover: `.\agente\scripts\Uninstall-SafeUploadAgent.ps1`.
-O teste ponta a ponta numa VM descartável é `smoke/run.sh` (ver `driver/README.md`).
-
-Antes de ler `policy.json`, o agente exige ACL protegida e explícita, sem ACEs herdadas, com controle total somente para
-SYSTEM e Administradores em `%ProgramData%\SafeUpload` e no arquivo (`scripts/Protect-SafeUploadPolicy.ps1` aplica essa
-ACL). Se a ACL existente não corresponder, ele recusa o arquivo e mantém a última política aplicada em memória; sem uma
-política válida anterior, não carrega uma política mais fraca.
-A fila local (`queue.jsonl`) do serviço exige proprietário confiável e acesso somente a SYSTEM e Administradores,
-com verificação da pasta e do arquivo aberto antes de ler, anexar ou confirmar eventos. Arquivos novos e temporários
-de confirmação são criados com ACL protegida. Filas antigas que herdam apenas essas permissões da pasta protegida
-continuam aceitas; permissões indevidas, links e múltiplos nomes físicos são recusados sem reparar ou apagar a fila.
-Uma recusa aparece como falha de acesso na saúde da fila, sem confirmar entrega. Isso não autentica dados alterados
-antes da validação, não recupera automaticamente cópias temporárias e não garante persistência contra perda de energia.
-O construtor de caminho explícito continua destinado a ferramentas/testes isolados, fora da composição do serviço.
-Os ensaios locais usam somente pastas temporárias próprias; o aceite instalado como SYSTEM é uma etapa separada.
-
-## Integração com o Centro de Administração (HU-10)
-
-Com `CentroAdministracao:BaseUrl` vazio na configuração local, o agente é **autônomo**: lê a política de
-`%ProgramData%\SafeUpload\policy.json` e só acumula auditoria em
-`queue.jsonl`, localmente. Para o backend atual, primeiro faça o [provisionamento explícito](docs/AUTENTICACAO-ED25519-AGENTE5.md#cadastro-explícito-e-recuperação), preservando a identidade protegida. Depois configure os protocolos e os dados correspondentes ao cadastro. Exemplo de laboratório na própria máquina:
-
-```json
-{
-  "CentroAdministracao": {
-    "BaseUrl": "http://127.0.0.1:8080/agent/",
-    "HeartbeatProtocol": "AgentApiEd25519",
-    "HostIp": "127.0.0.1",
-    "HostMask": 32,
-    "PolicyProtocol": "ConsoleByIp",
-    "PolicyHostIp": "127.0.0.1",
-    "DispatchIntervalSeconds": 30,
-    "TimeoutSeconds": 5
-  }
-}
-```
-
-O IP e a máscara são exemplos e precisam corresponder ao host provisionado e à política publicada. HTTPS é exigido fora de loopback; a identidade é específica do servidor. O serviço não cadastra no startup nem troca para o protocolo antigo após erro. Com a composição válida, o agente passa a:
-
-- **Buscar a política do painel** a cada 30 s, com cache persistido protegido (ver abaixo).
-- **Mandar heartbeat assinado periódico** (`POST /agent/heartbeat`) — atualiza o cadastro exibido no inventário do painel.
-- **Entregar os eventos de auditoria pendentes** (`POST /agent/events`) — a
-  fila local continua sendo a fonte da verdade; o envio é só uma etapa a
-  mais. Justificativas também são enviadas; o lote só é marcado como entregue
-  após confirmação compatível do servidor. Falha no heartbeat não impede essa
-  tentativa. A gravação da justificativa precede a publicação ou concessão.
-
-Os clientes de política, auditoria e heartbeat não seguem redirecionamentos HTTP. Configure diretamente a URL final do servidor; uma resposta 3xx não confirma entrega nem substitui a última política válida.
-
-No canal web, `AuditOnly` libera o envio com achados e registra `Approved` com as categorias, preservando a distinção entre alerta e bloqueio real. O agrupamento de textos repetidos considera a política efetiva: a primeira ocorrência após mudar a regra gera um novo evento. Seus prazos e o cache web de política medem tempo decorrido, sem prolongar a validade ao ajustar a hora do Windows. Registros antigos não são reescritos.
-
-No clipboard, falha ou ausência de resposta à classificação invalida o estado lembrado do canal. Antes de ler e enviar a próxima cópia, o App consulta novamente `state`, sem texto; um serviço reiniciado com o canal Off não recebe essa cópia por causa do estado anterior. A regra existente de liberar em falha e a compatibilidade com uma resposta antiga válida sem `enabled` permanecem.
-
-O serviço ordena classificações pelo início do atendimento em cada sessão do Windows. Uma classificação que termina
-atrasada não substitui a cópia de um pedido mais recente dessa sessão; outras sessões continuam independentes.
-Pedidos cancelados não substituem a última cópia válida nem incrementam contadores. A espera de política e a inspeção
-ficam fora do lock dos metadados; o armazenamento continua sem texto copiado e sem alteração no formato do pipe.
-Isso não qualifica a ordem dos eventos nativos ou a continuidade do monitor no Windows, ainda sujeitas ao aceite conjunto.
-
-Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
-projeto (ver `Interception:Mode` acima, mesma filosofia). A assinatura do heartbeat não autentica automaticamente política e auditoria; o fechamento dessas rotas e do ciclo de chaves permanece pendente com o backend.
-
-### Política publicada pela console web
-
-Com `"PolicyProtocol": "ConsoleByIp"` e `"PolicyHostIp"` (o IP cadastrado do host) em
-`CentroAdministracao`, e identidade confirmada no armazenamento protegido, o agente lê `GET /agent/api/policy?ip=<PolicyHostIp>`, a política que o administrador publica na
-tela Políticas. O ID é recuperado da identidade protegida; `RegisteredHostId`, quando informado, deve coincidir com ela. Sem `PolicyProtocol`, continua o formato antigo (`GET /agent/policy`), que não atende à API atual.
-
-| Da console | No agente |
-|---|---|
-| `regras`: cpf, cnpj, cartao_credito, credenciais, rg, dados_bancarios, dados_saude, documentos_confidenciais, dados_pessoais | categorias ativas (`credenciais` = senha + segredo) |
-| `acao`: bloquear / alertar | bloqueia / libera e registra o alerta (`AuditOnly`; evento `Approved` com as categorias). Arquivo que não pôde ser inspecionado continua bloqueado nos dois casos |
-| `idPolitica` | versão da política |
-
-A console ainda não publica pastas protegidas, pendrives, compartilhamentos, extensões, limites nem a permissão de
-justificar: esses valores continuam vindo do `policy.json` local. Um documento de outro host, com regra desconhecida ou
-mais antigo que o atual é recusado e a última política válida continua (memória e
-`%ProgramData%\SafeUpload\console-policy-cache.json`). As unidades SafeUpload e o gate seguem a política nova no
-próximo ciclo de 30 s.
-
-As regras sem dígito verificador próprio precisam de rótulo ou de formato validável
-(`SafeUpload.Agent.Core/Domain/Validators/ContextDetectors.cs`): RG rotulado ou de SP com DV; agência + conta
-rotuladas ou IBAN; CID rotulado, Cartão Nacional de Saúde ou campo de formulário médico ("Diagnóstico: ..."); marcação
-CONFIDENCIAL/SIGILOSO/USO INTERNO; e-mail, telefone ou data de nascimento rotulada.
-
-**Diagnóstico local de políticas:** com logs de nível Information habilitados,
-procure `PolicyIntegration`. `SnapshotVersion`/`SnapshotSource` identificam a
-política disponível para consumidores legados (remote, memory, disk ou default).
-`StrictVersion`/`StrictFingerprint` registram a última leitura estrita bem-sucedida;
-`StrictReadError` informa o tipo da falha posterior, sem copiar URL ou mensagem da
-exceção. `LastAcceptedVersion`/`LastAcceptedFingerprint` são o histórico da política
-cujas pastas protegidas as unidades SafeUpload aplicaram.
-`DriverScopeRecorded` perde validade na falha de aplicação;
-`ApplyError` registra o tipo da falha de aplicação. Nenhum desses dados comprova
-readiness/proteção ativa. Uma nova política recebida não altera esse histórico de
-aceite. Compare fingerprints apenas de consumos equivalentes: defaults omitidos
-podem diferir entre snapshot legado e leitura estrita. Hash ausente é diagnóstico
-indisponível, nunca equivalência. Estado é somente em memória, separado do
-heartbeat e protocolo do driver; observações idênticas não repetem o log.
-A bandeja recebe um resumo opcional pela mensagem de status local existente,
-sem hashes ou exceções internas. A seção Sincronização da política mostra a
-política disponível, a última consulta bem-sucedida e o último aceite de escopo.
-Um publicador separado verifica mudanças a cada dois segundos, preservando a
-gravação durável de notificações antes da entrega. Versões antigas continuam
-sem o campo opcional; a tela exibe diagnóstico indisponível. Perder a conexão
-com o serviço limpa o resumo exibido. Nada disso altera os campos de proteção
-ou introduz atualização dinâmica do driver.
-
-**Limitações conhecidas desta integração:** sem autenticação entre agente e
-servidor; identidade padrão do endpoint é o hostname (`Environment.MachineName`,
-não um id estável). As justificativas do serviço preservam o SID obtido da conexão;
-a obtenção dessa identidade no pipe real ainda depende do ensaio instalado.
-Heartbeat/refresh não comprovam aplicação dinâmica no kernel. Recibo HTTP não
-substitui a validação de durabilidade no banco utilizado.
-
-O campo `failOpen` é preservado no documento e no vínculo de conteúdo, mas não
-alterna sozinho os modos do motor: staged bloqueia inspeção incompleta; legado
-mantém `AllowedWithoutInspection` nas falhas previstas. Não alterar somente esse
-campo para anunciar mudança do comportamento legado.
-
----
-
-## Estrutura
-
-`SafeUpload.Agent.ContractSmoke --policy-publication-contract <pasta-temporaria> <URL-raiz> <endpoint-sintetico> <revisao> <categorias-CSV>`
-confere as revisões 1 a 3 de um Java local. Use um endpoint exclusivo com prefixo
-`M2-POLICY-ANGULAR-` e preserve a mesma pasta/cache entre as revisões. A ferramenta
-lê a política, executa inspeção staged em amostra sintética e envia heartbeat;
-ela não publica a política administrativa nem transfere bytes pelo driver.
-Exige USB/rede desligados e clipboard Off. Para repetir, use pasta e banco novos;
-os recibos anteriores não são sobrescritos. O teste `PolicyFailureModeContractTests`
-confere que tamanho excessivo, formato sem extrator e erro de parse bloqueiam no
-staged; o modo legado mantém seu resultado atual, independentemente de `failOpen`.
-
-```
-agente/
-├── SafeUpload.Agent.Core/         # Domínio + validadores + motor de inspeção
-├── SafeUpload.Agent.Service/      # Serviço Windows (o "cérebro" rodando)
-├── SafeUpload.Agent.App/          # Interface WPF (bandeja + painel)
-├── SafeUpload.Agent.Tests/        # Testes automatizados
-├── SafeUpload.Agent.Drive/        # Unidade SafeUpload (WinFsp): stage, inspeção e publicação
-├── SafeUpload.Agent.Network/      # Inspeção TLS: CA local, certificados e proxy
-├── SafeUpload.Fixtures/           # Gerador de arquivos de teste (.docx/.xlsx/.pdf)
-├── SafeUploadAgent/                # Protótipo visual WPF anterior (sem lógica)
-└── SafeUpload.Agent.sln
-```

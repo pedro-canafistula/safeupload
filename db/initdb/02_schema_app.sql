@@ -1,89 +1,76 @@
+-- Dados do Centro de Administração: máquinas, políticas, grupos e auditoria.
+-- Cada linha pertence a uma empresa (acesso.empresas.id_empresa); o backend só mostra a empresa do usuário.
+-- Não há migrations: para mudar o schema, recrie o banco de desenvolvimento.
 CREATE DATABASE IF NOT EXISTS app;
 
 USE app;
 
-CREATE TABLE IF NOT EXISTS hosts (
-    id_host INT PRIMARY KEY AUTO_INCREMENT,
-    ip VARCHAR(15),
-    mascara INT CHECK(mascara BETWEEN 0 AND 32),
-    chave_publica TEXT NOT NULL,
-    hostname VARCHAR(100),
-    sistema_operacional VARCHAR(40),
-    versao_so VARCHAR(20),
-    mac_address VARCHAR(20),
-    visto_por_ultimo TIMESTAMP(6),
-    ativo INT CHECK (ativo IN (0,1))
-) ENGINE=InnoDB
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_0900_ai_ci;
-
-
-CREATE TABLE IF NOT EXISTS regras (
-    id_regras INT PRIMARY KEY AUTO_INCREMENT,
-    bloquear_cpf INT CHECK(bloquear_cpf IN (0,1)),
-    bloquear_cnpj INT CHECK(bloquear_cnpj IN (0,1)),
-    bloquear_rg INT CHECK(bloquear_rg IN (0,1)),
-    bloquear_dados_bancarios INT CHECK(bloquear_dados_bancarios IN (0,1)),
-    bloquear_cartao_credito INT CHECK(bloquear_cartao_credito IN (0,1)),
-    bloquear_credenciais INT CHECK(bloquear_credenciais IN (0,1)),
-    bloquear_dados_saude INT CHECK(bloquear_dados_saude IN (0,1)),
-    bloquear_dados_pessoais INT CHECK(bloquear_dados_pessoais IN (0,1)),
-    bloquear_documentos_confidenciais INT CHECK(bloquear_documentos_confidenciais IN (0,1))
-) ENGINE=InnoDB
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_0900_ai_ci;
-
-
 CREATE TABLE IF NOT EXISTS politicas (
     id_politica INT PRIMARY KEY AUTO_INCREMENT,
-    versao VARCHAR(20),
-    nome VARCHAR(50),
-    fk_id_host INT NOT NULL,
-    acao VARCHAR(10),
-    fk_id_regras INT NOT NULL,
-    criadaEm TIMESTAMP,
-    origem VARCHAR(30),
-    CONSTRAINT fk_id_host_02 FOREIGN KEY (fk_id_host) REFERENCES 
-    hosts (id_host),
-    CONSTRAINT fk_id_regras FOREIGN KEY (fk_id_regras) REFERENCES
-    regras (id_regras)
-)ENGINE=InnoDB
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_0900_ai_ci;
+    fk_id_empresa INT NOT NULL,
+    nome VARCHAR(80) NOT NULL,
+    padrao TINYINT NOT NULL DEFAULT 0 CHECK (padrao IN (0,1)),
+    UNIQUE KEY uk_politica_nome (fk_id_empresa, nome)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Cada edição cria uma versão; id_versao é a "version" que o agente recebe.
+CREATE TABLE IF NOT EXISTS politica_versoes (
+    id_versao INT PRIMARY KEY AUTO_INCREMENT,
+    fk_id_politica INT NOT NULL,
+    configuracao LONGTEXT NOT NULL,
+    criada_em TIMESTAMP(6) NOT NULL,
+    criada_por VARCHAR(75) NOT NULL,
+    CONSTRAINT fk_versao_politica FOREIGN KEY (fk_id_politica) REFERENCES politicas (id_politica) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS grupos (
+    id_grupo INT PRIMARY KEY AUTO_INCREMENT,
+    fk_id_empresa INT NOT NULL,
+    nome VARCHAR(80) NOT NULL,
+    fk_id_politica INT NULL,
+    UNIQUE KEY uk_grupo_nome (fk_id_empresa, nome),
+    CONSTRAINT fk_grupo_politica FOREIGN KEY (fk_id_politica) REFERENCES politicas (id_politica)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- hostname, ip, sistema etc. são informados pelo próprio agente e só servem para exibição.
+CREATE TABLE IF NOT EXISTS hosts (
+    id_host INT PRIMARY KEY AUTO_INCREMENT,
+    fk_id_empresa INT NOT NULL,
+    fk_id_grupo INT NULL,
+    chave_publica TEXT NOT NULL,
+    hostname VARCHAR(100),
+    ip VARCHAR(45),
+    mascara INT,
+    sistema_operacional VARCHAR(60),
+    versao_so VARCHAR(40),
+    mac_address VARCHAR(20),
+    versao_agente VARCHAR(50),
+    politica_aplicada INT NULL,
+    cadastrado_em TIMESTAMP(6) NOT NULL,
+    visto_por_ultimo TIMESTAMP(6) NULL,
+    revogado_em TIMESTAMP(6) NULL,
+    INDEX idx_hosts_empresa (fk_id_empresa),
+    CONSTRAINT fk_host_grupo FOREIGN KEY (fk_id_grupo) REFERENCES grupos (id_grupo) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Tokens de cadastro: uso único, válidos por 15 minutos (conferido pelo backend).
 CREATE TABLE IF NOT EXISTS tokens (
     id_token INT PRIMARY KEY AUTO_INCREMENT,
-    token VARCHAR(8) UNIQUE,
-    criadoEm TIMESTAMP,
-    ativo INT CHECK (ativo IN (0,1))
-)ENGINE=InnoDB
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_0900_ai_ci;
+    fk_id_empresa INT NOT NULL,
+    token VARCHAR(8) NOT NULL UNIQUE,
+    criado_em TIMESTAMP(6) NOT NULL,
+    criado_por VARCHAR(75) NOT NULL,
+    usado_em TIMESTAMP(6) NULL,
+    fk_id_host INT NULL,
+    CONSTRAINT fk_token_host FOREIGN KEY (fk_id_host) REFERENCES hosts (id_host) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-
-CREATE TABLE IF NOT EXISTS solicitacoes (
-    id_solicitacao INT PRIMARY KEY AUTO_INCREMENT,
-    fk_id_host INT,
-    fk_id_empresa_designada INT,
-    fk_id_admin_designado INT,
-    descricao LONGTEXT NOT NULL,
-    status INT CHECK (status BETWEEN 0 AND 4)
-        COMMENT '0=designado, 1=pendente, 2=em andamento, 3=recusado, 4=concluído',
-    CONSTRAINT fk_id_host_03 FOREIGN KEY (fk_id_host) REFERENCES hosts(id_host)
-        ON DELETE SET NULL,
-    CONSTRAINT fk_id_empresa_designada FOREIGN KEY (fk_id_empresa_designada) REFERENCES acesso.empresas(id_empresa)
-        ON DELETE SET NULL,
-    CONSTRAINT fk_id_admin_designado FOREIGN KEY (fk_id_admin_designado) REFERENCES acesso.usuarios(id_usuario)
-        ON DELETE SET NULL
-)ENGINE=InnoDB
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_0900_ai_ci;
-
+-- Eventos e justificativas enviados pelos agentes. fk_id_host vem da assinatura, nunca do corpo.
 CREATE TABLE IF NOT EXISTS agent_audit_ingest (
     record_key VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
     kind VARCHAR(16) NOT NULL,
     event_id VARCHAR(36) NOT NULL,
+    fk_id_host INT NOT NULL,
     endpoint_id VARCHAR(255) NOT NULL,
     occurred_at_utc TIMESTAMP(6) NOT NULL,
     received_at_utc TIMESTAMP(6) NOT NULL,
@@ -92,5 +79,6 @@ CREATE TABLE IF NOT EXISTS agent_audit_ingest (
     agent_version VARCHAR(200),
     payload LONGTEXT NOT NULL,
     INDEX idx_agent_audit_event (event_id),
-    INDEX idx_agent_audit_endpoint_time (endpoint_id, occurred_at_utc)
+    INDEX idx_agent_audit_host_time (fk_id_host, occurred_at_utc),
+    INDEX idx_agent_audit_time (kind, occurred_at_utc)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

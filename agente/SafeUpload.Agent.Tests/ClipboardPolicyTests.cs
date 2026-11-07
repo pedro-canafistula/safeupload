@@ -93,7 +93,9 @@ public class ClipboardPolicyTests : IDisposable
         Assert.Equal(ClipboardMode.Audit, clipboard.Mode);
         Assert.Equal(ClipboardPolicy.DefaultMaxTextLength, clipboard.MaxTextLength);
         Assert.True(clipboard.OversizedTextIsDirty);
-        Assert.Empty(clipboard.EgressDestinations);
+        // Listas omitidas valem as do padrão: o console envia só o modo.
+        Assert.Contains("chrome", clipboard.EgressDestinations);
+        Assert.Contains("KeePass", clipboard.ExcludedSources);
     }
 
     /// <summary>

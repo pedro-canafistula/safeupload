@@ -15,10 +15,17 @@ export class LayoutComponent {
     { rota: '/politicas', titulo: 'Políticas', icone: '◧' },
     { rota: '/endpoints', titulo: 'Endpoints', icone: '▣' },
     { rota: '/auditoria', titulo: 'Auditoria', icone: '◷' },
-    { rota: '/novos-cadastros', titulo: 'Novos Cadastros', icone: '◫' }
+    { rota: '/relatorios', titulo: 'Relatórios', icone: '▤' },
+    { rota: '/novos-cadastros', titulo: 'Novos Cadastros', icone: '◫' },
+    { rota: '/configuracoes', titulo: 'Configurações', icone: '⚙' }
   ];
 
   constructor(public auth: AuthService, private router: Router) {}
+
+  get paginaAtual(): string {
+    const caminho = this.router.url.split(/[?#]/)[0];
+    return this.menu.find(item => caminho === item.rota || caminho.startsWith(item.rota + '/'))?.titulo ?? '';
+  }
 
   sair(): void {
     this.auth.logout().subscribe({ next: () => this.router.navigate(['/login']) });
