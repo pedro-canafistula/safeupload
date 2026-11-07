@@ -162,4 +162,6 @@ dotnet publish agente\SafeUpload.Agent.App -c Release -r win-x64 --self-containe
 .\agente\scripts\Install-SafeUploadAgent.ps1 -PackagePath pkg -DriverPath <pasta com SafeUpload.sys e .inf> -WinFspMsi winfsp-2.1.25156.msi
 ```
 
-O driver vem de `driver/scripts/build-driver.sh`. Para remover: `.\agente\scripts\Uninstall-SafeUploadAgent.ps1`.
+O script instala nas mesmas pastas do instalador (`Agent\service\` e `Agent\ui\`): a bandeja só aceita como par o
+serviço em `..\service\`. O driver vem de `driver/scripts/build-driver.sh`. Para remover:
+`.\agente\scripts\Uninstall-SafeUploadAgent.ps1`.

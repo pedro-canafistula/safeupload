@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using SafeUpload.Agent.App.Mvvm;
 using SafeUpload.Agent.Core.Contracts;
 using SafeUpload.Agent.Core.Domain;
@@ -119,9 +119,7 @@ public sealed class HistoryRowViewModel
         Status = StatusPill.For(auditEvent);
         Confirmed = auditEvent.Dispatched;
 
-        Categories = auditEvent.Categories.Count == 0
-            ? "—"
-            : string.Join(", ", auditEvent.Categories.Select(CategoryLabels.Describe));
+        Categories = CategoryLabels.Describe(auditEvent);
 
         MaskedSnippets = auditEvent.MaskedSnippets.Count == 0
             ? "—"

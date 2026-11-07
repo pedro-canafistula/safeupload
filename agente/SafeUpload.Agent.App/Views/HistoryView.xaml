@@ -12,12 +12,33 @@
         Só leitura: sem filtro, sem ordenação, sem botão. A trilha é o registro
         do que o agente decidiu, e dar ao usuário meios de recortá-la sugeriria
         que ele tem influência sobre ela.
+
+        A grade tem só as colunas curtas, que cabem na janela sem rolagem
+        lateral; o texto longo termina em reticências e aparece inteiro na dica.
+        O restante do evento fica no painel de detalhes da linha selecionada.
     -->
+
+    <UserControl.Resources>
+        <Style x:Key="CellText" TargetType="TextBlock">
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+            <Setter Property="Margin" Value="0,0,12,6" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
+        <Style x:Key="FieldValue" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,0,20,6" />
+        </Style>
+    </UserControl.Resources>
 
     <Grid Margin="28,24,28,28">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*" MinHeight="140" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
@@ -38,22 +59,23 @@
                 CornerRadius="12"
                 ClipToBounds="True">
             <Grid>
-                <DataGrid ItemsSource="{Binding Events}"
+                <DataGrid x:Name="EventsGrid"
+                          ItemsSource="{Binding Events}"
                           Style="{StaticResource QueueGrid}"
                           BorderThickness="0"
                           IsReadOnly="True"
                           CanUserAddRows="False"
                           CanUserSortColumns="False"
                           CanUserReorderColumns="False"
+                          CanUserResizeColumns="False"
                           AutoGenerateColumns="False"
                           GridLinesVisibility="Horizontal"
                           HeadersVisibility="Column"
-                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                          MinColumnWidth="80"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                           RowHeight="34">
                     <DataGrid.Columns>
                         <!-- O mesmo rótulo do status, para o resultado ser reconhecível nas duas telas. -->
-                        <DataGridTemplateColumn Header="Resultado" Width="190" MinWidth="190">
+                        <DataGridTemplateColumn Header="Resultado" Width="Auto">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type vm:HistoryRowViewModel}">
                                     <TextBlock Text="{Binding Status.Text}"
@@ -66,27 +88,12 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTextColumn Header="Arquivo" Binding="{Binding FileName}" Width="150" MinWidth="150" />
-                        <DataGridTextColumn Header="Data e hora" Binding="{Binding OccurredAt}" Width="140" MinWidth="140" />
-                        <DataGridTextColumn Header="Categorias" Binding="{Binding Categories}" Width="160" />
-                        <DataGridTextColumn Header="Envio da auditoria" Binding="{Binding Delivery}" Width="185" />
-                        <DataGridTextColumn Header="Evento" Binding="{Binding EventId}" Width="290" />
-
-                        <!--
-                            Trechos mascarados, em monoespaçada para os
-                            marcadores alinharem. Nunca o valor real: o que
-                            chega aqui já saiu mascarado do domínio (RN-007).
-                        -->
-                        <DataGridTextColumn Header="Trechos mascarados"
-                                            Binding="{Binding MaskedSnippets}"
-                                            Width="170"
-                                            FontFamily="{StaticResource MonoFont}" />
-
-                        <DataGridTextColumn Header="Motivo" Binding="{Binding Reason}" Width="*" MinWidth="180" />
-                        <DataGridTextColumn Header="Ext." Binding="{Binding Extension}" Width="80" />
-                        <DataGridTextColumn Header="Tamanho" Binding="{Binding Size}" Width="80" />
-                        <DataGridTextColumn Header="Destino" Binding="{Binding Destination}" Width="150" />
-                        <DataGridTextColumn Header="Processo" Binding="{Binding Process}" Width="110" />
+                        <DataGridTextColumn Header="Arquivo" Binding="{Binding FileName}" Width="3*"
+                                            ElementStyle="{StaticResource CellText}" />
+                        <DataGridTextColumn Header="Data e hora" Binding="{Binding OccurredAt}" Width="Auto"
+                                            ElementStyle="{StaticResource CellText}" />
+                        <DataGridTextColumn Header="Categorias" Binding="{Binding Categories}" Width="2*"
+                                            ElementStyle="{StaticResource CellText}" />
                     </DataGrid.Columns>
                 </DataGrid>
 
@@ -95,6 +102,110 @@
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
                            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+            </Grid>
+        </Border>
+
+        <!-- Detalhes da linha selecionada; tudo quebra linha, nada é cortado. -->
+        <Border Grid.Row="2"
+                Margin="0,14,0,0"
+                Padding="16,12,16,8"
+                Background="{StaticResource Bg}"
+                BorderBrush="{StaticResource Border}"
+                BorderThickness="1"
+                CornerRadius="12"
+                MaxHeight="230">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsEmpty}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <TextBlock Text="Selecione uma operação para ver os detalhes." Margin="0,0,0,4">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedItem, ElementName=EventsGrid}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              DataContext="{Binding SelectedItem, ElementName=EventsGrid}">
+                    <ScrollViewer.Style>
+                        <Style TargetType="ScrollViewer">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ScrollViewer.Style>
+                    <Grid d:DataContext="{d:DesignInstance Type=vm:HistoryRowViewModel}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Arquivo" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding FileName}"
+                                   Style="{StaticResource FieldValue}" FontWeight="SemiBold" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Resultado" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Status.Text}" Style="{StaticResource FieldValue}"
+                                   Foreground="{Binding Status.ForegroundKey, Converter={StaticResource BrushLookup}}" FontWeight="SemiBold" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="Data e hora" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding OccurredAt}" Style="{StaticResource FieldValue}" />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Categorias" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Categories}" Style="{StaticResource FieldValue}" />
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Tamanho" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding Size}" Style="{StaticResource FieldValue}" />
+
+                        <!--
+                            Trechos mascarados, em monoespaçada para os
+                            marcadores alinharem. Nunca o valor real: o que
+                            chega aqui já saiu mascarado do domínio (RN-007).
+                        -->
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Trechos" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MaskedSnippets}" Style="{StaticResource FieldValue}"
+                                   FontFamily="{StaticResource MonoFont}" />
+                        <TextBlock Grid.Row="3" Grid.Column="2" Text="Processo" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding Process}" Style="{StaticResource FieldValue}" />
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Destino" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding Destination}"
+                                   Style="{StaticResource FieldValue}" />
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Motivo" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Reason}" Style="{StaticResource FieldValue}" />
+                        <TextBlock Grid.Row="5" Grid.Column="2" Text="Auditoria" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="5" Grid.Column="3" Text="{Binding Delivery}" Style="{StaticResource FieldValue}" />
+
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Evento" Style="{StaticResource FieldLabel}" />
+                        <TextBlock Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding EventId}"
+                                   Style="{StaticResource FieldValue}" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                   Foreground="{StaticResource TextMuted}" />
+                    </Grid>
+                </ScrollViewer>
             </Grid>
         </Border>
     </Grid>
