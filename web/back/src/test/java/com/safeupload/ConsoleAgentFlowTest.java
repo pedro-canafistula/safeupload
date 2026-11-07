@@ -121,6 +121,41 @@ class ConsoleAgentFlowTest {
         return new Agent(body(result).get("id_host").asInt(), keys);
     }
 
+    private void verifyEnrollmentRecovery(MockHttpSession admin) throws Exception {
+        String token = body(call(post("/admin/token").session(admin), null, 200)).get("token").asText();
+        var keys = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+        String key = Base64.getEncoder().encodeToString(keys.getPublic().getEncoded());
+        int originalId = body(call(post("/agent/enroll"), Map.of("token", token, "chave_publica", key,
+            "host", host("PC-RECOVERY")), 201)).get("id_host").asInt();
+        var signer = Signature.getInstance("Ed25519");
+        signer.initSign(keys.getPrivate());
+        signer.update(("SafeUpload-Enroll-Recovery-v1\n" + token).getBytes(StandardCharsets.UTF_8));
+        String proof = Base64.getEncoder().encodeToString(signer.sign());
+        var attempt = Map.of("token", token, "chave_publica", key, "host", host("PC-NOT-A-NEW-HOST"),
+            "prova_recuperacao", proof);
+        assertThat(body(call(post("/agent/enroll"), attempt, 201)).get("id_host").asInt()).isEqualTo(originalId);
+
+        var impostor = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+        signer.initSign(impostor.getPrivate());
+        signer.update(("SafeUpload-Enroll-Recovery-v1\n" + token).getBytes(StandardCharsets.UTF_8));
+        call(post("/agent/enroll"), Map.of("token", token, "chave_publica",
+            Base64.getEncoder().encodeToString(impostor.getPublic().getEncoded()), "host", host("PC-WRONG-KEY"),
+            "prova_recuperacao", Base64.getEncoder().encodeToString(signer.sign())), 401);
+        call(post("/agent/enroll"), Map.of("token", token, "chave_publica", key,
+            "host", host("PC-NO-PROOF"), "prova_recuperacao", "AAAAAAAA"), 401);
+        var endpoints = body(call(get("/endpoints").session(admin), null, 200)).path("itens");
+        assertThat(endpoints.toString()).contains("PC-RECOVERY").doesNotContain("PC-NOT-A-NEW-HOST", "PC-WRONG-KEY");
+
+        call(post("/endpoints/" + originalId + "/revogar").session(admin), null, 204);
+        call(post("/agent/enroll"), attempt, 403);
+        try (var conn = DriverManager.getConnection(SERVER + "/app" + OPTIONS, USER, PASSWORD);
+             var statement = conn.prepareStatement("UPDATE tokens SET criado_em=criado_em - INTERVAL 16 MINUTE WHERE token=?")) {
+            statement.setString(1, token);
+            assertThat(statement.executeUpdate()).isEqualTo(1);
+        }
+        call(post("/agent/enroll"), attempt, 401);
+    }
+
     MockHttpServletRequestBuilder signed(String method, String route, Agent agent, byte[] content, long time) throws Exception {
         return signed(method, route, agent, content, time, UUID.randomUUID().toString());
     }
@@ -224,6 +259,8 @@ class ConsoleAgentFlowTest {
 
         // Máquina cadastrada por token; sem política atribuída o agente recebe 404.
         var agent = enroll(root, "PC-FIN-01");
+        call(get("/agent/identity"), null, 401);
+        assertThat(body(agentCall("GET", "identity", agent, null, 200)).get("id_host").asInt()).isEqualTo(agent.id());
         agentCall("POST", "heartbeat", agent, Map.of("host", host("PC-FIN-01"), "versao_agente", "0.2.0"), 200);
         agentCall("GET", "policy", agent, null, 404);
 
@@ -377,6 +414,7 @@ class ConsoleAgentFlowTest {
         mvc.perform(post("/agent/heartbeat").contentType(MediaType.APPLICATION_JSON).content(content))
             .andExpect(status().isUnauthorized());
         call(post("/endpoints/" + agent.id() + "/revogar").session(root), null, 204);
+        agentCall("GET", "identity", agent, null, 403);
         agentCall("GET", "policy", agent, null, 403);
         assertThat(body(call(get("/painel").session(root), null, 200)).at("/maquinas/politicaDesatualizada").asInt()).isZero();
 
@@ -403,5 +441,6 @@ class ConsoleAgentFlowTest {
         var agentB = enroll(adminB, "PC-B-01");
         assertThat(body(call(get("/endpoints").session(adminB), null, 200)).at("/itens/0/hostId").asInt()).isEqualTo(agentB.id());
         agentCall("GET", "policy", agentB, null, 404);
+        verifyEnrollmentRecovery(adminB);
     }
 }

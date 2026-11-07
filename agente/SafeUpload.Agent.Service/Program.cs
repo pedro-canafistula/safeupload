@@ -51,6 +51,13 @@ public static class Program
             return;
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "atualizar-certificado", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Environment.ExitCode = await EnrollCommand.UpdateCertificateAsync(args[1..], Console.Out);
+            return;
+        }
+
         // "desvio status" e "desvio remove": políticas de proxy dos navegadores.
         if (args.Length > 0 && string.Equals(args[0], "desvio", StringComparison.OrdinalIgnoreCase))
         {

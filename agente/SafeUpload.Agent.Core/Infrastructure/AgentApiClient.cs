@@ -27,11 +27,23 @@ public sealed class AgentApiClient
     }
 
     /// <summary>POST enroll: token de uso único + chave pública → id_host.</summary>
-    public async Task<int> EnrollAsync(string enrollmentToken, string publicKey, AgentHeartbeatHost host, CancellationToken token)
+    public Task<int> EnrollAsync(string enrollmentToken, string publicKey, AgentHeartbeatHost host, CancellationToken token) =>
+        EnrollAsync(enrollmentToken, publicKey, host, recoveryProof: null, token);
+
+    internal async Task<int> EnrollAsync(string enrollmentToken, string publicKey, AgentHeartbeatHost host,
+        string? recoveryProof, CancellationToken token)
     {
-        using var response = await SendAsync("enroll",
-            new { token = enrollmentToken, chave_publica = publicKey, host }, HttpStatusCode.Created, token).ConfigureAwait(false);
+        using var response = await PostAsync("enroll",
+            new EnrollmentBody(enrollmentToken, publicKey, host, recoveryProof), HttpStatusCode.Created, token).ConfigureAwait(false);
         return HostId(response.RootElement);
+    }
+
+    /// <summary>Confirma a identidade assinada sem alterar o heartbeat ou a política do host.</summary>
+    public async Task VerifyIdentityAsync(int hostId, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "identity");
+        using var response = await SendAsync(request, HttpStatusCode.OK, token).ConfigureAwait(false);
+        if (HostId(response.RootElement) != hostId) throw new AgentApiException("invalid_receipt");
     }
 
     /// <summary>POST heartbeat assinado, com a versão da política do console em uso (null = política local).</summary>
@@ -41,7 +53,7 @@ public sealed class AgentApiClient
         using var observation = new CommunicationObservation(_observer, CommunicationOperation.Heartbeat);
         try
         {
-            using var response = await SendAsync("heartbeat",
+            using var response = await PostAsync("heartbeat",
                 new HeartbeatBody(host, appliedPolicy, agentVersion), HttpStatusCode.OK, token).ConfigureAwait(false);
             if (HostId(response.RootElement) != hostId) throw new AgentApiException("invalid_receipt");
             observation.Success(200);
@@ -63,7 +75,13 @@ public sealed class AgentApiClient
         catch (Exception error) { observation.Exception(error, token); throw; }
     }
 
-    private async Task<JsonDocument> SendAsync<T>(string path, T body, HttpStatusCode expected, CancellationToken token)
+    private async Task<JsonDocument> PostAsync<T>(string path, T body, HttpStatusCode expected, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
+        return await SendAsync(request, expected, token).ConfigureAwait(false);
+    }
+
+    private async Task<JsonDocument> SendAsync(HttpRequestMessage request, HttpStatusCode expected, CancellationToken token)
     {
         // O mesmo prazo do HttpClient vale para a leitura do recibo: corpo lento não prende o laço.
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -71,7 +89,6 @@ public sealed class AgentApiClient
         var boundedToken = deadline.Token;
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, boundedToken).ConfigureAwait(false);
             if (response.StatusCode != expected)
                 throw new AgentApiException("http_status", (int)response.StatusCode);
@@ -100,6 +117,12 @@ public sealed class AgentApiClient
             throw new AgentApiException("invalid_receipt");
         return id;
     }
+
+    private sealed record EnrollmentBody(
+        [property: JsonPropertyName("token")] string Token,
+        [property: JsonPropertyName("chave_publica")] string PublicKey,
+        [property: JsonPropertyName("host")] AgentHeartbeatHost Host,
+        [property: JsonPropertyName("prova_recuperacao"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RecoveryProof);
 
     private sealed record HeartbeatBody(
         [property: JsonPropertyName("host")] AgentHeartbeatHost Host,
