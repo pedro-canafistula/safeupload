@@ -61,6 +61,7 @@ public static class Program
         var builder = Host.CreateApplicationBuilder(args);
 
         builder.Services.AddWindowsService(options => options.ServiceName = ServiceName);
+        ConfigureOperationalLogging(builder.Services);
 
         // A composição é a mesma que o aplicativo WPF fazia à mão, agora do
         // lado do serviço: são estes objetos que decidem, e é por isso que
@@ -227,6 +228,12 @@ public static class Program
         }
 
         await builder.Build().RunAsync();
+    }
+
+    internal static void ConfigureOperationalLogging(IServiceCollection services)
+    {
+        services.AddLogging();
+        services.AddSingleton(typeof(ILogger<>), typeof(BestEffortLogger<>));
     }
 
     internal static void ConfigureAuditStorage(IServiceCollection services)
