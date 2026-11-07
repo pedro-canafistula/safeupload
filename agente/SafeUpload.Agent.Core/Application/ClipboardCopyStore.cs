@@ -14,7 +14,10 @@ namespace SafeUpload.Agent.Core.Application;
 /// <param name="Dirty">O clipboard ficou sujo.</param>
 /// <param name="SourceProcess">Quem copiou, se conhecido.</param>
 public sealed record ClipboardCopy(string CopyId, bool Dirty, string? SourceProcess,
-    IReadOnlyList<Category>? Categories = null, long SizeBytes = 0, int PolicyVersion = 1);
+    IReadOnlyList<Category>? Categories = null, long SizeBytes = 0, int PolicyVersion = 1)
+{
+    public IReadOnlyList<string>? CustomRules { get; init; }
+}
 
 /// <summary>
 /// Guarda a última cópia de cada sessão do Windows.
@@ -55,10 +58,10 @@ public sealed class ClipboardCopyStore
             categories, sizeBytes, policyVersion);
 
     internal ClipboardCopy CompleteClassification(uint? sessionId, long revision, bool dirty, string? sourceProcess,
-        IReadOnlyList<Category>? categories, long sizeBytes, int policyVersion)
+        IReadOnlyList<Category>? categories, long sizeBytes, int policyVersion, IReadOnlyList<string>? customRules = null)
     {
         var copy = new ClipboardCopy(Guid.NewGuid().ToString("N"), dirty, sourceProcess,
-            categories?.ToArray(), sizeBytes, policyVersion);
+            categories?.ToArray(), sizeBytes, policyVersion) { CustomRules = customRules };
         var slot = _latest[sessionId ?? UnknownSession];
         lock (slot)
         {

@@ -108,6 +108,28 @@ public class ClipboardInspectionServiceTests
 
     // ------------------------------------------------- colagem de verdade (Fase 3)
 
+    [Theory]
+    [InlineData(ClipboardMode.Block, ClipboardPasteVerdict.Block)]
+    [InlineData(ClipboardMode.Audit, ClipboardPasteVerdict.AuditOnly)]
+    public async Task Custom_rule_names_reach_clipboard_audit_without_the_copied_text(
+        ClipboardMode mode, ClipboardPasteVerdict expected)
+    {
+        const string text = "marca confidencial, detalhe sintético que não deve sair";
+        var rules = CustomRuleSet.Compile([
+            new CustomRule(7, 1, "Regra do documento", false, new WordsCondition(["marca confidencial"], 1))
+        ]);
+        var harness = new Harness(Politica(mode) with { CustomRules = rules });
+        var copy = await harness.Copiar(text);
+        var response = await harness.Colar(copy.CopyId!, "chrome");
+
+        Assert.Equal(expected, response.Verdict);
+        var audit = Assert.Single(harness.Sink.Events);
+        Assert.Equal(new[] { "Regra do documento" }, audit.CustomRules);
+        Assert.Contains(Category.CustomRule, audit.Categories);
+        Assert.Empty(audit.MaskedSnippets);
+        Assert.DoesNotContain("marca confidencial", System.Text.Json.JsonSerializer.Serialize(audit));
+    }
+
     [Fact]
     public async Task Colagem_em_saida_no_modo_Block_e_bloqueada_e_auditada_como_Blocked()
     {

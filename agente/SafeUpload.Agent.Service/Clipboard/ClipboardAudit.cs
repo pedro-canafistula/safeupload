@@ -42,7 +42,8 @@ public static class ClipboardAudit
             "", "", observation.SizeBytes, verdict,
             observation.Categories ?? [], [], AuditTextPrivacy.Sanitize(observation.SourceProcess), 0,
             AuditTextPrivacy.Sanitize(observation.DestinationProcess), reason,
-            observation.PolicyVersion, 0, false, Channel: AuditChannel.Clipboard) { OwnerSid = ownerSid };
+            observation.PolicyVersion, 0, false, Channel: AuditChannel.Clipboard)
+            { OwnerSid = ownerSid, CustomRules = observation.CustomRules };
         try
         {
             await sink.WriteAsync(auditEvent, cancellationToken).ConfigureAwait(false);

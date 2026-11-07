@@ -39,7 +39,7 @@ public final class AuditContracts {
         @NotNull @Size(max = 100) String extension,
         @NotNull @PositiveOrZero Long sizeBytes,
         @NotNull Verdict verdict,
-        @Size(max = 10) List<@NotNull Category> categories,
+        @Size(max = 12) List<@NotNull Category> categories,
         @NotNull @Size(max = 1000) String processName,
         @NotNull @PositiveOrZero Integer processId,
         @NotNull @Size(max = 4096) String destinationPath,
