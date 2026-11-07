@@ -81,6 +81,9 @@ public sealed class MonitoredAuditSink : IAuditSink, IOverrideQueue, IRecoverabl
 
     public Task WriteAsync(AuditEvent item, CancellationToken token) =>
         Observe(AuditQueueOperation.WriteEvent, () => _inner.WriteAsync(item, token), token);
+    public AuditEvent BindNewPublication(AuditEvent item) =>
+        _inner is IRecoverableAuditSink sink ? sink.BindNewPublication(item)
+            : throw new NotSupportedException("The queue cannot recover publication events.");
     public Task WritePublicationAsync(AuditEvent item, bool replay, CancellationToken token) =>
         Observe(AuditQueueOperation.WriteEvent, () => _inner is IRecoverableAuditSink sink
             ? sink.WritePublicationAsync(item, replay, token)

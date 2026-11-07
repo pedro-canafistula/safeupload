@@ -6,6 +6,9 @@ namespace SafeUpload.Agent.Core.Infrastructure;
 
 public sealed partial class LocalQueueAuditSink
 {
+    public AuditEvent BindNewPublication(AuditEvent item) =>
+        item with { ConsoleEnrollment = _consoleEnrollment };
+
     public async Task WritePublicationAsync(AuditEvent item, bool replay, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(item);
