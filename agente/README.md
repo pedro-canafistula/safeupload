@@ -55,6 +55,11 @@ O prazo de `HttpClient.Timeout` cobre envio e leitura completa; cancelamento ou 
 Ambas as contagens `acceptedEvents` e `acceptedOverrides` devem existir uma única vez e corresponder ao lote,
 inclusive quando zero. A confirmação em disco conserva o token de cancelamento do serviço e independe do prazo HTTP.
 
+Falhas dos destinos de log operacional, incluindo o Event Log do Windows, não encerram a proteção. Os loggers
+tipados do serviço isolam essas exceções e tentam registrar novamente nas chamadas seguintes; os demais destinos
+configurados continuam recebendo os registros. Isso não confirma auditoria entregue nem altera as exceções das
+operações de inspeção, política ou persistência.
+
 Também existe `SafeUploadAgent/` — um protótipo visual WPF anterior (sem
 lógica) — e `driver/` na raiz do repositório, o driver gate (minifiltro), com documentação própria em
 [`../driver/README.md`](../driver/README.md).

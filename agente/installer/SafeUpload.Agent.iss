@@ -154,6 +154,12 @@ begin
   Result := False;
 end;
 
+function GetCustomSetupExitCode: Integer;
+begin
+  if InstallationSucceeded then Result := 0
+  else Result := 100;
+end;
+
 function InitializeUninstall: Boolean;
 var
   Failure: String;
