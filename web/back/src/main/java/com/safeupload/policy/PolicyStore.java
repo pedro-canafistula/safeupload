@@ -26,6 +26,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class PolicyStore {
     public record Effective(int idPolitica, String nome, int versao, PolicyConfig configuracao) {}
 
+    // Limites do agente para o documento de política e para o conjunto de regras compiladas.
+    private static final int MAX_AGENT_DOCUMENT_BYTES = 64 * 1024;
+    private static final int MAX_AGENT_CONDITIONS = 400;
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final Clock clock;
@@ -151,7 +155,6 @@ public class PolicyStore {
 
     private int addVersion(int empresa, int policyId, String user, PolicyConfig config) {
         var validated = config.validated();
-        for (int ruleId : validated.ruleIds()) rules.find(empresa, ruleId); // 404 se a regra não é da empresa
         String json = write(validated);
         var keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
@@ -165,21 +168,38 @@ public class PolicyStore {
             statement.setInt(5, validated.ruleIds().isEmpty() ? 0 : 1);
             return statement;
         }, keys);
-        return keys.getKey().intValue();
+        int version = keys.getKey().intValue();
+        agentDocument(empresa, validated, version);
+        return version;
     }
 
     /** Documento do agente para o host, com as regras personalizadas que a política usa já compiladas. */
     public Optional<Map<String, Object>> agentDocumentForHost(int hostId) {
         return effectiveForHost(hostId).map(effective -> {
             Integer empresa = jdbc.queryForObject("SELECT fk_id_empresa FROM hosts WHERE id_host = ?", Integer.class, hostId);
-            var used = new LinkedHashMap<Integer, PolicyConfig.AgentRule>();
-            for (int ruleId : effective.configuracao().ruleIds()) {
-                var stored = rules.find(empresa, ruleId);
-                used.put(ruleId, new PolicyConfig.AgentRule(ruleId, stored.revisao(), stored.nome(),
-                    stored.definicao().compile().agentWhen()));
-            }
-            return effective.configuracao().agentDocument(effective.versao(), used);
+            return agentDocument(empresa, effective.configuracao(), effective.versao());
         });
+    }
+
+    private Map<String, Object> agentDocument(int empresa, PolicyConfig config, int version) {
+        var used = new LinkedHashMap<Integer, PolicyConfig.AgentRule>();
+        int conditions = 0;
+        for (int ruleId : config.ruleIds()) {
+            var stored = rules.find(empresa, ruleId);
+            var compiled = stored.definicao().compile();
+            conditions += compiled.leafCount();
+            if (conditions > MAX_AGENT_CONDITIONS)
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A política aceita até 400 condições de regras personalizadas.");
+            used.put(ruleId, new PolicyConfig.AgentRule(ruleId, stored.revisao(), stored.nome(), compiled.agentWhen()));
+        }
+        var document = config.agentDocument(version, used);
+        try {
+            if (mapper.writeValueAsBytes(document).length > MAX_AGENT_DOCUMENT_BYTES)
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O documento da política do agente excede 64 KiB.");
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Não foi possível serializar a política do agente.", e);
+        }
+        return document;
     }
 
     /** Nova versão de cada política cuja versão atual usa a regra (chamado quando a regra é editada). */

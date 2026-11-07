@@ -23,6 +23,8 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         Converters = { new JsonStringEnumConverter() }
     };
     private const int MaxDocumentBytes = 64 * 1024;
+    // O envelope e a serialização local (campos padrão e escapes) podem ser maiores que a resposta HTTP.
+    private const int MaxCacheBytes = 1024 * 1024;
     private const int CacheFormat = 3;
 
     private readonly HttpClient _http;
@@ -88,7 +90,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                 }
                 response.EnsureSuccessStatusCode();
                 await using var content = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
-                var document = JsonSerializer.Deserialize<PolicyDocument>(await ReadBoundedAsync(content, deadline.Token)
+                var document = JsonSerializer.Deserialize<PolicyDocument>(await ReadBoundedAsync(content, MaxDocumentBytes, deadline.Token)
                     .ConfigureAwait(false), JsonOptions) ?? throw new JsonException("Política vazia.");
                 var policy = document.ToPolicy();
                 policy.EnsureValid();
@@ -170,7 +172,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
             ProtectedPolicyAcl.VerifyPolicyFile(_cacheFile);
         }
         await using var stream = File.OpenRead(_cacheFile);
-        var cache = JsonSerializer.Deserialize<CacheFile>(await ReadBoundedAsync(stream, cancellationToken)
+        var cache = JsonSerializer.Deserialize<CacheFile>(await ReadBoundedAsync(stream, MaxCacheBytes, cancellationToken)
             .ConfigureAwait(false), JsonOptions) ?? throw new JsonException("Cache vazio.");
         // O mesmo servidor e id numérico podem ser reutilizados depois de um novo cadastro.
         if (cache.Format != CacheFormat || cache.Server != _identity.Server.AbsoluteUri ||
@@ -209,7 +211,9 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                     await JsonSerializer.SerializeAsync(stream, cache,
                         JsonOptions, cancellationToken).ConfigureAwait(false);
                     await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    if (stream.Length > MaxCacheBytes) throw new JsonException("Cache da política excede o limite.");
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporary, fullPath, overwrite: true);
                 return true;
             }
@@ -236,14 +240,14 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         }
     }
 
-    private static async Task<byte[]> ReadBoundedAsync(Stream stream, CancellationToken token)
+    private static async Task<byte[]> ReadBoundedAsync(Stream stream, int maxBytes, CancellationToken token)
     {
         using var buffer = new MemoryStream();
         byte[] chunk = new byte[4096];
         int count;
         while ((count = await stream.ReadAsync(chunk, token).ConfigureAwait(false)) != 0)
         {
-            if (buffer.Length + count > MaxDocumentBytes) throw new JsonException("Política excede o limite de leitura.");
+            if (buffer.Length + count > maxBytes) throw new JsonException("Política excede o limite de leitura.");
             buffer.Write(chunk, 0, count);
         }
         return buffer.ToArray();
