@@ -105,6 +105,9 @@ o host não tem política (`404`). Sem console alcançável, vale a última pol�
 Após trocar o cadastro ou atualizar de um cache antigo sem vínculo, vale a política local até obter a política
 do console para o cadastro atual.
 
+O documento remoto tem limite de 64 KiB. O cache local tem um limite separado para comportar o envelope de
+identidade e a representação JSON usada no disco.
+
 ## Cadastro no console
 
 Como administrador, com um token gerado no console (Configurações → Tokens de cadastro):

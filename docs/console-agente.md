@@ -180,6 +180,10 @@ e `grupoValidado` (o grupo da regex cujos dígitos vão para o validador; 0 = a 
 `.` vira `[^\n]`, `\w` vira `[\p{L}\p{N}_]`...) e recusa padrões que casam com texto vazio. Cada regra traz pelo menos
 um exemplo que deve ser sinalizado e um que não deve, e o servidor os confere. Publicar uma política com regras para
 máquinas cujo agente não informou `formato_regras` ≥ 1 no heartbeat é recusado com `409`, com a lista das máquinas.
+
+O documento enviado ao agente tem até 64 KiB em UTF-8 e a política pode usar até 400 condições folha somadas entre
+as regras ativas. A criação e a edição de políticas conferem os limites antes de confirmar a versão. A edição de uma
+regra em uso também é recusada com `400` se exceder um desses limites em qualquer política que a usa.
 Editar uma regra cria uma versão nova de cada política que a usa. O agente ainda recusa uma versão cuja regra não
 compila e continua na anterior, como rede de segurança.
 

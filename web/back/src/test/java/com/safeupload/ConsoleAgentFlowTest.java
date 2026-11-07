@@ -164,6 +164,56 @@ class ConsoleAgentFlowTest {
             Map.entry("elapsedMs", 3), Map.entry("channel", "File"));
     }
 
+    private Map<String, Object> policyUsing(String name, Map<String, String> rules) {
+        var base = new java.util.HashMap<>(policyRequest(name, false, "bloquear"));
+        var config = new java.util.HashMap<>((Map<String, Object>) base.get("configuracao"));
+        config.put("regrasPersonalizadas", Map.copyOf(rules));
+        base.put("configuracao", config);
+        return base;
+    }
+
+    private static Map<String, Object> ruleWithConditions(String name, List<?> leaves) {
+        return Map.of("nome", name, "quando", Map.of("todos", leaves), "exemplos", Map.of(
+            "sinalizar", List.of("marca comum"), "naoSinalizar", List.of("texto livre")));
+    }
+
+    private void verifyPolicyBudgets(MockHttpSession root) throws Exception {
+        var enabled = new java.util.LinkedHashMap<String, String>();
+        var leaf = Map.of("contem", List.of("marca comum"));
+        for (int i = 1; i <= 20; i++) {
+            var rule = ruleWithConditions("Condições " + i, java.util.Collections.nCopies(20, leaf));
+            int id = body(call(post("/regras").session(root), rule, 201)).get("id").asInt();
+            enabled.put(String.valueOf(id), "bloquear");
+        }
+        var saved = body(call(post("/politicas").session(root), policyUsing("Limite de condições", enabled), 201));
+        int policy = saved.get("id").asInt(), version = saved.get("versao").asInt();
+        var extra = ruleWithConditions("Uma condição adicional", List.of(leaf));
+        int extraId = body(call(post("/regras").session(root), extra, 201)).get("id").asInt();
+        enabled.put(String.valueOf(extraId), "bloquear");
+        assertThat(body(call(put("/politicas/" + policy).session(root),
+            policyUsing("Limite de condições", enabled), 400)).get("mensagem").asText()).contains("400");
+        assertThat(body(call(get("/politicas/" + policy).session(root), null, 200)).get("versao").asInt()).isEqualTo(version);
+
+        var terms = new java.util.ArrayList<String>();
+        terms.add("marca comum");
+        for (int i = 0; i < 49; i++) terms.add("marca " + "x".repeat(77) + i);
+        var oversized = ruleWithConditions("Uma condição adicional", java.util.Collections.nCopies(20, Map.of("contem", terms)));
+        var small = body(call(post("/politicas").session(root),
+            policyUsing("Limite de bytes", Map.of(String.valueOf(extraId), "alertar")), 201));
+        assertThat(body(call(put("/regras/" + extraId).session(root), oversized, 400))
+            .get("mensagem").asText()).contains("64 KiB");
+        assertThat(body(call(get("/politicas/" + small.get("id").asInt()).session(root), null, 200))
+            .get("versao").asInt()).isEqualTo(small.get("versao").asInt());
+        assertThat(body(call(get("/regras/" + extraId).session(root), null, 200)).get("revisao").asInt()).isEqualTo(1);
+
+        var standalone = new java.util.HashMap<>(oversized);
+        standalone.put("nome", "Regra que ultrapassa o tamanho");
+        int large = body(call(post("/regras").session(root), standalone, 201)).get("id").asInt();
+        assertThat(body(call(post("/politicas").session(root),
+            policyUsing("Publicação excessiva", Map.of(String.valueOf(large), "bloquear")), 400))
+            .get("mensagem").asText()).contains("64 KiB");
+    }
+
     @Test
     void consoleAndAgentWorkTogetherInsideOneCompany() throws Exception {
         // Primeiro cadastro: empresa A + root.
@@ -312,6 +362,7 @@ class ConsoleAgentFlowTest {
         mixed.put("customRules", List.of("Regra de bloqueio", "Regra de alerta"));
         var mixedReceipt = body(agentCall("POST", "events", agent, Map.of("events", List.of(mixed)), 200));
         assertThat(mixedReceipt.get("acceptedEvents").asInt()).isEqualTo(1);
+        verifyPolicyBudgets(root);
 
         // Assinatura: corpo trocado, replay, relógio fora da janela e host revogado são recusados.
         byte[] content = json.writeValueAsBytes(Map.of("host", host("PC-FIN-01")));
