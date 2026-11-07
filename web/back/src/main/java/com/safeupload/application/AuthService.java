@@ -123,7 +123,7 @@ public class AuthService {
     }
 
     @Transactional(transactionManager = "acessoTransactionManager")
-    public DefaultPostResponse normalRegisterUsuario (UsuarioRegister request){
+    public DefaultPostResponse normalRegisterUsuario (UsuarioRegister request, String role, String criadoPor){
         Empresa empresa = empresaRepository.findById(request.fk_id_empresa())
             .orElseThrow(() -> new DatabaseErrorException("Empresa não encontrada."));
 
@@ -139,8 +139,8 @@ public class AuthService {
             empresa,
             enderecoUsuario,
             0,
-            request.role(),
-            request.criado_por(),
+            role,
+            criadoPor,
             LocalDateTime.now(clock)
         );
 

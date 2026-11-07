@@ -45,80 +45,22 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
             )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers(
-                    "/auth/decision",
-                    "/auth/login",
-                    "/auth/firstregister",
-                    "/agent/api/**"
-                ).permitAll()
+                .requestMatchers("/auth/decision", "/auth/login", "/auth/firstregister", "/error").permitAll()
+                // O agente não tem sessão: AgentAuthFilter confere a assinatura Ed25519 de cada requisição.
+                .requestMatchers("/agent/**").permitAll()
                 .requestMatchers("/auth/me", "/auth/logout").authenticated()
-                .requestMatchers("/painel", "/auditoria", "/endpoints").hasAnyRole("ADMIN", "ROOT")
-                .requestMatchers("/admin/**", "/auth/normalregister/**", "/politicas", "/politicas/**")
-                    .hasAnyRole("ADMIN", "ROOT")
-                .anyRequest().permitAll()
+                .requestMatchers("/auth/normalregister/empresa/set").hasRole("ROOT")
+                .anyRequest().hasAnyRole("ADMIN", "ROOT")
             )
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable())
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             )
+            // Sem token CSRF: o cookie de sessão é SameSite=Lax e a API só aceita JSON (exige preflight entre origens,
+            // e não há CORS liberado). O agente não usa cookie.
             .csrf(csrf -> csrf.disable());
 
         return http.build();
     }
-
-    /*
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(
-                    "/auth/decision",
-                    "/auth/login",
-                    "/auth/firstregister",
-                    "/agent/api/**"
-                ).permitAll()
-                .requestMatchers("/admin/**").authenticated()
-                .requestMatchers(
-                    "/auth/normalregister/**"
-                ).authenticated()
-                .anyRequest().permitAll()
-            )
-            .formLogin(form -> form.disable())
-            .httpBasic(basic -> basic.disable())
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(
-                    SessionCreationPolicy.IF_REQUIRED
-                )
-            );
-
-        return http.build();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-
-        config.setAllowedOrigins(
-            List.of("http://localhost:4200")
-        );
-
-        config.setAllowedMethods(
-            List.of("GET", "POST", "PUT", "DELETE", "OPTIONS")
-        );
-
-        config.setAllowedHeaders(List.of("*"));
-
-        config.setAllowCredentials(true);
-
-        UrlBasedCorsConfigurationSource source =
-            new UrlBasedCorsConfigurationSource();
-
-        source.registerCorsConfiguration("/**", config);
-
-        return source;
-    }
-*/
-
 }

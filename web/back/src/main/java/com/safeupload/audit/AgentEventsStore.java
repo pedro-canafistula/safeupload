@@ -32,7 +32,8 @@ public class AgentEventsStore {
         this.mapper = mapper;
     }
 
-    public AuditContracts.Receipt accept(AuditContracts.Batch batch) {
+    /** hostId vem da assinatura (AgentAuthFilter); o endpointId do corpo é só um rótulo. */
+    public AuditContracts.Receipt accept(AuditContracts.Batch batch, int hostId) {
         // execute() returns only after commit; a database failure never acknowledges a batch.
         return transaction.execute(status -> {
             for (var event : batch.events()) {
@@ -40,24 +41,25 @@ public class AgentEventsStore {
                 document.remove("fileNameValid");
                 String payload = document.toString();
                 store("audit:" + event.eventId(), "audit", event.eventId().toString(),
-                    event.endpointId(), event.occurredAtUtc().toInstant(), payload, batch);
+                    event.endpointId(), event.occurredAtUtc().toInstant(), payload, batch, hostId);
             }
             for (var override : batch.overrides()) {
                 String payload = json(override);
                 // The agent can send several distinct justifications for the same event.
                 store("override:" + sha256(payload), "override", override.eventId().toString(),
-                    override.endpointId(), override.occurredAtUtc().toInstant(), payload, batch);
+                    override.endpointId(), override.occurredAtUtc().toInstant(), payload, batch, hostId);
             }
             return new AuditContracts.Receipt(batch.events().size(), batch.overrides().size());
         });
     }
 
     private void store(String key, String kind, String eventId, String endpointId,
-                       Instant occurredAt, String payload, AuditContracts.Batch batch) {
+                       Instant occurredAt, String payload, AuditContracts.Batch batch, int hostId) {
         var previous = jdbc.queryForList(
-            "SELECT payload FROM agent_audit_ingest WHERE record_key = ?", String.class, key);
+            "SELECT payload, fk_id_host FROM agent_audit_ingest WHERE record_key = ?", key);
         if (!previous.isEmpty()) {
-            if (!previous.getFirst().equals(payload)) {
+            var row = previous.getFirst();
+            if (!payload.equals(row.get("payload")) || ((Number) row.get("fk_id_host")).intValue() != hostId) {
                 throw new ResponseStatusException(CONFLICT, "Evento já recebido com conteúdo diferente.");
             }
             return;
@@ -66,10 +68,10 @@ public class AgentEventsStore {
         // non-2xx through the existing exception handler; a subsequent retry is idempotent.
         jdbc.update("""
             INSERT INTO agent_audit_ingest
-            (record_key, kind, event_id, endpoint_id, occurred_at_utc, received_at_utc,
+            (record_key, kind, event_id, fk_id_host, endpoint_id, occurred_at_utc, received_at_utc,
              schema_version, sender_hostname, agent_version, payload)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, key, kind, eventId, endpointId, Timestamp.from(occurredAt), Timestamp.from(Instant.now()),
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, key, kind, eventId, hostId, endpointId, Timestamp.from(occurredAt), Timestamp.from(Instant.now()),
             batch.schemaVersion() == null ? 1 : batch.schemaVersion(),
             batch.hostname(), batch.agentVersion(), payload);
     }

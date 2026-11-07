@@ -8,6 +8,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.Map;
@@ -106,4 +107,17 @@ public class ApiExceptionHandler {
     }
 
 
+
+    /* Erros com status explícito (404, 409, 403...) levam a mensagem para a tela. */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleStatus(ResponseStatusException e) {
+        int status = e.getStatusCode().value();
+        return ResponseEntity
+            .status(status)
+            .body(Map.of(
+                "status", status,
+                "erro", "ERRO_REQUISICAO",
+                "mensagem", e.getReason() == null ? "Requisição recusada." : e.getReason()
+            ));
+    }
 }
