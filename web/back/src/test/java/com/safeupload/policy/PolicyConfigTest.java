@@ -19,7 +19,7 @@ class PolicyConfigTest {
 
     static PolicyConfig config(Map<String, String> categories) {
         return new PolicyConfig(categories, List.of("C:\\Dados\\Financeiro\\", "\\\\srv\\publico"), true, false,
-            List.of("TXT", ".docx", ".txt"), 100, 900, true, "bloquear");
+            List.of("TXT", ".docx", ".txt"), 100, 900, true, "bloquear", null);
     }
 
     @Test void translatesActionsScopesAndLimitsToTheAgentDocument() {
@@ -52,12 +52,12 @@ class PolicyConfigTest {
         wrong.put("cpf", "talvez");
         assertThatThrownBy(() -> config(wrong).validated()).isInstanceOf(ResponseStatusException.class);
         for (String folder : List.of("relativo\\pasta", "C:", "\\\\srv", "C:\\a|b", "D:/barra")) {
-            var bad = new PolicyConfig(categories("bloquear"), List.of(folder), true, true, List.of(".txt"), 1, 5, false, "desligado");
+            var bad = new PolicyConfig(categories("bloquear"), List.of(folder), true, true, List.of(".txt"), 1, 5, false, "desligado", null);
             assertThatThrownBy(bad::validated).as(folder).isInstanceOf(ResponseStatusException.class);
         }
-        var noExtensions = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(), 1, 5, false, "desligado");
+        var noExtensions = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(), 1, 5, false, "desligado", null);
         assertThatThrownBy(noExtensions::validated).isInstanceOf(ResponseStatusException.class);
-        var tooBig = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(".txt"), 5000, 5, false, "desligado");
+        var tooBig = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(".txt"), 5000, 5, false, "desligado", null);
         assertThatThrownBy(tooBig::validated).isInstanceOf(ResponseStatusException.class);
     }
 }

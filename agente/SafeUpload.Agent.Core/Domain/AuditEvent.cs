@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace SafeUpload.Agent.Core.Domain;
 
@@ -62,6 +62,16 @@ public sealed record AuditEvent(
     /// <summary>Public key of the enrollment that owned the event when it was created. Local metadata only.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ConsoleEnrollment { get; init; }
+
+    /// <summary>Nomes das regras personalizadas que casaram; null quando nenhuma.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? CustomRules { get; init; }
+
+    public static IReadOnlyList<string>? RuleNames(IEnumerable<Finding> findings)
+    {
+        var names = findings.Select(static f => f.RuleName).OfType<string>().Distinct(StringComparer.Ordinal).Take(10).ToList();
+        return names.Count == 0 ? null : names;
+    }
 }
 
 /// <summary>

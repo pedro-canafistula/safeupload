@@ -68,8 +68,12 @@ public sealed record Policy(
     bool AuditOnly = false,
     bool OverrideAllowed = false,
     ClipboardPolicy? Clipboard = null,
-    IReadOnlySet<Category>? AlertCategories = null)
+    IReadOnlySet<Category>? AlertCategories = null,
+    CustomRuleSet? CustomRules = null)
 {
+    /// <summary>Regras personalizadas compiladas (vazio quando a política não tem nenhuma).</summary>
+    public CustomRuleSet Rules => CustomRules ?? CustomRuleSet.Empty;
+
     private static readonly IReadOnlySet<Category> NoCategories = new HashSet<Category>();
 
     /// <summary>Categorias que só alertam (vazio quando a política não define nenhuma).</summary>

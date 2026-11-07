@@ -104,7 +104,12 @@ public sealed class AgentApiClient
     private sealed record HeartbeatBody(
         [property: JsonPropertyName("host")] AgentHeartbeatHost Host,
         [property: JsonPropertyName("politica_aplicada")] int? AppliedPolicy,
-        [property: JsonPropertyName("versao_agente")] string AgentVersion);
+        [property: JsonPropertyName("versao_agente")] string AgentVersion)
+    {
+        /// <summary>Formato de regras personalizadas que este agente entende; o servidor não publica um mais novo.</summary>
+        [JsonPropertyName("formato_regras")]
+        public int RulesFormat => SafeUpload.Agent.Core.Domain.CustomRuleSet.SupportedFormat;
+    }
 }
 
 /// <summary>Erro sanitizado: não guarda URL, corpo HTTP, mensagem do servidor ou exceção interna.</summary>

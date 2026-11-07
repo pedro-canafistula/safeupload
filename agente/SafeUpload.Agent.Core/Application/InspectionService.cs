@@ -443,7 +443,7 @@ public sealed class InspectionService
                     ? new(OpenReader, maximumCharacters: 2 * 1024 * 1024) : null;
                 Func<Task<TextReader>> readers = replay is null ? OpenReader : replay.OpenAsync;
                 var findings = await StreamingContentScanner.ScanAsync(readers,
-                    policy.ActiveCategories, cancellationToken).ConfigureAwait(false);
+                    policy.ActiveCategories, cancellationToken, policy.Rules).ConfigureAwait(false);
                 return (findings, null, null);
             }
             text = await extractor.ExtractAsync(input, cancellationToken).ConfigureAwait(false);
@@ -451,7 +451,7 @@ public sealed class InspectionService
 
         // O que sai daqui já é só achado mascarado. O texto em claro não
         // atravessa esta fronteira.
-        return (ContentScanner.Scan(text, policy.ActiveCategories), fingerprint, null);
+        return (ContentScanner.Scan(text, policy.ActiveCategories, policy.Rules), fingerprint, null);
     }
 
     private static FileStream OpenInspectionInput(string path) => new(path, FileMode.Open,
@@ -568,7 +568,8 @@ public sealed class InspectionService
             result.PolicyVersion,
             result.ElapsedMs,
             Dispatched: false,
-            PublishedSha256Hex: publishedSha256Hex) { OwnerSid = operation.AuditOwnerSid };
+            PublishedSha256Hex: publishedSha256Hex)
+            { OwnerSid = operation.AuditOwnerSid, CustomRules = AuditEvent.RuleNames(result.Findings) };
     }
 
     private async Task<AuditEvent?> AuditAsync(FileOperation operation, InspectionResult result,

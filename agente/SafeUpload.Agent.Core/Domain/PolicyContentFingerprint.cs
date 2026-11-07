@@ -32,6 +32,7 @@ public static class PolicyContentFingerprint
             var alerts = policy.AlertOnlyCategories.Order().ToArray();
             writer.Write(alerts.Length);
             foreach (var category in alerts) writer.Write((int)category);
+            writer.Write(policy.Rules.Canonical);
             var clipboard = policy.EffectiveClipboard;
             writer.Write((int)clipboard.Mode);
             WriteStrings(writer, clipboard.EgressDestinations);

@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using SafeUpload.Agent.App.Notifications;
 using SafeUpload.Agent.App.ViewModels;
@@ -94,7 +94,7 @@ public partial class BlockNotificationWindow : Window
 
         foreach (var finding in findings)
         {
-            var view = new FindingViewModel(CategoryLabels.Describe(finding.Category), finding.MaskedSnippet);
+            var view = new FindingViewModel(CategoryLabels.Describe(finding), finding.MaskedSnippet);
 
             // Dez arquivos com o mesmo CPF renderiam dez linhas idênticas.
             // Repetir o mesmo achado não acrescenta informação nenhuma.
@@ -104,9 +104,11 @@ public partial class BlockNotificationWindow : Window
             }
         }
 
+        // O cabeçalho mostra só o nome; o caminho inteiro fica na dica.
         SummaryText.Text = _fileNames.Count == 1
-            ? _fileNames[0]
+            ? ShortName(_fileNames[0])
             : $"{_fileNames.Count} arquivos restritos";
+        SummaryText.ToolTip = string.Join("\n", _fileNames);
 
         // A notificação agrega vários bloqueios. A justificativa sempre
         // nomeia o evento mais recente para não conceder uma exceção a um
@@ -143,13 +145,15 @@ public partial class BlockNotificationWindow : Window
         QuarantineText.Visibility = quarantined || privateSeed ? Visibility.Visible : Visibility.Collapsed;
         QuarantineText.Text = privateSeed ? StagedSeedBlockPresentation.Explanation : staged
             ? handbackVerified == true && !string.IsNullOrWhiteSpace(handbackPath)
-                ? $"Versão retida em: {handbackPath}\nSHA-256: {snapshotSha256Hex ?? "indisponível"}"
+                ? $"Esta versão não foi enviada ao destino e continua em {handbackPath}." +
+                  (snapshotSha256Hex is { Length: > 12 } sha ? $"\nVersão {sha[..12].ToLowerInvariant()}…" : "")
                 : "Não foi possível devolver o arquivo com segurança. A versão permanece no staging protegido do SafeUpload e não foi enviada ao destino."
             : "O arquivo foi retirado da pasta monitorada e guardado na pasta de bloqueados do SafeUpload.";
+        QuarantineText.ToolTip = staged && snapshotSha256Hex is not null ? "SHA-256 " + snapshotSha256Hex : null;
         JustificationPanel.Visibility = justificationEventId is null
             ? Visibility.Collapsed
             : Visibility.Visible;
-        JustificationTargetText.Text = $"Justificar: {fileName}";
+        JustificationTargetText.Text = $"Justificativa para {ShortName(fileName)}";
         JustificationInput.Text = string.Empty;
         JustificationInput.IsEnabled = true;
         JustificationStatusText.Text = string.Empty;
@@ -175,6 +179,9 @@ public partial class BlockNotificationWindow : Window
         Left = area.Right - Width - ScreenMargin;
         Top = area.Bottom - ActualHeight - ScreenMargin;
     }
+
+    private static string ShortName(string path) =>
+        System.IO.Path.GetFileName(path) is { Length: > 0 } name ? name : path;
 
     private void Acknowledge_Click(object sender, RoutedEventArgs e) => Close();
 

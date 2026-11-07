@@ -8,8 +8,9 @@ import { finalize } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { mensagemErro } from '../../core/load-state';
 import {
-  AcaoCategoria, CategoriaCodigo, ModoClipboard, PoliticaConfiguracao, PoliticaDetalhe, PoliticaRequest, categoriasPolitica
+  AcaoCategoria, CategoriaCodigo, ModoClipboard, PoliticaConfiguracao, PoliticaDetalhe, PoliticaRequest, RegraResumo, categoriasPolitica
 } from '../../core/models';
+import { descrever } from '../regras/regra-texto';
 
 const EXTENSOES_PADRAO = ['.txt', '.csv', '.docx', '.xlsx', '.pdf', '.pptx', '.zip'];
 
@@ -17,7 +18,7 @@ function configuracaoInicial(): PoliticaConfiguracao {
   return {
     categorias: Object.fromEntries(categoriasPolitica.map(c => [c.codigo, 'bloquear'])) as Record<CategoriaCodigo, AcaoCategoria>,
     pastas: [], pendrives: true, rede: false, extensoes: EXTENSOES_PADRAO, tamanhoMaximoMb: 100,
-    tempoLimiteSegundos: 900, permitirJustificativa: false, clipboard: 'desligado'
+    tempoLimiteSegundos: 900, permitirJustificativa: false, clipboard: 'desligado', regrasPersonalizadas: {}
   };
 }
 
@@ -55,8 +56,21 @@ export class PoliticaEditorComponent {
   extensoesTexto = EXTENSOES_PADRAO.join(', ');
   versao: number | null = null;
   historico: PoliticaDetalhe['historico'] = [];
+  /** Regras da empresa (GET /regras); null enquanto carrega ou se falhou. */
+  regras: RegraResumo[] | null = null;
+  erroRegras = '';
+  /** Id da regra → ação nesta política. Começa com o que a política já tem, para não perder regras se a lista falhar. */
+  acoesRegras: Record<string, AcaoCategoria> = {};
+  readonly descreverRegra = descrever;
 
   constructor() {
+    this.api.listarRegras().pipe(takeUntilDestroyed()).subscribe({
+      next: regras => {
+        this.regras = regras;
+        this.completarRegras();
+      },
+      error: (erro: HttpErrorResponse) => this.erroRegras = mensagemErro(erro, 'Não foi possível carregar as regras personalizadas.')
+    });
     // Depois de criar, a rota muda de /politicas/nova para /politicas/:id e este componente é reaproveitado.
     inject(ActivatedRoute).paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
       const id = Number(params.get('id'));
@@ -95,8 +109,9 @@ export class PoliticaEditorComponent {
       this.erro = 'Revise os campos destacados.';
       return;
     }
-    if (Object.values(this.config.categorias).every(acao => acao === 'ignorar')) {
-      this.erro = 'Pelo menos uma categoria precisa bloquear ou alertar.';
+    const regrasPersonalizadas = Object.fromEntries(Object.entries(this.acoesRegras).filter(([, acao]) => acao !== 'ignorar'));
+    if (Object.values(this.config.categorias).every(acao => acao === 'ignorar') && !Object.keys(regrasPersonalizadas).length) {
+      this.erro = 'Pelo menos uma categoria ou regra precisa bloquear ou alertar.';
       return;
     }
     const payload: PoliticaRequest = {
@@ -107,7 +122,8 @@ export class PoliticaEditorComponent {
         pastas: this.pastasTexto.split(/\r?\n/).map(pasta => pasta.trim()).filter(Boolean),
         extensoes: this.extensoesTexto.split(/[\s,;]+/).map(extensao => extensao.trim()).filter(Boolean),
         tamanhoMaximoMb: Number(this.config.tamanhoMaximoMb),
-        tempoLimiteSegundos: Number(this.config.tempoLimiteSegundos)
+        tempoLimiteSegundos: Number(this.config.tempoLimiteSegundos),
+        regrasPersonalizadas
       }
     };
     this.salvando = true;
@@ -134,5 +150,12 @@ export class PoliticaEditorComponent {
     this.config = { ...config, categorias: { ...configuracaoInicial().categorias, ...config.categorias } };
     this.pastasTexto = config.pastas.join('\n');
     this.extensoesTexto = config.extensoes.join(', ');
+    this.acoesRegras = { ...config.regrasPersonalizadas };
+    this.completarRegras();
+  }
+
+  /** Regras que a política não usa aparecem como Ignorar. */
+  private completarRegras(): void {
+    for (const regra of this.regras ?? []) this.acoesRegras[regra.id] ??= 'ignorar';
   }
 }

@@ -15,6 +15,8 @@ const maquina: HostInfo = {
 let agente: AgenteFalso;
 let versaoPadrao = 0;
 let versaoGrupo = 0;
+const regra = 'Contratos do Projeto Atlas';
+let idRegra = 0;
 
 test.afterAll(async () => {
   await agente?.encerrar();
@@ -38,11 +40,11 @@ async function versaoNaMensagem(page: Page): Promise<number> {
 
 test('sem sessão, rotas administrativas e chamadas sem assinatura do agente são recusadas', async ({ request }) => {
   expect((await (await request.get(API + '/auth/decision')).json()).existemUsuarios).toBe(false);
-  for (const path of ['/admin/token', '/politicas', '/grupos', '/endpoints/1/revogar',
+  for (const path of ['/admin/token', '/politicas', '/grupos', '/endpoints/1/revogar', '/regras', '/regras/testar',
     '/auth/normalregister/empresa/set', '/auth/normalregister/usuario/set']) {
     expect((await request.post(API + path, { data: {} })).status(), path).toBe(401);
   }
-  for (const path of ['/painel', '/endpoints', '/auditoria', '/auditoria/exportar', '/admin/tokens', '/politicas', '/grupos',
+  for (const path of ['/painel', '/endpoints', '/auditoria', '/auditoria/exportar', '/admin/tokens', '/politicas', '/grupos', '/regras',
     '/auth/normalregister/empresa/list']) {
     expect((await request.get(API + path)).status(), path).toBe(401);
   }
@@ -150,7 +152,7 @@ test('políticas: padrão e de grupo; editar cria uma versão nova no histórico
       credenciais: 'bloquear', dados_saude: 'bloquear', dados_pessoais: 'bloquear', documentos_confidenciais: 'bloquear' },
     pastas: ['C:\\Dados\\Financeiro', '\\\\servidor\\publico'], pendrives: true, rede: true,
     extensoes: ['.txt', '.csv', '.docx'], tamanhoMaximoMb: 100, tempoLimiteSegundos: 900,
-    permitirJustificativa: true, clipboard: 'bloquear'
+    permitirJustificativa: true, clipboard: 'bloquear', regrasPersonalizadas: {}
   });
 
   await page.getByRole('link', { name: 'Voltar para políticas' }).click();
@@ -349,6 +351,161 @@ test('eventos assinados aparecem na auditoria com o nome da máquina; CSV e rela
   const completo = await todas;
   expect(completo.suggestedFilename()).toBe('auditoria-7-dias.csv');
   expect(await conteudo(completo)).toContain('"lento.txt"');
+});
+
+test('regras: criar pela tela com exemplos; exemplo errado impede salvar; Testar mostra cada exemplo', async ({ page }) => {
+  await entrar(page, root.email, root.senha);
+  await page.getByRole('link', { name: 'Regras', exact: true }).click();
+  await expect(page).toHaveURL(/\/regras$/);
+  await expect(page.getByText(/Nenhuma regra personalizada/)).toBeVisible();
+  await page.getByRole('link', { name: 'Nova regra' }).click();
+  await expect(page.getByRole('heading', { name: 'Nova regra' })).toBeVisible();
+  await page.getByLabel('Nome', { exact: true }).fill(regra);
+  await page.getByLabel('Descrição').fill('Contratos CT do projeto');
+  const condicao = (n: number) => page.getByRole('group', { name: `Condição ${n}`, exact: true });
+  await condicao(1).getByLabel(/Palavras ou frases/).fill('projeto atlas');
+  await page.getByRole('button', { name: 'Adicionar condição' }).click();
+  await condicao(2).getByLabel('Tipo').selectOption({ label: 'Padrão (máscara)' });
+  await condicao(2).getByLabel('Máscara').fill('CT-####/##');
+  await condicao(2).getByLabel('Pelo menos (vezes)').fill('2');
+  await page.getByRole('button', { name: 'Adicionar condição' }).click();
+  await condicao(3).getByLabel('Tipo').selectOption({ label: 'Não contém palavras' });
+  await condicao(3).getByLabel(/Palavras ou frases/).fill('divulgação autorizada');
+  const comoTexto = 'contém "projeto atlas" E pelo menos 2× CT-####/## E NÃO contém "divulgação autorizada"';
+  await expect(page.getByRole('region', { name: 'Como texto' }).locator('.rule-preview')).toHaveText(comoTexto);
+
+  const devem = page.getByRole('group', { name: 'Exemplos que DEVEM ser sinalizados' });
+  const naoDevem = page.getByRole('group', { name: 'Exemplos que NÃO devem ser sinalizados' });
+  await devem.getByLabel('Exemplo 1', { exact: true }).fill('Projeto Atlas: contratos CT-2041/26 e CT-2042/26');
+  await naoDevem.getByLabel('Exemplo 1', { exact: true }).fill('Projeto Atlas: CT-2041/26 e CT-2042/26, divulgação autorizada');
+  await page.getByRole('button', { name: 'Adicionar exemplo que não deve ser sinalizado' }).click();
+  await naoDevem.getByLabel('Exemplo 2', { exact: true }).fill('PROJETO-ATLAS, contratos ct-1111/11 e CT-2222/22');
+  await page.getByRole('button', { name: 'Salvar regra' }).click();
+  await expect(page.getByRole('alert')).toHaveText('O exemplo 2 que não deve ser sinalizado foi.');
+  await expect(page).toHaveURL(/\/regras\/nova$/);
+
+  await page.getByRole('button', { name: 'Testar' }).click();
+  await expect(page.getByText(/^1 exemplo não se comporta como esperado/)).toBeVisible();
+  const resultado = (lista: typeof devem, n: number) => lista.locator('.example').nth(n).locator('.test-result');
+  await expect(resultado(devem, 0)).toContainText('✓ Sinalizado, como esperado');
+  await expect(resultado(devem, 0)).toContainText('Condição 2 · pelo menos 2× máscara CT-####/##: 2 ocorrências ✓');
+  await expect(resultado(naoDevem, 0)).toContainText('✓ Não sinalizado, como esperado');
+  await expect(resultado(naoDevem, 0)).toContainText('Condição 3 · NÃO contém "divulgacao autorizada": 1 ocorrência ✗');
+  await expect(resultado(naoDevem, 1)).toContainText('✗ Sinalizado, mas não deveria ser');
+  await expect(resultado(naoDevem, 1)).toHaveClass(/fail/);
+
+  // Condição inválida: o Testar mostra a mensagem do servidor.
+  await page.getByRole('button', { name: 'Adicionar condição' }).click();
+  await condicao(4).getByLabel('Tipo').selectOption({ label: 'Expressão regular' });
+  await condicao(4).getByLabel('Expressão regular').fill('^CT');
+  await expect(page.getByText('A regra ou os exemplos mudaram desde o último teste.')).toBeVisible();
+  await page.getByRole('button', { name: 'Testar' }).click();
+  await expect(page.locator('.test-bar').getByRole('alert')).toHaveText(
+    'Condição 4: Posição 1: âncoras ^ e $ não são aceitas (a regra procura no texto inteiro).');
+  await page.getByRole('button', { name: 'Remover condição 4' }).click();
+
+  await naoDevem.getByLabel('Exemplo 2', { exact: true }).fill('Projeto Atlas: só o contrato CT-2041/26');
+  await page.getByRole('button', { name: 'Testar' }).click();
+  await expect(page.getByText('Todos os exemplos se comportam como esperado.')).toBeVisible();
+  await page.getByRole('button', { name: 'Salvar regra' }).click();
+  await expect(page).toHaveURL(/\/regras$/);
+  await expect(page.getByText(`Regra ${regra} criada.`)).toBeVisible();
+  const linha = page.getByRole('table', { name: 'Regras personalizadas da empresa' }).getByRole('row').filter({ hasText: regra });
+  await expect(linha).toContainText('Contratos CT do projeto');
+  await expect(linha.locator('td').nth(1)).toHaveText(comoTexto);
+  await expect(linha.locator('td').nth(2)).toHaveText('1');
+  await expect(linha.locator('td').nth(3)).toContainText('root-e2e');
+  await expect(linha.locator('td').nth(4)).toHaveText('—');
+  idRegra = Number(/\/regras\/(\d+)$/.exec((await linha.getByRole('link', { name: regra, exact: true }).getAttribute('href'))!)![1]);
+  expect(idRegra).toBeGreaterThan(0);
+});
+
+test('regra numa política: 409 para agente sem formato_regras; o agente com formato 1 recebe a regra; editar a regra cria versão nova; regra em uso não é excluída', async ({ page, request }) => {
+  expect((await agente.heartbeat(versaoGrupo)).status()).toBe(200);
+  await entrar(page, root.email, root.senha);
+  await page.goto('/politicas');
+  await page.getByRole('link', { name: 'Financeiro E2E', exact: true }).first().click();
+  await expect(page).toHaveURL(/\/politicas\/\d+$/);
+  const idPolitica = Number(/\/politicas\/(\d+)$/.exec(page.url())![1]);
+  const naPolitica = page.getByRole('group', { name: 'Regra ' + regra, exact: true });
+  await expect(naPolitica.getByLabel('Ignorar')).toBeChecked();
+  await expect(naPolitica).toContainText('pelo menos 2× CT-####/##');
+  await naPolitica.getByLabel('Alertar').check();
+  await page.getByRole('button', { name: 'Salvar nova versão' }).click();
+  const recusa = page.getByRole('alert');
+  await expect(recusa).toContainText('Estas máquinas não entendem regras personalizadas');
+  await expect(recusa).toContainText(maquina.hostname);
+  expect((await (await agente.politica()).json()).version).toBe(versaoGrupo);
+
+  expect((await agente.heartbeat(versaoGrupo, 1)).status()).toBe(200);
+  await page.getByRole('button', { name: 'Salvar nova versão' }).click();
+  await expect(page.getByText(/Versão \d+ salva/)).toBeVisible();
+  const versaoComRegra = await versaoNaMensagem(page);
+  expect(versaoComRegra).toBeGreaterThan(versaoGrupo);
+  const documento = await (await agente.politica()).json();
+  expect(documento.version).toBe(versaoComRegra);
+  expect(documento.customRulesFormat).toBe(1);
+  expect(documento.customRules).toEqual([{ id: idRegra, revision: 1, name: regra, alert: true, when: { all: [
+    { words: ['projeto atlas'] },
+    { pattern: 'CT\\-[0-9][0-9][0-9][0-9]\\/[0-9][0-9]', ignoreCase: true, min: 2 },
+    { not: { words: ['divulgacao autorizada'] } }
+  ] } }]);
+  expect(documento.activeCategories).toContain('CustomRuleAlert');
+  expect(documento.alertCategories).toContain('CustomRuleAlert');
+  await entrarApi(request, root.email, root.senha);
+  expect((await (await request.get(`${API}/politicas/${idPolitica}`)).json()).configuracao.regrasPersonalizadas)
+    .toEqual({ [String(idRegra)]: 'alertar' });
+  await page.reload();
+  await expect(naPolitica.getByLabel('Alertar')).toBeChecked();
+
+  await page.getByRole('link', { name: 'Regras', exact: true }).click();
+  const linha = page.getByRole('table', { name: 'Regras personalizadas da empresa' }).getByRole('row').filter({ hasText: regra });
+  await expect(linha.locator('td').nth(4)).toHaveText('Financeiro E2E');
+  await page.getByRole('button', { name: 'Excluir ' + regra }).click();
+  await page.getByRole('button', { name: 'Confirmar exclusão' }).click();
+  await expect(page.getByRole('alert')).toHaveText('A regra é usada pelas políticas: Financeiro E2E.');
+  await expect(linha).toBeVisible();
+
+  await page.getByRole('link', { name: 'Editar ' + regra }).click();
+  await expect(page.getByText(/Revisão 1\. Usada por Financeiro E2E/)).toBeVisible();
+  const primeira = page.getByRole('group', { name: 'Condição 1', exact: true }).getByLabel(/Palavras ou frases/);
+  await expect(primeira).toHaveValue('projeto atlas');
+  await primeira.fill('projeto atlas, atlas project');
+  await page.getByRole('button', { name: 'Salvar regra' }).click();
+  await expect(page).toHaveURL(/\/regras$/);
+  await expect(page.getByText(`Regra ${regra} salva (revisão 2). As políticas que a usam ganharam uma versão nova.`)).toBeVisible();
+  await expect(linha.locator('td').nth(2)).toHaveText('2');
+  const editado = await (await agente.politica()).json();
+  expect(editado.version).toBeGreaterThan(versaoComRegra);
+  expect(editado.customRules[0].revision).toBe(2);
+  expect(editado.customRules[0].when.all[0]).toEqual({ words: ['projeto atlas', 'atlas project'] });
+  versaoGrupo = editado.version;
+
+  await page.goto(`/politicas/${idPolitica}`);
+  await expect(page.getByText(`Versão atual v${versaoGrupo}`)).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Versões da política' }).locator('tbody tr').first())
+    .toContainText(`root-e2e (regra "${regra}" editada)`);
+});
+
+test('evento de regra personalizada aparece como "Regra: <nome>" no painel e na auditoria', async ({ page }) => {
+  const alerta = evento({ verdict: 'Approved', categories: ['CustomRuleAlert'], customRules: [regra], fileName: 'contrato-alerta.docx',
+    extension: '.docx', policyVersion: versaoGrupo });
+  const bloqueio = evento({ verdict: 'Blocked', categories: ['Cpf', 'CustomRule'], customRules: [regra], fileName: 'contrato-bloqueado.docx',
+    extension: '.docx', policyVersion: versaoGrupo });
+  const resposta = await agente.eventos([alerta, bloqueio]);
+  expect(resposta.status(), await resposta.text()).toBe(200);
+
+  await entrar(page, root.email, root.senha);
+  await expect(page.locator('.categories-card')).toContainText(`Regra: ${regra}: 1`);
+  await page.goto('/auditoria');
+  await expect(page.getByRole('cell', { name: `Regra: ${regra}`, exact: true })).toHaveCount(1);
+  await expect(page.getByRole('cell', { name: `CPF, Regra: ${regra}`, exact: true })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Detalhes de contrato-alerta.docx', exact: true }).click();
+  const detalhes = page.getByRole('region', { name: 'Detalhes de contrato-alerta.docx', exact: true });
+  await expect(detalhes.locator('div').filter({ has: page.getByText('Categorias', { exact: true }) }).locator('dd')).toHaveText(`Regra: ${regra}`);
+  await expect(detalhes).toContainText('com achados nas categorias indicadas');
+  await page.getByLabel('Buscar evento, usuário ou arquivo').fill('projeto atlas');
+  await expect(page.locator('app-event-table tbody tr:not(.details-row)')).toHaveCount(2);
 });
 
 test('revogar pede confirmação na tela e a máquina passa a receber 403', async ({ page }) => {

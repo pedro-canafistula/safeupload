@@ -100,6 +100,21 @@ public sealed class AuditHistoryTests : IDisposable
     }
 
     [Fact]
+    public void Custom_rule_categories_show_the_rule_names_like_the_console()
+    {
+        var item = Event() with { Categories = [Category.Cpf, Category.CustomRule, Category.CustomRuleAlert],
+            CustomRules = ["Contratos Atlas", "Planilhas RH"] };
+        var serialized = NotificationProtocol.Serialize(new HistoryNotification([item]));
+        var history = Assert.IsType<HistoryNotification>(NotificationProtocol.Deserialize(serialized.TrimEnd('\n')));
+        var model = new HistoryViewModel();
+        model.ApplyHistory(history);
+        Assert.Equal("CPF, Regra: Contratos Atlas, Regra: Planilhas RH", model.Events[0].Categories);
+        Assert.Equal("Regra: Contratos Atlas",
+            CategoryLabels.Describe(new Finding(Category.CustomRule, "CT-••••/26") { RuleName = "Contratos Atlas" }));
+        Assert.Equal("Regra da empresa", CategoryLabels.Describe(new Finding(Category.CustomRuleAlert, "x")));
+    }
+
+    [Fact]
     public void History_and_activity_have_limits_and_unavailable_is_distinct_from_empty()
     {
         var items = Enumerable.Range(0, 510).Select(_ => Event()).ToArray();

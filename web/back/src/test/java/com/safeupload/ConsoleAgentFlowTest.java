@@ -225,6 +225,51 @@ class ConsoleAgentFlowTest {
         String csv = call(get("/auditoria/exportar").session(root), null, 200).getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(csv).contains("\"'=planilha.txt\"").contains("\"Bloqueado\"").contains("PC-FIN-01");
 
+        // Regras personalizadas: exemplos conferidos antes de salvar; nada é publicado para agente que não entende.
+        var when = Map.of("todos", List.of(Map.of("contem", List.of("projeto atlas")), Map.of("mascara", "CT-####/##", "minimo", 2)));
+        var wrongRule = Map.of("nome", "Contratos do Projeto Atlas", "quando", when, "exemplos", Map.of(
+            "sinalizar", List.of("Projeto Atlas: CT-2041/26 e CT-2042/26"),
+            "naoSinalizar", List.of("Projeto Atlas: CT-1/26 e CT-3333/33 e CT-4444/44")));
+        assertThat(body(call(post("/regras").session(root), wrongRule, 400)).get("mensagem").asText())
+            .contains("não deve ser sinalizado");
+        var rule = Map.of("nome", "Contratos do Projeto Atlas", "quando", when, "exemplos", Map.of(
+            "sinalizar", List.of("Projeto Atlas: CT-2041/26 e CT-2042/26"), "naoSinalizar", List.of("Projeto Atlas: CT-2041/26")));
+        int ruleId = body(call(post("/regras").session(root), rule, 201)).get("id").asInt();
+        var tested = body(call(post("/regras/testar").session(root),
+            Map.of("quando", when, "textos", List.of("PROJETO ATLAS ct-1111/11 CT-2222/22", "nada")), 200));
+        assertThat(tested.get(0).get("matched").asBoolean()).isTrue();
+        assertThat(tested.get(1).get("matched").asBoolean()).isFalse();
+
+        var withRule = new java.util.HashMap<String, Object>(policyRequest("Financeiro", false, "bloquear"));
+        var config = new java.util.HashMap<String, Object>((Map<String, Object>) withRule.get("configuracao"));
+        config.put("regrasPersonalizadas", Map.of(String.valueOf(ruleId), "alertar"));
+        withRule.put("configuracao", config);
+        assertThat(body(call(put("/politicas/" + other).session(root), withRule, 409)).get("mensagem").asText())
+            .contains("não entendem regras personalizadas").contains("PC-FIN-01");
+        agentCall("POST", "heartbeat", agent, Map.of("host", host("PC-FIN-01"), "formato_regras", 1), 200);
+        int ruleVersion = body(call(put("/politicas/" + other).session(root), withRule, 200)).get("versao").asInt();
+        var ruleDocument = body(agentCall("GET", "policy", agent, null, 200));
+        assertThat(ruleDocument.get("version").asInt()).isEqualTo(ruleVersion);
+        assertThat(ruleDocument.get("customRulesFormat").asInt()).isEqualTo(1);
+        assertThat(ruleDocument.at("/customRules/0/name").asText()).isEqualTo("Contratos do Projeto Atlas");
+        assertThat(ruleDocument.at("/customRules/0/alert").asBoolean()).isTrue();
+        assertThat(ruleDocument.at("/customRules/0/when/all/1/pattern").asText()).isEqualTo("CT\\-[0-9][0-9][0-9][0-9]\\/[0-9][0-9]");
+        assertThat(ruleDocument.get("alertCategories").toString()).contains("CustomRuleAlert");
+        // Editar a regra cria uma versão nova da política; regra em uso não pode ser excluída.
+        call(put("/regras/" + ruleId).session(root), rule, 200);
+        assertThat(body(agentCall("GET", "policy", agent, null, 200)).get("version").asInt()).isGreaterThan(ruleVersion);
+        assertThat(body(agentCall("GET", "policy", agent, null, 200)).at("/customRules/0/revision").asInt()).isEqualTo(2);
+        call(delete("/regras/" + ruleId).session(root), null, 409);
+        assertThat(body(call(get("/regras").session(root), null, 200)).at("/0/politicas/0").asText()).isEqualTo("Financeiro");
+        // Evento bloqueado por regra aparece com o nome da regra no painel.
+        var ruleEvent = new java.util.HashMap<String, Object>(event("PC-FIN-01", "Blocked"));
+        ruleEvent.put("categories", List.of("CustomRule"));
+        ruleEvent.put("customRules", List.of("Contratos do Projeto Atlas"));
+        agentCall("POST", "events", agent, Map.of("schemaVersion", 1, "hostname", "PC-FIN-01", "agentVersion", "0.3.0",
+            "events", List.of(ruleEvent), "overrides", List.of()), 200);
+        assertThat(body(call(get("/painel").session(root), null, 200)).get("categoriasBloqueadas").toString())
+            .contains("Regra: Contratos do Projeto Atlas");
+
         // Assinatura: corpo trocado, replay, relógio fora da janela e host revogado são recusados.
         byte[] content = json.writeValueAsBytes(Map.of("host", host("PC-FIN-01")));
         long now = Instant.now().getEpochSecond();

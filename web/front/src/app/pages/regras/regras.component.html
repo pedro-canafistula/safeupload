@@ -1,0 +1,42 @@
+<header class="page-title">
+  <div><p class="eyebrow">REGRAS PERSONALIZADAS</p><h1>Regras de detecção</h1>
+    <p class="subtitle">Regras próprias da empresa: palavras, máscaras e expressões regulares, sozinhas ou combinadas. Uma regra só vale nas
+      políticas em que for ligada (Bloquear ou Alertar). Editar uma regra cria uma versão nova de cada política que a usa.</p></div>
+  <div class="page-actions"><a class="button primary" routerLink="/regras/nova">Nova regra</a></div>
+</header>
+
+<p role="alert" class="error-message" *ngIf="erro">{{ erro }}</p>
+<p role="status" class="success-message" *ngIf="mensagem">{{ mensagem }}</p>
+
+<ng-container *ngIf="state$ | async as state">
+  <p role="status" *ngIf="state.loading && !state.data">Carregando regras…</p>
+  <p role="alert" class="error-message" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
+  <div class="sections" *ngIf="state.data as regras"><section class="panel" aria-labelledby="titulo-regras">
+    <h2 id="titulo-regras">Regras</h2>
+    <p class="field-hint" *ngIf="!regras.length">Nenhuma regra personalizada. Crie a primeira e ligue-a numa política, de preferência em Alertar
+      até conferir na auditoria o que ela encontra.</p>
+    <div class="table-scroll" *ngIf="regras.length">
+      <table>
+        <caption class="sr-only">Regras personalizadas da empresa</caption>
+        <thead><tr><th scope="col">Nome</th><th scope="col">Como texto</th><th scope="col">Revisão</th><th scope="col">Atualizada</th>
+          <th scope="col">Políticas que usam</th><th scope="col">Ações</th></tr></thead>
+        <tbody><tr *ngFor="let regra of regras">
+          <td><a class="name-link" [routerLink]="['/regras', regra.id]">{{ regra.nome }}</a><small *ngIf="regra.descricao">{{ regra.descricao }}</small></td>
+          <td class="rule-text">{{ descrever(regra.quando) }}</td>
+          <td>{{ regra.revisao }}</td>
+          <td>{{ regra.atualizadaEm | date:'dd/MM/yyyy HH:mm' }}<small>por {{ regra.atualizadaPor }}</small></td>
+          <td>{{ regra.politicas.length ? regra.politicas.join(', ') : '—' }}</td>
+          <td><div class="actions">
+            <a class="button secondary" [routerLink]="['/regras', regra.id]" [attr.aria-label]="'Editar ' + regra.nome">Editar</a>
+            <button *ngIf="confirmando !== regra.id" type="button" class="button secondary danger" [attr.aria-label]="'Excluir ' + regra.nome"
+              (click)="confirmando = regra.id; limparAvisos()">Excluir</button>
+            <ng-container *ngIf="confirmando === regra.id">
+              <button type="button" class="button danger-solid" [disabled]="ocupado" (click)="excluir(regra)">Confirmar exclusão</button>
+              <button type="button" class="button secondary" (click)="confirmando = null">Cancelar</button>
+            </ng-container>
+          </div></td>
+        </tr></tbody>
+      </table>
+    </div>
+  </section></div>
+</ng-container>

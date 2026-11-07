@@ -1,0 +1,117 @@
+<header class="page-title">
+  <div><p class="eyebrow">REGRAS PERSONALIZADAS</p><h1>{{ id === null ? 'Nova regra' : 'Editar regra' }}</h1>
+    <p class="subtitle" *ngIf="id === null">Descreva o que a regra procura e dê exemplos de texto que devem e que não devem ser sinalizados.
+      O servidor confere os exemplos antes de salvar.</p>
+    <p class="subtitle" *ngIf="id !== null && revisao !== null">Revisão {{ revisao }}.
+      <ng-container *ngIf="politicas.length">Usada por {{ politicas.join(', ') }}: salvar cria uma versão nova de cada uma.</ng-container>
+      <ng-container *ngIf="!politicas.length">Nenhuma política usa esta regra.</ng-container></p></div>
+  <div class="page-actions"><a class="button secondary" routerLink="/regras">Voltar para regras</a></div>
+</header>
+
+<p role="status" *ngIf="carregando">Carregando regra…</p>
+<p role="alert" class="error-message" *ngIf="erroCarga">{{ erroCarga }}</p>
+<section class="panel" *ngIf="naoEditavel" aria-label="Regra não editável aqui">
+  <p class="warning-box">Esta regra usa combinações que este editor não monta (grupos dentro de grupos, ou "não" sobre máscara ou
+    expressão). Ela continua valendo nas políticas; para alterá-la, use a API (PUT /regras/{{ id }}).</p>
+  <p class="rule-preview">{{ descricaoSalva }}</p>
+</section>
+
+<form class="panel editor" *ngIf="!erroCarga && !naoEditavel && (id === null || revisao !== null)" #form="ngForm" autocomplete="off"
+  [class.tentou]="tentou" (ngSubmit)="salvar(form)" aria-label="Regra personalizada">
+  <div class="form-grid">
+    <label class="field">Nome<input name="nome" [(ngModel)]="nome" required maxlength="80" placeholder="Ex.: Contratos do Projeto Atlas" /></label>
+    <label class="field">Descrição<input name="descricao" [(ngModel)]="descricao" maxlength="300" placeholder="Opcional" /></label>
+  </div>
+
+  <fieldset class="group">
+    <legend>Condições</legend>
+    <label class="sentence">Sinalizar quando
+      <select name="modo" [(ngModel)]="modo" aria-label="Combinação das condições">
+        <option value="todos">todas</option>
+        <option value="algum">alguma</option>
+      </select>
+      das condições forem verdadeiras</label>
+    <p class="field-hint">Palavras e frases ignoram maiúsculas e acentos. Máscara: # = dígito, A = letra, o resto literal. Expressão regular:
+      sem lookaround, referências a grupo, ^ ou $.</p>
+
+    <fieldset class="condition-row" *ngFor="let condicao of condicoes; let i = index">
+      <legend>Condição {{ i + 1 }}</legend>
+      <div class="condition-fields">
+        <label class="field">Tipo
+          <select [name]="'tipo-' + i" [(ngModel)]="condicao.tipo" aria-label="Tipo">
+            <option *ngFor="let tipo of tipos" [value]="tipo.valor">{{ tipo.nome }}</option>
+          </select></label>
+        <label class="field grow" *ngIf="condicao.tipo === 'contem' || condicao.tipo === 'naoContem'">Palavras ou frases (uma por linha ou separadas por vírgula)
+          <textarea [name]="'palavras-' + i" rows="2" [(ngModel)]="condicao.palavras" required placeholder="projeto atlas"></textarea></label>
+        <label class="field grow" *ngIf="condicao.tipo === 'mascara'">Máscara
+          <input [name]="'mascara-' + i" [(ngModel)]="condicao.padrao" required maxlength="100" placeholder="CT-####/##" />
+          <small class="input-hint"># = dígito, A = letra</small></label>
+        <label class="field grow" *ngIf="condicao.tipo === 'regex'">Expressão regular
+          <input [name]="'regex-' + i" [(ngModel)]="condicao.padrao" required maxlength="500" class="mono" [placeholder]="exemploRegex" /></label>
+        <label class="field small">Pelo menos (vezes)
+          <input [name]="'minimo-' + i" type="number" min="1" max="1000" step="1" [(ngModel)]="condicao.minimo" /></label>
+        <label class="field" *ngIf="condicao.tipo === 'mascara' || condicao.tipo === 'regex'">Validador
+          <select [name]="'validador-' + i" [(ngModel)]="condicao.validador" aria-label="Validador">
+            <option value="">Nenhum</option>
+            <option *ngFor="let validador of validadores" [value]="validador.valor">{{ validador.nome }}</option>
+          </select></label>
+        <label class="field small" *ngIf="condicao.tipo === 'regex' && condicao.validador">Grupo validado
+          <input [name]="'grupo-' + i" type="number" min="0" max="9" step="1" [(ngModel)]="condicao.grupoValidado" />
+          <small class="input-hint">0 = ocorrência inteira</small></label>
+      </div>
+      <div class="condition-actions">
+        <label class="check" *ngIf="condicao.tipo === 'regex'"><input type="checkbox" [name]="'ignorarCaixa-' + i" [(ngModel)]="condicao.ignorarCaixa" /> Ignorar maiúsculas</label>
+        <button type="button" class="button secondary danger" [disabled]="condicoes.length === 1" (click)="removerCondicao(i)"
+          [attr.aria-label]="'Remover condição ' + (i + 1)">Remover</button>
+      </div>
+    </fieldset>
+    <button type="button" class="button secondary" [disabled]="condicoes.length >= maxCondicoes" (click)="adicionarCondicao()">Adicionar condição</button>
+    <small class="input-hint" *ngIf="condicoes.length >= maxCondicoes">No máximo {{ maxCondicoes }} condições.</small>
+
+    <section class="rule-preview-box" aria-labelledby="titulo-como-texto">
+      <h3 id="titulo-como-texto">Como texto</h3>
+      <p class="rule-preview">{{ comoTexto }}</p>
+    </section>
+  </fieldset>
+
+  <fieldset class="group">
+    <legend>Exemplos</legend>
+    <p class="field-hint">Pelo menos um de cada tipo, até {{ maxExemplos }}. Ao salvar, cada exemplo é conferido: se algum não se comportar
+      como o esperado, a regra não é salva.</p>
+    <div class="examples">
+      <fieldset class="example-list" *ngFor="let lista of listas">
+        <legend>{{ lista === 'sinalizar' ? 'Exemplos que DEVEM ser sinalizados' : 'Exemplos que NÃO devem ser sinalizados' }}</legend>
+        <div class="example" *ngFor="let exemplo of exemplos[lista]; let i = index; trackBy: trackIndice">
+          <label class="field">Exemplo {{ i + 1 }}
+            <textarea [name]="lista + '-' + i" rows="3" maxlength="5000" required [(ngModel)]="exemplos[lista][i]"></textarea></label>
+          <div class="example-footer">
+            <ng-container *ngIf="resultado(lista, i) as r">
+              <div class="test-result" [class.ok]="esperado(lista, r)" [class.fail]="!esperado(lista, r)">
+                <strong>{{ esperado(lista, r) ? '✓' : '✗' }} {{ r.matched ? 'Sinalizado' : 'Não sinalizado' }}{{ esperado(lista, r) ? ', como esperado' : (lista === 'sinalizar' ? ', mas deveria ser' : ', mas não deveria ser') }}</strong>
+                <ul><li *ngFor="let c of r.condicoes; let n = index">{{ linhaResultado(n, c) }}</li></ul>
+              </div>
+            </ng-container>
+            <button type="button" class="button secondary danger" [disabled]="exemplos[lista].length === 1" (click)="removerExemplo(lista, i)"
+              [attr.aria-label]="'Remover exemplo ' + (i + 1) + (lista === 'sinalizar' ? ' que deve ser sinalizado' : ' que não deve ser sinalizado')">Remover</button>
+          </div>
+        </div>
+        <button type="button" class="button secondary" [disabled]="exemplos[lista].length >= maxExemplos" (click)="adicionarExemplo(lista)"
+          [attr.aria-label]="lista === 'sinalizar' ? 'Adicionar exemplo que deve ser sinalizado' : 'Adicionar exemplo que não deve ser sinalizado'">Adicionar exemplo</button>
+      </fieldset>
+    </div>
+    <div class="test-bar">
+      <button type="button" class="button secondary" [disabled]="testando" (click)="testar()">{{ testando ? 'Testando...' : 'Testar' }}</button>
+      <p role="status" class="test-summary" *ngIf="resultados && !testeDesatualizado">{{ falhasTeste === 0
+        ? 'Todos os exemplos se comportam como esperado.'
+        : (falhasTeste === 1 ? '1 exemplo não se comporta' : falhasTeste + ' exemplos não se comportam') + ' como esperado: ajuste as condições ou o exemplo antes de salvar.' }}</p>
+      <p role="status" class="test-summary" *ngIf="testeDesatualizado">A regra ou os exemplos mudaram desde o último teste.</p>
+      <p role="alert" class="error-message" *ngIf="erroTeste">{{ erroTeste }}</p>
+    </div>
+  </fieldset>
+
+  <p *ngIf="erro" class="error-message" role="alert">{{ erro }}</p>
+  <div class="form-footer">
+    <a class="button secondary" routerLink="/regras">Cancelar</a>
+    <button type="submit" class="button primary" [disabled]="salvando">{{ salvando ? 'Salvando...' : 'Salvar regra' }}</button>
+  </div>
+</form>

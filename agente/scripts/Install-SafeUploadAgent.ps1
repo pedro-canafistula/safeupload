@@ -24,9 +24,10 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($AdminBaseUrl) { throw 'Install without -AdminBaseUrl, then use SafeUpload.Agent.Service.exe cadastrar.' }
 $programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { [Environment]::GetFolderPath('ProgramFiles') }
-$installRoot = Join-Path $programFiles 'SafeUpload'
-$agentDirectory = Join-Path $installRoot 'Agent'
-$appDirectory = Join-Path $installRoot 'App'
+# Same layout as the .exe installer: the tray app checks that its pipe peer is the service at ..\service\.
+$installRoot = Join-Path $programFiles 'SafeUpload\Agent'
+$agentDirectory = Join-Path $installRoot 'service'
+$appDirectory = Join-Path $installRoot 'ui'
 if (-not $PrerequisitesOnly) {
     if (-not $PackagePath) { throw 'Pass -PackagePath (or -PrerequisitesOnly).' }
     $package = (Resolve-Path -LiteralPath $PackagePath).Path

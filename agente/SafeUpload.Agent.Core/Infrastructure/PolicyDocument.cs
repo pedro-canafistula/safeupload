@@ -68,6 +68,15 @@ internal sealed record PolicyDocument
     [JsonPropertyName("clipboard")]
     public ClipboardDocument? Clipboard { get; init; }
 
+    /// <summary>Versão do formato das regras personalizadas (ver <see cref="CustomRuleSet.SupportedFormat"/>).</summary>
+    [JsonPropertyName("customRulesFormat")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int CustomRulesFormat { get; init; }
+
+    [JsonPropertyName("customRules")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CustomRuleDocument[]? CustomRules { get; init; }
+
     public static PolicyDocument Default { get; } = new()
     {
         Version = 1,
@@ -151,7 +160,16 @@ internal sealed record PolicyDocument
             AuditOnly,
             OverrideAllowed,
             MapClipboard(Clipboard),
-            AlertCategories is null ? null : alerts);
+            AlertCategories is null ? null : alerts,
+            MapCustomRules());
+    }
+
+    private CustomRuleSet? MapCustomRules()
+    {
+        if (CustomRules is null || CustomRules.Length == 0) return null;
+        if (CustomRulesFormat is < 1 or > CustomRuleSet.SupportedFormat)
+            throw new InvalidPolicyException("Formato de regras personalizadas que este agente não entende; atualize o agente.");
+        return CustomRuleSet.Compile(CustomRules.Select(static rule => rule.ToRule()).ToList());
     }
 
     private static HashSet<Category> ParseCategories(string[]? names)
@@ -272,4 +290,51 @@ internal sealed record MonitoredScopesDocument
         RemovableDrives = true,
         NetworkPaths = true
     };
+}
+
+/// <summary>Uma regra personalizada como o console publica (já validada e normalizada pelo servidor).</summary>
+internal sealed record CustomRuleDocument
+{
+    [JsonPropertyName("id")] public int Id { get; init; }
+    [JsonPropertyName("revision")] public int Revision { get; init; }
+    [JsonPropertyName("name")] public string Name { get; init; } = "";
+    [JsonPropertyName("alert")] public bool Alert { get; init; }
+    [JsonPropertyName("when")] public CustomConditionDocument? When { get; init; }
+
+    public CustomRule ToRule() => new(Id, Revision, Name, Alert,
+        (When ?? throw new InvalidPolicyException("Regra personalizada sem condição.")).ToCondition());
+}
+
+/// <summary>Exatamente um de: all, any, not, words, pattern.</summary>
+internal sealed record CustomConditionDocument
+{
+    [JsonPropertyName("all")] public CustomConditionDocument[]? All { get; init; }
+    [JsonPropertyName("any")] public CustomConditionDocument[]? Any { get; init; }
+    [JsonPropertyName("not")] public CustomConditionDocument? Not { get; init; }
+    [JsonPropertyName("words")] public string[]? Words { get; init; }
+    [JsonPropertyName("pattern")] public string? Pattern { get; init; }
+    [JsonPropertyName("ignoreCase")] public bool IgnoreCase { get; init; }
+    [JsonPropertyName("min")] public int Min { get; init; } = 1;
+    [JsonPropertyName("validator")] public string? Validator { get; init; }
+    [JsonPropertyName("group")] public int Group { get; init; }
+
+    public CustomCondition ToCondition()
+    {
+        int kinds = (All is null ? 0 : 1) + (Any is null ? 0 : 1) + (Not is null ? 0 : 1) + (Words is null ? 0 : 1) + (Pattern is null ? 0 : 1);
+        if (kinds != 1) throw new InvalidPolicyException("Condição de regra personalizada ambígua ou vazia.");
+        if (All is not null) return new AllCondition(All.Select(static c => c.ToCondition()).ToList());
+        if (Any is not null) return new AnyCondition(Any.Select(static c => c.ToCondition()).ToList());
+        if (Not is not null) return new NotCondition(Not.ToCondition());
+        if (Words is not null) return new WordsCondition(Words, Min);
+        var validator = Validator switch
+        {
+            null or "" => CustomValidator.None,
+            "cpf" => CustomValidator.Cpf,
+            "cnpj" => CustomValidator.Cnpj,
+            "luhn" => CustomValidator.Luhn,
+            "mod11" => CustomValidator.Mod11,
+            _ => throw new InvalidPolicyException("Validador de regra personalizada desconhecido.")
+        };
+        return new PatternCondition(Pattern!, IgnoreCase, Min, validator, Group);
+    }
 }

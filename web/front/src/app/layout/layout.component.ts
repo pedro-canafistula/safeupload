@@ -13,6 +13,7 @@ export class LayoutComponent {
   menu = [
     { rota: '/painel', titulo: 'Visão geral', icone: '▦' },
     { rota: '/politicas', titulo: 'Políticas', icone: '◧' },
+    { rota: '/regras', titulo: 'Regras', icone: '◈' },
     { rota: '/endpoints', titulo: 'Endpoints', icone: '▣' },
     { rota: '/auditoria', titulo: 'Auditoria', icone: '◷' },
     { rota: '/relatorios', titulo: 'Relatórios', icone: '▤' },

@@ -63,7 +63,15 @@ public sealed class WpfWindowTests
             Render((FrameworkElement)panel.Content, 980, 680, "history-outcomes.png");
             var grid = Descendants((DependencyObject)panel.Content).OfType<DataGrid>().Single();
             Assert.Equal(6, grid.Items.Count);
-            Assert.True(grid.Columns[0].ActualWidth >= 190, "The outcome column must remain readable.");
+            // Nothing in the history is cut or pushed sideways: the grid fits the window and the outcome column
+            // is as wide as its longest label.
+            Assert.True(grid.Columns.Sum(c => c.ActualWidth) <= grid.ActualWidth + 1, "The history must fit without sideways scrolling.");
+            foreach (var label in Descendants(grid).OfType<DataGridCell>().Where(c => c.Column == grid.Columns[0])
+                .SelectMany(c => Descendants(c).OfType<TextBlock>()).ToArray())
+            {
+                label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                Assert.True(label.DesiredSize.Width <= grid.Columns[0].ActualWidth, label.Text + " must not be cut.");
+            }
             Assert.Contains("PUBLICADO COM ALERTA", Texts(grid));
             Assert.Contains("NÃO CONFIRMADO", Texts(grid));
 

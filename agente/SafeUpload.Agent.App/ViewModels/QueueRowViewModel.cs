@@ -1,4 +1,4 @@
-using SafeUpload.Agent.Core.Domain;
+﻿using SafeUpload.Agent.Core.Domain;
 
 namespace SafeUpload.Agent.App.ViewModels;
 
@@ -28,9 +28,7 @@ public sealed class QueueRowViewModel
             auditEvent.Verdict == Core.Domain.Verdict.Approved && auditEvent.Categories.Count > 0 ?
                 auditEvent.PublishedSha256Hex is not null ? "Publicado com alerta" : "Aprovado com achados" :
             auditEvent.Verdict == Core.Domain.Verdict.Approved && auditEvent.PublishedSha256Hex is not null ? "Publicado" : VerdictLabels.Describe(auditEvent.Verdict);
-        Categories = auditEvent.Categories.Count == 0
-            ? "—"
-            : string.Join(", ", auditEvent.Categories.Select(CategoryLabels.Describe));
+        Categories = CategoryLabels.Describe(auditEvent);
         MaskedSnippets = auditEvent.MaskedSnippets.Count == 0
             ? "—"
             : string.Join("   ", auditEvent.MaskedSnippets.Select(AuditTextPrivacy.Sanitize));
@@ -106,8 +104,20 @@ public static class CategoryLabels
         Category.HealthData => "Dados de saúde",
         Category.ConfidentialDocument => "Documento confidencial",
         Category.PersonalData => "Dados pessoais",
+        Category.CustomRule or Category.CustomRuleAlert => "Regra da empresa",
         _ => category.ToString()
     };
+
+    /// <summary>As categorias de um evento; as de regra personalizada mostram o nome da regra ("Regra: X"), como o console.</summary>
+    public static string Describe(AuditEvent item) => item.Categories.Count == 0 ? "—" : string.Join(", ", item.Categories
+        .SelectMany(category => IsCustom(category) && item.CustomRules is { Count: > 0 } names
+            ? names.Select(name => "Regra: " + name) : [Describe(category)])
+        .Distinct());
+
+    public static string Describe(Finding finding) =>
+        IsCustom(finding.Category) && finding.RuleName is { } name ? "Regra: " + name : Describe(finding.Category);
+
+    private static bool IsCustom(Category category) => category is Category.CustomRule or Category.CustomRuleAlert;
 }
 
 /// <summary>Explicações dos motivos padronizados de não inspeção.</summary>

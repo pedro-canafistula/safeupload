@@ -29,11 +29,14 @@ public class PolicyStore {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final com.safeupload.rules.RuleStore rules;
 
-    public PolicyStore(@Qualifier("appJdbc") JdbcTemplate jdbc, ObjectMapper mapper, Clock clock) {
+    public PolicyStore(@Qualifier("appJdbc") JdbcTemplate jdbc, ObjectMapper mapper, Clock clock,
+                       com.safeupload.rules.RuleStore rules) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.clock = clock;
+        this.rules = rules;
     }
 
     /** SQL da política esperada de cada host "h" (usado também pela tela Endpoints). */
@@ -112,7 +115,9 @@ public class PolicyStore {
         }, keys));
         int id = keys.getKey().intValue();
         if (isDefault) makeDefault(empresa, id);
-        return Map.of("id", id, "versao", addVersion(id, user, config));
+        int version = addVersion(empresa, id, user, config);
+        requireRuleSupport(empresa);
+        return Map.of("id", id, "versao", version);
     }
 
     @Transactional("appTransactionManager")
@@ -122,7 +127,9 @@ public class PolicyStore {
         if (changed == 0) throw notFound("Política não encontrada.");
         if (isDefault) makeDefault(empresa, policyId);
         else jdbc.update("UPDATE politicas SET padrao = 0 WHERE id_politica = ?", policyId);
-        return Map.of("id", policyId, "versao", addVersion(policyId, user, config));
+        int version = addVersion(empresa, policyId, user, config);
+        requireRuleSupport(empresa);
+        return Map.of("id", policyId, "versao", version);
     }
 
     @Transactional("appTransactionManager")
@@ -142,20 +149,80 @@ public class PolicyStore {
             policyId, empresa);
     }
 
-    private int addVersion(int policyId, String user, PolicyConfig config) {
-        String json = write(config.validated());
+    private int addVersion(int empresa, int policyId, String user, PolicyConfig config) {
+        var validated = config.validated();
+        for (int ruleId : validated.ruleIds()) rules.find(empresa, ruleId); // 404 se a regra não é da empresa
+        String json = write(validated);
         var keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             var statement = connection.prepareStatement(
-                "INSERT INTO politica_versoes (fk_id_politica, configuracao, criada_em, criada_por) VALUES (?,?,?,?)",
+                "INSERT INTO politica_versoes (fk_id_politica, configuracao, criada_em, criada_por, usa_regras) VALUES (?,?,?,?,?)",
                 java.sql.Statement.RETURN_GENERATED_KEYS);
             statement.setInt(1, policyId);
             statement.setString(2, json);
             statement.setTimestamp(3, Timestamp.from(clock.instant()));
-            statement.setString(4, user);
+            statement.setString(4, user.length() > 75 ? user.substring(0, 75) : user);
+            statement.setInt(5, validated.ruleIds().isEmpty() ? 0 : 1);
             return statement;
         }, keys);
         return keys.getKey().intValue();
+    }
+
+    /** Documento do agente para o host, com as regras personalizadas que a política usa já compiladas. */
+    public Optional<Map<String, Object>> agentDocumentForHost(int hostId) {
+        return effectiveForHost(hostId).map(effective -> {
+            Integer empresa = jdbc.queryForObject("SELECT fk_id_empresa FROM hosts WHERE id_host = ?", Integer.class, hostId);
+            var used = new LinkedHashMap<Integer, PolicyConfig.AgentRule>();
+            for (int ruleId : effective.configuracao().ruleIds()) {
+                var stored = rules.find(empresa, ruleId);
+                used.put(ruleId, new PolicyConfig.AgentRule(ruleId, stored.revisao(), stored.nome(),
+                    stored.definicao().compile().agentWhen()));
+            }
+            return effective.configuracao().agentDocument(effective.versao(), used);
+        });
+    }
+
+    /** Nova versão de cada política cuja versão atual usa a regra (chamado quando a regra é editada). */
+    public void bumpForRule(int empresa, int ruleId, String author) {
+        var latest = jdbc.query("""
+            SELECT p.id_politica, v.configuracao FROM politicas p JOIN politica_versoes v ON v.id_versao =
+              (SELECT MAX(id_versao) FROM politica_versoes WHERE fk_id_politica = p.id_politica)
+            WHERE p.fk_id_empresa = ? AND v.usa_regras = 1""",
+            (rs, n) -> Map.entry(rs.getInt(1), read(rs.getString(2))), empresa);
+        for (var entry : latest)
+            if (entry.getValue().ruleIds().contains(ruleId)) addVersion(empresa, entry.getKey(), author, entry.getValue());
+    }
+
+    /**
+     * Pós-condição de toda alteração que muda a política de alguma máquina: nenhuma máquina ativa pode ficar com
+     * regras personalizadas que o agente dela não entende. Lança 409 (e a transação é desfeita).
+     */
+    public void requireRuleSupport(int empresa) {
+        var outdated = jdbc.query("""
+            SELECT h.hostname, h.versao_agente FROM hosts h
+            WHERE h.fk_id_empresa = ? AND h.revogado_em IS NULL AND h.formato_regras < 1
+              AND (SELECT v.usa_regras FROM politica_versoes v WHERE v.fk_id_politica = """ + EXPECTED_POLICY + """
+
+                   ORDER BY v.id_versao DESC LIMIT 1) = 1
+            ORDER BY h.hostname LIMIT 10""",
+            (rs, n) -> rs.getString(1) + " (agente " + java.util.Objects.toString(rs.getString(2), "?") + ")", empresa);
+        if (!outdated.isEmpty())
+            throw conflict("Estas máquinas não entendem regras personalizadas e receberiam uma política com regras: "
+                + String.join(", ", outdated) + ". Atualize o agente delas antes de publicar.");
+    }
+
+    /** Coloca a máquina num grupo (ou sem grupo), conferindo o suporte a regras. */
+    @Transactional("appTransactionManager")
+    public void assignHostGroup(int empresa, int hostId, Integer groupId) {
+        if (groupId != null) {
+            Integer same = jdbc.queryForObject("SELECT COUNT(*) FROM grupos WHERE id_grupo = ? AND fk_id_empresa = ?",
+                Integer.class, groupId, empresa);
+            if (same == null || same == 0) throw notFound("Grupo não encontrado.");
+        }
+        int changed = jdbc.update("UPDATE hosts SET fk_id_grupo = ? WHERE id_host = ? AND fk_id_empresa = ?",
+            groupId, hostId, empresa);
+        if (changed == 0) throw notFound("Máquina não encontrada.");
+        requireRuleSupport(empresa);
     }
 
     // ---- grupos ----
@@ -176,6 +243,7 @@ public class PolicyStore {
         }, empresa);
     }
 
+    @Transactional("appTransactionManager")
     public Map<String, Object> createGroup(int empresa, String name, Integer policyId) {
         checkPolicy(empresa, policyId);
         var keys = new GeneratedKeyHolder();
@@ -191,17 +259,21 @@ public class PolicyStore {
         return Map.of("id", keys.getKey().intValue());
     }
 
+    @Transactional("appTransactionManager")
     public void updateGroup(int empresa, int groupId, String name, Integer policyId) {
         checkPolicy(empresa, policyId);
         int changed = unique("Já existe um grupo com esse nome.", () -> jdbc.update(
             "UPDATE grupos SET nome = ?, fk_id_politica = ? WHERE id_grupo = ? AND fk_id_empresa = ?",
             name(name), policyId, groupId, empresa));
         if (changed == 0) throw notFound("Grupo não encontrado.");
+        requireRuleSupport(empresa);
     }
 
+    @Transactional("appTransactionManager")
     public void deleteGroup(int empresa, int groupId) {
         int changed = jdbc.update("DELETE FROM grupos WHERE id_grupo = ? AND fk_id_empresa = ?", groupId, empresa);
         if (changed == 0) throw notFound("Grupo não encontrado.");
+        requireRuleSupport(empresa);
     }
 
     private void checkPolicy(int empresa, Integer policyId) {

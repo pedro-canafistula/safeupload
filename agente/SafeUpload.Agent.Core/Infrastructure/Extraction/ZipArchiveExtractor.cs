@@ -52,7 +52,7 @@ public sealed class ZipArchiveExtractor : IStreamingTextExtractor
             }
 
             Task<IReadOnlyList<Finding>> Scan(Func<Task<TextReader>> reader) => StreamingContentScanner.ScanAsync(reader,
-                policy.ActiveCategories, token, StreamingContentScanner.MaximumCandidates - findings.Count);
+                policy.ActiveCategories, token, StreamingContentScanner.MaximumCandidates - findings.Count, policy.Rules);
             void Add(IReadOnlyList<Finding> added)
             {
                 if (added.Count == 0) return;

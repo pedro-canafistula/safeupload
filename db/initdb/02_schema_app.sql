@@ -20,7 +20,21 @@ CREATE TABLE IF NOT EXISTS politica_versoes (
     configuracao LONGTEXT NOT NULL,
     criada_em TIMESTAMP(6) NOT NULL,
     criada_por VARCHAR(75) NOT NULL,
+    usa_regras TINYINT NOT NULL DEFAULT 0 CHECK (usa_regras IN (0,1)),
     CONSTRAINT fk_versao_politica FOREIGN KEY (fk_id_politica) REFERENCES politicas (id_politica) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Regras personalizadas: "definicao" guarda o formulário do console (condições e exemplos), já validado.
+CREATE TABLE IF NOT EXISTS regras_personalizadas (
+    id_regra INT PRIMARY KEY AUTO_INCREMENT,
+    fk_id_empresa INT NOT NULL,
+    nome VARCHAR(80) NOT NULL,
+    descricao VARCHAR(300),
+    definicao LONGTEXT NOT NULL,
+    revisao INT NOT NULL,
+    atualizada_em TIMESTAMP(6) NOT NULL,
+    atualizada_por VARCHAR(75) NOT NULL,
+    UNIQUE KEY uk_regra_nome (fk_id_empresa, nome)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS grupos (
@@ -45,6 +59,7 @@ CREATE TABLE IF NOT EXISTS hosts (
     versao_so VARCHAR(40),
     mac_address VARCHAR(20),
     versao_agente VARCHAR(50),
+    formato_regras INT NOT NULL DEFAULT 0,
     politica_aplicada INT NULL,
     cadastrado_em TIMESTAMP(6) NOT NULL,
     visto_por_ultimo TIMESTAMP(6) NULL,

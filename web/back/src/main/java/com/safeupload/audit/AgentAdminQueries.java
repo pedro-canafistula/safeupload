@@ -91,9 +91,7 @@ public class AgentAdminQueries {
                 case "Retained" -> retained++;
                 default -> throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Resultado de auditoria inválido.");
             }
-            for (var category : event.path("categories")) {
-                if (verdict.equals("Blocked")) categories.merge(category.asText(), 1L, Long::sum);
-            }
+            if (verdict.equals("Blocked")) for (String category : categoryKeys(event)) categories.merge(category, 1L, Long::sum);
             var day = Instant.parse(event.path("occurredAtUtc").asText()).atOffset(ZoneOffset.UTC).toLocalDate().toString();
             if (days.containsKey(day)) days.merge(day, 1L, Long::sum);
         }
@@ -122,12 +120,26 @@ public class AgentAdminQueries {
             (rs, n) -> document(rs.getString(1), rs.getInt(2), rs.getString(3)), arguments(empresa, kind, host));
     }
 
+    /** Categorias do evento; as de regra personalizada viram "Regra:" + nome da regra. */
+    static List<String> categoryKeys(com.fasterxml.jackson.databind.JsonNode event) {
+        var keys = new ArrayList<String>();
+        for (var category : event.path("categories")) {
+            String code = category.asText();
+            if ((code.equals("CustomRule") || code.equals("CustomRuleAlert")) && event.path("customRules").size() > 0) {
+                for (var rule : event.path("customRules")) if (!keys.contains("Regra:" + rule.asText())) keys.add("Regra:" + rule.asText());
+            } else if (!keys.contains(code)) keys.add(code);
+        }
+        return keys;
+    }
+
     public static String categoryName(String key) {
+        if (key.startsWith("Regra:")) return "Regra: " + key.substring("Regra:".length());
         return switch (key) {
             case "Cpf" -> "CPF"; case "Cnpj" -> "CNPJ"; case "PaymentCard" -> "Cartão de pagamento";
             case "Password" -> "Senha em texto claro"; case "Secret" -> "Segredo/credencial";
             case "Rg" -> "RG"; case "BankData" -> "Dados bancários"; case "HealthData" -> "Dados de saúde";
-            case "ConfidentialDocument" -> "Documento confidencial"; case "PersonalData" -> "Dados pessoais"; default -> key;
+            case "ConfidentialDocument" -> "Documento confidencial"; case "PersonalData" -> "Dados pessoais";
+            case "CustomRule" -> "Regra personalizada"; case "CustomRuleAlert" -> "Regra personalizada (alerta)"; default -> key;
         };
     }
 
@@ -175,8 +187,7 @@ public class AgentAdminQueries {
         var csv = new StringBuilder("﻿");
         csv.append("data_utc;maquina;usuario;canal;arquivo;tamanho_bytes;resultado;categorias;processo;destino;versao_politica;motivo_nao_inspecao\r\n");
         for (var event : events) {
-            var categories = new ArrayList<String>();
-            event.path("categories").forEach(c -> categories.add(categoryName(c.asText())));
+            var categories = categoryKeys(event).stream().map(AgentAdminQueries::categoryName).toList();
             csv.append(String.join(";", List.of(
                 cell(event.path("occurredAtUtc").asText()), cell(event.path("hostname").asText()),
                 cell(event.path("userName").asText()), cell(event.path("channel").asText()),

@@ -81,12 +81,12 @@ public class HostStore {
         return hostId;
     }
 
-    public void heartbeat(int hostId, HostInfo host, Integer appliedPolicy, String agentVersion) {
+    public void heartbeat(int hostId, HostInfo host, Integer appliedPolicy, String agentVersion, int rulesFormat) {
         jdbc.update("""
             UPDATE hosts SET hostname=?, ip=?, mascara=?, sistema_operacional=?, versao_so=?, mac_address=?,
-                versao_agente=?, politica_aplicada=?, visto_por_ultimo=? WHERE id_host=?""",
+                versao_agente=?, formato_regras=?, politica_aplicada=?, visto_por_ultimo=? WHERE id_host=?""",
             host.hostname(), host.ip(), host.mascara(), host.sistemaOperacional(), host.versaoSo(),
-            host.macAddress(), agentVersion, appliedPolicy, now(), hostId);
+            host.macAddress(), agentVersion, rulesFormat, appliedPolicy, now(), hostId);
     }
 
     // ---- administração (sempre dentro da empresa) ----
@@ -136,17 +136,6 @@ public class HostStore {
     public void revoke(int empresa, int hostId) {
         int changed = jdbc.update("UPDATE hosts SET revogado_em=COALESCE(revogado_em, ?) WHERE id_host=? AND fk_id_empresa=?",
             now(), hostId, empresa);
-        if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Máquina não encontrada.");
-    }
-
-    public void assignGroup(int empresa, int hostId, Integer groupId) {
-        if (groupId != null) {
-            Integer same = jdbc.queryForObject("SELECT COUNT(*) FROM grupos WHERE id_grupo=? AND fk_id_empresa=?",
-                Integer.class, groupId, empresa);
-            if (same == null || same == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Grupo não encontrado.");
-        }
-        int changed = jdbc.update("UPDATE hosts SET fk_id_grupo=? WHERE id_host=? AND fk_id_empresa=?",
-            groupId, hostId, empresa);
         if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Máquina não encontrada.");
     }
 }
