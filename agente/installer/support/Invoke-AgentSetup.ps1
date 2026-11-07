@@ -86,7 +86,7 @@ try {
     $state = Get-MachineState
     if ($Action -in @('Preflight', 'Install')) {
         $answers = Get-Content -LiteralPath $AnswersPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $plan = New-SafeUploadInstallPlan -InstallRoot $InstallRoot -Mode $answers.mode -AdminBaseUrl $answers.adminBaseUrl
+        $plan = New-SafeUploadInstallPlan -InstallRoot $InstallRoot -Mode $answers.mode
         $winFspBundled = $answers.PSObject.Properties.Name -contains 'winFspBundled' -and [bool]$answers.winFspBundled
         Assert-SafeUploadMachineState -State $state -Mode $plan.Mode -Operation Install `
             -WinFspAvailable ((Test-Path -LiteralPath $winFspDll) -or $winFspBundled)
@@ -132,7 +132,7 @@ try {
             try { if ($service.Status -ne 'Running') { throw 'The service stopped during its initial startup.' } }
             finally { $service.Dispose() }
             [ordered]@{ schemaVersion = 1; version = $manifest.version; commit = $manifest.commit; mode = $plan.Mode;
-                adminBaseUrl = $plan.AdminBaseUrl; installedAtUtc = [DateTime]::UtcNow.ToString('o'); restartRequired = $plan.RestartRequired
+                installedAtUtc = [DateTime]::UtcNow.ToString('o'); restartRequired = $plan.RestartRequired
             } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'installation.json') -Encoding UTF8
             New-ItemProperty -LiteralPath $startupKey -Name SafeUploadAgentConsole -Value $startupValue -PropertyType String | Out-Null
             $startupCreatedByThisRun = $true

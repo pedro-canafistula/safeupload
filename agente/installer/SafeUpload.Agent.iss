@@ -62,23 +62,12 @@ Type: files; Name: "{app}\setup\installation.json"
 [Code]
 var
   ModePage: TInputOptionWizardPage;
-  ServerPage: TInputQueryWizardPage;
   InstallationSucceeded: Boolean;
 
 function SelectedMode: String;
 begin
   if ModePage.Values[1] then Result := 'FileSystemWatcher'
   else Result := 'Drive';
-end;
-
-function JsonEscape(const Value: String): String;
-begin
-  Result := Value;
-  StringChangeEx(Result, '\', '\\', True);
-  StringChangeEx(Result, '"', '\"', True);
-  StringChangeEx(Result, #13, '\r', True);
-  StringChangeEx(Result, #10, '\n', True);
-  StringChangeEx(Result, #9, '\t', True);
 end;
 
 function RunSetupAction(const ScriptPath, ActionName: String; IncludeAnswers: Boolean): String;
@@ -116,21 +105,20 @@ begin
     RaiseException('MODE deve ser Drive ou FileSystemWatcher.');
   ModePage.Values[0] := CompareText(ModeParameter, 'Drive') = 0;
   ModePage.Values[1] := not ModePage.Values[0];
-  ServerPage := CreateInputQueryPage(ModePage.ID, 'Servidor de administração', 'Informe o endereço combinado com a equipe.',
-    'Use HTTPS em servidores remotos e termine o endereço com /agent/. Deixe vazio para usar a política local, sem sincronização web.');
-  ServerPage.Add('URL da API do agente:', False);
-  ServerPage.Values[0] := ExpandConstant('{param:ADMINURL|}');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Answers: String;
 begin
+  if ExpandConstant('{param:ADMINURL|}') <> '' then begin
+    Result := 'O parâmetro /ADMINURL foi substituído pelo comando cadastrar. Instale sem /ADMINURL e depois cadastre o agente com um token do console.';
+    Exit;
+  end;
   ExtractTemporaryFile('Invoke-AgentSetup.ps1');
   ExtractTemporaryFile('SafeUpload.Setup.psm1');
   ExtractTemporaryFile('SafeUpload.Maintenance.psm1');
-  Answers := '{"mode":"' + SelectedMode + '","adminBaseUrl":"' + JsonEscape(ServerPage.Values[0]) +
-    '","winFspBundled":{#WinFspBundled}}';
+  Answers := '{"mode":"' + SelectedMode + '","winFspBundled":{#WinFspBundled}}';
   if not SaveStringToFile(ExpandConstant('{tmp}\safeupload-answers.json'), UTF8Encode(Answers), False) then begin
     Result := 'Não foi possível preparar a configuração.';
     Exit;

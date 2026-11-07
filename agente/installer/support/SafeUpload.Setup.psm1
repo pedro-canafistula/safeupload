@@ -1,25 +1,6 @@
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 
-function ConvertTo-SafeUploadAdminUrl {
-    param([AllowEmptyString()][string]$Value = '')
-    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
-    if ($Value -match '[\x00-\x20"<>]') { throw 'The server URL contains whitespace or unsafe characters.' }
-    $uri = $null
-    if (-not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or
-        $uri.Scheme -notin @('http', 'https') -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) {
-        throw 'Use an absolute HTTP(S) URL without credentials, query or fragment.'
-    }
-    if ($uri.Scheme -eq 'http' -and -not $uri.IsLoopback) {
-        throw 'A remote server requires HTTPS. HTTP is allowed only on loopback for local tests.'
-    }
-    $normalized = $uri.AbsoluteUri.TrimEnd('/') + '/'
-    if (-not ([Uri]$normalized).AbsolutePath.EndsWith('/agent/', [StringComparison]::Ordinal)) {
-        throw 'The server URL must end with /agent/.'
-    }
-    return $normalized
-}
-
 function Assert-SafeUploadDirectory {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$ExpectedPath)
     $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
@@ -45,16 +26,12 @@ function Assert-SafeUploadDirectory {
 
 function New-SafeUploadInstallPlan {
     param([Parameter(Mandatory)][string]$InstallRoot,
-          [ValidateSet('Drive', 'FileSystemWatcher')][string]$Mode = 'Drive',
-          [AllowEmptyString()][string]$AdminBaseUrl = '')
+          [ValidateSet('Drive', 'FileSystemWatcher')][string]$Mode = 'Drive')
     if (-not [IO.Path]::IsPathRooted($InstallRoot) -or $InstallRoot -match '["\r\n]') { throw 'Invalid install root.' }
-    $url = ConvertTo-SafeUploadAdminUrl $AdminBaseUrl
     $exe = Join-Path $InstallRoot 'service\SafeUpload.Agent.Service.exe'
-    $arguments = @('--Interception:Mode=' + $Mode)
-    $arguments += @(('--CentroAdministracao:BaseUrl=' + $url), '--InspecaoTls:Habilitada=false')
     [pscustomobject]@{
-        Mode = $Mode; AdminBaseUrl = $url; Executable = $exe
-        CommandLine = '"' + $exe + '" ' + ($arguments -join ' ')
+        Mode = $Mode; Executable = $exe
+        CommandLine = '"' + $exe + '" --Interception:Mode=' + $Mode + ' --InspecaoTls:Habilitada=false'
         RestartRequired = $false
     }
 }
@@ -155,4 +132,4 @@ function Stop-SafeUploadInstalledUi {
     return $stopped
 }
 
-Export-ModuleMember -Function Stop-SafeUploadInstalledUi, ConvertTo-SafeUploadAdminUrl, Assert-SafeUploadDirectory, New-SafeUploadInstallPlan, Assert-SafeUploadMachineState, Test-SafeUploadPayload, Assert-SafeUploadInstallAcl
+Export-ModuleMember -Function Stop-SafeUploadInstalledUi, Assert-SafeUploadDirectory, New-SafeUploadInstallPlan, Assert-SafeUploadMachineState, Test-SafeUploadPayload, Assert-SafeUploadInstallAcl

@@ -21,7 +21,7 @@ WinFsp. Saídas em `artifacts/installer/`: o instalador `.exe`, o pacote de atua
 `build-result.json`. O driver vem de `driver/scripts/build-driver.sh`.
 
 Os testes do instalador (`tests/Test-InstallerContracts.ps1`, `Test-MaintenanceContracts.ps1`,
-`Test-InstallerArtifact.ps1`) rodam no workflow `agent-installer.yml`; o `Test-InstallerSmoke.ps1` instala de
+`Test-InstallerArtifact.ps1`) rodam no workflow `agent.yml`. O `Test-InstallerSmoke.ps1` instala de
 verdade e só deve rodar em máquina descartável.
 
 ## Instalar
@@ -44,7 +44,8 @@ proxy ou WFP. Saída diferente de zero significa que o serviço não ficou confi
 arquivos); veja o log do Inno Setup.
 
 Depois, cadastre a máquina no console com `service\SafeUpload.Agent.Service.exe cadastrar ...` (ver
-[README do agente](../README.md#cadastro-no-console)). Sem cadastro, o agente protege com o `policy.json` local.
+[README do agente](../README.md#cadastro-no-console)). Passe o endereço do servidor nesse comando. O instalador
+recusa o parâmetro antigo `/ADMINURL`. Sem cadastro, o agente protege com o `policy.json` local.
 
 ## Atualizar e voltar
 
