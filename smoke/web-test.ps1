@@ -72,6 +72,30 @@ while (-not $web -and $sw.Elapsed.TotalSeconds -lt 30) {
 Check W6 ("$web" -match '"verdict":"Blocked"' -and "$web" -match '"Cpf"') ('blocked upload audited: ' +
     ([regex]::Match("$web", '"verdict":"[A-Za-z]+"').Value) + ' ' + ([regex]::Match("$web", '"destinationPath":"[^"]*"').Value))
 
+# What cannot be inspected does not leave, as on the drive: a broken document, and a body above the proxy's 64 MB limit
+# when its start says it is a watched type. A large file of a type the policy does not watch goes through unrecorded.
+function LastWebEvent([string]$name) {
+    Get-Content $queue -ErrorAction SilentlyContinue | Where-Object { $_ -match '"channel":"Web"' -and $_ -match [regex]::Escape($name) } |
+        Select-Object -Last 1
+}
+$broken = [byte[]](@(0x50, 0x4B, 0x03, 0x04) + (1..4000 | ForEach-Object { Get-Random -Maximum 256 }))
+[IO.File]::WriteAllBytes('C:\T5\quebrado.docx', $broken)
+& fsutil.exe file createnew C:\T5\base-grande.csv 73400320 | Out-Null
+& fsutil.exe file createnew C:\T5\video-grande.mp4 73400320 | Out-Null
+$before = Received 'smoke.safeupload.test'
+$code = Upload 'C:\T5\quebrado.docx' 'smoke.safeupload.test'
+Start-Sleep -Seconds 2
+Check W8 ($code -like '403 *' -and (Received 'smoke.safeupload.test') -eq $before -and "$(LastWebEvent 'quebrado.docx')" -match '"verdict":"Blocked".*"notInspectedReason":"parse_error:') `
+    "broken document blocked: answered $code, $([regex]::Match("$(LastWebEvent 'quebrado.docx')", '"notInspectedReason":"[^"]*"').Value)"
+$code = Upload 'C:\T5\base-grande.csv' 'smoke.safeupload.test'
+Start-Sleep -Seconds 2
+Check W9 ($code -like '403 *' -and (Received 'smoke.safeupload.test') -eq $before -and "$(LastWebEvent 'base-grande.csv')" -match '"verdict":"Blocked".*"notInspectedReason":"file_too_large"') `
+    "70 MB .csv blocked by its start: answered $code"
+$code = Upload 'C:\T5\video-grande.mp4' 'smoke.safeupload.test'
+Start-Sleep -Seconds 2
+Check W10 ($code -like '200 *' -and (Received 'smoke.safeupload.test') -eq ($before + 1) -and -not (LastWebEvent 'video-grande.mp4')) `
+    "70 MB .mp4 (not watched) went through unrecorded: answered $code"
+
 # The policy turns web inspection off: the agent removes the diversion and stops the proxy within its 30 s check.
 $path = 'C:\ProgramData\SafeUpload\policy.json'
 $json = [IO.File]::ReadAllText($path) -replace '"version": 2', '"version": 3' -replace '"inspect": true', '"inspect": false'
