@@ -98,7 +98,9 @@ descrito em [`docs/clipboard`](../docs/clipboard/README.md#política-bloco-clipb
 - Mudanças valem nas inspeções seguintes; unidades e gate seguem as pastas novas em até 30 s.
 
 Com o agente cadastrado, a política do console tem precedência; o `policy.json` vale quando o console responde que
-o host não tem política (`404`). Sem console alcançável, vale a última política do console guardada em cache.
+o host não tem política (`404`). Sem console alcançável, vale a última política em cache do cadastro atual.
+Após trocar o cadastro ou atualizar de um cache antigo sem vínculo, vale a política local até obter a política
+do console para o cadastro atual.
 
 ## Cadastro no console
 
@@ -109,7 +111,7 @@ Como administrador, com um token gerado no console (Configurações → Tokens d
 ```
 
 O comando reinicia o serviço, que lê a identidade ao iniciar. Para trocar de servidor, rode de novo com
-`--substituir` e um token novo. Assinatura, rotas, heartbeat e
+`--substituir` e um token novo. A troca só grava a nova identidade após receber o ID do host. Assinatura, rotas, heartbeat e
 envio de eventos: [`docs/console-agente.md`](../docs/console-agente.md).
 
 ## Onde ficam os dados

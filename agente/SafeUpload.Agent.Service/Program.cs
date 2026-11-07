@@ -131,6 +131,7 @@ public static class Program
             ConfigureAdministrationHttpClient(builder.Services, identity, administration.Timeout);
             builder.Services.AddSingleton(provider => new DurableHttpPolicyStore(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                identity,
                 Path.Combine(AgentPaths.RootDirectory, "console-policy-cache.json"), new LocalPolicyStore(),
                 provider.GetRequiredService<CommunicationHealth>()));
             builder.Services.AddSingleton(provider => new RefreshingPolicyStore(
