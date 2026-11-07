@@ -19,7 +19,7 @@ class PolicyConfigTest {
 
     static PolicyConfig config(Map<String, String> categories) {
         return new PolicyConfig(categories, List.of("C:\\Dados\\Financeiro\\", "\\\\srv\\publico"), true, false,
-            List.of("TXT", ".docx", ".txt"), 100, 900, true, "bloquear", null);
+            List.of("TXT", ".docx", ".txt"), 100, 900, true, "bloquear", null, null, null);
     }
 
     @Test void translatesActionsScopesAndLimitsToTheAgentDocument() {
@@ -41,6 +41,25 @@ class PolicyConfigTest {
         assertThat(document.get("overrideAllowed")).isEqualTo(true);
         assertThat(document.get("failOpen")).isEqualTo(false);
         assertThat(document.get("clipboard")).isEqualTo(Map.of("mode", "Block"));
+        assertThat(document).doesNotContainKey("web");
+    }
+
+    static PolicyConfig web(Boolean on, List<String> domains) {
+        return new PolicyConfig(categories("bloquear"), List.of(), true, false, List.of(".txt"), 1, 5, false, "desligado", null,
+            on, domains);
+    }
+
+    @Test void webInspectionGoesToTheAgentWithNormalizedExceptionDomains() {
+        var config = web(true, java.util.Arrays.asList(" Intranet.Empresa.com.br. ", "*.parceiro.com", "", "intranet.empresa.com.br", null))
+            .validated();
+        assertThat(config.excecoesWeb()).containsExactly("intranet.empresa.com.br", "*.parceiro.com");
+        assertThat(config.agentDocument(7).get("web"))
+            .isEqualTo(Map.of("inspect", true, "exceptionDomains", List.of("intranet.empresa.com.br", "*.parceiro.com")));
+        assertThat(web(null, null).validated().agentDocument(7)).doesNotContainKey("web");
+        for (String bad : List.of("intranet", "http://site.com", "site.com/upload", "a b.com", "-x.com"))
+            assertThatThrownBy(() -> web(true, List.of(bad)).validated()).as(bad).isInstanceOf(ResponseStatusException.class);
+        var many = java.util.stream.IntStream.range(0, 201).mapToObj(i -> "d" + i + ".com").toList();
+        assertThatThrownBy(() -> web(true, many).validated()).isInstanceOf(ResponseStatusException.class);
     }
 
     @Test void rejectsIncompleteOrMeaninglessPolicies() {
@@ -52,12 +71,12 @@ class PolicyConfigTest {
         wrong.put("cpf", "talvez");
         assertThatThrownBy(() -> config(wrong).validated()).isInstanceOf(ResponseStatusException.class);
         for (String folder : List.of("relativo\\pasta", "C:", "\\\\srv", "C:\\a|b", "D:/barra")) {
-            var bad = new PolicyConfig(categories("bloquear"), List.of(folder), true, true, List.of(".txt"), 1, 5, false, "desligado", null);
+            var bad = new PolicyConfig(categories("bloquear"), List.of(folder), true, true, List.of(".txt"), 1, 5, false, "desligado", null, null, null);
             assertThatThrownBy(bad::validated).as(folder).isInstanceOf(ResponseStatusException.class);
         }
-        var noExtensions = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(), 1, 5, false, "desligado", null);
+        var noExtensions = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(), 1, 5, false, "desligado", null, null, null);
         assertThatThrownBy(noExtensions::validated).isInstanceOf(ResponseStatusException.class);
-        var tooBig = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(".txt"), 5000, 5, false, "desligado", null);
+        var tooBig = new PolicyConfig(categories("bloquear"), List.of(), true, true, List.of(".txt"), 5000, 5, false, "desligado", null, null, null);
         assertThatThrownBy(tooBig::validated).isInstanceOf(ResponseStatusException.class);
     }
 }

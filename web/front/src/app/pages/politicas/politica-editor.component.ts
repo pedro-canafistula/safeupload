@@ -18,7 +18,8 @@ function configuracaoInicial(): PoliticaConfiguracao {
   return {
     categorias: Object.fromEntries(categoriasPolitica.map(c => [c.codigo, 'bloquear'])) as Record<CategoriaCodigo, AcaoCategoria>,
     pastas: [], pendrives: true, rede: false, extensoes: EXTENSOES_PADRAO, tamanhoMaximoMb: 100,
-    tempoLimiteSegundos: 900, permitirJustificativa: false, clipboard: 'desligado', regrasPersonalizadas: {}
+    tempoLimiteSegundos: 900, permitirJustificativa: false, clipboard: 'desligado', regrasPersonalizadas: {},
+    inspecaoWeb: false, excecoesWeb: []
   };
 }
 
@@ -54,6 +55,7 @@ export class PoliticaEditorComponent {
   config = configuracaoInicial();
   pastasTexto = '';
   extensoesTexto = EXTENSOES_PADRAO.join(', ');
+  excecoesWebTexto = '';
   versao: number | null = null;
   historico: PoliticaDetalhe['historico'] = [];
   /** Regras da empresa (GET /regras); null enquanto carrega ou se falhou. */
@@ -121,6 +123,9 @@ export class PoliticaEditorComponent {
         ...this.config,
         pastas: this.pastasTexto.split(/\r?\n/).map(pasta => pasta.trim()).filter(Boolean),
         extensoes: this.extensoesTexto.split(/[\s,;]+/).map(extensao => extensao.trim()).filter(Boolean),
+        inspecaoWeb: !!this.config.inspecaoWeb,
+        // A lista vai mesmo com a inspeção desligada, para não se perder ao desligar e religar.
+        excecoesWeb: this.excecoesWebTexto.split(/[\s,;]+/).map(dominio => dominio.trim()).filter(Boolean),
         tamanhoMaximoMb: Number(this.config.tamanhoMaximoMb),
         tempoLimiteSegundos: Number(this.config.tempoLimiteSegundos),
         regrasPersonalizadas
@@ -150,6 +155,7 @@ export class PoliticaEditorComponent {
     this.config = { ...config, categorias: { ...configuracaoInicial().categorias, ...config.categorias } };
     this.pastasTexto = config.pastas.join('\n');
     this.extensoesTexto = config.extensoes.join(', ');
+    this.excecoesWebTexto = (config.excecoesWeb ?? []).join('\n');
     this.acoesRegras = { ...config.regrasPersonalizadas };
     this.completarRegras();
   }

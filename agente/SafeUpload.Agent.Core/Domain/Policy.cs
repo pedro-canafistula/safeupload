@@ -74,6 +74,9 @@ public sealed record Policy(
     /// <summary>Regras personalizadas compiladas (vazio quando a política não tem nenhuma).</summary>
     public CustomRuleSet Rules => CustomRules ?? CustomRuleSet.Empty;
 
+    /// <summary>Inspeção dos envios pelo navegador; desligada por padrão.</summary>
+    public WebInspectionPolicy Web { get; init; } = WebInspectionPolicy.Off;
+
     private static readonly IReadOnlySet<Category> NoCategories = new HashSet<Category>();
 
     /// <summary>Categorias que só alertam (vazio quando a política não define nenhuma).</summary>

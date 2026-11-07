@@ -26,7 +26,9 @@ public record PolicyConfig(
     Integer tempoLimiteSegundos,
     Boolean permitirJustificativa,
     String clipboard,
-    Map<String, String> regrasPersonalizadas
+    Map<String, String> regrasPersonalizadas,
+    Boolean inspecaoWeb,
+    List<String> excecoesWeb
 ) {
     /** Uma regra personalizada já compilada, como o agente a recebe. */
     public record AgentRule(int id, int revision, String name, Map<String, Object> when) {}
@@ -37,6 +39,9 @@ public record PolicyConfig(
     private static final Pattern UNC_PATH = Pattern.compile("^\\\\\\\\[^\\\\/<>\"|?*\\p{Cntrl}]+\\\\[^\\\\/<>\"|?*\\p{Cntrl}]+(\\\\[^<>\"|?*\\p{Cntrl}]*)?$");
     private static final Pattern EXTENSION = Pattern.compile("^\\.[A-Za-z0-9]{1,10}$");
     private static final List<String> EXCLUDED_PROCESSES = List.of("System", "SafeUpload.Agent.App");
+    /** Domínio (com ou sem "*." na frente); cada um cobre os subdomínios no agente. */
+    private static final Pattern DOMAIN = Pattern.compile(
+        "^(\\*\\.)?([\\p{L}\\p{N}]([\\p{L}\\p{N}-]{0,61}[\\p{L}\\p{N}])?\\.)+[\\p{L}\\p{N}][\\p{L}\\p{N}-]{0,62}$");
 
     private static Map<String, List<String>> categories() {
         var map = new LinkedHashMap<String, List<String>>();
@@ -101,9 +106,20 @@ public record PolicyConfig(
             throw invalid("Tempo limite deve ficar entre 5 e 3600 segundos.");
         if (!List.of("desligado", "alertar", "bloquear").contains(clipboard))
             throw invalid("Clipboard deve ser desligado, alertar ou bloquear.");
+        var domains = new ArrayList<String>();
+        for (String domain : excecoesWeb == null ? List.<String>of() : excecoesWeb) {
+            String value = domain == null ? "" : domain.trim().toLowerCase(Locale.ROOT);
+            while (value.endsWith(".")) value = value.substring(0, value.length() - 1);
+            if (value.isEmpty()) continue;
+            if (value.length() > 253 || !DOMAIN.matcher(value).matches())
+                throw invalid("Domínio de exceção inválido: " + domain + " (use algo como intranet.empresa.com.br).");
+            if (!domains.contains(value)) domains.add(value);
+        }
+        if (domains.size() > 200) throw invalid("No máximo 200 domínios de exceção da inspeção web.");
         return new PolicyConfig(Map.copyOf(categorias), List.copyOf(folders), Boolean.TRUE.equals(pendrives),
             Boolean.TRUE.equals(rede), List.copyOf(exts), tamanhoMaximoMb, tempoLimiteSegundos,
-            Boolean.TRUE.equals(permitirJustificativa), clipboard, Map.copyOf(rules));
+            Boolean.TRUE.equals(permitirJustificativa), clipboard, Map.copyOf(rules), Boolean.TRUE.equals(inspecaoWeb),
+            List.copyOf(domains));
     }
 
     /** Ids das regras que a política usa (ação diferente de "ignorar"). */
@@ -162,6 +178,12 @@ public record PolicyConfig(
         if (!customRules.isEmpty()) {
             document.put("customRulesFormat", 1);
             document.put("customRules", customRules);
+        }
+        if (Boolean.TRUE.equals(inspecaoWeb)) {
+            var web = new LinkedHashMap<String, Object>();
+            web.put("inspect", true);
+            web.put("exceptionDomains", excecoesWeb == null ? List.of() : excecoesWeb);
+            document.put("web", web);
         }
         return document;
     }

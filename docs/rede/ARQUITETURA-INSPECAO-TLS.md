@@ -1,8 +1,10 @@
 # Inspeção TLS (canal web)
 
 Como o agente inspeciona uploads feitos pelo navegador: o que está implementado, por que é assim e o que falta.
-A inspeção TLS é **desligada por padrão** (`InspecaoTls:Habilitada`) e o instalador não a liga. Diferente da
-unidade SafeUpload, este canal libera quando a inspeção falha (seção 4.6).
+A inspeção TLS é **desligada por padrão**: quem liga é a política, no console ("Envios pela web" no editor de
+política, bloco `web` em [console-agente.md](../console-agente.md)). O agente relê a política a cada 30 segundos e
+liga ou desliga a CA, o proxy e o desvio dos navegadores. Diferente da unidade SafeUpload, este canal libera quando a
+inspeção falha (seção 4.6).
 
 ---
 
@@ -327,18 +329,20 @@ Não garantido (ver seção 9):
 
 ## 6. Ciclo de vida no serviço
 
-Tudo começa em `TlsInspectionService.StartAsync`, só quando
-`InspecaoTls:Habilitada = true`:
+`TlsInspectionService` relê a política a cada 30 segundos. Quando o bloco `web`
+liga a inspeção e ela ainda está desligada:
 
 1. `MachineCertificateAuthority.LoadOrCreate()`: reaproveita ou cria a CA e
    garante a confiança em `Root`.
 2. Cria a lista de revogação e a fábrica de certificados apontando para ela.
-3. Sobe o proxy em `127.0.0.1:<Porta>`.
+3. Sobe o proxy em `127.0.0.1:<Porta>`, com as exceções fixas e as da política.
 4. Se `DesviarNavegadores` não for `false`: aplica as políticas dos navegadores
    e instala os filtros WFP. O log registra quais navegadores foram cobertos.
 
-`StopAsync` desfaz na ordem inversa: filtros, políticas, proxy. A CA fica (é
-parte da instalação; sai com `ca remove`).
+Se só os domínios de exceção mudam, só o proxy é refeito; o desvio continua.
+Quando a política desliga a inspeção, ou o serviço para, desfaz na ordem
+inversa: filtros, políticas, proxy. A CA fica (é parte da instalação; sai com
+`ca remove`). Se a política não pode ser lida, o estado atual é mantido.
 
 Queda do serviço sem `StopAsync` (travou, foi morto):
 
@@ -352,16 +356,18 @@ Queda do serviço sem `StopAsync` (travou, foi morto):
 
 ## 7. Configuração e operação
 
-`agente/SafeUpload.Agent.Service/appsettings.json`:
+Ligar, desligar e os domínios de exceção vêm da política (bloco `web`, ou o mesmo bloco no `policy.json` local
+quando não há console). Ligar instala uma CA confiável na máquina; por isso é uma decisão explícita do administrador.
+Desligar desfaz o desvio e derruba o proxy; a CA fica até a desinstalação (`ca remove`).
+
+O que é operação da máquina fica em `agente/SafeUpload.Agent.Service/appsettings.json`:
 
 ```json
 "InspecaoTls": {
-  "Habilitada": false,
   "Porta": 8877,
   "DesviarNavegadores": true,
   "Excecoes": {
     "Categorias": { "bancos": true, "saude": true, "governo": true },
-    "Dominios": [],
     "DetectarPinning": true
   }
 }
@@ -369,10 +375,8 @@ Queda do serviço sem `StopAsync` (travou, foi morto):
 
 | Chave | Efeito |
 |---|---|
-| `Habilitada` | Liga tudo. Desligada por padrão: ligar instala uma CA confiável na máquina, e isso tem de ser decisão explícita. |
 | `Porta` | Porta do proxy em loopback. Também entra no endereço da lista de revogação gravado em cada certificado. |
 | `Excecoes:Categorias:<nome>` | `false` desliga a lista inicial daquela categoria (`bancos`, `saude`, `governo`), que volta a ser interceptada. |
-| `Excecoes:Dominios` | Domínios acrescentados às exceções. Cada um cobre também os subdomínios. |
 | `Excecoes:DetectarPinning` | `false` desliga o aprendizado automático de pinning. |
 | `DesviarNavegadores` | `false` sobe só o proxy; o navegador precisa ser apontado à mão (`msedge --proxy-server=http://127.0.0.1:8877`). |
 
@@ -461,12 +465,11 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | L12 | **`ca remove` e `desvio remove` apagam valores** mesmo que outra pessoa os tenha gravado. | Pode desfazer política corporativa anterior. | Guardar o valor anterior ao aplicar e restaurar ao remover. |
 | L13 | **Renomear a máquina** gera uma CA nova; a antiga fica até `ca remove`. | CA órfã confiável. | Procurar CAs antigas pela chave CNG e não pelo assunto. |
 | L14 | **Comunicação aos funcionários / LGPD.** | Descriptografar tráfego pede aviso e política interna. | Em aberto. |
-| L16 | **Exceções só na configuração local.** | Não dá para editar pelo painel nem distribuir com a política; a lista inicial é curta. | Levar as listas para a política (contrato com o painel web) e, se preciso, base de categorização. |
+| L16 | **Listas fixas curtas.** | Bancos, saúde e governo são listas de partida; o resto entra como domínio de exceção na política. | Se preciso, base de categorização. |
 | L17 | **Pinning aprendido não é persistido nem auditado.** | Reiniciar o serviço esquece; não há registro fora do log. | Evento de auditoria no canal web (Fases 5 e 6); persistir se o reaprendizado incomodar. |
 | L18 | **Sem exceção por processo fixa.** | A ideia inicial previa exceção por processo; hoje só existe a aprendida (programa + host). | Só passa a importar quando o desvio cobrir programas além dos navegadores (L3). |
 | L19 | **Só o corpo é inspecionado.** | Dado na URL (query string de um GET), em cabeçalho ou em WebSocket não é visto. | Varrer a query string; WebSocket está em L9. |
 | L20 | **Arquivo embutido em JSON** (base64 dentro de um campo) é varrido como texto, sem decodificar. | Arquivo enviado assim escapa. | Detectar campos base64 longos e tratá-los como arquivo. |
-| L22 | **O painel web não conhece o canal `Web`.** | O evento é enviado com `"channel":"Web"`; o que o painel faz com isso não foi verificado. | Alinhar o contrato com o time do painel. |
 | L23 | **Texto sendo digitado pode ser bloqueado antes do envio.** | Sites que enviam o texto a cada tecla recebem um 403 por requisição; o evento e o aviso são agrupados por 60 s. No ChatGPT sem login (Fase 7) houve um bloqueio só, no envio. O fluxo com login não foi testado. | Testar com conta. |
 | L25 | **A régua de texto digitado deixa passar número sem contexto.** | CPF, CNPJ ou cartão só com os dígitos, sem o nome do dado por perto, passa; senha, JWT e chave do Google em texto também. | É o preço de não barrar a telemetria das páginas (Fase 7). Afinar com contexto do campo (nome do campo no formulário, endereço de destino). |
 | L26 | **Texto do aviso fala em "arquivo"** mesmo quando o achado é texto digitado. | Mensagem imprecisa. | Texto próprio para o canal web na janela de bloqueio. |

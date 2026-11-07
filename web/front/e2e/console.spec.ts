@@ -152,7 +152,7 @@ test('políticas: padrão e de grupo; editar cria uma versão nova no histórico
       credenciais: 'bloquear', dados_saude: 'bloquear', dados_pessoais: 'bloquear', documentos_confidenciais: 'bloquear' },
     pastas: ['C:\\Dados\\Financeiro', '\\\\servidor\\publico'], pendrives: true, rede: true,
     extensoes: ['.txt', '.csv', '.docx'], tamanhoMaximoMb: 100, tempoLimiteSegundos: 900,
-    permitirJustificativa: true, clipboard: 'bloquear', regrasPersonalizadas: {}
+    permitirJustificativa: true, clipboard: 'bloquear', regrasPersonalizadas: {}, inspecaoWeb: false, excecoesWeb: []
   });
 
   await page.getByRole('link', { name: 'Voltar para políticas' }).click();
