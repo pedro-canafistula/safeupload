@@ -15,9 +15,9 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
         <thead><tr><th scope="col">Data/hora</th><th scope="col">Máquina</th><th scope="col">Canal</th><th scope="col">Arquivo / atividade</th><th scope="col">Tamanho</th><th scope="col">Resultado</th><th scope="col">Categorias</th><th scope="col">Detalhes</th></tr></thead>
         <tbody><ng-container *ngFor="let event of events; trackBy: trackEvent">
         <tr>
-          <td>{{ event.occurredAtUtc | date:'dd/MM/yyyy HH:mm:ss' }}</td>
-          <td>{{ machine(event) }}</td><td>{{ channelLabel(event) }}</td>
-          <td>{{ eventLabel(event) }}</td><td>{{ event.sizeBytes | number }} B</td>
+          <td class="nowrap">{{ event.occurredAtUtc | date:'dd/MM/yyyy HH:mm' }}</td>
+          <td class="nowrap">{{ machine(event) }}</td><td>{{ channelLabel(event) }}</td>
+          <td>{{ eventLabel(event) }}</td><td class="nowrap">{{ event.sizeBytes | number }} B</td>
           <td><span class="pill" [class.ok]="result(event).tone === 'ok'" [class.danger]="result(event).tone === 'danger'"
             [class.warn]="result(event).tone === 'warn'">{{ result(event).label }}</span>
             <small *ngIf="event.notInspectedReason">{{ event.notInspectedReason }}</small></td>
@@ -27,10 +27,8 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
             [attr.aria-controls]="'evento-' + event.eventId" [attr.aria-label]="'Detalhes de ' + eventLabel(event)"
             (click)="toggle(event.eventId)">{{ expandedEventId === event.eventId ? 'Ocultar' : 'Ver detalhes' }}</button></td>
         </tr>
-        </ng-container></tbody>
-      </table>
-    </div>
-            <section *ngIf="expandedEvent as event" class="event-details" [id]="'evento-' + event.eventId" [attr.aria-label]="'Detalhes de ' + eventLabel(event)">
+        <tr *ngIf="expandedEventId === event.eventId" class="details-row"><td colspan="8">
+            <section class="event-details" [id]="'evento-' + event.eventId" [attr.aria-label]="'Detalhes de ' + eventLabel(event)">
               <h4>Detalhes da inspeção</h4>
               <p>{{ eventLabel(event) }}</p>
               <p>{{ result(event).description }}</p>
@@ -60,7 +58,11 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
                 </div>
               </section>
               <p class="privacy-note">Esta consulta mostra somente metadados e justificativas registradas. {{ event.channel === 'Clipboard' ? 'Texto copiado' : 'Conteúdo do arquivo' }} e trechos detectados não são exibidos.</p>
-            </section>`
+            </section>
+        </td></tr>
+        </ng-container></tbody>
+      </table>
+    </div>`
 })
 export class EventTableComponent {
   @Input() events: AuditEvent[] = [];
@@ -120,10 +122,6 @@ export class EventTableComponent {
           event.channel === 'Web' ? 'Revise o conteúdo enviado antes de tentar novamente.' : 'Revise o arquivo antes de tentar novamente.') };
     return { label: this.verdicts[event.verdict], tone: 'warn',
       description: 'A operação foi liberada sem conclusão da inspeção. Este resultado não equivale a uma aprovação.' };
-  }
-
-  get expandedEvent(): AuditEvent | undefined {
-    return this.events.find((event) => event.eventId === this.expandedEventId);
   }
 
   toggle(eventId: string): void {

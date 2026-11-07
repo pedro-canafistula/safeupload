@@ -1,6 +1,9 @@
-<h2>Relatórios</h2>
+<header class="page-title">
+  <div><p class="eyebrow">Exportação</p><h1>Relatórios</h1>
+    <p class="subtitle">Para consultar os eventos na tela, use a <a routerLink="/painel">Visão geral</a> e a <a routerLink="/auditoria">Auditoria</a>.</p></div>
+</header>
 <section class="card">
-  <h3>Auditoria dos últimos 7 dias (CSV)</h3>
+  <h2>Auditoria dos últimos 7 dias (CSV)</h2>
   <p>Uma linha por inspeção: data (UTC), máquina, usuário, canal, arquivo, resultado, categorias, processo, destino e versão da política. Abre direto no Excel.</p>
   <ng-container *ngIf="maquinas$ | async as maquinas">
     <p role="alert" *ngIf="maquinas.error">{{ maquinas.error }}</p>
@@ -15,5 +18,4 @@
     </div>
   </ng-container>
   <p role="alert" *ngIf="erro">{{ erro }}</p>
-  <p>Para consultar os eventos na tela, use o <a routerLink="/painel">Painel</a> e a <a routerLink="/auditoria">Auditoria</a>.</p>
 </section>

@@ -1,16 +1,23 @@
-<header class="title"><h1>Auditoria</h1><label><input [(ngModel)]="query" placeholder="Buscar evento, máquina, usuário ou arquivo" aria-label="Buscar evento, usuário ou arquivo" /></label><button class="btn-secondary" (click)="refresh.next()">Atualizar</button></header>
+<header class="page-title">
+  <div><p class="eyebrow">Eventos</p><h1>Auditoria</h1>
+    <p class="subtitle">Inspeções dos últimos 7 dias. A máquina de cada evento vem da assinatura do agente. Atualiza a cada 30 segundos.</p></div>
+  <div class="page-actions filters">
+    <input class="search" [(ngModel)]="query" placeholder="Buscar evento, máquina, usuário ou arquivo" aria-label="Buscar evento, usuário ou arquivo" />
+    <button class="btn-secondary" (click)="refresh.next()">Atualizar</button>
+  </div>
+</header>
 <ng-container *ngIf="state$ | async as state">
   <p role="status" *ngIf="state.loading && !state.data">Carregando auditoria…</p>
   <p role="alert" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
-  <section class="surface" *ngIf="state.data as dados">
+  <section class="card" *ngIf="state.data as dados">
     <p *ngIf="dados.host">Auditoria de {{ hostLabel(dados) }} · <a routerLink="/auditoria">Limpar filtro</a></p>
     <div class="filters">
       <select [(ngModel)]="verdict" aria-label="Resultado"><option value="">Todos os resultados</option><option value="Blocked">Bloqueado</option><option value="Approved">Aprovado</option><option value="AllowedWithoutInspection">Liberado sem inspeção</option><option value="Retained">Retido</option></select>
       <select [(ngModel)]="channel" aria-label="Canal"><option value="">Todos os canais</option><option value="File">Arquivo</option><option value="Clipboard">Área de transferência</option><option value="Web">Web</option></select>
-      <button (click)="exportCsv()" [disabled]="exportando" title="Todos os eventos dos últimos 7 dias{{ dados.host ? ' desta máquina' : '' }}, sem os filtros da tela">{{ exportando ? 'Exportando…' : 'Exportar CSV' }}</button>
+      <button class="btn-secondary export" (click)="exportCsv()" [disabled]="exportando" title="Todos os eventos dos últimos 7 dias{{ dados.host ? ' desta máquina' : '' }}, sem os filtros da tela">{{ exportando ? 'Exportando…' : 'Exportar CSV' }}</button>
     </div>
     <p role="alert" *ngIf="erroExportacao">{{ erroExportacao }}</p>
-    <div class="resumo"><span>Total {{ dados.resumo.total }}</span> · <span>Bloqueados {{ dados.resumo.bloqueados }}</span> · <span>Aprovados {{ dados.resumo.aprovados }}</span> · <span>Liberados sem inspeção {{ dados.resumo.liberadosSemInspecao }}</span> · <span>Retidos {{ dados.resumo.retidos ?? 0 }}</span></div>
+    <div class="resumo"><span>Total <strong>{{ dados.resumo.total }}</strong></span><span>Bloqueados <strong>{{ dados.resumo.bloqueados }}</strong></span><span>Aprovados <strong>{{ dados.resumo.aprovados }}</strong></span><span>Liberados sem inspeção <strong>{{ dados.resumo.liberadosSemInspecao }}</strong></span><span>Retidos <strong>{{ dados.resumo.retidos ?? 0 }}</strong></span></div>
     <p *ngIf="dados.truncated" class="note">Mostrando os {{ dados.limit }} eventos mais recentes. O CSV traz todos os eventos dos últimos 7 dias.</p>
     <app-event-table [events]="filtered(dados.eventos)" [overrides]="dados.justificativas ?? []" />
   </section>

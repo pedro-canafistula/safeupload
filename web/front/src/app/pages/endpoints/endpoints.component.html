@@ -1,9 +1,13 @@
-<h2>Endpoints</h2>
+<header class="page-title">
+  <div><p class="eyebrow">Máquinas</p><h1>Endpoints</h1>
+    <p class="subtitle">A política de uma máquina é a do grupo; sem grupo, vale a política padrão. Para cadastrar uma máquina,
+      gere um token em <a routerLink="/configuracoes">Configurações</a>.</p></div>
+  <div class="page-actions"><button class="button secondary" type="button" (click)="refresh.next()">Atualizar</button></div>
+</header>
 <form class="filters" (ngSubmit)="apply()">
   <label>Buscar máquina<input name="q" [(ngModel)]="q" placeholder="Nome, IP ou host:ID" /></label>
   <label>Status<select name="status" [(ngModel)]="status"><option value="all">Todos</option><option value="online">Online</option><option value="offline">Offline</option><option value="revogado">Revogado</option></select></label>
-  <button class="btn-primary" type="submit">Aplicar</button><a routerLink="/endpoints">Limpar</a>
-  <button class="btn-secondary" type="button" (click)="refresh.next()">Atualizar</button>
+  <button class="btn-primary" type="submit">Aplicar</button><a class="text-link clear" routerLink="/endpoints">Limpar</a>
 </form>
 <p role="alert" *ngIf="erro">{{ erro }}</p>
 <p role="status" class="success" *ngIf="mensagem">{{ mensagem }}</p>
@@ -11,18 +15,18 @@
   <p role="status" *ngIf="state.loading && !state.data">Carregando endpoints…</p>
   <p role="alert" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
   <section class="card" *ngIf="state.data as dados">
-    <div class="resumo"><span>Total {{ dados.endpoints.resumo.total }}</span><span>Online {{ dados.endpoints.resumo.online }}</span><span>Offline {{ dados.endpoints.resumo.offline }}</span><span>Revogados {{ dados.endpoints.resumo.revogados }}</span></div>
-    <p>Online: último contato há no máximo {{ dados.endpoints.onlineThresholdSeconds }} segundos. A política de uma máquina é a do grupo; sem grupo, vale a política padrão. Para cadastrar uma máquina, gere um token em <a routerLink="/configuracoes">Configurações</a>.</p>
+    <div class="resumo"><span>Total <strong>{{ dados.endpoints.resumo.total }}</strong></span><span>Online <strong>{{ dados.endpoints.resumo.online }}</strong></span><span>Offline <strong>{{ dados.endpoints.resumo.offline }}</strong></span><span>Revogados <strong>{{ dados.endpoints.resumo.revogados }}</strong></span></div>
+    <p class="hint">Online: último contato há no máximo {{ dados.endpoints.onlineThresholdSeconds }} segundos.</p>
     <p *ngIf="!dados.endpoints.resumo.total">Nenhuma máquina cadastrada.</p>
     <p *ngIf="dados.endpoints.resumo.total && !dados.endpoints.itens.length">Nenhum endpoint corresponde aos filtros.</p>
     <p *ngIf="dados.endpoints.truncated">Mostrando as primeiras {{ dados.endpoints.limit }} máquinas. Use a busca para encontrar as demais.</p>
     <div class="table-scroll" *ngIf="dados.endpoints.itens.length"><table>
       <thead><tr><th>Máquina</th><th>Sistema</th><th>Agente</th><th>Grupo</th><th>Política</th><th>Último contato</th><th>Status</th><th>Inspeções (7d)</th><th>Ações</th></tr></thead>
       <tbody><tr *ngFor="let endpoint of dados.endpoints.itens; trackBy: trackHost">
-        <td>{{ nome(endpoint) }}<small>{{ endpoint.ip || 'IP não informado' }}</small></td>
+        <td class="nowrap"><strong class="host">{{ nome(endpoint) }}</strong><small>{{ endpoint.ip || 'IP não informado' }}</small></td>
         <td>{{ endpoint.os || '—' }}</td>
         <td>{{ endpoint.agentVersion || '—' }}</td>
-        <td><select [attr.aria-label]="'Grupo de ' + nome(endpoint)" [ngModel]="endpoint.grupo?.id ?? null"
+        <td><select class="cell-select" [attr.aria-label]="'Grupo de ' + nome(endpoint)" [ngModel]="endpoint.grupo?.id ?? null"
           (ngModelChange)="atribuirGrupo(endpoint, $event)" [disabled]="endpoint.status === 'revogado' || ocupado === endpoint.hostId">
           <option [ngValue]="null">Sem grupo</option>
           <option *ngFor="let grupo of dados.grupos" [ngValue]="grupo.id">{{ grupo.nome }}</option>
@@ -36,7 +40,7 @@
           </ng-container>
           <ng-template #semPolitica>Sem política<small>usa a política local</small></ng-template>
         </td>
-        <td>{{ endpoint.lastSeenUtc ? (endpoint.lastSeenUtc | date:'dd/MM/yyyy HH:mm:ss') : '—' }}</td>
+        <td class="nowrap">{{ endpoint.lastSeenUtc ? (endpoint.lastSeenUtc | date:'dd/MM/yyyy HH:mm') : '—' }}</td>
         <td><span class="pill" [class.ok]="endpoint.status === 'online'" [class.danger]="endpoint.status === 'revogado'">{{ statusLabels[endpoint.status] }}</span></td>
         <td>{{ endpoint.inspecoes7d }}</td>
         <td><div class="actions">
@@ -46,8 +50,10 @@
               [attr.aria-label]="'Revogar ' + nome(endpoint)" (click)="confirmandoRevogacao = endpoint.hostId; erro = ''; mensagem = ''">Revogar</button>
             <span *ngIf="confirmandoRevogacao === endpoint.hostId" class="confirm" role="group" [attr.aria-label]="'Confirmar revogação de ' + nome(endpoint)">
               <small>A máquina deixa de falar com o servidor. Para voltar, é preciso cadastrá-la de novo.</small>
-              <button type="button" class="btn-primary danger" [disabled]="ocupado === endpoint.hostId" (click)="revogar(endpoint)">Confirmar revogação</button>
-              <button type="button" class="btn-secondary" (click)="confirmandoRevogacao = null">Cancelar</button>
+              <span class="buttons">
+                <button type="button" class="btn-primary danger" [disabled]="ocupado === endpoint.hostId" (click)="revogar(endpoint)">Confirmar revogação</button>
+                <button type="button" class="btn-secondary" (click)="confirmandoRevogacao = null">Cancelar</button>
+              </span>
             </span>
           </ng-container>
         </div></td>
