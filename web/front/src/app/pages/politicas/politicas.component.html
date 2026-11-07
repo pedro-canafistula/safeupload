@@ -1,92 +1,94 @@
 <header class="page-title">
-  <div><p class="eyebrow">CRIADOR DE POLÍTICAS</p><h1>Nova política de segurança</h1>
-    <p class="subtitle">Configure a proteção por etapas e revise o comportamento antes de publicar.</p></div>
-  <div class="page-actions"><span class="draft-pill"><i></i>Não publicada</span><button type="button" class="button secondary" (click)="fechar()">Fechar</button></div>
+  <div><p class="eyebrow">POLÍTICAS</p><h1>Políticas e grupos</h1>
+    <p class="subtitle">A política de uma máquina é a do seu grupo. Sem grupo, ou com um grupo sem política, vale a política padrão.
+      Cada edição cria uma versão nova, que as máquinas online buscam em até 30 segundos.</p></div>
+  <div class="page-actions"><a class="button primary" routerLink="/politicas/nova">Nova política</a></div>
 </header>
 
-<div class="wizard-layout" *ngIf="!jsonPronto">
-  <section class="wizard-card" aria-label="Criador de política">
-    <aside class="step-rail" aria-label="Etapas da política">
-      <p class="rail-title">ETAPAS DA POLÍTICA</p>
-      <button type="button" *ngFor="let etapa of etapas; let i = index" class="step-link" [class.current]="etapaAtual === i + 1" [class.done]="etapaAtual > i + 1" [disabled]="i + 1 > etapaAtual" (click)="irParaEtapa(i + 1)">
-        <span class="step-number">{{ etapaAtual > i + 1 ? '✓' : i + 1 }}</span><span>{{ etapa }}</span>
-      </button>
-    </aside>
+<p role="alert" class="error-message" *ngIf="erro">{{ erro }}</p>
+<p role="status" class="success-message" *ngIf="mensagem">{{ mensagem }}</p>
 
-    <div class="wizard-body">
-      <div class="step-heading"><p class="eyebrow">ETAPA {{ etapaAtual }} DE 6</p>
-        <h2>{{ titulosEtapas[etapaAtual - 1] }}</h2>
-        <p>{{ descricoesEtapas[etapaAtual - 1] }}</p></div>
-
-      <div class="step-content" [ngSwitch]="etapaAtual">
-        <div *ngSwitchCase="1" class="form-section">
-          <label class="field-label" for="policy-name">Nome da política</label>
-          <input id="policy-name" class="text-input" [(ngModel)]="nome" name="nome" maxlength="50" placeholder="Ex.: Proteção financeira" />
-          <p class="field-hint">Use um nome que ajude a identificar o objetivo desta proteção.</p>
-        </div>
-
-        <div *ngSwitchCase="2" class="form-section">
-          <label class="field-label" for="policy-ip">Endpoint no escopo</label>
-          <input id="policy-ip" class="text-input" type="text" [(ngModel)]="ip" name="ip" inputmode="decimal" autocomplete="off" placeholder="Ex.: 192.168.1.20" />
-          <p class="field-hint">Informe o IPv4 da máquina que receberá esta política. A API atual publica para um endpoint por vez.</p>
-        </div>
-
-        <div *ngSwitchCase="3" class="form-section">
-          <div class="rules-grid"><label class="rule-card" *ngFor="let regra of regras" [class.selected]="regrasSelecionadas.includes(regra.id)">
-            <input type="checkbox" [checked]="regrasSelecionadas.includes(regra.id)" (change)="alternarRegra(regra.id, $any($event.target).checked)" />
-            <span class="checkmark">✓</span><span class="rule-copy"><strong>{{ regra.nome }}</strong><small>{{ regra.descricao }}</small></span>
-          </label></div>
-          <div class="condition-control"><strong>Como os dados selecionados devem ser combinados?</strong>
-            <div class="segmented-control"><button type="button" class="active" aria-pressed="true">Qualquer um (OU)</button><button type="button" disabled aria-describedby="condition-support">Todos juntos (E)</button></div>
-            <p id="condition-support" class="field-hint">A publicação atual aplica a ação ao encontrar qualquer categoria selecionada. A combinação “Todos juntos” ainda não está disponível.</p>
-          </div>
-          <div class="condition-readout"><small>LEITURA DA CONDIÇÃO</small><strong>{{ resumoCondicao }}</strong></div>
-        </div>
-
-        <div *ngSwitchCase="4" class="form-section">
-          <p class="field-label">Ação ao identificar o dado</p>
-          <div class="action-grid"><label class="action-card" [class.selected]="acao === 'bloquear'"><input type="radio" [(ngModel)]="acao" name="acao" value="bloquear" /><span><strong>Bloquear + auditar</strong><small>Impede a operação e registra o evento para análise.</small></span></label>
-            <label class="action-card" [class.selected]="acao === 'alertar'"><input type="radio" [(ngModel)]="acao" name="acao" value="alertar" /><span><strong>Alertar + auditar</strong><small>Permite a operação e registra um alerta.</small></span></label></div>
-          <div class="info-box"><strong>Destinos monitorados</strong><p>Esta configuração será enviada ao endpoint selecionado. Canais e operações adicionais dependem de suporte no agente.</p></div>
-        </div>
-
-        <div *ngSwitchCase="5" class="form-section">
-          <div class="exception-card"><span class="exception-icon">✓</span><div><strong>Sem exceções configuradas</strong><p>A regra será aplicada a todos os arquivos que correspondam aos classificadores selecionados.</p></div></div>
-          <div class="info-box warning"><strong>Atenção à compatibilidade</strong><p>A prévia ajuda a entender o comportamento, mas não substitui os testes no agente. A política só terá efeito após publicação e sincronização.</p></div>
-        </div>
-
-        <div *ngSwitchCase="6" class="form-section review-section">
-          <p class="review-label">INTERPRETAÇÃO DA REGRA</p><h3>O que esta política fará?</h3>
-          <div class="interpretation">Quando o endpoint <strong>{{ ip || 'selecionado' }}</strong> tentar movimentar um arquivo contendo {{ resumoCondicao || 'os dados selecionados' }}, a operação deverá ser {{ acao === 'bloquear' ? 'bloqueada e auditada' : 'permitida e auditada' }}.</div>
-          <div class="review-details"><div><small>POLÍTICA</small><strong>{{ nome || 'Nova política' }}</strong></div><div><small>ESCOPO</small><strong>{{ ip || 'Endpoint não informado' }}</strong></div><div><small>AÇÃO DEFINIDA</small><strong>{{ acao === 'bloquear' ? 'Bloquear + auditoria mínima' : 'Alertar + auditoria mínima' }}</strong></div><div><small>REGRAS</small><strong>{{ regrasSelecionadas.length }} classificadores</strong></div></div>
-          <h3 class="checks-title">Verificações antes de publicar</h3>
-          <ul class="checks-list"><li class="ok">Classificadores conhecidos e seleção válida.</li><li class="ok">Endpoint de destino informado e válido.</li><li class="ok">Regra de ação definida para a política.</li><li class="warning-check">Validar suporte e aplicação efetiva no endpoint após sincronização.</li></ul>
-        </div>
+<ng-container *ngIf="state$ | async as state">
+  <p role="status" *ngIf="state.loading && !state.data">Carregando políticas…</p>
+  <p role="alert" class="error-message" *ngIf="state.error">{{ state.error }} <a routerLink="/login">Entrar</a></p>
+  <div class="sections" *ngIf="state.data as dados">
+    <section class="panel" aria-labelledby="titulo-politicas">
+      <h2 id="titulo-politicas">Políticas</h2>
+      <p class="field-hint" *ngIf="!dados.politicas.length">Nenhuma política. Crie a primeira e marque-a como padrão para que todas as máquinas a recebam.</p>
+      <p class="warning-box" *ngIf="dados.politicas.length && !temPadrao(dados.politicas)">Nenhuma política padrão: máquinas sem grupo continuam com a política local do agente.</p>
+      <div class="table-scroll" *ngIf="dados.politicas.length">
+        <table>
+          <caption class="sr-only">Políticas da empresa</caption>
+          <thead><tr><th scope="col">Nome</th><th scope="col">Versão</th><th scope="col">Atualizada</th><th scope="col">Grupos</th><th scope="col">Máquinas</th><th scope="col">Ações</th></tr></thead>
+          <tbody><tr *ngFor="let politica of dados.politicas">
+            <td><a class="name-link" [routerLink]="['/politicas', politica.id]">{{ politica.nome }}</a> <span class="badge" *ngIf="politica.padrao">Padrão</span></td>
+            <td>v{{ politica.versao }}</td>
+            <td>{{ politica.atualizadaEm | date:'dd/MM/yyyy HH:mm' }}<small>por {{ politica.atualizadaPor }}</small></td>
+            <td>{{ politica.grupos.length ? politica.grupos.join(', ') : '—' }}</td>
+            <td>{{ politica.hosts }}</td>
+            <td><div class="actions">
+              <a class="button secondary" [routerLink]="['/politicas', politica.id]" [attr.aria-label]="'Editar ' + politica.nome">Editar</a>
+              <button *ngIf="confirmandoPolitica !== politica.id" type="button" class="button secondary danger" [attr.aria-label]="'Excluir ' + politica.nome"
+                (click)="confirmandoPolitica = politica.id; limparAvisos()">Excluir</button>
+              <ng-container *ngIf="confirmandoPolitica === politica.id">
+                <button type="button" class="button danger-solid" [disabled]="ocupado" (click)="excluirPolitica(politica)">Confirmar exclusão</button>
+                <button type="button" class="button secondary" (click)="confirmandoPolitica = null">Cancelar</button>
+              </ng-container>
+            </div></td>
+          </tr></tbody>
+        </table>
       </div>
-
-      <p *ngIf="erro" class="error-message" role="alert">{{ erro }}</p>
-      <div class="wizard-footer"><button type="button" class="button secondary" (click)="voltar()" [disabled]="etapaAtual === 1">← Voltar</button>
-        <span class="required-note" *ngIf="etapaAtual < 6">* Campos obrigatórios</span>
-        <button *ngIf="etapaAtual < 6" type="button" class="button primary" (click)="continuar()" [disabled]="!etapaValida">Continuar <span>→</span></button>
-        <button *ngIf="etapaAtual === 6" type="button" class="button primary" (click)="enviarPolitica()" [disabled]="enviando">{{ enviando ? 'Publicando...' : 'Publicar (demonstração)' }} <span>→</span></button>
-      </div>
-    </div>
-  </section>
-
-  <aside class="summary-column">
-    <section class="summary-card"><h2>Resumo da política</h2>
-      <div class="summary-item"><small>NOME</small><strong>{{ nome || '—' }}</strong></div>
-      <div class="summary-item"><small>ESCOPO</small><strong>{{ ip || 'Selecione um endpoint' }}</strong></div>
-      <div class="summary-item"><small>DADOS</small><strong>{{ resumoCondicao || 'Nenhum classificador' }}</strong></div>
-      <div class="summary-item"><small>OPERAÇÃO</small><strong>Caminhos monitorados</strong></div>
-      <div class="summary-item"><small>AÇÃO</small><strong>{{ acao === 'bloquear' ? 'Bloquear + auditar' : 'Alertar + auditar' }}</strong></div>
     </section>
-    <section class="compatibility-card"><strong>Atenção à compatibilidade</strong><p>As opções exibidas são propostas. Canais e condições novas dependem de suporte e validação no agente.</p></section>
-  </aside>
-</div>
 
-<section class="published-card" *ngIf="jsonPronto" aria-live="polite">
-  <div class="published-heading"><span class="published-icon">✓</span><div><p class="eyebrow">PUBLICAÇÃO ENVIADA</p><h2>Política encaminhada ao servidor</h2><p>{{ mensagem }} A aplicação no endpoint ainda depende de sincronização e confirmação verificável.</p></div></div>
-  <div class="published-actions"><button type="button" class="button secondary" (click)="baixarJson()">Baixar cópia JSON</button><button type="button" class="button primary" (click)="fechar()">Concluir</button></div>
-  <pre>{{ jsonGerado }}</pre>
-</section>
+    <section class="panel" aria-labelledby="titulo-grupos">
+      <h2 id="titulo-grupos">Grupos de máquinas</h2>
+      <p class="field-hint">Um grupo aponta para uma política. Coloque as máquinas nos grupos pela tela <a routerLink="/endpoints">Endpoints</a>.
+        Ao excluir um grupo, as máquinas dele ficam sem grupo e passam a usar a política padrão.</p>
+      <form class="inline-form" (ngSubmit)="criarGrupo()">
+        <label class="field">Nome do grupo<input name="nomeGrupo" [(ngModel)]="novoGrupo.nome" maxlength="80" placeholder="Ex.: Financeiro" /></label>
+        <label class="field">Política do grupo
+          <select name="politicaGrupo" [(ngModel)]="novoGrupo.politicaId">
+            <option [ngValue]="null">Sem política (usa a padrão)</option>
+            <option *ngFor="let politica of dados.politicas" [ngValue]="politica.id">{{ politica.nome }}</option>
+          </select>
+        </label>
+        <button type="submit" class="button primary" [disabled]="ocupado">Criar grupo</button>
+      </form>
+      <p class="field-hint" *ngIf="!dados.grupos.length">Nenhum grupo.</p>
+      <div class="table-scroll" *ngIf="dados.grupos.length">
+        <table>
+          <caption class="sr-only">Grupos de máquinas</caption>
+          <thead><tr><th scope="col">Nome</th><th scope="col">Política</th><th scope="col">Máquinas</th><th scope="col">Ações</th></tr></thead>
+          <tbody><tr *ngFor="let grupo of dados.grupos">
+            <ng-container *ngIf="edicaoGrupo?.id === grupo.id && edicaoGrupo as edicao; else leitura">
+              <td><input class="cell-input" name="edicaoNome" [(ngModel)]="edicao.nome" maxlength="80" aria-label="Novo nome do grupo" /></td>
+              <td><select class="cell-input" [(ngModel)]="edicao.politicaId" aria-label="Nova política do grupo">
+                <option [ngValue]="null">Sem política (usa a padrão)</option>
+                <option *ngFor="let politica of dados.politicas" [ngValue]="politica.id">{{ politica.nome }}</option>
+              </select></td>
+              <td>{{ grupo.hosts }}</td>
+              <td><div class="actions">
+                <button type="button" class="button primary" [disabled]="ocupado" (click)="salvarGrupo()">Salvar grupo</button>
+                <button type="button" class="button secondary" (click)="edicaoGrupo = null">Cancelar</button>
+              </div></td>
+            </ng-container>
+            <ng-template #leitura>
+              <td>{{ grupo.nome }}</td>
+              <td>{{ grupo.politica ?? 'Sem política (usa a padrão)' }}</td>
+              <td>{{ grupo.hosts }}</td>
+              <td><div class="actions">
+                <button type="button" class="button secondary" [attr.aria-label]="'Editar grupo ' + grupo.nome" (click)="editarGrupo(grupo)">Editar</button>
+                <button *ngIf="confirmandoGrupo !== grupo.id" type="button" class="button secondary danger" [attr.aria-label]="'Excluir grupo ' + grupo.nome"
+                  (click)="confirmandoGrupo = grupo.id; limparAvisos()">Excluir</button>
+                <ng-container *ngIf="confirmandoGrupo === grupo.id">
+                  <button type="button" class="button danger-solid" [disabled]="ocupado" (click)="excluirGrupo(grupo)">Confirmar exclusão</button>
+                  <button type="button" class="button secondary" (click)="confirmandoGrupo = null">Cancelar</button>
+                </ng-container>
+              </div></td>
+            </ng-template>
+          </tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</ng-container>

@@ -1,11 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
 import { finalize } from 'rxjs';
 import { ApiService, CadastroEmpresaRequest, CadastroUsuarioRequest, EmpresaResumo } from '../../core/api.service';
 import { AddressPayload, AuthService } from '../../core/auth.service';
-import { ApiErro } from '../../core/models';
+import { mensagemErro } from '../../core/load-state';
 
 interface EnderecoForm {
   cep: string;
@@ -33,22 +33,17 @@ const usuarioVazio = () => ({
   endereco: enderecoVazio()
 });
 
+const perfisAdmin = [{ valor: 'user', nome: 'Usuário' }, { valor: 'admin', nome: 'Administrador' }] as const;
+const perfisRoot = [...perfisAdmin, { valor: 'root', nome: 'Root (todas as empresas)' }] as const;
+
 @Component({
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './novos-cadastros.component.html',
   styleUrl: './novos-cadastros.component.css'
 })
-export class NovosCadastrosComponent implements OnInit, OnDestroy {
-  // Token — fica somente em memória: ao sair da página ou recarregar, ele some.
-  token = '';
-  gerandoToken = false;
-  erroToken = '';
-  copiado = false;
-  statusCopia = '';
-  private temporizadorCopia?: number;
-
-  // Empresa
+export class NovosCadastrosComponent implements OnInit {
+  // Empresa (só ROOT cadastra empresas)
   empresa = empresaVazia();
   tentouEmpresa = false;
   enviandoEmpresa = false;
@@ -71,62 +66,17 @@ export class NovosCadastrosComponent implements OnInit, OnDestroy {
     return this.auth.usuarioLogado?.username ?? '';
   }
 
+  /** ROOT cadastra empresas e usuários de qualquer perfil; ADMIN só admin/user na própria empresa. */
+  get root(): boolean {
+    return this.auth.usuarioLogado?.role?.trim().toLowerCase() === 'root';
+  }
+
+  get perfis(): readonly { valor: string; nome: string }[] {
+    return this.root ? perfisRoot : perfisAdmin;
+  }
+
   ngOnInit(): void {
     this.carregarEmpresas();
-  }
-
-  ngOnDestroy(): void {
-    window.clearTimeout(this.temporizadorCopia);
-  }
-
-  // ---------- Token ----------
-
-  gerarToken(): void {
-    this.erroToken = '';
-    this.gerandoToken = true;
-    this.api.gerarToken().pipe(finalize(() => this.gerandoToken = false)).subscribe({
-      next: resposta => {
-        this.token = resposta.token;
-        this.copiado = false;
-        this.statusCopia = '';
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erroToken = this.mensagemDeErro(erro, 'Não foi possível gerar o token.');
-      }
-    });
-  }
-
-  copiarToken(): void {
-    const token = this.token;
-    if (!token) return;
-    const concluir = (copiou: boolean): void => {
-      window.clearTimeout(this.temporizadorCopia);
-      this.copiado = copiou;
-      this.statusCopia = copiou
-        ? 'Token copiado para a área de transferência.'
-        : 'Não foi possível copiar. Selecione o token e copie manualmente.';
-      this.temporizadorCopia = window.setTimeout(() => {
-        this.copiado = false;
-        this.statusCopia = '';
-      }, 2500);
-    };
-    const copia = navigator.clipboard?.writeText(token) ?? Promise.reject();
-    copia.then(() => concluir(true), () => concluir(this.copiarComAlternativa(token)));
-  }
-
-  // Alternativa para contextos sem a Clipboard API (por exemplo, acesso por HTTP fora de localhost).
-  private copiarComAlternativa(texto: string): boolean {
-    const campo = document.createElement('textarea');
-    campo.value = texto;
-    campo.setAttribute('readonly', '');
-    campo.style.position = 'fixed';
-    campo.style.opacity = '0';
-    document.body.appendChild(campo);
-    campo.select();
-    let copiou = false;
-    try { copiou = document.execCommand('copy'); } catch { copiou = false; }
-    document.body.removeChild(campo);
-    return copiou;
   }
 
   // ---------- Empresa ----------
@@ -157,7 +107,7 @@ export class NovosCadastrosComponent implements OnInit, OnDestroy {
         this.carregarEmpresas();
       },
       error: (erro: HttpErrorResponse) => {
-        this.erroEmpresa = this.mensagemDeErro(erro, 'Não foi possível cadastrar a empresa.');
+        this.erroEmpresa = mensagemErro(erro, 'Não foi possível cadastrar a empresa.');
       }
     });
   }
@@ -170,9 +120,11 @@ export class NovosCadastrosComponent implements OnInit, OnDestroy {
     this.api.listarEmpresas().pipe(finalize(() => this.carregandoEmpresas = false)).subscribe({
       next: lista => {
         this.empresas = [...lista].sort((a, b) => a.razao_social.localeCompare(b.razao_social, 'pt-BR'));
+        // ADMIN só vê a própria empresa: já deixa selecionada.
+        if (this.empresas.length === 1 && this.usuario.fk_id_empresa === null) this.usuario.fk_id_empresa = this.empresas[0].id_empresa;
       },
       error: (erro: HttpErrorResponse) => {
-        this.erroEmpresas = this.mensagemDeErro(erro, 'Não foi possível carregar as empresas.');
+        this.erroEmpresas = mensagemErro(erro, 'Não foi possível carregar as empresas.');
       }
     });
   }
@@ -190,11 +142,6 @@ export class NovosCadastrosComponent implements OnInit, OnDestroy {
       this.erroUsuario = 'As senhas não coincidem.';
       return;
     }
-    const criadoPor = this.criadoPor;
-    if (!criadoPor) {
-      this.erroUsuario = 'Não foi possível identificar o administrador logado. Entre novamente.';
-      return;
-    }
     const payload: CadastroUsuarioRequest = {
       username: u.username.trim(),
       email: u.email.trim(),
@@ -204,18 +151,18 @@ export class NovosCadastrosComponent implements OnInit, OnDestroy {
       data_nascimento: u.data_nascimento,
       fk_id_empresa: u.fk_id_empresa,
       endereco: this.paraEndereco(u.endereco),
-      role: u.role,
-      criado_por: criadoPor
+      role: u.role
     };
     this.enviandoUsuario = true;
     this.api.cadastrarUsuario(payload).pipe(finalize(() => this.enviandoUsuario = false)).subscribe({
       next: resposta => {
         this.mensagemUsuario = resposta.mensagem || 'Usuário cadastrado com sucesso.';
-        this.usuario = usuarioVazio();
+        const empresa = this.empresas.length === 1 ? this.empresas[0].id_empresa : null;
+        this.usuario = { ...usuarioVazio(), fk_id_empresa: empresa };
         this.tentouUsuario = false;
       },
       error: (erro: HttpErrorResponse) => {
-        this.erroUsuario = this.mensagemDeErro(erro, 'Não foi possível cadastrar o usuário.');
+        this.erroUsuario = mensagemErro(erro, 'Não foi possível cadastrar o usuário.');
       }
     });
   }
@@ -232,10 +179,5 @@ export class NovosCadastrosComponent implements OnInit, OnDestroy {
       cidade: e.cidade.trim(),
       estado: e.estado.trim().toUpperCase()
     };
-  }
-
-  private mensagemDeErro(erro: HttpErrorResponse, padrao: string): string {
-    if (erro.status === 401) return 'Sua sessão expirou. Entre novamente.';
-    return (erro.error as ApiErro | null)?.mensagem ?? padrao;
   }
 }

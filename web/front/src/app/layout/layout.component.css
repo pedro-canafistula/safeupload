@@ -5,16 +5,11 @@
 .brand-mark { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: #327c67; color: white; font-size: 19px; font-weight: 800; }
 .brand-name { display: grid; gap: 2px; font-size: 14px; font-weight: 750; letter-spacing: -.3px; }
 .brand-name small { color: #9db3a9; font-size: 7px; letter-spacing: 1.4px; }
-nav, .sidebar-concept { display: grid; gap: 4px; }
+nav { display: grid; gap: 4px; }
 .nav-caption { margin: 0 8px 5px; color: #8da49a; font-size: 8px; font-weight: 800; letter-spacing: 1.2px; }
-nav a, .concept-link { display: flex; align-items: center; gap: 9px; min-height: 29px; padding: 7px 9px; border-radius: 7px; color: #b9c9c1; font-size: 10px; font-weight: 600; }
-nav a:hover, nav a.active, .concept-link.active { background: #3b554a; color: #fff; }
+nav a { display: flex; align-items: center; gap: 9px; min-height: 29px; padding: 7px 9px; border-radius: 7px; color: #b9c9c1; font-size: 10px; font-weight: 600; }
+nav a:hover, nav a.active { background: #3b554a; color: #fff; }
 .nav-icon { display: grid; place-items: center; width: 12px; color: #a8c1b5; font-size: 13px; }
-.sidebar-concept { padding-top: 15px; border-top: 1px solid #34483f; }
-.concept-link { justify-content: space-between; }
-.concept-link b { font-size: 12px; }
-.sidebar-note { display: grid; gap: 5px; margin-top: auto; padding: 10px 9px; border: 1px solid #34483f; border-radius: 9px; color: #9fb2a9; font-size: 8px; line-height: 1.5; }
-.sidebar-note strong { color: #d2ded8; font-size: 8px; }
 .content { min-width: 0; padding: 0 24px 34px; }
 .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 54px; margin: 0 -24px 22px; padding: 0 24px; border-bottom: 1px solid #e8ebe7; background: #fff; }
 .breadcrumb, .topbar-user { display: flex; align-items: center; gap: 10px; font-size: 9px; }
@@ -29,8 +24,8 @@ nav a:hover, nav a.active, .concept-link.active { background: #3b554a; color: #f
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; min-height: 0; gap: 13px; padding: 12px; }
   .brand { margin-bottom: 0; }
-  nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .nav-caption, .sidebar-concept, .sidebar-note { display: none; }
+  nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .nav-caption { display: none; }
   nav a { justify-content: center; padding: 8px 5px; }
   .nav-icon { display: none; }
   .content { padding: 0 14px 24px; }

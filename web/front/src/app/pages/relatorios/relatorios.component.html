@@ -1,5 +1,19 @@
 <h2>Relatórios</h2>
-<section class="card"><h3>Exportação ainda não disponível</h3>
-  <p>Consulte os indicadores no <a routerLink="/painel">Painel</a> e os eventos na <a routerLink="/auditoria">Auditoria</a>.</p>
+<section class="card">
+  <h3>Auditoria dos últimos 7 dias (CSV)</h3>
+  <p>Uma linha por inspeção: data (UTC), máquina, usuário, canal, arquivo, resultado, categorias, processo, destino e versão da política. Abre direto no Excel.</p>
+  <ng-container *ngIf="maquinas$ | async as maquinas">
+    <p role="alert" *ngIf="maquinas.error">{{ maquinas.error }}</p>
+    <div class="filters">
+      <label>Máquina
+        <select name="host" [(ngModel)]="host" [disabled]="maquinas.loading">
+          <option [ngValue]="null">Todas as máquinas</option>
+          <option *ngFor="let maquina of maquinas.data?.itens ?? []" [ngValue]="maquina.hostId">{{ maquina.hostname || 'Máquina ' + maquina.hostId }}{{ maquina.ip ? ' (' + maquina.ip + ')' : '' }}</option>
+        </select>
+      </label>
+      <button type="button" class="btn-primary" [disabled]="exportando" (click)="exportar()">{{ exportando ? 'Exportando…' : 'Baixar CSV' }}</button>
+    </div>
+  </ng-container>
+  <p role="alert" *ngIf="erro">{{ erro }}</p>
+  <p>Para consultar os eventos na tela, use o <a routerLink="/painel">Painel</a> e a <a routerLink="/auditoria">Auditoria</a>.</p>
 </section>
-

@@ -18,7 +18,10 @@ export type AuditChannel = 'File' | 'Clipboard' | 'Web';
 export interface AuditEvent {
   eventId: string;
   occurredAtUtc: string;
+  /** Rótulo enviado pelo agente; a máquina de verdade é hostId/hostname (assinatura). */
   endpointId: string;
+  hostId?: number;
+  hostname?: string | null;
   userName: string;
   fileName: string;
   sizeBytes: number;
@@ -35,13 +38,15 @@ export interface AuditEvent {
   elapsedMs?: number | null;
 }
 export interface Summary { total: number; bloqueados: number; aprovados: number; liberadosSemInspecao: number; retidos?: number; }
+export interface PoliticaRef { id: number; nome: string; versao: number; }
 export interface Dashboard {
   periodo: string;
   resumo: Summary;
   tendencia: { data: string; quantidade: number }[];
   categoriasBloqueadas: { codigo: Category; nome: string; quantidade: number }[];
   recentes: AuditEvent[];
-  categoriasAtivas: Category[];
+  politicaPadrao: PoliticaRef | null;
+  maquinas: { total: number; online: number; politicaDesatualizada: number };
 }
 export interface AuditOverride {
   eventId: string;
@@ -49,23 +54,104 @@ export interface AuditOverride {
   occurredAtUtc: string;
   userName: string;
   endpointId: string;
+  hostId?: number;
+  hostname?: string | null;
 }
-export interface Audit { resumo: Summary; eventos: AuditEvent[]; endpoint: string; justificativas?: AuditOverride[]; }
+export interface Audit {
+  resumo: Summary;
+  eventos: AuditEvent[];
+  host: number | null;
+  justificativas?: AuditOverride[];
+  limit?: number;
+  truncated?: boolean;
+}
+export type EndpointStatus = 'online' | 'offline' | 'revogado';
 export interface EndpointRow {
-  endpointId: string;
-  hostname: string;
+  hostId: number;
+  hostname: string | null;
+  ip: string | null;
   os: string;
-  agentVersion: string;
-  policyVersion: number;
-  lastSeenUtc: string;
-  status: 'online' | 'offline';
+  agentVersion: string | null;
+  grupo: { id: number; nome: string } | null;
+  politicaEsperada: PoliticaRef | null;
+  /** Versão relatada pelo agente no último heartbeat. */
+  politicaAplicada: number | null;
+  politicaDesatualizada: boolean;
+  lastSeenUtc: string | null;
+  status: EndpointStatus;
   inspecoes7d: number;
 }
 export interface Endpoints {
-  resumo: { total: number; online: number; offline: number };
+  resumo: { total: number; online: number; offline: number; revogados: number };
   itens: EndpointRow[];
   onlineThresholdSeconds: number;
+  limit?: number;
+  truncated?: boolean;
 }
+
+// ---- Políticas e grupos (docs/console-agente.md) ----
+
+export type CategoriaCodigo = 'cpf' | 'cnpj' | 'rg' | 'cartao_credito' | 'dados_bancarios' | 'credenciais'
+  | 'dados_saude' | 'dados_pessoais' | 'documentos_confidenciais';
+export type AcaoCategoria = 'bloquear' | 'alertar' | 'ignorar';
+export type ModoClipboard = 'desligado' | 'alertar' | 'bloquear';
+export interface PoliticaConfiguracao {
+  categorias: Record<CategoriaCodigo, AcaoCategoria>;
+  pastas: string[];
+  pendrives: boolean;
+  rede: boolean;
+  extensoes: string[];
+  tamanhoMaximoMb: number;
+  tempoLimiteSegundos: number;
+  permitirJustificativa: boolean;
+  clipboard: ModoClipboard;
+}
+export interface PoliticaResumo {
+  id: number;
+  nome: string;
+  padrao: boolean;
+  versao: number;
+  atualizadaEm: string;
+  atualizadaPor: string;
+  grupos: string[];
+  hosts: number;
+}
+export interface PoliticaDetalhe {
+  id: number;
+  nome: string;
+  padrao: boolean;
+  versao: number;
+  configuracao: PoliticaConfiguracao;
+  historico: { versao: number; criadaEm: string; criadaPor: string }[];
+}
+export interface PoliticaRequest { nome: string; padrao: boolean; configuracao: PoliticaConfiguracao; }
+export interface Grupo { id: number; nome: string; politicaId: number | null; politica: string | null; hosts: number; }
+export interface GrupoRequest { nome: string; politicaId: number | null; }
+
+export interface TokenCadastro {
+  id: number;
+  /** Só vem enquanto o token está ativo. */
+  token: string | null;
+  estado: 'ativo' | 'usado' | 'expirado';
+  criadoEm: string;
+  expiraEm: string;
+  criadoPor: string;
+  usadoEm: string | null;
+  hostId: number | null;
+}
+
+export const categoriasPolitica: { codigo: CategoriaCodigo; nome: string }[] = [
+  { codigo: 'cpf', nome: 'CPF' },
+  { codigo: 'cnpj', nome: 'CNPJ' },
+  { codigo: 'rg', nome: 'RG' },
+  { codigo: 'cartao_credito', nome: 'Cartão de crédito' },
+  { codigo: 'dados_bancarios', nome: 'Dados bancários' },
+  { codigo: 'credenciais', nome: 'Credenciais e segredos' },
+  { codigo: 'dados_saude', nome: 'Dados de saúde' },
+  { codigo: 'dados_pessoais', nome: 'Dados pessoais' },
+  { codigo: 'documentos_confidenciais', nome: 'Documentos confidenciais' }
+];
+
 export const verdictLabels: Record<Verdict, string> = {
   Approved: 'Aprovado', Blocked: 'Bloqueado', AllowedWithoutInspection: 'Liberado sem inspeção', Retained: 'Retido'
 };

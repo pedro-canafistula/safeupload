@@ -12,11 +12,11 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
     <div class="table-scroll" *ngIf="events.length">
       <table>
         <caption class="sr-only">Eventos de inspeção recebidos</caption>
-        <thead><tr><th scope="col">Data/hora</th><th scope="col">Endpoint</th><th scope="col">Canal</th><th scope="col">Arquivo / atividade</th><th scope="col">Tamanho</th><th scope="col">Resultado</th><th scope="col">Categorias</th><th scope="col">Detalhes</th></tr></thead>
-        <tbody><ng-container *ngFor="let event of events">
+        <thead><tr><th scope="col">Data/hora</th><th scope="col">Máquina</th><th scope="col">Canal</th><th scope="col">Arquivo / atividade</th><th scope="col">Tamanho</th><th scope="col">Resultado</th><th scope="col">Categorias</th><th scope="col">Detalhes</th></tr></thead>
+        <tbody><ng-container *ngFor="let event of events; trackBy: trackEvent">
         <tr>
           <td>{{ event.occurredAtUtc | date:'dd/MM/yyyy HH:mm:ss' }}</td>
-          <td>{{ event.endpointId }}</td><td>{{ channelLabel(event) }}</td>
+          <td>{{ machine(event) }}</td><td>{{ channelLabel(event) }}</td>
           <td>{{ eventLabel(event) }}</td><td>{{ event.sizeBytes | number }} B</td>
           <td><span class="pill" [class.ok]="result(event).tone === 'ok'" [class.danger]="result(event).tone === 'danger'"
             [class.warn]="result(event).tone === 'warn'">{{ result(event).label }}</span>
@@ -37,7 +37,8 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
               <dl>
                 <div><dt>Identificador do evento</dt><dd>{{ event.eventId }}</dd></div>
                 <div><dt>Data/hora local</dt><dd>{{ event.occurredAtUtc | date:'dd/MM/yyyy HH:mm:ss Z' }}</dd></div>
-                <div><dt>Endpoint</dt><dd>{{ event.endpointId }}</dd></div>
+                <div><dt>Máquina</dt><dd>{{ machine(event) }}</dd></div>
+                <div *ngIf="event.hostname && event.endpointId && event.endpointId !== event.hostname"><dt>Identificação informada pelo agente</dt><dd>{{ event.endpointId }}</dd></div>
                 <div><dt>Usuário no endpoint</dt><dd>{{ event.userName || 'Não informado' }}</dd></div>
                 <div><dt>Canal</dt><dd>{{ channelLabel(event) }}</dd></div>
                 <div *ngIf="event.channel !== 'Clipboard' && (event.channel !== 'Web' || event.fileName)"><dt>Extensão</dt><dd>{{ event.extension || 'Não informada' }}</dd></div>
@@ -67,6 +68,13 @@ export class EventTableComponent {
   readonly verdicts = verdictLabels;
   readonly categories = categoryLabels;
   expandedEventId: string | null = null;
+
+  readonly trackEvent = (_: number, event: AuditEvent): string => event.eventId;
+
+  /** A máquina autenticada que enviou o evento; eventos sem hostId (dados de teste) usam o rótulo do agente. */
+  machine(event: AuditEvent): string {
+    return event.hostname || event.endpointId || (event.hostId ? 'Máquina ' + event.hostId : 'Não informada');
+  }
 
   overridesFor(eventId: string): AuditOverride[] {
     return this.overrides.filter(record => record.eventId === eventId);

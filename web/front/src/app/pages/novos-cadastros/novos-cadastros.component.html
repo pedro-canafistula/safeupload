@@ -1,41 +1,12 @@
 <header class="page-title">
   <p class="eyebrow">ADMINISTRAÇÃO</p>
   <h1>Novos Cadastros</h1>
-  <p class="subtitle">Gere tokens de registro e cadastre empresas e usuários do SafeUpload.</p>
+  <p class="subtitle">Cadastre usuários do console{{ root ? ' e empresas' : '' }}. Tokens de cadastro de máquinas ficam em Configurações.</p>
 </header>
 
 <div class="sections">
-  <!-- 1. Geração de token -->
-  <section class="panel" aria-labelledby="titulo-token">
-    <div class="panel-heading">
-      <div>
-        <h2 id="titulo-token">Geração de token</h2>
-        <p>O token é usado pelo agente para se cadastrar como novo endpoint e é desativado após o primeiro uso.</p>
-      </div>
-    </div>
-
-    <button type="button" class="button primary" (click)="gerarToken()" [disabled]="gerandoToken">
-      {{ gerandoToken ? 'Gerando...' : token ? 'Gerar outro token' : 'Gerar token' }}
-    </button>
-    <p *ngIf="erroToken" class="error-message" role="alert">{{ erroToken }}</p>
-
-    <ng-container *ngIf="token">
-      <p class="warning-box" role="alert">Aviso: esse token não aparecerá outra vez. Armazene-o de forma segura.</p>
-      <p class="review-label">TOKEN GERADO</p>
-      <div class="token-box">
-        <code class="token-value">{{ token }}</code>
-        <button type="button" class="icon-button" (click)="copiarToken()"
-          [attr.aria-label]="copiado ? 'Token copiado' : 'Copiar token'" [attr.title]="copiado ? 'Token copiado' : 'Copiar token'">
-          <svg *ngIf="!copiado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-          <svg *ngIf="copiado" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        </button>
-      </div>
-      <p class="copy-status" role="status">{{ statusCopia }}</p>
-    </ng-container>
-  </section>
-
-  <!-- 2. Cadastro de empresa -->
-  <section class="panel" aria-labelledby="titulo-empresa">
+  <!-- Cadastro de empresa: só ROOT -->
+  <section class="panel" aria-labelledby="titulo-empresa" *ngIf="root">
     <div class="panel-heading">
       <div>
         <h2 id="titulo-empresa">Cadastro de empresa</h2>
@@ -73,12 +44,12 @@
     </form>
   </section>
 
-  <!-- 3. Cadastro de usuário -->
+  <!-- Cadastro de usuário -->
   <section class="panel" aria-labelledby="titulo-usuario">
     <div class="panel-heading">
       <div>
         <h2 id="titulo-usuario">Cadastro de usuário</h2>
-        <p>Cadastre um usuário e vincule-o a uma empresa já cadastrada.</p>
+        <p>{{ root ? 'Cadastre um usuário e vincule-o a uma empresa já cadastrada.' : 'Cadastre um usuário na sua empresa.' }}</p>
       </div>
     </div>
 
@@ -99,16 +70,15 @@
         </label>
         <label class="field">Perfil de acesso
           <select name="usrRole" [(ngModel)]="usuario.role" required>
-            <option value="user">Usuário</option>
-            <option value="admin">Administrador</option>
+            <option *ngFor="let perfil of perfis" [value]="perfil.valor">{{ perfil.nome }}</option>
           </select>
         </label>
       </div>
       <p class="field-hint" *ngIf="carregandoEmpresas" role="status">Carregando empresas…</p>
       <p class="error-message" *ngIf="erroEmpresas" role="alert">{{ erroEmpresas }}
         <button type="button" class="link-button" (click)="carregarEmpresas()">Tentar novamente</button></p>
-      <p class="field-hint" *ngIf="!carregandoEmpresas && !erroEmpresas && !empresas.length">Nenhuma empresa cadastrada. Cadastre uma empresa na etapa 2 para vincular o usuário.</p>
-      <p class="field-hint">Administradores acessam este painel. A senha aceita até 30 caracteres.</p>
+      <p class="field-hint" *ngIf="!carregandoEmpresas && !erroEmpresas && !empresas.length">Nenhuma empresa cadastrada.</p>
+      <p class="field-hint">Administradores acessam este painel e veem só as máquinas da própria empresa. A senha aceita até 30 caracteres.</p>
 
       <fieldset class="group">
         <legend>Endereço do usuário</legend>

@@ -17,7 +17,6 @@
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
             "styles": ["src/styles.css"],
-            "assets": [{ "glob": "**/*", "input": "src/public", "output": "/" }],
             "sourceMap": true
           }
         },

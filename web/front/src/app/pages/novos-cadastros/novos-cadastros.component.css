@@ -7,7 +7,6 @@
 .sections { display: grid; gap: 14px; max-width: 860px; }
 .panel { padding: 20px 22px; border: 1px solid #e1e7e2; border-radius: 11px; background: #fff; box-shadow: 0 7px 24px #243d3010; }
 .panel-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
-.panel-number { display: grid; flex: 0 0 24px; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #eaf4ef; color: #28765f; font-size: 11px; font-weight: 800; }
 .panel-heading h2 { margin: 2px 0 4px; color: #303b36; font-size: 16px; letter-spacing: -.25px; }
 .panel-heading p { margin: 0; color: #84908a; font-size: 12px; line-height: 1.5; }
 
@@ -16,7 +15,7 @@
 .button:disabled { opacity: .45; cursor: not-allowed; }
 .button.primary { background: #237b65; color: #fff; }
 .button.primary:hover:not(:disabled) { background: #1b6a56; }
-.button:focus-visible, .icon-button:focus-visible, .link-button:focus-visible { outline: 2px solid #5da78d; outline-offset: 2px; }
+.button:focus-visible, .link-button:focus-visible { outline: 2px solid #5da78d; outline-offset: 2px; }
 
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
 .field { display: grid; gap: 6px; color: #394640; font-size: 11px; font-weight: 750; }
@@ -35,14 +34,6 @@
 .form-footer { display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 14px; border-top: 1px solid #edf0ee; }
 .link-button { padding: 0; border: 0; background: none; color: #237b65; font: inherit; text-decoration: underline; cursor: pointer; }
 
-.warning-box { margin: 14px 0 0; padding: 11px 12px; border: 1px solid #f1dfbd; border-radius: 7px; background: #fffaf0; color: #96713c; font-size: 12px; font-weight: 600; }
-.review-label { margin: 14px 0 6px; color: #799586; font-size: 10px; font-weight: 800; letter-spacing: .6px; }
-.token-box { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; border: 1px solid #d5dfd9; border-radius: 8px; background: #f5f7f5; }
-.token-value { flex: 1; min-width: 0; color: #2c3a33; font: 600 15px/1.4 monospace; letter-spacing: 1.5px; overflow-wrap: anywhere; user-select: all; }
-.icon-button { display: grid; flex: 0 0 34px; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #dce3de; border-radius: 7px; background: #fff; color: #52615a; cursor: pointer; }
-.icon-button:hover { background: #f0f7f2; color: #237b65; }
-.icon-button svg { width: 16px; height: 16px; }
-.copy-status { min-height: 16px; margin: 6px 0 0; color: #2f6b55; font-size: 11px; }
 
 @media (max-width: 680px) {
   .panel { padding: 16px 14px; }

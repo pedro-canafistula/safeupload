@@ -1,5 +1,14 @@
+section { margin-bottom: 12px; }
+
 .resumo { display: flex; gap: 18px; margin-bottom: 10px; font-weight: 600; }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 10px; border-bottom: 1px solid #edf2f8; text-align: left; font-size: 14px; }
+th, td { padding: 10px; border-bottom: 1px solid #edf2f8; text-align: left; font-size: 14px; vertical-align: top; }
 small { color: #6f8197; }
-
+td small.pill { display: inline-block; margin-top: 4px; }
+td select { padding: 6px; border: 1px solid #bbc9d9; border-radius: 6px; background: #fff; max-width: 170px; }
+.actions { display: grid; gap: 6px; min-width: 120px; }
+.actions .btn-secondary, .actions .btn-primary { padding: 6px 10px; font-size: 12px; }
+.confirm { display: grid; gap: 6px; }
+.danger.btn-secondary { color: #9d1d1d; border-color: #f0c9c9; }
+.danger.btn-primary { background: #9d1d1d; }
+.success { color: #158248; }
