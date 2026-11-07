@@ -87,7 +87,7 @@ public sealed class CommunicationHealthTests
     {
         using var workspace = new TestWorkspace(); var health = new CommunicationHealth(true);
         using var client = Client(new Handler(_ => Reply(status, body)));
-        var store = new DurableHttpPolicyStore(client, "SENSITIVE", workspace.PolicyFile, false, health);
+        var store = new DurableHttpPolicyStore(client, workspace.PolicyFile, TestPolicies.Local, false, health);
         var policy = await store.LoadAsync(CancellationToken.None);
         Assert.NotEmpty(policy.ActiveCategories);
         var s = State(health, CommunicationOperation.Policy);
@@ -102,7 +102,7 @@ public sealed class CommunicationHealthTests
         using var workspace = new TestWorkspace(); var health = new CommunicationHealth(true);
         string body = "{\"version\":7,\"activeCategories\":[\"Cpf\"]}";
         using var client = Client(new Handler(_ => Reply(200, body)));
-        var store = new DurableHttpPolicyStore(client, "PC", workspace.PolicyFile, false, health);
+        var store = new DurableHttpPolicyStore(client, workspace.PolicyFile, TestPolicies.Local, false, health);
         Assert.Equal(7, (await store.LoadAsync(CancellationToken.None)).Version);
         Assert.True(State(health, CommunicationOperation.Policy).LastRemoteCachePersisted);
         body = "invalid";
@@ -112,7 +112,7 @@ public sealed class CommunicationHealthTests
         Assert.Equal(1, State(health, CommunicationOperation.Policy).Failures);
         Assert.False(health.Read().PolicyAppliedToDriverQualified);
         var otherHealth = new CommunicationHealth(true);
-        var reopened = new DurableHttpPolicyStore(client, "PC", workspace.PolicyFile, false, otherHealth);
+        var reopened = new DurableHttpPolicyStore(client, workspace.PolicyFile, TestPolicies.Local, false, otherHealth);
         Assert.Equal(7, (await reopened.LoadAsync(CancellationToken.None)).Version);
         Assert.Equal("Disk", State(otherHealth, CommunicationOperation.Policy).LastPolicySource);
         await reopened.LoadCachedOrDefaultAsync(CancellationToken.None);
@@ -125,7 +125,7 @@ public sealed class CommunicationHealthTests
         using var workspace = new TestWorkspace(); var health = new CommunicationHealth(true);
         Directory.CreateDirectory(workspace.PolicyFile); // The destination is a directory, not a policy file.
         using var client = Client(new Handler(_ => Reply(200, "{\"version\":9,\"activeCategories\":[\"Cpf\"]}")));
-        var store = new DurableHttpPolicyStore(client, "PC", workspace.PolicyFile, false, health);
+        var store = new DurableHttpPolicyStore(client, workspace.PolicyFile, TestPolicies.Local, false, health);
         Assert.Equal(9, (await store.LoadAsync(CancellationToken.None)).Version);
         var s = State(health, CommunicationOperation.Policy);
         Assert.Equal("Success", s.State); Assert.False(s.LastRemoteCachePersisted); Assert.Equal(0, s.Failures);
@@ -143,7 +143,7 @@ public sealed class CommunicationHealthTests
             if (requested) cancel.Cancel();
             throw new TaskCanceledException("SENSITIVE");
         }));
-        var store = new DurableHttpPolicyStore(client, "PC", workspace.PolicyFile, false, health);
+        var store = new DurableHttpPolicyStore(client, workspace.PolicyFile, TestPolicies.Local, false, health);
         if (requested) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.LoadAsync(cancel.Token));
         else await store.LoadAsync(cancel.Token);
         var s = State(health, CommunicationOperation.Policy);
@@ -201,7 +201,7 @@ public sealed class CommunicationHealthTests
         using var client = Client(new Handler(request => request.RequestUri!.AbsolutePath.EndsWith("policy")
             ? Reply(200, "{\"version\":7,\"activeCategories\":[\"Cpf\"]}")
             : Reply(200, "{\"acceptedEvents\":1,\"acceptedOverrides\":0}")));
-        var store = new DurableHttpPolicyStore(client, "PC", workspace.PolicyFile, false, observer);
+        var store = new DurableHttpPolicyStore(client, workspace.PolicyFile, TestPolicies.Local, false, observer);
         Assert.Equal(7, (await store.LoadAsync(CancellationToken.None)).Version);
         var queue = new LocalQueueAuditSink(workspace.QueueFile); await queue.WriteAsync(Event(), CancellationToken.None);
         using var dispatcher = Dispatcher(queue, client, observer);
@@ -253,10 +253,11 @@ public sealed class CommunicationHealthTests
     }
 
     private static CommunicationOperationHealth State(CommunicationHealth health, CommunicationOperation op) => health.Read().Operations.Single(x => x.Operation == op.ToString());
-    private static HttpClient Client(HttpMessageHandler handler) => new(handler) { BaseAddress = new Uri("http://localhost/SENSITIVE/") };
+    private static HttpClient Client(HttpMessageHandler handler) => new(handler) { BaseAddress = new Uri("http://localhost/SENSITIVE/agent/") };
     private static HttpResponseMessage Reply(int status, string body) => new((HttpStatusCode)status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     private static HttpAgentDispatcher Dispatcher(LocalQueueAuditSink queue, HttpClient client, ICommunicationObserver observer) =>
-        new(queue, new Policies(), client, "PC", TimeSpan.FromHours(1), NullLogger<HttpAgentDispatcher>.Instance, observer);
+        new(queue, new Policies(), client, "PC", TimeSpan.FromHours(1), NullLogger<HttpAgentDispatcher>.Instance, observer)
+        { HeartbeatSender = new SignedAgentHeartbeat(new AgentApiClient(client, observer), 7, () => null, "test") };
     private static AuditEvent Event() => new(Guid.NewGuid(), DateTimeOffset.UtcNow, "PC", "synthetic", "file.txt", ".txt", 1, Verdict.Approved, [], [], "synthetic", 1, "synthetic", null, 7, 1, false);
     private sealed class Policies : IPolicyStore { public Task<Policy> LoadAsync(CancellationToken token) => Task.FromResult(LocalPolicyStore.CreateDefault()); }
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> action) : HttpMessageHandler

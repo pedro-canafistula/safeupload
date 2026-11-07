@@ -39,7 +39,7 @@ public sealed class CommunicationLoggingTests
         services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Trace).AddProvider(new Provider(log)));
         Uri? received = null;
         SafeUpload.Agent.Service.Program.ConfigureAdministrationHttpClient(services,
-                new Uri($"https://example.test/{Secret}/"), 7)
+                TestPolicies.Identity(new Uri($"https://example.test/{Secret}/agent/")), TimeSpan.FromSeconds(7))
             .ConfigurePrimaryHttpMessageHandler(() => new Handler(request =>
             {
                 received = request.RequestUri;
@@ -53,7 +53,7 @@ public sealed class CommunicationLoggingTests
         Assert.Equal(TimeSpan.FromSeconds(7), client.Timeout);
         if (fail) await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync($"policy?endpointId={Secret}"));
         else using (await client.GetAsync($"policy?endpointId={Secret}")) { }
-        Assert.Equal($"https://example.test/{Secret}/policy?endpointId={Secret}", received!.AbsoluteUri);
+        Assert.Equal($"https://example.test/{Secret}/agent/policy?endpointId={Secret}", received!.AbsoluteUri);
         Assert.Empty(log.Entries);
         using var other = factory.CreateClient("Unrelated");
         using var response = await other.GetAsync("https://example.test/plain");
@@ -70,8 +70,10 @@ public sealed class CommunicationLoggingTests
         using var client = new HttpClient(new Handler(_ => throw Failure()))
             { BaseAddress = new Uri($"https://{Secret}@example.test/{Secret}/?token={Secret}") };
         var log = new Capture<HttpAgentDispatcher>(2);
+        using var heartbeatClient = new HttpClient(new Handler(_ => throw Failure()))
+            { BaseAddress = new Uri($"https://example.test/{Secret}/agent/") };
         using var dispatcher = new HttpAgentDispatcher(queue, new Policies(), client, Secret,
-            TimeSpan.FromHours(1), log);
+            TimeSpan.FromHours(1), log) { HeartbeatSender = new SignedAgentHeartbeat(new AgentApiClient(heartbeatClient), 7, () => null, Secret) };
         await dispatcher.StartAsync(CancellationToken.None);
         try { await log.WarningsReady.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
         finally { await dispatcher.StopAsync(CancellationToken.None); }
@@ -93,7 +95,7 @@ public sealed class CommunicationLoggingTests
             { BaseAddress = new Uri("https://example.test/agent/") };
         var log = new Capture<HttpAgentDispatcher>(1);
         using var dispatcher = new HttpAgentDispatcher(queue, new Policies(), client, Secret,
-            TimeSpan.FromHours(1), log);
+            TimeSpan.FromHours(1), log) { HeartbeatSender = new SignedAgentHeartbeat(new AgentApiClient(client), 7, () => null, "test") };
         await dispatcher.RunCycleAsync(CancellationToken.None);
         AssertSafe(log);
         var warning = Assert.Single(log.Entries, e => e.Values.Any(v => v.Key == "Stage"));

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Security.AccessControl;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -8,8 +9,10 @@ using SafeUpload.Agent.Core.Domain;
 namespace SafeUpload.Agent.Core.Infrastructure;
 
 /// <summary>
-/// Política remota com cópia durável da última versão válida para uso offline (HU-12).
-/// A decisão de inspeção nunca depende de o servidor estar acessível.
+/// Política do console (GET policy, assinado) com cópia em disco para uso offline (docs/console-agente.md).
+/// 200 = documento do console (mesmo formato do policy.json); 404 = nenhuma atribuída, vale o policy.json local;
+/// falha = última política do console conhecida (memória, depois disco), senão o policy.json local.
+/// A inspeção nunca espera a rede: o RefreshingPolicyStore chama isto em segundo plano.
 /// </summary>
 public sealed class DurableHttpPolicyStore : IPolicyStore
 {
@@ -19,160 +22,75 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         AllowDuplicateProperties = false,
         Converters = { new JsonStringEnumConverter() }
     };
+    private const int MaxDocumentBytes = 64 * 1024;
 
     private readonly HttpClient _http;
-    private readonly string _endpointId;
     private readonly string _cacheFile;
+    private readonly IPolicyStore _local;
     private readonly bool _enforceProtectedAcl;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private Policy? _lastGood;
     private readonly ICommunicationObserver? _observer;
-    private readonly ConsolePolicyOptions? _consolePolicy;
-    private readonly IPolicyStore? _operationalPolicy;
-    private PolicyDocument? _lastConsoleDocument;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private Policy? _lastConsole;
 
-    /// <summary>Origem da última carga concluída, para diagnóstico operacional.</summary>
+    /// <summary>Origem da última carga: remote, local, memory, disk.</summary>
     public string? LastSource { get; private set; }
 
-    public DurableHttpPolicyStore(HttpClient http, string endpointId, string cacheFile)
-        : this(http, endpointId, cacheFile, enforceProtectedAcl: true) { }
+    /// <summary>Versão do console em uso, relatada no heartbeat; null quando vale o policy.json local.</summary>
+    public int? ConsoleVersion { get; private set; }
 
-    public DurableHttpPolicyStore(HttpClient http, string endpointId, string cacheFile, ICommunicationObserver observer)
-        : this(http, endpointId, cacheFile, enforceProtectedAcl: true, observer) { }
+    public DurableHttpPolicyStore(HttpClient http, string cacheFile, IPolicyStore local, ICommunicationObserver? observer = null)
+        : this(http, cacheFile, local, enforceProtectedAcl: true, observer) { }
 
-    public DurableHttpPolicyStore(HttpClient http, string endpointId, string cacheFile,
-        ICommunicationObserver observer, ConsolePolicyOptions consolePolicy, IPolicyStore operationalPolicy)
-        : this(http, endpointId, cacheFile, true, observer, consolePolicy, operationalPolicy) { }
-
-    // Suíte isolada usa diretórios temporários sem privilégios administrativos.
-    internal DurableHttpPolicyStore(HttpClient http, string endpointId, string cacheFile,
-        bool enforceProtectedAcl, ICommunicationObserver? observer = null,
-        ConsolePolicyOptions? consolePolicy = null, IPolicyStore? operationalPolicy = null)
+    // Testes isolados usam diretórios temporários sem privilégios administrativos.
+    internal DurableHttpPolicyStore(HttpClient http, string cacheFile, IPolicyStore local, bool enforceProtectedAcl,
+        ICommunicationObserver? observer = null)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
-        ArgumentException.ThrowIfNullOrWhiteSpace(endpointId);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFile);
-        _endpointId = endpointId;
         _cacheFile = cacheFile;
+        _local = local ?? throw new ArgumentNullException(nameof(local));
         _enforceProtectedAcl = enforceProtectedAcl;
         _observer = observer;
-        if (consolePolicy is not null)
-        {
-            _ = new AgentApiClient(http); // Mesma base /agent/, sem query/credenciais.
-            ArgumentNullException.ThrowIfNull(operationalPolicy);
-        }
-        _consolePolicy = consolePolicy;
-        _operationalPolicy = operationalPolicy;
     }
 
-    public Task<Policy> LoadAsync(CancellationToken cancellationToken) => LoadCoreAsync(true, cancellationToken);
-
-    /// <summary>Fresh origin read; never returns memory, disk or default policy on failure.</summary>
-    public Task<Policy> LoadCurrentAsync(CancellationToken cancellationToken) => LoadCoreAsync(false, cancellationToken);
-
-    private async Task<Policy> LoadCoreAsync(bool allowFallback, CancellationToken cancellationToken)
+    public async Task<Policy> LoadAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         using var observation = new CommunicationObservation(_observer, CommunicationOperation.Policy);
         try
         {
-            CommunicationFailure? failure = null;
-            int? failedStatus = null;
+            int? status = null;
+            CommunicationFailure failure;
             try
             {
-                // Recupera a revisão persistida antes de aceitar outra, inclusive após reinício.
-                if (_consolePolicy is not null)
-                {
-                    if (allowFallback) await RestoreUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
-                    else if (_lastConsoleDocument is null && File.Exists(_cacheFile))
-                    {
-                        // A trusted previous revision is only a rollback baseline, never current authority.
-                        try { await ReadCacheAsync(cancellationToken).ConfigureAwait(false); }
-                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                        catch (Exception error) { Trace.TraceWarning("SafeUpload: revision baseline unavailable: {0}", error.GetType().Name); }
-                    }
-                }
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                if (_consolePolicy is not null && _http.Timeout != Timeout.InfiniteTimeSpan)
-                    deadline.CancelAfter(_http.Timeout);
-                var networkToken = _consolePolicy is null ? cancellationToken : deadline.Token;
-                using var response = await _http.GetAsync(
-                    _consolePolicy?.RequestPath ?? $"policy?endpointId={Uri.EscapeDataString(_endpointId)}",
-                    _consolePolicy is null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead,
-                    networkToken)
+                if (_http.Timeout != Timeout.InfiniteTimeSpan) deadline.CancelAfter(_http.Timeout);
+                using var response = await _http.GetAsync("policy", HttpCompletionOption.ResponseHeadersRead, deadline.Token)
                     .ConfigureAwait(false);
-                failedStatus = (int)response.StatusCode;
+                status = (int)response.StatusCode;
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    // Nenhuma política atribuída a esta máquina: volta ao policy.json local.
+                    var local = await _local.LoadAsync(cancellationToken).ConfigureAwait(false);
+                    local.EnsureValid();
+                    _lastConsole = null;
+                    ConsoleVersion = null;
+                    TryDeleteCache();
+                    LastSource = "local";
+                    observation.Success(status, PolicyLoadSource.Default, cachePersisted: false);
+                    return local;
+                }
                 response.EnsureSuccessStatusCode();
-
-                await using var content = await response.Content
-                    .ReadAsStreamAsync(networkToken).ConfigureAwait(false);
-                PolicyDocument document;
-                PolicyDocument? cacheDocument;
-                if (_consolePolicy is null)
-                {
-                    document = await JsonSerializer.DeserializeAsync<PolicyDocument>(
-                        content, JsonOptions, networkToken).ConfigureAwait(false)
-                        ?? throw new JsonException("O servidor respondeu com política vazia.");
-                    cacheDocument = document;
-                }
-                else
-                {
-                    using var json = await ReadConsoleJsonAsync(content, networkToken).ConfigureAwait(false);
-                    var operational = allowFallback
-                        ? await _operationalPolicy!.LoadAsync(cancellationToken).ConfigureAwait(false)
-                        : await _operationalPolicy!.LoadCurrentAsync(networkToken).ConfigureAwait(false);
-                    operational.EnsureValid();
-                    document = _consolePolicy.Translate(json.RootElement, operational);
-                    if (_lastConsoleDocument is { } previous &&
-                        (document.Version < previous.Version ||
-                         document.Version == previous.Version && !SameConsolePublication(document, previous)))
-                        throw new InvalidPolicyException("Revisão da console regressiva ou alterada sem nova publicação.");
-                    cacheDocument = allowFallback ? document : null;
-                    if (!allowFallback)
-                    {
-                        // The current result has already been read from the live operational origin.
-                        // This second projection is only for legacy caching, never authority to return.
-                        try
-                        {
-                            var legacy = _consolePolicy.Translate(json.RootElement,
-                                await _operationalPolicy!.LoadAsync(networkToken).ConfigureAwait(false));
-                            legacy.ToPolicy().EnsureValid();
-                            cacheDocument = legacy;
-                        }
-                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                        catch (Exception error) { Trace.TraceWarning("SafeUpload: legacy cache projection unavailable: {0}", error.GetType().Name); }
-                    }
-                }
-
-                var policy = document.ToPolicy(staged: !allowFallback);
+                await using var content = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
+                var document = JsonSerializer.Deserialize<PolicyDocument>(await ReadBoundedAsync(content, deadline.Token)
+                    .ConfigureAwait(false), JsonOptions) ?? throw new JsonException("Política vazia.");
+                var policy = document.ToPolicy();
                 policy.EnsureValid();
-                var cachedPolicy = cacheDocument?.ToPolicy();
-                cachedPolicy?.EnsureValid();
-
-                // A política publicada pode ser usada nesta execução mesmo quando
-                // o disco não permite atualizar o cache; a falha fica diagnosticada.
-                if (cachedPolicy is not null) _lastGood = allowFallback ? policy : cachedPolicy;
-                if (_consolePolicy is not null) _lastConsoleDocument = cacheDocument ?? document;
-                bool persisted = false;
-                try
-                {
-                    if (cacheDocument is not null)
-                    {
-                        await SaveAsync(cacheDocument, cancellationToken).ConfigureAwait(false);
-                        persisted = true;
-                    }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceWarning("SafeUpload: não foi possível persistir a política: {0}",
-                        ex.GetType().Name);
-                }
+                _lastConsole = policy;
+                ConsoleVersion = policy.Version;
+                bool persisted = await TrySaveAsync(document, cancellationToken).ConfigureAwait(false);
                 LastSource = "remote";
-                observation.Success((int)response.StatusCode, PolicyLoadSource.Remote, persisted);
+                observation.Success(status, PolicyLoadSource.Remote, persisted);
                 return policy;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -180,35 +98,19 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                 observation.Exception(new OperationCanceledException(), cancellationToken);
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception error)
             {
-                if (!allowFallback)
-                {
-                    observation.Exception(ex, cancellationToken, failedStatus);
-                    throw;
-                }
-                failure = CommunicationObservation.Classify(ex);
-                if (ex is HttpRequestException request && request.StatusCode is { } status) failedStatus = (int)status;
-                Trace.TraceWarning("SafeUpload: política remota indisponível/inválida: {0}",
-                    ex.GetType().Name);
+                failure = CommunicationObservation.Classify(error);
+                if (error is HttpRequestException { StatusCode: { } code }) status = (int)code;
+                Trace.TraceWarning("SafeUpload: política do console indisponível/inválida: {0}", error.GetType().Name);
             }
 
-            try
+            var restored = await RestoreUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
+            observation.Failure(failure, status, LastSource switch
             {
-                var restored = await RestoreUnsynchronizedAsync(cancellationToken).ConfigureAwait(false);
-                PolicyLoadSource? source = LastSource switch
-                {
-                    "memory" => PolicyLoadSource.Memory, "disk" => PolicyLoadSource.Disk,
-                    "default" => PolicyLoadSource.Default, _ => null
-                };
-                observation.Failure(failure ?? CommunicationFailure.UnexpectedError, failedStatus, source);
-                return restored;
-            }
-            catch (Exception exception)
-            {
-                observation.Exception(exception, cancellationToken);
-                throw;
-            }
+                "memory" => PolicyLoadSource.Memory, "disk" => PolicyLoadSource.Disk, _ => PolicyLoadSource.Default
+            });
+            return restored;
         }
         finally
         {
@@ -216,13 +118,7 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         }
     }
 
-    // The console owns these fields. Local operational limits/scopes differ by consumer mode and are not
-    // a mutation of the central publication. Destination/format/rules are checked during translation.
-    private static bool SameConsolePublication(PolicyDocument left, PolicyDocument right) =>
-        left.Version == right.Version && left.AuditOnly == right.AuditOnly &&
-        (left.ActiveCategories ?? []).SequenceEqual(right.ActiveCategories ?? [], StringComparer.Ordinal);
-
-    /// <summary>Inicializa a proteção pelo disco ou padrão existente, sem esperar uma conexão HTTP.</summary>
+    /// <summary>Política inicial sem esperar a rede: cache do console, senão policy.json local.</summary>
     public async Task<Policy> LoadCachedOrDefaultAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -232,125 +128,118 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
 
     private async Task<Policy> RestoreUnsynchronizedAsync(CancellationToken cancellationToken)
     {
-        // Durante a execução, a última política conhecida tem precedência.
-        if (_lastGood is not null)
+        if (_lastConsole is not null)
         {
             LastSource = "memory";
-            return _lastGood;
+            return _lastConsole;
         }
-
-        // Após reiniciar o serviço offline, recupera a última versão persistida.
         try
         {
             var cached = await ReadCacheAsync(cancellationToken).ConfigureAwait(false);
-            _lastGood = cached;
+            _lastConsole = cached;
+            ConsoleVersion = cached.Version;
             LastSource = "disk";
             return cached;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is not FileNotFoundException)
         {
-            throw;
+            Trace.TraceWarning("SafeUpload: cache da política do console inválido: {0}", error.GetType().Name);
         }
-        catch (Exception ex)
-        {
-            Trace.TraceWarning("SafeUpload: cache remoto indisponível/inválido: {0}",
-                ex.GetType().Name);
-        }
+        catch (FileNotFoundException) { }
 
-        // Somente no primeiro uso sem política remota recuperável.
-        var fallback = _consolePolicy is null
-            ? LocalPolicyStore.CreateDefault()
-            : await _operationalPolicy!.LoadAsync(cancellationToken).ConfigureAwait(false);
-        fallback.EnsureValid();
-        LastSource = "default";
-        return fallback;
+        var local = await _local.LoadAsync(cancellationToken).ConfigureAwait(false);
+        local.EnsureValid();
+        ConsoleVersion = null;
+        LastSource = "local";
+        return local;
     }
 
     private async Task<Policy> ReadCacheAsync(CancellationToken cancellationToken)
     {
+        if (!File.Exists(_cacheFile)) throw new FileNotFoundException("Sem cache.", _cacheFile);
         if (_enforceProtectedAcl && OperatingSystem.IsWindows())
         {
             ProtectedPolicyAcl.EnsureDirectory(_cacheFile);
             ProtectedPolicyAcl.VerifyPolicyFile(_cacheFile);
         }
-
         await using var stream = File.OpenRead(_cacheFile);
-        PolicyDocument document;
-        if (_consolePolicy is null)
-            document = await JsonSerializer.DeserializeAsync<PolicyDocument>(
-                stream, JsonOptions, cancellationToken).ConfigureAwait(false)
-                ?? throw new JsonException("Cache de política vazio.");
-        else
-        {
-            using var json = await ReadConsoleJsonAsync(stream, cancellationToken).ConfigureAwait(false);
-            ConsolePolicyOptions.RejectDuplicates(json.RootElement);
-            var cache = json.RootElement.Deserialize<ConsolePolicyCache>(JsonOptions)
-                ?? throw new JsonException("Cache de política vazio.");
-            document = _consolePolicy.ReadCache(cache, _http.BaseAddress!);
-        }
-
-        var policy = document.ToPolicy();
+        var cache = JsonSerializer.Deserialize<CacheFile>(await ReadBoundedAsync(stream, cancellationToken)
+            .ConfigureAwait(false), JsonOptions) ?? throw new JsonException("Cache vazio.");
+        // Cache de outro servidor (máquina cadastrada de novo) nunca vale.
+        if (cache.Format != 2 || cache.Server != _http.BaseAddress?.AbsoluteUri || cache.Policy is null)
+            throw new InvalidPolicyException("Cache da política pertence a outro servidor ou formato.");
+        var policy = cache.Policy.ToPolicy();
         policy.EnsureValid();
-        if (_consolePolicy is not null) _lastConsoleDocument = document;
         return policy;
     }
 
-    private async Task SaveAsync(PolicyDocument document, CancellationToken cancellationToken)
+    private async Task<bool> TrySaveAsync(PolicyDocument document, CancellationToken cancellationToken)
     {
-        string fullPath = Path.GetFullPath(_cacheFile);
-        string directory = Path.GetDirectoryName(fullPath)
-            ?? throw new IOException("Cache de política sem diretório.");
-
-        if (_enforceProtectedAcl && OperatingSystem.IsWindows())
-        {
-            ProtectedPolicyAcl.EnsureDirectory(fullPath);
-            if (File.Exists(fullPath))
-                ProtectedPolicyAcl.VerifyPolicyFile(fullPath);
-        }
-        else
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        // Temporário no mesmo diretório => rename atômico no mesmo volume.
-        // Nome aleatório impede que um temp antigo seja substituído por engano.
-        string temporary = Path.Combine(directory, ".policy-" + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            await using (var stream = OperatingSystem.IsWindows() && _enforceProtectedAcl
-                ? new FileInfo(temporary).Create(FileMode.CreateNew, FileSystemRights.FullControl,
-                    FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough,
-                    ProtectedPolicyAcl.CreatePolicyFileSecurity())
-                : new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            string fullPath = Path.GetFullPath(_cacheFile);
+            string directory = Path.GetDirectoryName(fullPath) ?? throw new IOException("Cache sem diretório.");
+            if (_enforceProtectedAcl && OperatingSystem.IsWindows())
             {
-                if (_consolePolicy is null)
-                    await JsonSerializer.SerializeAsync(stream, document, JsonOptions, cancellationToken).ConfigureAwait(false);
-                else
-                    await JsonSerializer.SerializeAsync(stream, _consolePolicy.Wrap(_http.BaseAddress!, document),
-                        JsonOptions, cancellationToken).ConfigureAwait(false);
-                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                ProtectedPolicyAcl.EnsureDirectory(fullPath);
+                if (File.Exists(fullPath)) ProtectedPolicyAcl.VerifyPolicyFile(fullPath);
             }
+            else Directory.CreateDirectory(directory);
 
-            File.Move(temporary, fullPath, overwrite: true);
+            // Temporário no mesmo diretório => troca atômica no mesmo volume.
+            string temporary = Path.Combine(directory, ".policy-" + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                await using (var stream = OperatingSystem.IsWindows() && _enforceProtectedAcl
+                    ? new FileInfo(temporary).Create(FileMode.CreateNew, FileSystemRights.FullControl,
+                        FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough,
+                        ProtectedPolicyAcl.CreatePolicyFileSecurity())
+                    : new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                        4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
+                {
+                    await JsonSerializer.SerializeAsync(stream, new CacheFile(2, _http.BaseAddress!.AbsoluteUri, document),
+                        JsonOptions, cancellationToken).ConfigureAwait(false);
+                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                File.Move(temporary, fullPath, overwrite: true);
+                return true;
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
         }
-        finally
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error)
         {
-            if (File.Exists(temporary)) File.Delete(temporary);
+            // A política recebida vale nesta execução mesmo sem cache; a falha fica diagnosticada.
+            Trace.TraceWarning("SafeUpload: não foi possível gravar o cache da política: {0}", error.GetType().Name);
+            return false;
         }
     }
 
-    private static async Task<JsonDocument> ReadConsoleJsonAsync(Stream stream, CancellationToken token)
+    private void TryDeleteCache()
+    {
+        try { File.Delete(_cacheFile); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceWarning("SafeUpload: cache da política não removido: {0}", error.GetType().Name);
+        }
+    }
+
+    private static async Task<byte[]> ReadBoundedAsync(Stream stream, CancellationToken token)
     {
         using var buffer = new MemoryStream();
         byte[] chunk = new byte[4096];
         int count;
         while ((count = await stream.ReadAsync(chunk, token).ConfigureAwait(false)) != 0)
         {
-            if (buffer.Length + count > 64 * 1024)
-                throw new JsonException("Política da console excede o limite de leitura.");
+            if (buffer.Length + count > MaxDocumentBytes) throw new JsonException("Política excede o limite de leitura.");
             buffer.Write(chunk, 0, count);
         }
-        return JsonDocument.Parse(buffer.ToArray(), new JsonDocumentOptions { MaxDepth = 16 });
+        return buffer.ToArray();
     }
+
+    private sealed record CacheFile(int Format, string Server, PolicyDocument Policy);
 }

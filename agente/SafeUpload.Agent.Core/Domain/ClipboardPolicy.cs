@@ -3,7 +3,7 @@ namespace SafeUpload.Agent.Core.Domain;
 /// <summary>
 /// Modo do canal de área de transferência.
 ///
-/// É o "modo por atividade" que a ARQUITETURA.md aponta como o primeiro item a
+/// É o "modo por atividade" que a arquitetura (docs/clipboard/README.md) aponta como o primeiro item a
 /// trazer do mercado: o canal sobe em auditoria para medir falso positivo, e só
 /// depois passa a bloquear.
 /// </summary>

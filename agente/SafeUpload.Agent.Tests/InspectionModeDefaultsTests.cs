@@ -22,9 +22,7 @@ public sealed class InspectionModeDefaultsTests : IDisposable
         string json = "{\"version\":7,\"activeCategories\":[\"Cpf\"]" + fields + "}";
         await File.WriteAllTextAsync(_workspace.PolicyFile, json);
         var local = new LocalPolicyStore(_workspace.PolicyFile);
-        using var client = new HttpClient(new Response(json)) { BaseAddress = new Uri("http://policy.invalid/") };
-        var remote = new HttpPolicyStore(client, "fixture");
-        foreach (var store in new SafeUpload.Agent.Core.Application.IPolicyStore[] { local, remote })
+        foreach (var store in new SafeUpload.Agent.Core.Application.IPolicyStore[] { local })
         {
             var legacy = await store.LoadAsync(default); var staged = await store.LoadCurrentAsync(default);
             Assert.Equal(legacySize, legacy.MaxFileSizeMb); Assert.Equal(legacyTime, legacy.InspectionTimeoutSeconds);
@@ -46,10 +44,6 @@ public sealed class InspectionModeDefaultsTests : IDisposable
         var local = new LocalPolicyStore(_workspace.PolicyFile);
         await Assert.ThrowsAsync<JsonException>(() => local.LoadAsync(default));
         await Assert.ThrowsAsync<JsonException>(() => local.LoadCurrentAsync(default));
-        using var client = new HttpClient(new Response(json)) { BaseAddress = new Uri("http://policy.invalid/") };
-        var remote = new HttpPolicyStore(client, "fixture");
-        await Assert.ThrowsAsync<JsonException>(() => remote.LoadCurrentAsync(default));
-        Assert.Equal(20, (await remote.LoadAsync(default)).MaxFileSizeMb); // Existing legacy transport fallback only.
     }
 
     [Theory]

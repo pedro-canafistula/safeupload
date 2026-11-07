@@ -43,6 +43,14 @@ public static class Program
             return;
         }
 
+        // "cadastrar <url> <token> [--certificado <sha256>] [--substituir]": liga esta máquina ao console.
+        if (args.Length > 0 && string.Equals(args[0], "cadastrar", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Environment.ExitCode = await EnrollCommand.RunAsync(args[1..], Console.Out);
+            return;
+        }
+
         // "desvio status" e "desvio remove": políticas de proxy dos navegadores.
         if (args.Length > 0 && string.Equals(args[0], "desvio", StringComparison.OrdinalIgnoreCase))
         {
@@ -100,79 +108,55 @@ public static class Program
 
         // De onde vem a politica, e para onde vai a trilha (HU-10).
         //
-        // Sem "CentroAdministracao:BaseUrl" configurado, o agente e autonomo:
-        // le a politica do arquivo local e so acumula auditoria em disco. Com
-        // a URL configurada, a politica passa a vir do painel e um despachante
-        // sobe para entregar os eventos pendentes.
-        //
-        // O padrao e o local pelo mesmo motivo do gatilho logo abaixo: uma
-        // maquina que ainda nao aponta para nenhum painel precisa proteger de
-        // forma autonoma, e nao ficar esperando um servidor que talvez nunca
-        // seja configurado.
-        var administration = AdministrationConfiguration.Parse(builder.Configuration,
-            new RegisteredHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "identity", "host-registration.json")),
-            new SignedHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "authentication", "ed25519-identity.dat")));
+        // Sem cadastro ("cadastrar <url> <token>"), o agente e autonomo: le a politica do arquivo local e so acumula
+        // auditoria em disco. Cadastrado, toda requisicao ao servidor e assinada com a chave da maquina; a politica
+        // vem do console (com cache offline) e um despachante entrega heartbeat e eventos (docs/console-agente.md).
+        var identities = new SignedHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "authentication", "ed25519-identity.dat"));
+        var administration = AdministrationConfiguration.Parse(builder.Configuration, identities.Load);
         string endpointId = Environment.MachineName;
         builder.Services.AddSingleton(new CommunicationHealth(administration.BaseUri is not null));
         builder.Services.AddHostedService<CommunicationStatusPublisher>();
-        var heartbeatConfiguration = administration.Heartbeat;
+        if (administration.Problem is { } problem)
+            builder.Services.AddHostedService(provider => new StartupWarning(
+                provider.GetRequiredService<ILogger<StartupWarning>>(), problem));
 
-        if (administration.BaseUri is null)
+        if (administration.Identity is not { } identity)
         {
             builder.Services.AddSingleton<IPolicyStore, LocalPolicyStore>();
         }
         else
         {
-            var adminUri = administration.BaseUri;
-
-            // A rede só é consultada em segundo plano. Inspeções usam o último
-            // snapshot validado mesmo durante timeout, falha ou reconexão.
-            ConfigureAdministrationHttpClient(builder.Services, adminUri, (int)administration.Timeout.TotalSeconds);
-
-            if (heartbeatConfiguration.RegisteredHostId is not null)
-            {
-                // Cliente separado: não altera o transporte legado de política/auditoria.
-                builder.Services.AddHttpClient(HttpClientName + "AgentApi", client =>
-                {
-                    client.BaseAddress = adminUri;
-                    client.Timeout = administration.Timeout;
-                })
-                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
-                .RemoveAllLoggers();
-            }
-
-            builder.Services.AddSingleton<RefreshingPolicyStore>(provider =>
-            {
-                var factory = provider.GetRequiredService<IHttpClientFactory>();
-                var health = provider.GetRequiredService<CommunicationHealth>();
-                var remote = administration.ConsolePolicy is { } console
-                    ? new DurableHttpPolicyStore(
-                        factory.CreateClient(HttpClientName + "AgentApi"), endpointId,
-                        Path.Combine(AgentPaths.RootDirectory, "console-policy-cache.json"),
-                        health, console, new LocalPolicyStore())
-                    : new DurableHttpPolicyStore(factory.CreateClient(HttpClientName), endpointId,
-                        Path.Combine(AgentPaths.RootDirectory, "server-policy-cache.json"), health);
-                return new RefreshingPolicyStore(remote, TimeSpan.FromSeconds(30),
-                    provider.GetRequiredService<ILogger<RefreshingPolicyStore>>());
-            });
+            // A rede só é consultada em segundo plano. Inspeções usam o último snapshot validado mesmo durante
+            // timeout, falha ou reconexão.
+            ConfigureAdministrationHttpClient(builder.Services, identity, administration.Timeout);
+            builder.Services.AddSingleton(provider => new DurableHttpPolicyStore(
+                provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                Path.Combine(AgentPaths.RootDirectory, "console-policy-cache.json"), new LocalPolicyStore(),
+                provider.GetRequiredService<CommunicationHealth>()));
+            builder.Services.AddSingleton(provider => new RefreshingPolicyStore(
+                provider.GetRequiredService<DurableHttpPolicyStore>(), TimeSpan.FromSeconds(30),
+                provider.GetRequiredService<ILogger<RefreshingPolicyStore>>()));
             builder.Services.AddSingleton<IPolicyStore>(provider => provider.GetRequiredService<RefreshingPolicyStore>());
             builder.Services.AddHostedService(provider => provider.GetRequiredService<RefreshingPolicyStore>());
 
             builder.Services.AddHostedService(provider =>
-                new HttpAgentDispatcher(
+            {
+                var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName);
+                var health = provider.GetRequiredService<CommunicationHealth>();
+                var console = provider.GetRequiredService<DurableHttpPolicyStore>();
+                return new HttpAgentDispatcher(
                     provider.GetRequiredService<IAuditSink>(),
                     provider.GetRequiredService<IPolicyStore>(),
-                    provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName),
+                    client,
                     endpointId,
                     administration.DispatchInterval,
                     provider.GetRequiredService<ILogger<HttpAgentDispatcher>>(),
-                    provider.GetRequiredService<CommunicationHealth>())
+                    health)
                 {
-                    HeartbeatSender = heartbeatConfiguration.RegisteredHostId is null ? null :
-                        heartbeatConfiguration.CreateSender(
-                            provider.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName + "AgentApi"),
-                            provider.GetRequiredService<CommunicationHealth>())
-                });
+                    HeartbeatSender = new SignedAgentHeartbeat(new AgentApiClient(client, health), identity.HostId,
+                        () => console.ConsoleVersion, HttpAgentDispatcher.AgentVersion)
+                };
+            });
         }
 
         // O gatilho. A partir daqui a protecao existe sem interface nenhuma aberta.
@@ -219,7 +203,7 @@ public static class Program
 
         // A inspeção do tráfego web (proxy TLS). Desligada por padrão: ligar
         // instala uma CA confiável na máquina, e isso tem de ser uma decisão
-        // explícita. Ver docs/rede/PLANO-INSPECAO-TLS.md.
+        // explícita. Ver docs/rede/ARQUITETURA-INSPECAO-TLS.md.
         if (string.Equals(builder.Configuration["InspecaoTls:Habilitada"], "true", StringComparison.OrdinalIgnoreCase))
         {
             builder.Services.AddSingleton<WebInspectionService>();
@@ -246,12 +230,15 @@ public static class Program
         services.AddSingleton<IAuditSink>(provider => provider.GetRequiredService<MonitoredAuditSink>());
     }
 
-    internal static IHttpClientBuilder ConfigureAdministrationHttpClient(IServiceCollection services, Uri adminUri, int timeoutSeconds) =>
+    /// <summary>Cliente do servidor: assina cada requisição e, com certificado fixado, só aceita aquele certificado.</summary>
+    internal static IHttpClientBuilder ConfigureAdministrationHttpClient(IServiceCollection services,
+        SignedAgentIdentity identity, TimeSpan timeout) =>
         services.AddHttpClient(HttpClientName, client =>
         {
-            client.BaseAddress = adminUri;
-            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            client.BaseAddress = identity.Server;
+            client.Timeout = timeout;
+        }).ConfigurePrimaryHttpMessageHandler(() => AgentHttp.CreateHandler(identity.CertificateSha256))
+        .AddHttpMessageHandler(() => new SignedRequestHandler(identity))
         .RemoveAllLoggers();
 
 }

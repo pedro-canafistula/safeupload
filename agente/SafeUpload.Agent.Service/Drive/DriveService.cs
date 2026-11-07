@@ -279,10 +279,10 @@ public sealed class DriveService : BackgroundService
         var writer = decision.Writer;
         bool samePolicy = policy is not null && decision.Result?.PolicyContentFingerprint is { } binding &&
             string.Equals(binding, PolicyContentFingerprint.Compute(policy), StringComparison.Ordinal);
-        // Audit mode (the console's "alertar"): a version whose inspection completed with findings goes through and
-        // is audited as an approval with its categories. A failed inspection still blocks (fail closed).
-        bool alert = samePolicy && policy?.AuditOnly == true &&
-            decision.Result is { Reason: null } inspected && inspected.Categories.Count > 0;
+        // "Alertar" (per category, or auditOnly for all): a version whose inspection completed and found only alert
+        // categories goes through and is audited as an approval with its categories. A failed inspection still blocks.
+        bool alert = samePolicy && policy is not null &&
+            decision.Result is { Reason: null } inspected && policy.ReleasesWithAlert(inspected.Categories);
         if (alert && approve?.Invoke(DriveApprovalKind.Audit) == true) return;
 
         AuditEvent? audit = null;

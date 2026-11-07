@@ -52,6 +52,11 @@ public sealed record MonitoredScopes(
 /// recusa conceder exceção, então nem uma interface comprometida libera nada.
 /// A escolha é da organização, não do usuário, e por isso vive na política.
 /// </param>
+/// <param name="AlertCategories">
+/// Subconjunto de <paramref name="ActiveCategories"/> que só alerta: um arquivo cujos achados são todos dessas
+/// categorias passa e fica registrado. Achado de qualquer outra categoria ativa bloqueia. Falha de inspeção bloqueia
+/// sempre. É a ação "alertar" por categoria do console.
+/// </param>
 public sealed record Policy(
     int Version,
     IReadOnlySet<Category> ActiveCategories,
@@ -62,8 +67,24 @@ public sealed record Policy(
     IReadOnlySet<string> ExcludedProcesses,
     bool AuditOnly = false,
     bool OverrideAllowed = false,
-    ClipboardPolicy? Clipboard = null)
+    ClipboardPolicy? Clipboard = null,
+    IReadOnlySet<Category>? AlertCategories = null)
 {
+    private static readonly IReadOnlySet<Category> NoCategories = new HashSet<Category>();
+
+    /// <summary>Categorias que só alertam (vazio quando a política não define nenhuma).</summary>
+    public IReadOnlySet<Category> AlertOnlyCategories => AlertCategories ?? NoCategories;
+
+    /// <summary>
+    /// Uma inspeção concluída com estes achados é liberada com alerta? Sim com <see cref="AuditOnly"/>, ou quando
+    /// todas as categorias achadas estão em <see cref="AlertCategories"/>. Sem achado não há o que liberar.
+    /// </summary>
+    public bool ReleasesWithAlert(IEnumerable<Category> found)
+    {
+        var categories = found.Distinct().ToList();
+        return categories.Count > 0 && (AuditOnly || categories.All(AlertOnlyCategories.Contains));
+    }
+
     // Publicações da console e políticas locais têm numerações independentes.
     // O conteúdo efetivo também precisa identificar uma decisão em memória.
     internal string EvaluationKey => PolicyContentFingerprint.Compute(this);
@@ -108,6 +129,11 @@ public sealed record Policy(
         if (ActiveCategories.Any(category => !Enum.IsDefined(category)))
         {
             throw new InvalidPolicyException("A política contém uma categoria não reconhecida.");
+        }
+
+        if (AlertCategories is { } alerts && !alerts.All(ActiveCategories.Contains))
+        {
+            throw new InvalidPolicyException("alertCategories precisa ser um subconjunto de activeCategories.");
         }
 
         if (ActiveCategories.Count == 0)

@@ -95,7 +95,7 @@ public sealed class AdministrationSchedulingTests
         new(queue, new Policies(), client, "PC-SYNTHETIC", TimeSpan.FromMilliseconds(30),
             NullLogger<HttpAgentDispatcher>.Instance)
         {
-            HeartbeatSender = new RegisteredAgentHeartbeat(new AgentApiClient(client), 7)
+            HeartbeatSender = new SignedAgentHeartbeat(new AgentApiClient(client), 7, () => null, "test")
         };
 
     private sealed class Policies : IPolicyStore
@@ -119,7 +119,7 @@ public sealed class AdministrationSchedulingTests
             bool heartbeat = request.RequestUri!.AbsolutePath == "/agent/heartbeat";
             if (heartbeat)
             {
-                Assert.Equal("{\"id_host\":7}", await request.Content!.ReadAsStringAsync(token));
+                Assert.Contains("\"versao_agente\":\"test\"", await request.Content!.ReadAsStringAsync(token));
                 if (Interlocked.Increment(ref _heartbeats) >= 3) ThreeHeartbeats.TrySetResult();
             }
             else
@@ -139,7 +139,7 @@ public sealed class AdministrationSchedulingTests
             }
             return new(HttpStatusCode.OK)
             {
-                Content = new StringContent(heartbeat ? "{\"status\":\"OK\"}" :
+                Content = new StringContent(heartbeat ? "{\"id_host\":7}" :
                     "{\"acceptedEvents\":1,\"acceptedOverrides\":0}")
             };
         }

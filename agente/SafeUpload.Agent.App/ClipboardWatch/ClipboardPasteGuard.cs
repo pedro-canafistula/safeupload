@@ -10,7 +10,7 @@ namespace SafeUpload.Agent.App.ClipboardWatch;
 
 /// <summary>
 /// O proxy OLE que decide a colagem na hora, no modo Block (Fase 3). É a técnica
-/// escolhida e medida na Fase 2 (<c>docs/clipboard/FASE-2-TESTES.md</c>).
+/// escolhida e medida na Fase 2 (<c>docs/clipboard/README.md</c>).
 ///
 /// <para><b>Como funciona.</b> Quando uma cópia suja o clipboard, o agente toma a
 /// posse com um <see cref="IDataObject"/> próprio que embrulha o original. A cada
