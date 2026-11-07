@@ -173,6 +173,8 @@ public record RuleDefinition(Condition quando, Examples exemplos) {
             this.leaves = leaves;
         }
 
+        public int leafCount() { return leaves.size(); }
+
         public Evaluation evaluate(String text) {
             String folded = TextFold.fold(text);
             var counts = new LinkedHashMap<Leaf, Integer>();

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using SafeUpload.Agent.Core.Domain;
@@ -185,6 +186,48 @@ public sealed class ConsoleTransportTests : IDisposable
         Assert.Null(store.ConsoleVersion);
         Assert.Empty(wire.Requests);
         Assert.Equal(42, (await store.LoadAsync(default)).Version);
+    }
+
+    [Fact]
+    public async Task Policy_accepted_from_console_is_restored_when_the_cache_representation_is_larger()
+    {
+        var body = JsonSerializer.Serialize(new
+        {
+            version = 79,
+            activeCategories = new[] { "CustomRule" },
+            customRulesFormat = 1,
+            customRules = Enumerable.Range(1, 10).Select(rule => new
+            {
+                id = rule, revision = 1, name = $"Regra {rule}",
+                when = new
+                {
+                    all = Enumerable.Range(1, 20).Select(term => new { words = new[] { new string('中', 55) + term } })
+                }
+            })
+        }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        Assert.True(Encoding.UTF8.GetByteCount(body) < 64 * 1024);
+        using var http = new HttpClient(new Wire(_ => Reply(HttpStatusCode.OK, body))) { BaseAddress = Server };
+        var identity = TestPolicies.Identity(Server);
+        var store = new DurableHttpPolicyStore(http, identity, _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(79, (await store.LoadAsync(default)).Version);
+        Assert.True(new FileInfo(_workspace.PolicyFile).Length > 64 * 1024);
+        var restarted = new DurableHttpPolicyStore(http, identity, _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(79, (await restarted.LoadCachedOrDefaultAsync(default)).Version);
+        Assert.Equal("disk", restarted.LastSource);
+    }
+
+    [Fact]
+    public async Task Larger_cache_limit_does_not_accept_an_oversized_http_policy()
+    {
+        string body = ConsoleDocument;
+        using var http = new HttpClient(new Wire(_ => Reply(HttpStatusCode.OK, body))) { BaseAddress = Server };
+        var identity = TestPolicies.Identity(Server);
+        var store = new DurableHttpPolicyStore(http, identity, _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(42, (await store.LoadAsync(default)).Version);
+        body = ConsoleDocument.Replace("\"version\":42", "\"version\":43") + new string(' ', 64 * 1024);
+        Assert.Equal(42, (await store.LoadAsync(default)).Version);
+        var restarted = new DurableHttpPolicyStore(http, identity, _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(42, (await restarted.LoadCachedOrDefaultAsync(default)).Version);
     }
 
     [Fact]
