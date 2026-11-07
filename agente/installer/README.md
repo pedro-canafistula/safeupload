@@ -46,6 +46,10 @@ No modo silencioso, ausência de `/MODE` seleciona `Drive`.
 
 O estado da instalação fica em `setup/installation.json`. O manifesto registra versão, commit, estado de alterações locais e hashes de todos os arquivos empacotados. Dados privados do endpoint não entram no pacote.
 
+Na automação, somente saída zero confirma que a configuração do serviço terminou. Falha na etapa posterior à cópia
+dos arquivos retorna código 100 quando o instalador não atribuiu outro erro; consulte o log e não trate binários
+copiados como serviço instalado. A falha pode deixar arquivos/desinstalador para diagnóstico, conforme descrito acima.
+
 ## Atualização controlada e reversão
 
 O build também gera `SafeUploadAgent-<versão>-win-x64-update.zip` e seu SHA-256. Confira o hash recebido por um canal confiável, extraia em uma pasta separada e execute **Windows PowerShell 5.1 como administrador**:
