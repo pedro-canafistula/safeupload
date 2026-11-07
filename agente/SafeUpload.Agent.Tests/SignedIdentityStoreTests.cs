@@ -85,6 +85,50 @@ public sealed class SignedIdentityStoreTests : IDisposable
     public void No_file_means_not_enrolled() => Assert.Null(new SignedHostIdentityStore(File, enforceAcl: false).Load());
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Retrying_an_interrupted_enrollment_uses_the_same_key_without_replacing_the_active_identity(bool replace)
+    {
+        const string enrollmentToken = "TOKEN123";
+        var store = new SignedHostIdentityStore(File, enforceAcl: false);
+        byte[]? previous = null;
+        if (replace)
+        {
+            using var first = new HttpClient(new Wire(_ => (HttpStatusCode.Created, "{\"id_host\":9}"))) { BaseAddress = Server };
+            await store.EnrollAsync(new AgentApiClient(first), null, "OLD", Host, false, default);
+            previous = await System.IO.File.ReadAllBytesAsync(File);
+        }
+
+        string? attemptedKey = null;
+        using var dropped = new HttpClient(new Wire(body =>
+        {
+            using var json = JsonDocument.Parse(body);
+            attemptedKey = json.RootElement.GetProperty("chave_publica").GetString();
+            Assert.False(json.RootElement.TryGetProperty("prova_recuperacao", out _));
+            throw new HttpRequestException("response lost after commit");
+        })) { BaseAddress = Server };
+        var lost = await Assert.ThrowsAsync<AgentApiException>(() =>
+            store.EnrollAsync(new AgentApiClient(dropped), null, enrollmentToken, Host, replace, default));
+        Assert.Equal("transport", lost.Code);
+        if (previous is null) Assert.Null(store.Load());
+        else Assert.Equal(previous, await System.IO.File.ReadAllBytesAsync(File));
+
+        using var retry = new HttpClient(new Wire(body =>
+        {
+            using var json = JsonDocument.Parse(body);
+            Assert.Equal(attemptedKey, json.RootElement.GetProperty("chave_publica").GetString());
+            Assert.Equal(enrollmentToken, json.RootElement.GetProperty("token").GetString());
+            Assert.NotEmpty(json.RootElement.GetProperty("prova_recuperacao").GetString()!);
+            return (HttpStatusCode.Created, "{\"id_host\":10}");
+        })) { BaseAddress = Server };
+        var reopened = new SignedHostIdentityStore(File, enforceAcl: false);
+        var recovered = await reopened.EnrollAsync(new AgentApiClient(retry), null, enrollmentToken, Host, replace, default);
+        Assert.Equal(10, recovered.HostId);
+        Assert.Equal(attemptedKey, reopened.Load()!.PublicKey);
+        Assert.False(System.IO.File.Exists(File + ".pending"));
+    }
+
+    [Theory]
     [InlineData("valid", HttpStatusCode.OK, 9, null)]
     [InlineData("wrong-pin", HttpStatusCode.OK, 9, "transport")]
     [InlineData("revoked", HttpStatusCode.Forbidden, 9, "http_status")]

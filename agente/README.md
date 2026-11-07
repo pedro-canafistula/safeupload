@@ -118,6 +118,9 @@ O comando reinicia o serviço, que lê a identidade ao iniciar. Para trocar de s
 `--substituir` e um token novo. A troca só grava a nova identidade após receber o ID do host. Assinatura, rotas, heartbeat e
 envio de eventos: [`docs/console-agente.md`](../docs/console-agente.md).
 
+Se o cadastro ficar sem confirmação, repita o mesmo comando e token dentro dos 15 minutos. O agente recupera
+a chave da tentativa protegida por DPAPI e o console devolve o mesmo cadastro quando já consumiu o token.
+
 Para renovar o certificado do mesmo console, execute `SafeUpload.Agent.Service.exe atualizar-certificado <sha256>`
 como administrador. O console precisa oferecer a rota assinada de verificação de identidade. A renovação preserva
 o cadastro e a atribuição da fila.

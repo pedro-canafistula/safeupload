@@ -103,7 +103,7 @@ internal static class EnrollCommand
                 401 => "Token inválido, já usado ou expirado (vale 15 minutos). Gere outro no console.",
                 400 => "O servidor recusou os dados do cadastro.",
                 { } status => $"O servidor respondeu HTTP {status}.",
-                null => "Servidor inacessível (rede, URL ou certificado fixado não confere)."
+                null => "Cadastro sem confirmação. Após restabelecer a conexão, repita o mesmo comando e token antes da expiração."
             });
             return 4;
         }

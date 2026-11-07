@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SafeUpload.Agent.Core.Infrastructure;
 
@@ -40,7 +41,7 @@ public sealed class SignedHostIdentityStore
     });
 
     /// <summary>
-    /// Cria a chave e cadastra com o token (uma tentativa). Só grava após receber um ID válido.
+    /// Guarda a chave da tentativa em separado. Uma repetição do mesmo cadastro comprova a posse dessa chave.
     /// Uma identidade já cadastrada só pode ser substituída com <paramref name="replace"/>.
     /// </summary>
     public async Task<SignedAgentIdentity> EnrollAsync(AgentApiClient client, string? certificateSha256,
@@ -49,24 +50,46 @@ public sealed class SignedHostIdentityStore
         ArgumentNullException.ThrowIfNull(client);
         if (string.IsNullOrWhiteSpace(enrollmentToken)) throw new ArgumentException("Token de cadastro obrigatório.");
         host.EnsureValid();
+        token.ThrowIfCancellationRequested();
         using var gate = Safe(Lock);
         if (File.Exists(_file) && !replace)
         {
             bool enrolled;
-            try { using var previous = Safe(Read); enrolled = previous.HostId != 0; }
+            try { using var previous = Safe(() => Read()); enrolled = previous.HostId != 0; }
             catch (AgentIdentityException) { enrolled = false; }
             if (enrolled) throw new AgentIdentityException("already_registered");
         }
-        using var document = new StoredIdentity
+        string server = client.BaseUri.AbsoluteUri;
+        string? pin = certificateSha256 is null ? null : AgentHttp.NormalizePin(certificateSha256);
+        string pendingFile = _file + ".pending";
+        using var pending = File.Exists(pendingFile) ? Safe(() => Read(pendingFile)) : null;
+        bool retry = pending is { HostId: 0 } && pending.Server == server && pending.CertificateSha256 == pin &&
+            pending.EnrollmentTokenTag == TokenTag(pending.Seed, enrollmentToken);
+        using var fresh = retry ? null : new StoredIdentity
         {
-            Format = 2, Server = client.BaseUri.AbsoluteUri, Seed = Ed25519AgentKey.GenerateSeed(),
-            CertificateSha256 = certificateSha256 is null ? null : AgentHttp.NormalizePin(certificateSha256)
+            Format = 2, Server = server, Seed = Ed25519AgentKey.GenerateSeed(), CertificateSha256 = pin
         };
-        document.PublicKey = Ed25519AgentKey.PublicKey(document.Seed);
-        document.HostId = await client.EnrollAsync(enrollmentToken, document.PublicKey, host, token).ConfigureAwait(false);
+        var document = retry ? pending! : fresh!;
+        string? proof = null;
+        if (retry)
+            proof = Ed25519AgentKey.Sign(document.Seed, Encoding.UTF8.GetBytes("SafeUpload-Enroll-Recovery-v1\n" + enrollmentToken));
+        else
+        {
+            document.PublicKey = Ed25519AgentKey.PublicKey(document.Seed);
+            document.EnrollmentTokenTag = TokenTag(document.Seed, enrollmentToken);
+            Safe(() => { Save(document, pendingFile); return true; });
+        }
+        document.HostId = await client.EnrollAsync(enrollmentToken, document.PublicKey, host, proof, token).ConfigureAwait(false);
+        document.EnrollmentTokenTag = null;
         Safe(() => { Save(document); return true; });
+        try { File.Delete(pendingFile); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
         return Identity(document);
     }
+
+    private static string TokenTag(byte[] seed, string token) =>
+        Convert.ToHexString(HMACSHA256.HashData(seed, Encoding.UTF8.GetBytes(token)));
 
     /// <summary>Troca o certificado fixado depois de confirmar a identidade no console com a nova conexão.</summary>
     public async Task<SignedAgentIdentity> UpdateCertificateAsync(string certificateSha256, CancellationToken token)
@@ -121,13 +144,14 @@ public sealed class SignedHostIdentityStore
             : new FileStream(lockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
     }
 
-    private StoredIdentity Read()
+    private StoredIdentity Read(string? file = null)
     {
-        if (!File.Exists(_file)) throw new AgentIdentityException("missing");
-        if ((File.GetAttributes(_file) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+        file ??= _file;
+        if (!File.Exists(file)) throw new AgentIdentityException("missing");
+        if ((File.GetAttributes(file) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
             throw new AgentIdentityException("invalid_file");
-        if (_enforceAcl) ProtectedPolicyAcl.VerifyPolicyFile(_file);
-        byte[] encrypted = File.ReadAllBytes(_file);
+        if (_enforceAcl) ProtectedPolicyAcl.VerifyPolicyFile(file);
+        byte[] encrypted = File.ReadAllBytes(file);
         if (encrypted.Length is < 1 or > 65536) throw new AgentIdentityException("invalid_file");
         byte[] plaintext = ProtectedData.Unprotect(encrypted, Entropy, DataProtectionScope.LocalMachine);
         StoredIdentity? document = null;
@@ -145,13 +169,14 @@ public sealed class SignedHostIdentityStore
         finally { CryptographicOperations.ZeroMemory(plaintext); }
     }
 
-    private void Save(StoredIdentity document)
+    private void Save(StoredIdentity document, string? file = null)
     {
+        file ??= _file;
         byte[] plaintext = JsonSerializer.SerializeToUtf8Bytes(document, Json);
         byte[] encrypted;
         try { encrypted = ProtectedData.Protect(plaintext, Entropy, DataProtectionScope.LocalMachine); }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
-        string temporary = _file + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        string temporary = file + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             using (var stream = _enforceAcl
@@ -162,7 +187,7 @@ public sealed class SignedHostIdentityStore
                 stream.Write(encrypted);
                 stream.Flush(flushToDisk: true);
             }
-            File.Move(temporary, _file, overwrite: true);
+            File.Move(temporary, file, overwrite: true);
         }
         finally
         {
@@ -223,6 +248,8 @@ public sealed class SignedHostIdentityStore
         public string PublicKey { get; set; } = "";
         public byte[] Seed { get; set; } = [];
         public string? CertificateSha256 { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? EnrollmentTokenTag { get; set; }
         public void Dispose() => CryptographicOperations.ZeroMemory(Seed);
     }
 }

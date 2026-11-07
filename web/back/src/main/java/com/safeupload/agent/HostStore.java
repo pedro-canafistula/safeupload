@@ -48,16 +48,28 @@ public class HostStore {
         return jdbc.queryForObject("SELECT fk_id_empresa FROM hosts WHERE id_host=?", Integer.class, hostId);
     }
 
-    /** Consome o token (uso único, 15 minutos) e cria o host na empresa de quem gerou o token. */
+    /** Consome o token e cria o host. A recuperação autenticada apenas devolve o cadastro anterior. */
     @Transactional("appTransactionManager")
-    public int enroll(String token, String publicKey, HostInfo host) {
+    public int enroll(String token, String publicKey, HostInfo host, boolean recovery) {
         var rows = jdbc.queryForList(
-            "SELECT id_token, fk_id_empresa, criado_em, usado_em FROM tokens WHERE token=? FOR UPDATE", token);
+            "SELECT id_token, fk_id_empresa, criado_em, usado_em, fk_id_host FROM tokens WHERE token=? FOR UPDATE", token);
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token inválido.");
         var row = rows.getFirst();
         Instant created = ((Timestamp) row.get("criado_em")).toInstant();
-        if (row.get("usado_em") != null || created.plus(TOKEN_LIFETIME).isBefore(clock.instant()))
+        if (created.plus(TOKEN_LIFETIME).isBefore(clock.instant()))
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token usado ou expirado.");
+        if (row.get("usado_em") != null) {
+            if (!recovery || !(row.get("fk_id_host") instanceof Number registered))
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token usado ou expirado.");
+            int hostId = registered.intValue();
+            var matched = jdbc.query("SELECT chave_publica, revogado_em FROM hosts WHERE id_host=? AND fk_id_empresa=? FOR SHARE",
+                (rs, n) -> new Credentials(rs.getString(1), rs.getTimestamp(2) != null), hostId, row.get("fk_id_empresa"));
+            if (matched.isEmpty() || !publicKey.equals(matched.getFirst().publicKey()))
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token usado ou expirado.");
+            if (matched.getFirst().revoked())
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Máquina revogada no console.");
+            return hostId;
+        }
         var keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             var statement = connection.prepareStatement("""

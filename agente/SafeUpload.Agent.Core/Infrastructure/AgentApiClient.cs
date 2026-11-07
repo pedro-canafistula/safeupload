@@ -27,10 +27,14 @@ public sealed class AgentApiClient
     }
 
     /// <summary>POST enroll: token de uso único + chave pública → id_host.</summary>
-    public async Task<int> EnrollAsync(string enrollmentToken, string publicKey, AgentHeartbeatHost host, CancellationToken token)
+    public Task<int> EnrollAsync(string enrollmentToken, string publicKey, AgentHeartbeatHost host, CancellationToken token) =>
+        EnrollAsync(enrollmentToken, publicKey, host, recoveryProof: null, token);
+
+    internal async Task<int> EnrollAsync(string enrollmentToken, string publicKey, AgentHeartbeatHost host,
+        string? recoveryProof, CancellationToken token)
     {
         using var response = await PostAsync("enroll",
-            new { token = enrollmentToken, chave_publica = publicKey, host }, HttpStatusCode.Created, token).ConfigureAwait(false);
+            new EnrollmentBody(enrollmentToken, publicKey, host, recoveryProof), HttpStatusCode.Created, token).ConfigureAwait(false);
         return HostId(response.RootElement);
     }
 
@@ -113,6 +117,12 @@ public sealed class AgentApiClient
             throw new AgentApiException("invalid_receipt");
         return id;
     }
+
+    private sealed record EnrollmentBody(
+        [property: JsonPropertyName("token")] string Token,
+        [property: JsonPropertyName("chave_publica")] string PublicKey,
+        [property: JsonPropertyName("host")] AgentHeartbeatHost Host,
+        [property: JsonPropertyName("prova_recuperacao"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RecoveryProof);
 
     private sealed record HeartbeatBody(
         [property: JsonPropertyName("host")] AgentHeartbeatHost Host,

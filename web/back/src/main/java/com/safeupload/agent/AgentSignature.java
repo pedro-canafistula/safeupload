@@ -26,6 +26,10 @@ public final class AgentSignature {
         return "SafeUpload-v1\n" + method + "\n" + route + "\n" + hostId + "\n" + time + "\n" + nonce + "\n" + sha256(body);
     }
 
+    public static String enrollmentRecoveryMessage(String token) {
+        return "SafeUpload-Enroll-Recovery-v1\n" + token;
+    }
+
     public static boolean verify(String publicKeyBase64, String message, String signatureBase64) {
         try {
             PublicKey key = publicKey(publicKeyBase64);

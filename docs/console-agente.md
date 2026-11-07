@@ -17,6 +17,13 @@ documento do contrato; se o código mudar, mude este arquivo junto.
 
 `POST /agent/enroll` (sem assinatura): `{"token","chave_publica","host":{...}}` → `201 {"id_host": n}`.
 
+Se a resposta de cadastro se perder, repita o mesmo comando com o mesmo token, servidor e certificado dentro dos
+15 minutos. O agente mantém a chave da tentativa em `ed25519-identity.dat.pending`, protegido por DPAPI e pelas
+mesmas ACLs do cadastro. O token em claro fica fora do arquivo. Na repetição, o agente envia `prova_recuperacao`
+com a assinatura Ed25519 em Base64 de `SafeUpload-Enroll-Recovery-v1\n<token>` em UTF-8. Com o token já
+consumido, o servidor só devolve o ID existente se a prova corresponder à chave desse cadastro e ele estiver ativo.
+A resposta continua sendo `201`. O cadastro anterior fica ativo até o agente receber o ID válido da nova tentativa.
+
 O objeto `host` é `{"hostname","ip","mascara","sistema_operacional","versao_so","mac_address"}`. O agente detecta
 esses dados sozinho. Eles são só informativos e o console os mostra na tela Endpoints.
 

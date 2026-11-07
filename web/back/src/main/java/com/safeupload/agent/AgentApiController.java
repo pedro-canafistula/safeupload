@@ -41,7 +41,8 @@ public class AgentApiController {
     public record EnrollRequest(
         @NotBlank @Size(max = 8) String token,
         @NotBlank @Size(max = 200) @JsonProperty("chave_publica") String chavePublica,
-        @NotNull @Valid Host host) {}
+        @NotNull @Valid Host host,
+        @Size(max = 88) @JsonProperty("prova_recuperacao") String recoveryProof) {}
 
     public record HeartbeatRequest(
         @NotNull @Valid Host host,
@@ -68,7 +69,11 @@ public class AgentApiController {
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chave pública Ed25519 inválida.");
         }
-        int id = hosts.enroll(request.token(), request.chavePublica(), request.host().info());
+        boolean recovery = request.recoveryProof() != null;
+        if (recovery && !AgentSignature.verify(request.chavePublica(),
+            AgentSignature.enrollmentRecoveryMessage(request.token()), request.recoveryProof()))
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Prova de recuperação inválida.");
+        int id = hosts.enroll(request.token(), request.chavePublica(), request.host().info(), recovery);
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id_host", id));
     }
 
