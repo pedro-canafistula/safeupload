@@ -115,7 +115,7 @@ public sealed class ClipboardInspectionService
         // mudado entre uma cópia e outra.
         var copy = _copies.CompleteClassification(sessionId, revision, classification.Dirty, request.SourceProcess,
             classification.Categories, (long)Math.Max(request.TextLength, request.Text?.Length ?? 0) * 2,
-            policy.Version);
+            policy.Version, AuditEvent.RuleNames(classification.Findings));
 
         bool enabled = classification.Reason != ClipboardCopyReason.ChannelOff;
         ClipboardObservation? observation = null;
@@ -188,7 +188,7 @@ public sealed class ClipboardInspectionService
                 Verdict: verdict,
                 Categories: copy.Categories,
                 SizeBytes: copy.SizeBytes,
-                PolicyVersion: copy.PolicyVersion);
+                PolicyVersion: copy.PolicyVersion) { CustomRules = copy.CustomRules };
 
         return new ClipboardOutcome(
             new ClipboardResponse(ClipboardProtocol.PasteType, CopyId: copy.CopyId, Verdict: verdict),

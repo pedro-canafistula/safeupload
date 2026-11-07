@@ -39,6 +39,7 @@ public class AgentEventsStore {
             for (var event : batch.events()) {
                 ObjectNode document = mapper.valueToTree(event);
                 document.remove("fileNameValid");
+                if (document.path("customRules").isNull()) document.remove("customRules");
                 String payload = document.toString();
                 store("audit:" + event.eventId(), "audit", event.eventId().toString(),
                     event.endpointId(), event.occurredAtUtc().toInstant(), payload, batch, hostId);
@@ -59,7 +60,9 @@ public class AgentEventsStore {
             "SELECT payload, fk_id_host FROM agent_audit_ingest WHERE record_key = ?", key);
         if (!previous.isEmpty()) {
             var row = previous.getFirst();
-            if (!payload.equals(row.get("payload")) || ((Number) row.get("fk_id_host")).intValue() != hostId) {
+            String stored = (String) row.get("payload");
+            if (((Number) row.get("fk_id_host")).intValue() != hostId ||
+                !(payload.equals(stored) || (kind.equals("audit") && matchesWithoutNullRules(stored, payload)))) {
                 throw new ResponseStatusException(CONFLICT, "Evento já recebido com conteúdo diferente.");
             }
             return;
@@ -74,6 +77,19 @@ public class AgentEventsStore {
             """, key, kind, eventId, hostId, endpointId, Timestamp.from(occurredAt), Timestamp.from(Instant.now()),
             batch.schemaVersion() == null ? 1 : batch.schemaVersion(),
             batch.hostname(), batch.agentVersion(), payload);
+    }
+
+    private boolean matchesWithoutNullRules(String stored, String incoming) {
+        try {
+            // The first rules release persisted customRules:null even for events without rules.
+            if (mapper.readTree(stored) instanceof ObjectNode event && event.path("customRules").isNull()) {
+                event.remove("customRules");
+                return incoming.equals(event.toString());
+            }
+            return false;
+        } catch (JsonProcessingException invalidStoredEvent) {
+            return false;
+        }
     }
 
     private String json(Object value) {

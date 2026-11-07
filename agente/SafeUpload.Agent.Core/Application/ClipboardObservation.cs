@@ -52,7 +52,10 @@ public sealed record ClipboardObservation(
     ClipboardPasteVerdict? Verdict = null,
     string? FailureType = null,
     long SizeBytes = 0,
-    int PolicyVersion = 1);
+    int PolicyVersion = 1)
+{
+    public IReadOnlyList<string>? CustomRules { get; init; }
+}
 
 /// <summary>A resposta a devolver pelo pipe e, se houver, o fato a registrar.</summary>
 /// <param name="Response">O que volta para o aplicativo.</param>

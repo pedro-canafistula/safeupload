@@ -36,6 +36,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.safeupload.agent.AgentSignature;
 
 /**
@@ -214,11 +215,37 @@ class ConsoleAgentFlowTest {
         assertThat(list.size()).isEqualTo(2);
 
         // Eventos: gravados com o host autenticado; reenvio idêntico não duplica.
+        var queuedEvent = event("qualquer-rotulo", "Blocked");
         var batch = Map.of("schemaVersion", 1, "hostname", "PC-FIN-01", "agentVersion", "0.2.0",
-            "events", List.of(event("qualquer-rotulo", "Blocked")), "overrides", List.of());
+            "events", List.of(queuedEvent), "overrides", List.of());
         var receipt = body(agentCall("POST", "events", agent, batch, 200));
         assertThat(receipt.get("acceptedEvents").asInt()).isEqualTo(1);
         agentCall("POST", "events", agent, batch, 200);
+        // A retry can cross an upgrade after the original receipt was lost. Exercise both persisted formats.
+        try (var conn = DriverManager.getConnection(SERVER + "/app" + OPTIONS, USER, PASSWORD);
+             var read = conn.prepareStatement("SELECT payload FROM agent_audit_ingest WHERE record_key = ?");
+             var update = conn.prepareStatement("UPDATE agent_audit_ingest SET payload = ? WHERE record_key = ?")) {
+            String key = "audit:" + queuedEvent.get("eventId");
+            read.setString(1, key);
+            ObjectNode stored;
+            try (var rows = read.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+                stored = (ObjectNode) json.readTree(rows.getString(1));
+            }
+            update.setString(2, key);
+            stored.remove("customRules");
+            update.setString(1, stored.toString());
+            assertThat(update.executeUpdate()).isEqualTo(1);
+            assertThat(body(agentCall("POST", "events", agent, batch, 200)).get("acceptedEvents").asInt()).isEqualTo(1);
+
+            stored.putNull("customRules");
+            update.setString(1, stored.toString());
+            assertThat(update.executeUpdate()).isEqualTo(1);
+            assertThat(body(agentCall("POST", "events", agent, batch, 200)).get("acceptedEvents").asInt()).isEqualTo(1);
+        }
+        var changedEvent = new java.util.HashMap<>(queuedEvent);
+        changedEvent.put("customRules", List.of("Outra regra"));
+        agentCall("POST", "events", agent, Map.of("events", List.of(changedEvent)), 409);
         var audit = body(call(get("/auditoria").session(root), null, 200));
         assertThat(audit.at("/resumo/total").asInt()).isEqualTo(1);
         assertThat(audit.at("/eventos/0/hostId").asInt()).isEqualTo(agent.id());
@@ -269,6 +296,13 @@ class ConsoleAgentFlowTest {
             "events", List.of(ruleEvent), "overrides", List.of()), 200);
         assertThat(body(call(get("/painel").session(root), null, 200)).get("categoriasBloqueadas").toString())
             .contains("Regra: Contratos do Projeto Atlas");
+
+        var mixed = new java.util.HashMap<>(event("PC-FIN-01", "Blocked"));
+        mixed.put("categories", java.util.Arrays.stream(com.safeupload.audit.AuditContracts.Category.values())
+            .map(Enum::name).toList());
+        mixed.put("customRules", List.of("Regra de bloqueio", "Regra de alerta"));
+        var mixedReceipt = body(agentCall("POST", "events", agent, Map.of("events", List.of(mixed)), 200));
+        assertThat(mixedReceipt.get("acceptedEvents").asInt()).isEqualTo(1);
 
         // Assinatura: corpo trocado, replay, relógio fora da janela e host revogado são recusados.
         byte[] content = json.writeValueAsBytes(Map.of("host", host("PC-FIN-01")));

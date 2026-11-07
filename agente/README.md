@@ -55,7 +55,8 @@ formato validável (`Core/Domain/Validators/ContextDetectors.cs`).
 
 ### Outros canais
 
-- **Clipboard** (desligado por padrão): bloqueia a colagem de texto sensível em navegadores e mensageiros. Desenho em
+- **Clipboard** (desligado por padrão): bloqueia a colagem de texto sensível em navegadores e mensageiros. A
+  auditoria inclui os nomes das regras personalizadas que dispararam. Desenho em
   [`docs/clipboard`](../docs/clipboard/README.md).
 - **Web/TLS** (desligado por padrão, `InspecaoTls:Habilitada`): proxy local que inspeciona uploads dos navegadores.
   Diferente da unidade, libera quando a inspeção falha. Desenho e operação em

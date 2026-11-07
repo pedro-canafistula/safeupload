@@ -185,8 +185,10 @@ No documento do agente, a política ganha `customRulesFormat: 1` e `customRules`
 
 Uma regra em Alertar entra como `CustomRuleAlert` em `activeCategories` e `alertCategories`; em Bloquear, como
 `CustomRule`. O evento de auditoria leva `categories: ["CustomRule"]` (ou `CustomRuleAlert`) e
-`customRules: ["Contratos do Projeto Atlas"]`. O agente procura no mesmo texto que já extrai (arquivo, ZIP, upload
-web, clipboard) e conta cada ocorrência uma vez; uma ocorrência pode ter até 256 caracteres. Os casos em
+`customRules: ["Contratos do Projeto Atlas"]`, inclusive nos eventos de clipboard. Um evento pode combinar as dez
+categorias originais e as duas de regras personalizadas. Um reenvio sem regras é aceito quando o registro anterior
+omitiu `customRules` ou gravou o campo como `null`. O agente procura no mesmo texto que já extrai (arquivo, ZIP, upload
+web, clipboard) e conta cada ocorrência uma vez. Uma ocorrência pode ter até 256 caracteres. Os casos em
 `web/back/src/test/resources/regras-personalizadas-casos.json` são conferidos pelos testes do backend e do agente.
 
 | Rota (ADMIN/ROOT) | Uso |
