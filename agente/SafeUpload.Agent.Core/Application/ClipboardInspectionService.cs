@@ -66,6 +66,9 @@ public sealed class ClipboardInspectionService
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        long revision = request.Type == ClipboardProtocol.ClassifyType ? _copies.BeginClassification(sessionId) : 0;
 
         Policy policy;
 
@@ -75,6 +78,7 @@ public sealed class ClipboardInspectionService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return new ClipboardOutcome(
                 FailOpen(request.Type),
                 new ClipboardObservation(
@@ -83,9 +87,11 @@ public sealed class ClipboardInspectionService
                     FailureType: ex.GetType().Name));
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         return request.Type switch
         {
-            ClipboardProtocol.ClassifyType => Classify(request, sessionId, policy),
+            ClipboardProtocol.ClassifyType => Classify(request, sessionId, revision, policy, cancellationToken),
             ClipboardProtocol.PasteType => Paste(request, sessionId, policy),
             _ => State(policy)
         };
@@ -94,18 +100,20 @@ public sealed class ClipboardInspectionService
     private static ClipboardOutcome State(Policy policy) =>
         new(new ClipboardResponse(ClipboardProtocol.StateType, Enabled: policy.EffectiveClipboard.IsEnabled));
 
-    private ClipboardOutcome Classify(ClipboardRequest request, uint? sessionId, Policy policy)
+    private ClipboardOutcome Classify(ClipboardRequest request, uint? sessionId, long revision, Policy policy,
+        CancellationToken cancellationToken)
     {
         var classification = ClipboardRules.Classify(
             request.Text ?? string.Empty,
             request.TextLength,
             request.SourceProcess,
             policy);
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Registra sempre, inclusive com o canal desligado: uma cópia limpa
         // precisa substituir a suja que estava em vigor, e a política pode ter
         // mudado entre uma cópia e outra.
-        var copy = _copies.Register(sessionId, classification.Dirty, request.SourceProcess,
+        var copy = _copies.CompleteClassification(sessionId, revision, classification.Dirty, request.SourceProcess,
             classification.Categories, (long)Math.Max(request.TextLength, request.Text?.Length ?? 0) * 2,
             policy.Version);
 

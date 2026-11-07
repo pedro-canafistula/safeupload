@@ -289,6 +289,12 @@ No canal web, `AuditOnly` libera o envio com achados e registra `Approved` com a
 
 No clipboard, falha ou ausência de resposta à classificação invalida o estado lembrado do canal. Antes de ler e enviar a próxima cópia, o App consulta novamente `state`, sem texto; um serviço reiniciado com o canal Off não recebe essa cópia por causa do estado anterior. A regra existente de liberar em falha e a compatibilidade com uma resposta antiga válida sem `enabled` permanecem.
 
+O serviço ordena classificações pelo início do atendimento em cada sessão do Windows. Uma classificação que termina
+atrasada não substitui a cópia de um pedido mais recente dessa sessão; outras sessões continuam independentes.
+Pedidos cancelados não substituem a última cópia válida nem incrementam contadores. A espera de política e a inspeção
+ficam fora do lock dos metadados; o armazenamento continua sem texto copiado e sem alteração no formato do pipe.
+Isso não qualifica a ordem dos eventos nativos ou a continuidade do monitor no Windows, ainda sujeitas ao aceite conjunto.
+
 Sem `BaseUrl` configurado, nada disso roda — é o padrão de segurança do
 projeto (ver `Interception:Mode` acima, mesma filosofia). A assinatura do heartbeat não autentica automaticamente política e auditoria; o fechamento dessas rotas e do ciclo de chaves permanece pendente com o backend.
 
