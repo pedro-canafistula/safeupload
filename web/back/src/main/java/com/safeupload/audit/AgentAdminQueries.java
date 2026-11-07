@@ -257,7 +257,8 @@ public class AgentAdminQueries {
                 : Map.of("id", rs.getInt("id_politica"), "nome", rs.getString("politica"), "versao", expected));
             Integer applied = (Integer) rs.getObject("politica_aplicada");
             row.put("politicaAplicada", applied);
-            row.put("politicaDesatualizada", expected != null && !expected.equals(applied));
+            // Máquina revogada não busca mais política: não conta como desatualizada.
+            row.put("politicaDesatualizada", !state.equals("revogado") && expected != null && !expected.equals(applied));
             row.put("lastSeenUtc", seen == null ? null : seen.toInstant().toString());
             row.put("status", state);
             row.put("inspecoes7d", rs.getLong("inspecoes"));

@@ -103,13 +103,13 @@ public class PolicyStore {
     public Map<String, Object> create(int empresa, String user, String name, boolean isDefault, PolicyConfig config) {
         String nome = name(name);
         var keys = new GeneratedKeyHolder();
-        jdbc.update(connection -> {
+        unique("Já existe uma política com esse nome.", () -> jdbc.update(connection -> {
             var statement = connection.prepareStatement(
                 "INSERT INTO politicas (fk_id_empresa, nome, padrao) VALUES (?,?,0)", java.sql.Statement.RETURN_GENERATED_KEYS);
             statement.setInt(1, empresa);
             statement.setString(2, nome);
             return statement;
-        }, keys);
+        }, keys));
         int id = keys.getKey().intValue();
         if (isDefault) makeDefault(empresa, id);
         return Map.of("id", id, "versao", addVersion(id, user, config));
@@ -117,8 +117,8 @@ public class PolicyStore {
 
     @Transactional("appTransactionManager")
     public Map<String, Object> update(int empresa, int policyId, String user, String name, boolean isDefault, PolicyConfig config) {
-        int changed = jdbc.update("UPDATE politicas SET nome = ? WHERE id_politica = ? AND fk_id_empresa = ?",
-            name(name), policyId, empresa);
+        int changed = unique("Já existe uma política com esse nome.", () -> jdbc.update(
+            "UPDATE politicas SET nome = ? WHERE id_politica = ? AND fk_id_empresa = ?", name(name), policyId, empresa));
         if (changed == 0) throw notFound("Política não encontrada.");
         if (isDefault) makeDefault(empresa, policyId);
         else jdbc.update("UPDATE politicas SET padrao = 0 WHERE id_politica = ?", policyId);
@@ -179,21 +179,23 @@ public class PolicyStore {
     public Map<String, Object> createGroup(int empresa, String name, Integer policyId) {
         checkPolicy(empresa, policyId);
         var keys = new GeneratedKeyHolder();
-        jdbc.update(connection -> {
+        String nome = name(name);
+        unique("Já existe um grupo com esse nome.", () -> jdbc.update(connection -> {
             var statement = connection.prepareStatement(
                 "INSERT INTO grupos (fk_id_empresa, nome, fk_id_politica) VALUES (?,?,?)", java.sql.Statement.RETURN_GENERATED_KEYS);
             statement.setInt(1, empresa);
-            statement.setString(2, name(name));
+            statement.setString(2, nome);
             statement.setObject(3, policyId);
             return statement;
-        }, keys);
+        }, keys));
         return Map.of("id", keys.getKey().intValue());
     }
 
     public void updateGroup(int empresa, int groupId, String name, Integer policyId) {
         checkPolicy(empresa, policyId);
-        int changed = jdbc.update("UPDATE grupos SET nome = ?, fk_id_politica = ? WHERE id_grupo = ? AND fk_id_empresa = ?",
-            name(name), policyId, groupId, empresa);
+        int changed = unique("Já existe um grupo com esse nome.", () -> jdbc.update(
+            "UPDATE grupos SET nome = ?, fk_id_politica = ? WHERE id_grupo = ? AND fk_id_empresa = ?",
+            name(name), policyId, groupId, empresa));
         if (changed == 0) throw notFound("Grupo não encontrado.");
     }
 
@@ -210,6 +212,11 @@ public class PolicyStore {
     }
 
     // ---- utilitários ----
+
+    private static int unique(String message, java.util.function.IntSupplier write) {
+        try { return write.getAsInt(); }
+        catch (org.springframework.dao.DuplicateKeyException e) { throw new ResponseStatusException(HttpStatus.CONFLICT, message); }
+    }
 
     private static String name(String name) {
         String value = name == null ? "" : name.trim();

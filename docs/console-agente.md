@@ -118,7 +118,7 @@ Rotas administrativas (sessão ADMIN/ROOT, sempre dentro da empresa do usuário)
 | `GET/POST /grupos` · `PUT/DELETE /grupos/{id}` | `{nome, politicaId}`; ao apagar um grupo, os hosts dele ficam sem grupo |
 | `PUT /endpoints/{idHost}/grupo` | `{grupoId}` (ou `null`) |
 | `POST /endpoints/{idHost}/revogar` | o host passa a receber 403; para voltar, é preciso cadastrar de novo |
-| `GET /auditoria/exportar?endpoint=` | CSV dos últimos 7 dias |
+| `GET /auditoria/exportar?host=` | CSV dos últimos 7 dias (todas as máquinas, ou uma com `host=<idHost>`) |
 | `POST /admin/token` · `GET /admin/tokens` · `DELETE /admin/tokens/{id}` | tokens de cadastro |
 
 `configuracao` é o formulário do console. O servidor o converte no documento acima:

@@ -197,6 +197,9 @@ class ConsoleAgentFlowTest {
         // Grupo com outra política: o host passa a receber a política do grupo.
         int other = body(call(post("/politicas").session(root), policyRequest("Financeiro", false, "alertar"), 201)).get("id").asInt();
         int group = body(call(post("/grupos").session(root), Map.of("nome", "Financeiro", "politicaId", other), 201)).get("id").asInt();
+        assertThat(body(call(post("/politicas").session(root), policyRequest("Financeiro", false, "alertar"), 409))
+            .get("mensagem").asText()).isEqualTo("Já existe uma política com esse nome.");
+        call(post("/grupos").session(root), Map.of("nome", "Financeiro"), 409);
         call(put("/endpoints/" + agent.id() + "/grupo").session(root), Map.of("grupoId", group), 204);
         var groupDocument = body(agentCall("GET", "policy", agent, null, 200));
         assertThat(groupDocument.get("alertCategories").toString()).isEqualTo("[\"Cpf\",\"Rg\"]");
@@ -236,6 +239,7 @@ class ConsoleAgentFlowTest {
             .andExpect(status().isUnauthorized());
         call(post("/endpoints/" + agent.id() + "/revogar").session(root), null, 204);
         agentCall("GET", "policy", agent, null, 403);
+        assertThat(body(call(get("/painel").session(root), null, 200)).at("/maquinas/politicaDesatualizada").asInt()).isZero();
 
         // Segunda empresa: ROOT cria; o admin dela não vê nem altera nada da empresa A.
         call(post("/auth/normalregister/empresa/set").session(root), company("Empresa B", "22222222000122"), 201);
