@@ -1,8 +1,6 @@
 # SafeUpload lab images
 
-**Linux route validated; Hyper-V route postponed and untested.** Build K (2026-10-21) passed the complete image build and the
-Terraform create/first-boot/acceptance/reboot/destroy lifecycle. The VHDX export is byte-verified, but no Hyper-V host has booted it.
-See [VALIDATION.md](VALIDATION.md).
+The Linux route (Packer + Ansible + Terraform/libvirt) works end to end; the Hyper-V route has not been booted yet.
 
 Reproducible Windows 10 22H2 (build **19045.2965**) lab VMs for development, built from a clean Microsoft ISO with
 Packer and Ansible, and created on Linux with Terraform/libvirt or on Windows with Hyper-V. The clean image contains the local `vika` administrator with a discarded random password, Windows built-in accounts,
@@ -33,7 +31,7 @@ Image construction runs on Linux with QEMU/KVM. A finished image can run locally
 | Colleague's machine | Build the image | Run the VM from a finished image | Automated qualification rows |
 |---|---|---|---|
 | Linux with KVM + libvirt | Packer + Ansible | Terraform + qcow2 | Only the approved lab target, with the existing identity checks |
-| Windows 10/11 Pro/Enterprise with Hyper-V enabled | Use the image built on Linux | `hyperv/New-LabVM.ps1` + VHDX | No: the row launchers require bash/libvirt and the approved target |
+| Windows Pro/Enterprise with Hyper-V enabled | Use the image built on Linux | `hyperv/New-LabVM.ps1` + VHDX | No: the row launchers require bash/libvirt and the approved target |
 | Windows Home / WSL2 | No supported local build route | Hyper-V host required for this Windows route | No |
 | macOS | not supported (no usable x86 KVM) | not supported | not supported |
 
@@ -114,7 +112,7 @@ On the Linux image-building host, export the **finished, never booted after gene
 ```
 
 Share the VHDX and `image.sha256`. Use a checkout of this repository on the Windows colleague's machine for the scripts.
-On a Windows 10/11 Pro/Enterprise Hyper-V host, open **Windows PowerShell 5.1 as
+On a Windows Pro/Enterprise Hyper-V host, open **Windows PowerShell 5.1 as
 Administrator**. Hyper-V and an existing virtual switch must already be available (`Get-VMSwitch`); the script does not
 change host features or networking. The execution-policy command below applies only to this PowerShell process. An existing external switch or the Windows client Default Switch supplies DHCP.
 

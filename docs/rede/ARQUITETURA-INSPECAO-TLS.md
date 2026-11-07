@@ -1,26 +1,14 @@
-# Arquitetura da inspeção TLS — estado atual
+# Inspeção TLS (canal web)
 
-Documento de referência do que **está implementado** na inspeção do tráfego
-web. O [plano](PLANO-INSPECAO-TLS.md) registra as intenções e a ordem das
-fases; este documento descreve o código como ele é, por que é assim e o que
-falta. Cada fase concluída atualiza este documento no mesmo PR.
-
-| Fase | Estado | PR |
-|---|---|---|
-| 0 — Estudo do tráfego | Concluída ([resultado](FASE0-ESTUDO-TRAFEGO.md)) | #17 |
-| 1 — CA e certificados | Concluída | #20 |
-| 2 — Núcleo do proxy | Concluída | #22 |
-| 3 — Desvio do tráfego (navegadores) | Concluída | #23 |
-| 4 — Exceções | Concluída (listas na configuração; painel e política ficam para depois) | |
-| 5 — Inspeção de upload | Concluída: o proxy chama o motor e bloqueia com 403 (sem aviso na bandeja ainda) | |
-| 6 — Decisão, aviso e auditoria | Concluída, sem justificativa (prevista para depois no plano); janela de aviso não verificada visualmente | |
-| 7 — Qualificação | Feita com o Edge ([resultado](FASE7-QUALIFICACAO.md)); falta upload com login em Drive e Gmail, Chrome e Firefox | |
+Como o agente inspeciona uploads feitos pelo navegador: o que está implementado, por que é assim e o que falta.
+A inspeção TLS é **desligada por padrão** (`InspecaoTls:Habilitada`) e o instalador não a liga. Diferente da
+unidade SafeUpload, este canal libera quando a inspeção falha (seção 4.6).
 
 ---
 
 ## 1. O problema
 
-O minifiltro e o watcher veem operações de **arquivo**. Um upload pela web não
+A unidade SafeUpload e o driver gate veem operações de **arquivo**. Um upload pela web não
 é uma operação de arquivo que eles consigam barrar: o navegador lê o arquivo e
 o envia dentro de uma conexão HTTPS, criptografada. Para ver o conteúdo, o
 agente precisa ficar **no meio** dessa conexão: abrir a criptografia, olhar o
@@ -164,14 +152,14 @@ na máquina. As decisões desta parte existem para proteger essa chave.
 | **O proxy mesmo responde `100 Continue`** | O navegador que pede autorização antes de enviar o corpo recebe do proxy, que precisa do corpo inteiro para decidir. O pedido segue ao site sem o `Expect`. |
 | **Corpo em pedaços vira tamanho fixo** | Depois de segurado e inspecionado, o corpo segue com `Content-Length`. |
 | **Limite de 64 MB para segurar o corpo** | Acima disso a requisição segue sem inspeção, para não segurar gigabytes em memória. A Fase 5 decide se isso vira bloqueio. |
-| **Falha do inspetor libera** (fail-open) | Mesmo comportamento do resto do produto (RN-013). Está entre as decisões em aberto. |
+| **Falha do inspetor libera** (fail-open) | Escolha da primeira versão do canal web; o canal de arquivo, ao contrário, bloqueia. Em aberto (L11). |
 | **WebSocket passa sem inspeção** | Depois do `101 Switching Protocols` a conexão deixa de ser HTTP e vira túnel. |
 | **Processo de origem pela tabela TCP do Windows** | Para o proxy todo cliente é "127.0.0.1, porta X"; `GetExtendedTcpTable` (a fonte do `netstat -ano`) diz qual PID abriu a conexão. |
 | **Timeouts:** 2 min ocioso, 15 s para conectar | Conexões keep-alive paradas são fechadas; site que não responde não prende o navegador. |
 
 ### 4.4 Desvio do tráfego (Fase 3)
 
-**Mudança em relação ao plano.** O plano previa o proxy do sistema para a
+**Por que só os navegadores.** A primeira ideia era o proxy do sistema para a
 máquina inteira e bloqueio de saída direta para todos os programas. Isso
 levaria Windows Update, Defender, Teams e Outlook para dentro do proxy, e
 parte deles só aceita o certificado verdadeiro da Microsoft (pinning). Antes
@@ -216,7 +204,7 @@ em texto claro, nesta ordem (`TlsInspectionProxy.TunnelReason`):
 
 O que as exceções custam: o que vai para um host em exceção **não é
 inspecionado**. Um arquivo enviado ao site de um banco ou a um portal `gov.br`
-sai sem passar pelo motor. É a troca prevista no plano (privacidade do
+sai sem passar pelo motor. É uma troca deliberada (privacidade do
 funcionário e LGPD contra cobertura), e por isso as categorias podem ser
 desligadas.
 
@@ -254,14 +242,14 @@ O caminho de uma requisição com corpo, depois que o proxy a segurou inteira:
 | **Duas réguas de varredura** | Arquivo passa pelo `ContentScanner` completo, o mesmo do canal de arquivo. Texto passa pelo `TypedTextScanner`, mais estrito: CPF, CNPJ e cartão só contam na forma escrita (`529.982.247-25`) ou com o nome do dado logo antes (`cpf: 52998224725`), e isolados; senha não conta (todo login manda `password=`); JWT e chave de API do Google não contam (são o que a própria página envia). Com a régua de documento, a qualificação barrou o SmartScreen do Edge, métricas do GitHub, YouTube, Dropbox e WeTransfer: um em cada dez números de 16 dígitos passa no Luhn, e telemetria é feita de números. |
 | **Qualquer achado bloqueia a requisição inteira** | Não dá para tirar uma parte de um formulário e mandar o resto. |
 | **Fail-open** | Acima do tamanho da política, formato sem extrator, prazo estourado e erro de leitura liberam com o motivo no evento (RN-012, RN-013). Exceção inesperada no inspetor também libera (o proxy registra aviso). |
-| **Modo de auditoria da política** (`auditOnly`) | O evento é gravado como bloqueio, mas o proxy deixa passar. |
+| **Categorias em alerta** (`alertCategories`, `auditOnly`) | O proxy deixa passar e o evento é gravado como `Approved` com as categorias. |
 | **O que vira evento** | Todo arquivo julgado, como no canal de arquivo. Texto, só quando tem achado: uma página comum faz dezenas de POST por minuto, e registrar cada um afogaria a trilha. |
-| **Política reaproveitada por 30 s** | Com o painel configurado, carregar a política é uma chamada HTTP por inspeção (medido na VM: 2 s por POST com o painel fora do ar). Reaproveitando, só a primeira paga. Uma política nova demora até 30 s para valer na web. |
-| **Destino sem query string** | No evento e no log vai esquema, site e caminho. A query pode carregar token de sessão. |
+| **Política reaproveitada por 30 s** | Evita reler a política a cada requisição. Uma política nova demora até 30 s para valer na web. |
+| **Destino minimizado** | No evento vai só a origem (esquema, host e porta); no log, esquema, site e caminho, sem a query, que pode carregar token de sessão. |
 
 O evento do canal `Web`: `fileName` e `extension` são os do arquivo (vazios
 quando o achado está em texto digitado), `processName` é o navegador e
-`destinationPath` é o endereço. O conteúdo nunca entra (RN-006); só trechos
+`destinationPath` é a origem do site. O conteúdo nunca entra (RN-006); só trechos
 mascarados.
 
 ### 4.7 Decisão, aviso e auditoria (Fase 6)
@@ -289,7 +277,7 @@ bloqueio ao usuário:
 | **Dono desconhecido: bloqueia, registra e não avisa ninguém** | Difundir para todas as sessões mostraria a um usuário o que outro tentou enviar. |
 | **Mesmo caminho de aviso do canal de arquivo** | `EventNotification` pelo `NotificationHub`, que grava cada emissão antes de entregar. O aplicativo de bandeja já sabia mostrar a janela de bloqueio; só aprendeu a descrever um evento web (`AuditSubject`): "folha.csv para drive.google.com" ou "texto enviado a chatgpt.com". |
 | **Bloqueio repetido de texto vira um evento só por 60 s** | Há sites que enviam o texto a cada tecla (Fase 0). Cada envio é barrado, mas o mesmo achado, do mesmo programa para o mesmo site, não gera evento nem aviso novo dentro do intervalo. A chave usa o site sem o caminho, porque o texto digitado sai por endereços diferentes do mesmo site. Arquivo nunca é agrupado. |
-| **Sem justificativa** | `OverrideAllowed` vai sempre falso. O fluxo de justificativa existente concede uma nova tentativa ao driver para um arquivo; na web seria preciso liberar uma requisição futura igual, e o plano deixou isso para versão posterior. |
+| **Sem justificativa** | `OverrideAllowed` vai sempre falso. A justificativa do canal de arquivo libera uma versão retida na unidade SafeUpload; na web seria preciso liberar uma requisição futura igual, o que ficou para depois. |
 
 ### 4.8 Como o mercado faz, e onde este desenho se encaixa
 
@@ -306,7 +294,7 @@ documentação de cada fornecedor antes de citar.
   de configuração de proxy, por adaptador virtual (túnel) ou por driver de
   filtro de rede (callouts da WFP que redirecionam conexões). É o caminho dos
   agentes mais novos (o Zscaler Client Connector tem modos de proxy local e de
-  túnel). **É a evolução prevista** em "Depois" no plano: driver WFP com callout
+  túnel). **É a evolução possível**: driver WFP com callout
   de redirecionamento.
 - **Integração com o navegador** (extensão ou nativa), sem inspeção TLS: o
   navegador avisa o agente antes de enviar. Linha do Microsoft Purview para DLP
@@ -451,35 +439,6 @@ dotnet test SafeUpload.Agent.Tests                       # suíte normal
 $env:SAFEUPLOAD_MACHINE_TESTS = "1"; dotnet test SafeUpload.Agent.Tests   # com os de máquina (VM)
 ```
 
-Testes manuais feitos na VM Windows 11 a cada fase:
-
-- Fase 1: `ca install`, CA em `Root` sem chave privada, `Export-PfxCertificate` recusado.
-- Fase 2: Edge abrindo Google e Wikipedia e enviando formulário ao httpbin pelo
-  proxy; curl com GET e POST; log com o processo de origem.
-- Fase 3: Edge **sem configuração de proxy** passando pelo proxy pela política;
-  com a política removida e o filtro ativo, Edge sem conexão; curl seguindo
-  direto; serviço morto à força liberando o Edge.
-- Fase 4: serviço de verdade com curl pelo proxy. `example.com` interceptado
-  ("Envio visto"); `www.gov.br`, `www.bb.com.br` e um domínio acrescentado pela
-  configuração em túnel, cada um com a sua categoria no log. A detecção de
-  pinning só foi exercitada pelo teste automatizado, não com um aplicativo real.
-- Fase 5: serviço de verdade com curl pelo proxy contra o httpbin. Multipart
-  com CPF num csv, JSON com CPF, `PUT` de arquivo declarado como formulário e
-  formulário simples com CPF: **403**. Multipart limpo: 200. Eventos gravados
-  na fila com `"channel":"Web"`. Ainda não testado com navegador em Drive,
-  Gmail e ChatGPT de verdade (fica para a Fase 7).
-- Fase 6: só testes automatizados na entrega; a janela de aviso foi vista na
-  tela na Fase 7.
-- Fase 7: qualificação com o Edge de verdade, serviço como SYSTEM e aplicativo
-  de bandeja na sessão do usuário. Resultado, capturas e roteiros em
-  [FASE7-QUALIFICACAO.md](FASE7-QUALIFICACAO.md).
-
-Ambiente de teste: VM Windows 11 com .NET 10 SDK, acessada por SSH. Montagem com
-a imagem `dockurr/windows` (a mesma do `omarchy-windows-vm`), com OpenSSH
-habilitado na pós-instalação. Processos iniciados numa sessão SSH no Windows
-morrem quando ela fecha: para testar o serviço, suba-o e faça os testes na mesma
-sessão.
-
 ---
 
 ## 9. Limitações conhecidas e melhorias pendentes
@@ -492,19 +451,19 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | L2 | **Exceção é buraco na inspeção.** | O que vai para banco, saúde, governo ou host com pinning aprendido não é inspecionado. | Aceito por desenho (seção 4.5). Categorias desligáveis; pinning aprendido sai como aviso no log e deve virar evento de auditoria na Fase 6. |
 | L3 | **Desvio só dos navegadores.** | Apps que não são navegador (clientes de nuvem, Teams, Outlook) não são inspecionados. | Junto com a Fase 4: proxy do sistema (WinINET e WinHTTP) para a máquina, com exceções para o que tem pinning. Depois: driver WFP com callout de redirecionamento (captura transparente). |
 | L4 | **Navegador fora do caminho padrão** não é coberto pelo filtro. | Navegador portátil sai direto. | Identificar por assinatura do executável ou por nome do processo em vez de caminho; ou bloquear 80/443 para todos com exceções (depende de L3). |
-| L5 | **Queda do serviço deixa as políticas** apontando para o proxy fora do ar. | Navegadores sem internet até o serviço voltar. | Decisão em aberto 2: recuperação automática do serviço do Windows; ou PAC com `DIRECT` como alternativa; ou watchdog que remove as políticas. Hoje: `desvio remove`. |
+| L5 | **Queda do serviço deixa as políticas** apontando para o proxy fora do ar. | Navegadores sem internet até o serviço voltar. | Em aberto: recuperação automática do serviço do Windows; ou PAC com `DIRECT` como alternativa; ou watchdog que remove as políticas. Hoje: `desvio remove`. |
 | L6 | **Sem "Happy Eyeballs"**: a conexão ao site tenta os endereços um a um. | Rede com IPv6 quebrado deixa a conexão lenta (o Windows demora ~2 s em cada conexão recusada). | Conectar em IPv6 e IPv4 em paralelo (RFC 8305), como os navegadores. |
 | L7 | **Upload em pedaços** (tus, retomável): só o corpo de cada requisição é visto. | Pedaços anteriores ao que tem o dado já saíram (ver Fase 0); um docx partido em pedaços não abre. | Depois: inspecionar cada pedaço; acumular por sessão para formatos compactados. Drive, Gmail e ChatGPT mandam requisição única e não dependem disso. |
 | L8 | **Corpo acima de 64 MB** segue sem inspeção e sem evento. | Arquivo grande escapa sem registro. | Decidir entre bloquear e liberar com auditoria, como o limite de tamanho da política (RN-013); ou segurar em arquivo temporário protegido. |
-| L9 | **WebSocket sem inspeção** e sem teste automatizado. | Conteúdo enviado por WebSocket não é visto. | Teste automatizado do túnel; inspeção de mensagens fica para depois (está no plano). |
+| L9 | **WebSocket sem inspeção** e sem teste automatizado. | Conteúdo enviado por WebSocket não é visto. | Teste automatizado do túnel; inspeção de mensagens fica para depois. |
 | L10 | **HTTP/2 não suportado** (o proxy força HTTP/1.1). | Nenhum hoje (sites aceitam), mas é um desvio do comportamento normal do navegador. | Depois: parser HTTP/2. |
-| L11 | **Falha do inspetor libera** (fail-open). | Erro na inspeção deixa passar. | Decisão em aberto 1. |
+| L11 | **Falha do inspetor libera** (fail-open). | Erro na inspeção deixa passar. | Em aberto: bloquear, como no canal de arquivo. |
 | L12 | **`ca remove` e `desvio remove` apagam valores** mesmo que outra pessoa os tenha gravado. | Pode desfazer política corporativa anterior. | Guardar o valor anterior ao aplicar e restaurar ao remover. |
 | L13 | **Renomear a máquina** gera uma CA nova; a antiga fica até `ca remove`. | CA órfã confiável. | Procurar CAs antigas pela chave CNG e não pelo assunto. |
-| L14 | **Comunicação aos funcionários / LGPD.** | Descriptografar tráfego pede aviso e política interna. | Decisão em aberto 3. |
-| L16 | **Exceções só na configuração local.** | Não dá para editar pelo painel nem distribuir com a política; a lista inicial é curta. | Levar as listas para a política (contrato com o painel web) e, se preciso, base de categorização (ver o plano). |
+| L14 | **Comunicação aos funcionários / LGPD.** | Descriptografar tráfego pede aviso e política interna. | Em aberto. |
+| L16 | **Exceções só na configuração local.** | Não dá para editar pelo painel nem distribuir com a política; a lista inicial é curta. | Levar as listas para a política (contrato com o painel web) e, se preciso, base de categorização. |
 | L17 | **Pinning aprendido não é persistido nem auditado.** | Reiniciar o serviço esquece; não há registro fora do log. | Evento de auditoria no canal web (Fases 5 e 6); persistir se o reaprendizado incomodar. |
-| L18 | **Sem exceção por processo fixa.** | O plano previa exceção por processo; hoje só existe a aprendida (programa + host). | Só passa a importar quando o desvio cobrir programas além dos navegadores (L3). |
+| L18 | **Sem exceção por processo fixa.** | A ideia inicial previa exceção por processo; hoje só existe a aprendida (programa + host). | Só passa a importar quando o desvio cobrir programas além dos navegadores (L3). |
 | L19 | **Só o corpo é inspecionado.** | Dado na URL (query string de um GET), em cabeçalho ou em WebSocket não é visto. | Varrer a query string; WebSocket está em L9. |
 | L20 | **Arquivo embutido em JSON** (base64 dentro de um campo) é varrido como texto, sem decodificar. | Arquivo enviado assim escapa. | Detectar campos base64 longos e tratá-los como arquivo. |
 | L22 | **O painel web não conhece o canal `Web`.** | O evento é enviado com `"channel":"Web"`; o que o painel faz com isso não foi verificado. | Alinhar o contrato com o time do painel. |
@@ -513,19 +472,3 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | L26 | **Texto do aviso fala em "arquivo"** mesmo quando o achado é texto digitado. | Mensagem imprecisa. | Texto próprio para o canal web na janela de bloqueio. |
 | L24 | **Sem cache de veredito na web.** | O mesmo arquivo enviado duas vezes é extraído duas vezes. | Cache por hash do conteúdo, como o do canal de arquivo. |
 | L15 | **Firefox sem política de QUIC.** | Coberto só pelo filtro de UDP 443. | Política `Preferences` (`network.http.http3.enable = false`). |
-
----
-
-## 10. Histórico
-
-| Data | Fase | Mudança |
-|---|---|---|
-| 2026-10-07 | 0 | Estudo do tráfego (genérico e com login em Drive, Gmail e ChatGPT). |
-| 2026-10-07 | 1 | CA local e certificados por host. |
-| 2026-10-08 | 2 | Proxy, parser HTTP/1.1, lista de revogação (achada no teste com curl). |
-| 2026-10-08 | 3 | Desvio só dos navegadores (mudança em relação ao plano), filtros WFP, comando `desvio`. |
-| 2026-10-08 | — | Este documento, consolidando as fases 0 a 3. |
-| 2026-10-11 | 7 | Qualificação com o Edge. Três correções: régua própria para texto digitado (`TypedTextScanner`), critério de "arquivo" no parser e pinning só por alerta TLS. |
-| 2026-10-10 | 6 | Usuário real no evento web, aviso na bandeja só para o dono do navegador, agrupamento de bloqueios repetidos de texto. |
-| 2026-10-10 | 5 | Inspeção de upload: parser do corpo, motor do canal web no Core, formato pelos bytes, bloqueio com 403 e evento no canal `Web`. |
-| 2026-10-10 | 4 | Exceções por categoria e domínio (túnel) e detecção automática de pinning por programa + host. |
