@@ -149,6 +149,8 @@ public static class ReasonLabels
         "out_of_scope" => "Destino ou extensão fora do escopo monitorado.",
         "excluded_process" => "Processo excluído pela política; nunca interceptado.",
         "publication_outcome_unknown" => "Não foi possível confirmar o resultado da publicação após uma interrupção.",
+        _ when reason.StartsWith("inspection_error:", StringComparison.Ordinal) =>
+            "Erro interno na inspeção do envio; liberado e registrado.",
         _ when reason.StartsWith("parse_error:", StringComparison.Ordinal) =>
             "Falha ao interpretar o arquivo; inspeção não concluída.",
         _ => AuditTextPrivacy.Sanitize(reason)

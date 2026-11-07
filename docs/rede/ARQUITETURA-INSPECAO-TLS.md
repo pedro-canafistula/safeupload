@@ -3,8 +3,8 @@
 Como o agente inspeciona uploads feitos pelo navegador: o que está implementado, por que é assim e o que falta.
 A inspeção TLS é **desligada por padrão**: quem liga é a política, no console ("Envios pela web" no editor de
 política, bloco `web` em [console-agente.md](../console-agente.md)). O agente relê a política a cada 30 segundos e
-liga ou desliga a CA, o proxy e o desvio dos navegadores. Diferente da unidade SafeUpload, este canal libera quando a
-inspeção falha (seção 4.6).
+liga ou desliga a CA, o proxy e o desvio dos navegadores. Como na unidade SafeUpload, o que não pode ser inspecionado
+não sai; só um erro interno do proxy deixa passar, e fica registrado (seção 4.6).
 
 ---
 
@@ -153,8 +153,8 @@ na máquina. As decisões desta parte existem para proteger essa chave.
 | **Chunked vence Content-Length; cabeçalho com espaço antes dos dois-pontos é recusado** | Regras da RFC 9112 e defesa contra *request smuggling* (proxy e servidor interpretando a mesma mensagem de jeitos diferentes). |
 | **O proxy mesmo responde `100 Continue`** | O navegador que pede autorização antes de enviar o corpo recebe do proxy, que precisa do corpo inteiro para decidir. O pedido segue ao site sem o `Expect`. |
 | **Corpo em pedaços vira tamanho fixo** | Depois de segurado e inspecionado, o corpo segue com `Content-Length`. |
-| **Limite de 64 MB para segurar o corpo** | Acima disso a requisição segue sem inspeção, para não segurar gigabytes em memória. A Fase 5 decide se isso vira bloqueio. |
-| **Falha do inspetor libera** (fail-open) | Escolha da primeira versão do canal web; o canal de arquivo, ao contrário, bloqueia. Em aberto (L11). |
+| **Limite de 64 MB para segurar o corpo** | Acima disso o proxy não segura o corpo: decide pelos primeiros 64 KB (nome do arquivo no formulário ou no cabeçalho, tipo declarado, primeiros bytes) antes de mandar qualquer byte. Tipo vigiado pela política: 403 e evento `file_too_large`. Tipo conhecido e não vigiado (vídeo, imagem): segue sem evento, como no canal de arquivo. Tipo desconhecido: segue com evento. |
+| **Erro interno segue, com evento** | Corpo que não dá para separar ou falha do motor: o envio segue e o evento sai com `inspection_error:<tipo>`. Arquivo que não abre não é erro interno: bloqueia (ver abaixo). |
 | **WebSocket passa sem inspeção** | Depois do `101 Switching Protocols` a conexão deixa de ser HTTP e vira túnel. |
 | **Processo de origem pela tabela TCP do Windows** | Para o proxy todo cliente é "127.0.0.1, porta X"; `GetExtendedTcpTable` (a fonte do `netstat -ano`) diz qual PID abriu a conexão. |
 | **Timeouts:** 2 min ocioso, 15 s para conectar | Conexões keep-alive paradas são fechadas; site que não responde não prende o navegador. |
@@ -243,7 +243,7 @@ O caminho de uma requisição com corpo, depois que o proxy a segurou inteira:
 | **O que é "arquivo"** | Parte com nome de arquivo, corpo num protocolo de upload (`X-Goog-Upload-Command`, `Upload-Offset`, `Content-Range`), ou conteúdo binário. Corpo de texto sem nada disso é texto, seja qual for o tipo declarado. Antes, um corpo `text/plain` ou `octet-stream` sem nome virava "arquivo .txt", e cada envio de telemetria de página gerava um evento "arquivo aprovado" (Fase 7). |
 | **Duas réguas de varredura** | Arquivo passa pelo `ContentScanner` completo, o mesmo do canal de arquivo. Texto passa pelo `TypedTextScanner`, mais estrito: CPF, CNPJ e cartão só contam na forma escrita (`529.982.247-25`) ou com o nome do dado logo antes (`cpf: 52998224725`), e isolados; senha não conta (todo login manda `password=`); JWT e chave de API do Google não contam (são o que a própria página envia). Com a régua de documento, a qualificação barrou o SmartScreen do Edge, métricas do GitHub, YouTube, Dropbox e WeTransfer: um em cada dez números de 16 dígitos passa no Luhn, e telemetria é feita de números. |
 | **Qualquer achado bloqueia a requisição inteira** | Não dá para tirar uma parte de um formulário e mandar o resto. |
-| **Fail-open** | Acima do tamanho da política, formato sem extrator, prazo estourado e erro de leitura liberam com o motivo no evento (RN-012, RN-013). Exceção inesperada no inspetor também libera (o proxy registra aviso). |
+| **Falha de inspeção bloqueia** | Como no canal de arquivo: arquivo de tipo vigiado acima do tamanho da política, formato sem extrator, prazo estourado ou erro de leitura bloqueiam com o motivo no evento (RN-013), inclusive em modo de auditoria. Erro interno do motor segue e fica registrado (`inspection_error:<tipo>`); se nem o registro funcionar, o proxy deixa seguir e registra aviso no log. |
 | **Categorias em alerta** (`alertCategories`, `auditOnly`) | O proxy deixa passar e o evento é gravado como `Approved` com as categorias. |
 | **O que vira evento** | Todo arquivo julgado, como no canal de arquivo. Texto, só quando tem achado: uma página comum faz dezenas de POST por minuto, e registrar cada um afogaria a trilha. |
 | **Política reaproveitada por 30 s** | Evita reler a política a cada requisição. Uma política nova demora até 30 s para valer na web. |
@@ -323,7 +323,7 @@ Não garantido (ver seção 9):
 - Navegador fora dos caminhos de instalação padrão não é bloqueado pelo filtro.
 - Se o serviço morrer sem parar, as políticas ficam apontando para o proxy fora
   do ar.
-- Corpo acima de 64 MB e WebSocket passam sem inspeção.
+- Corpo acima de 64 MB é decidido pelo começo (tipo vigiado bloqueia); WebSocket passa sem inspeção.
 
 ---
 
@@ -428,7 +428,7 @@ Os testes ficam em `agente/SafeUpload.Agent.Tests`. Todos rodam no Windows.
 | `TypedTextScannerTests` | Fase 7: dado escrito por uma pessoa encontrado (forma escrita ou nome do dado antes); número solto de telemetria, senha de login, JWT e chave do Google não contando; segredo do usuário contando. |
 | `WebUploadInspectorTests` | Fase 6: bloqueio anunciado **só à assinatura da mesma sessão e do mesmo usuário**; evento no nome do dono do processo; sem dono conhecido, bloqueia e registra sem anunciar; envio limpo sem aviso. |
 | `WebInspectionServiceTests` (Fase 6) | Usuário do navegador no evento; bloqueio repetido de texto gerando um evento só e voltando a gerar depois do intervalo; arquivo repetido gerando dois eventos. |
-| `WebInspectionServiceTests` | Texto e arquivo com CPF bloqueando; texto limpo sem evento; docx renomeado reconhecido pelo conteúdo; xlsx e PDF sem nome; extensão fora do escopo; arquivo corrompido liberado com motivo; modo de auditoria; política reaproveitada. |
+| `WebInspectionServiceTests` | Texto e arquivo com CPF bloqueando; texto limpo sem evento; docx renomeado reconhecido pelo conteúdo; xlsx e PDF sem nome; extensão fora do escopo; arquivo corrompido bloqueado com motivo, inclusive em modo de auditoria; envio acima do limite decidido pelo começo (tipo vigiado bloqueia, vídeo segue sem evento, tipo desconhecido segue com evento); erro interno registrado; modo de auditoria; política reaproveitada. |
 | `TlsInspectionProxyTests` (Fase 5) | De ponta a ponta com o motor real: formulário com CPF num csv recebe **403 e o site não recebe nada**, com evento no canal web sem a query string; o mesmo formulário limpo passa. |
 | `MachineCertificateAuthorityTests` (máquina) | CA de verdade em `LocalMachine\Root`, handshake com a validação padrão do Windows, remoção. |
 | `TrafficDiversionTests` (máquina) | Políticas aplicadas e removidas; **filtro WFP bloqueando de verdade** a conexão do processo à porta 443 (`AccessDenied`) e liberando ao descartar. |
@@ -458,10 +458,9 @@ Cada item com o motivo e o caminho proposto, para quem for implementar.
 | L5 | **Queda do serviço deixa as políticas** apontando para o proxy fora do ar. | Navegadores sem internet até o serviço voltar. | Em aberto: recuperação automática do serviço do Windows; ou PAC com `DIRECT` como alternativa; ou watchdog que remove as políticas. Hoje: `desvio remove`. |
 | L6 | **Sem "Happy Eyeballs"**: a conexão ao site tenta os endereços um a um. | Rede com IPv6 quebrado deixa a conexão lenta (o Windows demora ~2 s em cada conexão recusada). | Conectar em IPv6 e IPv4 em paralelo (RFC 8305), como os navegadores. |
 | L7 | **Upload em pedaços** (tus, retomável): só o corpo de cada requisição é visto. | Pedaços anteriores ao que tem o dado já saíram (ver Fase 0); um docx partido em pedaços não abre. | Depois: inspecionar cada pedaço; acumular por sessão para formatos compactados. Drive, Gmail e ChatGPT mandam requisição única e não dependem disso. |
-| L8 | **Corpo acima de 64 MB** segue sem inspeção e sem evento. | Arquivo grande escapa sem registro. | Decidir entre bloquear e liberar com auditoria, como o limite de tamanho da política (RN-013); ou segurar em arquivo temporário protegido. |
+| L8 | **Corpo acima de 64 MB não é inspecionado por inteiro.** | Decidido pelo começo: tipo vigiado bloqueia, mesmo sem dado sensível. | Segurar em arquivo temporário protegido e inspecionar de verdade. |
 | L9 | **WebSocket sem inspeção** e sem teste automatizado. | Conteúdo enviado por WebSocket não é visto. | Teste automatizado do túnel; inspeção de mensagens fica para depois. |
 | L10 | **HTTP/2 não suportado** (o proxy força HTTP/1.1). | Nenhum hoje (sites aceitam), mas é um desvio do comportamento normal do navegador. | Depois: parser HTTP/2. |
-| L11 | **Falha do inspetor libera** (fail-open). | Erro na inspeção deixa passar. | Em aberto: bloquear, como no canal de arquivo. |
 | L12 | **`ca remove` e `desvio remove` apagam valores** mesmo que outra pessoa os tenha gravado. | Pode desfazer política corporativa anterior. | Guardar o valor anterior ao aplicar e restaurar ao remover. |
 | L13 | **Renomear a máquina** gera uma CA nova; a antiga fica até `ca remove`. | CA órfã confiável. | Procurar CAs antigas pela chave CNG e não pelo assunto. |
 | L14 | **Comunicação aos funcionários / LGPD.** | Descriptografar tráfego pede aviso e política interna. | Em aberto. |

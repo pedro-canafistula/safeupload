@@ -60,7 +60,8 @@ formato validável (`Core/Domain/Validators/ContextDetectors.cs`).
   [`docs/clipboard`](../docs/clipboard/README.md).
 - **Web/TLS** (desligado por padrão; liga pela política, "Envios pela web" no console): proxy local que inspeciona
   uploads dos navegadores.
-  Diferente da unidade, libera quando a inspeção falha. Desenho e operação em
+  Como na unidade, o que não pode ser inspecionado não sai (arquivo que não abre, acima do limite); erro interno do
+  proxy deixa passar e fica na auditoria. Desenho e operação em
   [`docs/rede`](../docs/rede/ARQUITETURA-INSPECAO-TLS.md). Comandos (administrador):
   `SafeUpload.Agent.Service.exe ca install|status|remove` e `desvio status|remove` (devolve a internet aos
   navegadores se o serviço morrer com o desvio ligado).

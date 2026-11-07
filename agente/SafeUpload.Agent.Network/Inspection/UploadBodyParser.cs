@@ -79,6 +79,44 @@ public static class UploadBodyParser
     }
 
     /// <summary>
+    /// Nomes de arquivo declarados no começo de um corpo grande demais para ser segurado inteiro: o do cabeçalho da
+    /// requisição e o de cada parte de formulário cujo cabeçalho já chegou. É o que diz se o envio é de um tipo que a
+    /// política vigia.
+    /// </summary>
+    public static IReadOnlyList<string> FileNamesNearStart(HttpRequestHead head, ReadOnlyMemory<byte> prefix)
+    {
+        ArgumentNullException.ThrowIfNull(head);
+
+        var names = new List<string>();
+
+        if (FileNameFromHeaders(head.Headers) is { } own)
+        {
+            names.Add(own);
+        }
+
+        MediaType type = MediaType.Parse(head.Headers.Get("Content-Type"));
+
+        if (type.IsMultipart && type.Parameter("boundary") is { Length: > 0 } boundary)
+        {
+            var parts = new List<UploadPart>();
+
+            try
+            {
+                // A última parte chega cortada; o cabeçalho dela, com o nome, já está no começo.
+                AddMultipart(parts, prefix, boundary, depth: MaxNesting);
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidDataException or ArgumentException)
+            {
+                // Uma parte cortada no meio de uma codificação: fica o que já foi separado.
+            }
+
+            names.AddRange(parts.Select(static part => part.FileName).OfType<string>());
+        }
+
+        return names;
+    }
+
+    /// <summary>
     /// Cabeçalhos dos protocolos de upload de arquivo: o retomável do Google
     /// (Drive, Gmail), o tus e o envio em faixas. Com eles o corpo é conteúdo
     /// de arquivo, mesmo sem nome e com o tipo declarado errado.

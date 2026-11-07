@@ -43,18 +43,36 @@ public sealed record WebAuditRecord(AuditEvent Event, IReadOnlyList<Finding> Fin
 /// aplicativo de bandeja. Pode estar vazio mesmo com achados: bloqueio
 /// repetido não gera evento novo.
 /// </param>
+/// <param name="InspectionFailed">
+/// Um arquivo de tipo vigiado não pôde ser inspecionado (não abriu, passou do tamanho ou do prazo). Bloqueia sempre,
+/// como no canal de arquivo, inclusive em modo de auditoria.
+/// </param>
 public sealed record WebInspectionResult(
     IReadOnlyList<Finding> Findings,
     bool AuditOnly,
     int PolicyVersion,
-    IReadOnlyList<WebAuditRecord> Records)
+    IReadOnlyList<WebAuditRecord> Records,
+    bool InspectionFailed = false)
 {
     /// <summary>Categorias distintas encontradas, na ordem em que apareceram.</summary>
     public IReadOnlyList<Category> Categories => Findings.Select(static f => f.Category).Distinct().ToList();
 
     /// <summary>Verdadeiro quando o envio deve ser negado (RN-005).</summary>
-    public bool IsBlocked => Findings.Count > 0 && !AuditOnly;
+    public bool IsBlocked => InspectionFailed || (Findings.Count > 0 && !AuditOnly);
 }
+
+/// <summary>Um envio maior que o proxy consegue segurar: só o começo do corpo chega ao motor.</summary>
+/// <param name="Upload">Destino, programa e dono; sem partes.</param>
+/// <param name="FileNames">Nomes de arquivo declarados no cabeçalho ou nas partes do formulário que já chegaram.</param>
+/// <param name="ContentType">Tipo declarado da requisição.</param>
+/// <param name="Prefix">O começo do corpo.</param>
+/// <param name="TotalBytes">Tamanho declarado; nulo quando o corpo vem em pedaços.</param>
+public sealed record WebOversizedUpload(
+    WebUpload Upload,
+    IReadOnlyList<string> FileNames,
+    string? ContentType,
+    ReadOnlyMemory<byte> Prefix,
+    long? TotalBytes);
 
 /// <summary>
 /// O motor de inspeção para o canal web (Fase 5 da inspeção TLS).
@@ -166,6 +184,8 @@ public sealed class WebInspectionService
         }
 
         // 3. Arquivos, um a um.
+        bool failed = false;
+
         foreach (var part in upload.Parts)
         {
             if (!part.IsFile)
@@ -185,6 +205,7 @@ public sealed class WebInspectionService
             var (verdict, found, reason) = await InspectFileAsync(part, extension, policy, cancellationToken).ConfigureAwait(false);
 
             findings.AddRange(found);
+            failed |= reason is not null;
             records.Add(await AuditAsync(
                     upload, policy, stopwatch, FileNameOnly(part.FileName), extension, part.Content.Length, verdict, found, reason, cancellationToken)
                 .ConfigureAwait(false));
@@ -192,7 +213,88 @@ public sealed class WebInspectionService
 
         return new WebInspectionResult(findings,
             findings.Count == 0 ? policy.AuditOnly : policy.ReleasesWithAlert(findings.Select(static f => f.Category)),
-            policy.Version, records);
+            policy.Version, records, failed);
+    }
+
+    /// <summary>
+    /// Julga um envio grande demais para o proxy segurar, pelo começo dele. Como no canal de arquivo: se é de um tipo
+    /// que a política vigia (pelo nome do arquivo, pelo tipo declarado ou pelos primeiros bytes), bloqueia e registra
+    /// (RN-013); se é de um tipo conhecido que a política não vigia, segue sem registro (RN-011); se não dá para saber o
+    /// tipo, segue e fica registrado.
+    /// </summary>
+    public async Task<WebInspectionResult> InspectOversizedAsync(WebOversizedUpload oversized, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(oversized);
+
+        var stopwatch = Stopwatch.StartNew();
+        var policy = await LoadPolicyAsync(cancellationToken).ConfigureAwait(false);
+        WebUpload upload = oversized.Upload;
+
+        if (policy.IsExcludedProcess(upload.ProcessName))
+        {
+            return new WebInspectionResult([], policy.AuditOnly, policy.Version, []);
+        }
+
+        var extensions = oversized.FileNames.Select(static name => Path.GetExtension(name).ToLowerInvariant())
+            .Where(static extension => extension.Length > 1).ToList();
+        if (ExtensionOfMediaType(oversized.ContentType) is { } declared) extensions.Add(declared);
+        if (ContentTypeSniffer.Sniff(oversized.Prefix) is { } sniffed) extensions.Add(sniffed);
+        else if (oversized.Prefix.Span.StartsWith("PK\u0003\u0004"u8)) extensions.Add(".zip");
+
+        string? monitored = extensions.FirstOrDefault(policy.IsMonitoredExtension);
+
+        if (monitored is null && extensions.Count > 0)
+        {
+            return new WebInspectionResult([], policy.AuditOnly, policy.Version, []);
+        }
+
+        string fileName = oversized.FileNames.FirstOrDefault(name => policy.IsMonitoredExtension(Path.GetExtension(name)))
+            ?? oversized.FileNames.FirstOrDefault() ?? string.Empty;
+        var record = await AuditAsync(
+                upload, policy, stopwatch, FileNameOnly(fileName), monitored ?? string.Empty,
+                oversized.TotalBytes ?? oversized.Prefix.Length,
+                monitored is null ? Verdict.AllowedWithoutInspection : Verdict.Blocked, [], "file_too_large", cancellationToken)
+            .ConfigureAwait(false);
+
+        return new WebInspectionResult([], policy.AuditOnly, policy.Version, [record], InspectionFailed: monitored is not null);
+    }
+
+    /// <summary>
+    /// Registra um envio que seguiu sem inspeção por um erro interno (corpo que não foi possível separar, falha do
+    /// motor). O envio não é barrado, mas fica na auditoria com o tipo do erro.
+    /// </summary>
+    public async Task<WebInspectionResult> RecordErrorAsync(WebUpload upload, long sizeBytes, string reason, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(upload);
+
+        var stopwatch = Stopwatch.StartNew();
+        var policy = await LoadPolicyAsync(cancellationToken).ConfigureAwait(false);
+        var record = await AuditAsync(
+                upload, policy, stopwatch, string.Empty, string.Empty, sizeBytes, Verdict.AllowedWithoutInspection, [], reason,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return new WebInspectionResult([], policy.AuditOnly, policy.Version, [record]);
+    }
+
+    /// <summary>Extensão dos tipos declarados mais comuns de documento; nulo para os demais.</summary>
+    private static string? ExtensionOfMediaType(string? contentType)
+    {
+        string type = (contentType ?? string.Empty).Split(';')[0].Trim().ToLowerInvariant();
+
+        return type switch
+        {
+            "application/pdf" => ".pdf",
+            "application/zip" or "application/x-zip-compressed" => ".zip",
+            "text/csv" => ".csv",
+            "text/plain" => ".txt",
+            "application/msword" => ".doc",
+            "application/vnd.ms-excel" => ".xls",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => ".pptx",
+            _ => null,
+        };
     }
 
     /// <summary>
@@ -288,18 +390,18 @@ public sealed class WebInspectionService
     private async Task<(Verdict Verdict, IReadOnlyList<Finding> Findings, string? Reason)> InspectFileAsync(
         WebUploadPart part, string extension, Policy policy, CancellationToken cancellationToken)
     {
-        // RN-013 — acima do limite, libera sem inspecionar.
+        // RN-013 — como no canal de arquivo, o que não pode ser inspecionado não sai: acima do limite da política,
+        // formato sem extrator, prazo esgotado ou arquivo que não abre bloqueiam, com o motivo registrado.
         if (part.Content.Length > policy.MaxFileSizeBytes)
         {
-            return (Verdict.AllowedWithoutInspection, [], "file_too_large");
+            return (Verdict.Blocked, [], "file_too_large");
         }
 
-        // RN-013 — formato sem extrator, idem.
         var extractor = _extractors.Resolve(extension);
 
         if (extractor is null)
         {
-            return (Verdict.AllowedWithoutInspection, [], "unsupported_format");
+            return (Verdict.Blocked, [], "unsupported_format");
         }
 
         try
@@ -320,7 +422,7 @@ public sealed class WebInspectionService
         }
         catch (TimeoutException)
         {
-            return (Verdict.AllowedWithoutInspection, [], "inspection_timeout");
+            return (Verdict.Blocked, [], "inspection_timeout");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -329,7 +431,7 @@ public sealed class WebInspectionService
         catch (Exception ex)
         {
             // Só o tipo da exceção: a mensagem pode trazer trecho do conteúdo.
-            return (Verdict.AllowedWithoutInspection, [], $"parse_error:{ex.GetType().Name}");
+            return (Verdict.Blocked, [], $"parse_error:{ex.GetType().Name}");
         }
     }
 
@@ -348,7 +450,9 @@ public sealed class WebInspectionService
         // The queue describes the operation that happened, while findings retain
         // what enforcement would have blocked. This also keeps the tray and panel
         // from showing an audit-only release as a real block.
-        if (verdict == Verdict.Blocked && (policy.AuditOnly || policy.ReleasesWithAlert(findings.Select(static f => f.Category))))
+        // An inspection failure has no findings and blocks even in audit mode, as on the file channel.
+        if (verdict == Verdict.Blocked && findings.Count > 0 &&
+            (policy.AuditOnly || policy.ReleasesWithAlert(findings.Select(static f => f.Category))))
             verdict = Verdict.Approved;
         var auditEvent = new AuditEvent(
             Guid.NewGuid(),
