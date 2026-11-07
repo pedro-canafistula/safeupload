@@ -32,24 +32,48 @@ public sealed class ClipboardCopyStore
     /// <summary>Sessão desconhecida: todas caem no mesmo balde, que é o mais conservador de errar.</summary>
     private const uint UnknownSession = uint.MaxValue;
 
-    private readonly ConcurrentDictionary<uint, ClipboardCopy> _latest = new();
+    private readonly ConcurrentDictionary<uint, Slot> _latest = new();
 
-    /// <summary>Registra a cópia nova da sessão e devolve o que ficou guardado.</summary>
+    private sealed class Slot
+    {
+        internal long Revision;
+        internal ClipboardCopy? Copy;
+    }
+
+    // Reserve before awaiting policy. Completion order must not make an older
+    // classification replace the newest request from this same Windows session.
+    internal long BeginClassification(uint? sessionId)
+    {
+        var slot = _latest.GetOrAdd(sessionId ?? UnknownSession, _ => new Slot());
+        lock (slot) return ++slot.Revision;
+    }
+
+    /// <summary>Registra uma classificação imediata da sessão.</summary>
     public ClipboardCopy Register(uint? sessionId, bool dirty, string? sourceProcess,
         IReadOnlyList<Category>? categories = null, long sizeBytes = 0, int policyVersion = 1)
+        => CompleteClassification(sessionId, BeginClassification(sessionId), dirty, sourceProcess,
+            categories, sizeBytes, policyVersion);
+
+    internal ClipboardCopy CompleteClassification(uint? sessionId, long revision, bool dirty, string? sourceProcess,
+        IReadOnlyList<Category>? categories, long sizeBytes, int policyVersion)
     {
         var copy = new ClipboardCopy(Guid.NewGuid().ToString("N"), dirty, sourceProcess,
             categories?.ToArray(), sizeBytes, policyVersion);
-        _latest[sessionId ?? UnknownSession] = copy;
+        var slot = _latest[sessionId ?? UnknownSession];
+        lock (slot)
+        {
+            if (slot.Revision == revision) slot.Copy = copy;
+        }
         return copy;
     }
 
     /// <summary>
     /// A cópia em vigor da sessão, se o identificador ainda for o dela.
     /// </summary>
-    public ClipboardCopy? TryGet(uint? sessionId, string copyId) =>
-        _latest.TryGetValue(sessionId ?? UnknownSession, out var copy) &&
-        string.Equals(copy.CopyId, copyId, StringComparison.Ordinal)
-            ? copy
-            : null;
+    public ClipboardCopy? TryGet(uint? sessionId, string copyId)
+    {
+        if (!_latest.TryGetValue(sessionId ?? UnknownSession, out var slot)) return null;
+        lock (slot)
+            return slot.Copy is { } copy && string.Equals(copy.CopyId, copyId, StringComparison.Ordinal) ? copy : null;
+    }
 }
