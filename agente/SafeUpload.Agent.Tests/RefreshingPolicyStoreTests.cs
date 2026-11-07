@@ -105,12 +105,50 @@ public sealed class RefreshingPolicyStoreTests
     private static RefreshingPolicyStore Store(ControlledRemote remote) => new(remote,
         _ => Task.FromResult(Policy(7)), TimeSpan.FromHours(1), NullLogger<RefreshingPolicyStore>.Instance);
 
+    [Fact]
+    public async Task Restauracao_cancelada_nao_instala_snapshot_retornado_por_origem_que_ignora_token()
+    {
+        using var cancelled = new CancellationTokenSource();
+        var reads = 0;
+        using var store = new RefreshingPolicyStore(new ControlledRemote(), _ =>
+        {
+            if (Interlocked.Increment(ref reads) == 1)
+            {
+                cancelled.Cancel();
+                return Task.FromResult(Policy(7));
+            }
+            return Task.FromResult(Policy(9));
+        }, TimeSpan.FromHours(1), NullLogger<RefreshingPolicyStore>.Instance);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.LoadAsync(cancelled.Token));
+        Assert.Equal(9, (await store.LoadAsync(CancellationToken.None)).Version);
+        Assert.Equal(2, reads);
+    }
+
+    [Fact]
+    public async Task Atualizacao_cancelada_preserva_snapshot_e_permite_proxima_atualizacao()
+    {
+        var remote = new ControlledRemote { IgnoreCancellation = true };
+        using var store = Store(remote);
+        using var cancelled = new CancellationTokenSource();
+        var refresh = store.RefreshAsync(cancelled.Token);
+        await remote.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancelled.Cancel();
+        remote.Result.SetResult(Policy(9));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => refresh);
+        Assert.Equal(7, (await store.LoadAsync(CancellationToken.None)).Version);
+        await store.RefreshAsync(CancellationToken.None);
+        Assert.Equal(9, (await store.LoadAsync(CancellationToken.None)).Version);
+    }
+
     private sealed class ControlledRemote : IPolicyStore
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<Policy> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource SecondStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool BlockSecondCall;
+        public bool IgnoreCancellation;
         public int Calls;
         public bool Cancelled;
         public async Task<Policy> LoadAsync(CancellationToken token)
@@ -124,7 +162,7 @@ public sealed class RefreshingPolicyStoreTests
                     SecondStarted.TrySetResult();
                     await Task.Delay(Timeout.InfiniteTimeSpan, token);
                 }
-                return await Result.Task.WaitAsync(token);
+                return await (IgnoreCancellation ? Result.Task : Result.Task.WaitAsync(token));
             }
             catch (OperationCanceledException) { Cancelled = true; throw; }
         }
