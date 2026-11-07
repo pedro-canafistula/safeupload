@@ -12,12 +12,13 @@ if (-not (Get-SmbShare -Name Compartilhado -ErrorAction SilentlyContinue)) {
 }
 & icacls.exe C:\Compartilhado /grant 'Everyone:(OI)(CI)M' | Out-Null
 
-# Test policy: a local folder and a share protected, USB protected, justification allowed.
+# Test policy: a local folder and a share protected, USB protected, justification allowed; the clipboard blocks pastes
+# into egress apps, one custom rule ("Projeto Atlas"), and web inspection on with one exception domain (web-test.ps1).
 New-Item -ItemType Directory -Force -Path C:\ProgramData\SafeUpload | Out-Null
 $policy = @'
 {
   "version": 2,
-  "activeCategories": ["Cpf", "Cnpj", "PaymentCard", "Password", "Secret"],
+  "activeCategories": ["Cpf", "Cnpj", "PaymentCard", "Password", "Secret", "CustomRule"],
   "monitoredScopes": {
     "extensions": [".txt", ".csv", ".docx", ".xlsx", ".pdf", ".pptx", ".zip"],
     "destinationPaths": ["C:\\SafeUpload\\Envios", "\\\\localhost\\Compartilhado"],
@@ -25,7 +26,13 @@ $policy = @'
     "networkPaths": false
   },
   "overrideAllowed": true,
-  "excludedProcesses": ["System", "SafeUpload.Agent.App"]
+  "excludedProcesses": ["System", "SafeUpload.Agent.App"],
+  "clipboard": { "mode": "Block" },
+  "customRulesFormat": 1,
+  "customRules": [ { "id": 1, "revision": 1, "name": "Projeto Atlas", "alert": false,
+    "when": { "all": [ { "words": ["projeto atlas"] },
+                       { "pattern": "CT\\-[0-9][0-9][0-9][0-9]\\/[0-9][0-9]", "ignoreCase": true, "min": 2 } ] } } ],
+  "web": { "inspect": true, "exceptionDomains": ["excecao.safeupload.test"] }
 }
 '@
 [IO.File]::WriteAllText('C:\ProgramData\SafeUpload\policy.json', $policy, (New-Object Text.UTF8Encoding($false)))

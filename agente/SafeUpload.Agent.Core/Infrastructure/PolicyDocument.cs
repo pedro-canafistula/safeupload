@@ -77,6 +77,11 @@ internal sealed record PolicyDocument
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CustomRuleDocument[]? CustomRules { get; init; }
 
+    /// <summary>Inspeção dos envios pelo navegador; sem o bloco, desligada.</summary>
+    [JsonPropertyName("web")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WebDocument? Web { get; init; }
+
     public static PolicyDocument Default { get; } = new()
     {
         Version = 1,
@@ -114,7 +119,10 @@ internal sealed record PolicyDocument
             ExcludedSources = clipboard.ExcludedSources.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
             MaxTextLength = clipboard.MaxTextLength,
             OversizedTextIsDirty = clipboard.OversizedTextIsDirty
-        } : null
+        } : null,
+        Web = policy.Web.Enabled
+            ? new WebDocument { Inspect = true, ExceptionDomains = policy.Web.ExceptionDomains.ToArray() }
+            : null
     };
 
     /// <summary>
@@ -161,7 +169,17 @@ internal sealed record PolicyDocument
             OverrideAllowed,
             MapClipboard(Clipboard),
             AlertCategories is null ? null : alerts,
-            MapCustomRules());
+            MapCustomRules()) { Web = MapWeb() };
+    }
+
+    private WebInspectionPolicy MapWeb()
+    {
+        if (Web is not { Inspect: true }) return WebInspectionPolicy.Off;
+        var domains = (Web.ExceptionDomains ?? []).Where(static d => !string.IsNullOrWhiteSpace(d)).ToArray();
+        if (domains.Length > WebInspectionPolicy.MaxExceptionDomains)
+            throw new InvalidPolicyException(
+                $"A política traz mais de {WebInspectionPolicy.MaxExceptionDomains} domínios de exceção da inspeção web.");
+        return new WebInspectionPolicy(true, domains);
     }
 
     private CustomRuleSet? MapCustomRules()
@@ -223,6 +241,17 @@ internal sealed record PolicyDocument
             document.MaxTextLength,
             document.OversizedTextIsDirty);
     }
+}
+
+/// <summary>O bloco web do documento de política (inspeção dos envios pelo navegador).</summary>
+internal sealed record WebDocument
+{
+    [JsonPropertyName("inspect")]
+    public bool Inspect { get; init; }
+
+    [JsonPropertyName("exceptionDomains")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? ExceptionDomains { get; init; }
 }
 
 /// <summary>O bloco clipboard do documento de política.</summary>

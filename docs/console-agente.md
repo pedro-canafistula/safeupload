@@ -99,7 +99,8 @@ ficam no histórico local, inclusive após recuperação de publicação. O form
   "overrideAllowed": false,
   "failOpen": false,
   "excludedProcesses": ["System", "SafeUpload.Agent.App"],
-  "clipboard": { "mode": "Off" }
+  "clipboard": { "mode": "Off" },
+  "web": { "inspect": true, "exceptionDomains": ["intranet.empresa.com.br"] }
 }
 ```
 
@@ -110,6 +111,11 @@ ficam no histórico local, inclusive após recuperação de publicação. O form
 - `auditOnly: true` continua aceito no `policy.json` local e equivale a pôr todas as categorias em alerta.
 - A ação por categoria vale para arquivos (unidades SafeUpload) e upload web. O clipboard tem modo próprio
   (`clipboard.mode`: `Off`, `Audit` ou `Block`) e as listas de destinos e origens padrão do agente.
+- `web` liga a inspeção dos envios pelo navegador (proxy TLS, ver
+  [rede/ARQUITETURA-INSPECAO-TLS.md](rede/ARQUITETURA-INSPECAO-TLS.md)). Sem o bloco, ou com `inspect: false`, ela
+  fica desligada. Ligada, o agente cria a CA local, sobe o proxy e desvia Edge, Chrome e Firefox em até 30 segundos;
+  desligada, desfaz o desvio. `exceptionDomains` (até 200) nunca são descriptografados, além das listas fixas de
+  bancos, saúde e governo. Um agente anterior a este campo ignora o bloco e não inspeciona a web.
 
 ## Políticas, grupos e padrão (console)
 
@@ -149,7 +155,9 @@ Rotas administrativas (sessão ADMIN/ROOT, sempre dentro da empresa do usuário)
   "tamanhoMaximoMb": 100,
   "tempoLimiteSegundos": 900,
   "permitirJustificativa": false,
-  "clipboard": "desligado"
+  "clipboard": "desligado",
+  "inspecaoWeb": true,
+  "excecoesWeb": ["intranet.empresa.com.br"]
 }
 ```
 
@@ -158,6 +166,8 @@ Regras: as 9 categorias são obrigatórias (`bloquear`, `alertar` ou `ignorar`) 
 ou `\\servidor\compartilhamento`). `extensoes` aceita de 1 a 64 itens no formato `.abc`. `tamanhoMaximoMb` vai de 1
 a 4096 e `tempoLimiteSegundos` de 5 a 3600. `clipboard` é `desligado`, `alertar` ou `bloquear`.
 `regrasPersonalizadas` (opcional) mapeia o id de uma regra da empresa para `bloquear`, `alertar` ou `ignorar`.
+`inspecaoWeb` (opcional, padrão `false`) vira o bloco `web`; `excecoesWeb` aceita até 200 domínios (`empresa.com.br`
+ou `*.empresa.com.br`), normalizados em minúsculas e sem duplicatas, e é guardado mesmo com a inspeção desligada.
 
 ## Regras personalizadas
 

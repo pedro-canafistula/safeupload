@@ -160,19 +160,94 @@ public sealed class WebInspectionServiceTests : IDisposable
         Assert.Empty(await EventsAsync());
     }
 
-    /// <summary>RN-012 e RN-013: falha de leitura libera com o motivo registrado.</summary>
+    /// <summary>RN-013, como no canal de arquivo: arquivo vigiado que não abre bloqueia, com o motivo registrado.</summary>
     [Fact]
-    public async Task Arquivo_corrompido_e_liberado_com_o_motivo()
+    public async Task Arquivo_corrompido_bloqueia_com_o_motivo()
     {
         byte[] broken = [.. "%PDF-1.7\n"u8, .. Encoding.UTF8.GetBytes("isto não é um pdf de verdade")];
 
         WebInspectionResult result = await InspectAsync(File("quebrado.pdf", broken));
 
-        Assert.False(result.IsBlocked);
+        Assert.True(result.IsBlocked);
+        Assert.True(result.InspectionFailed);
 
         AuditEvent audit = Assert.Single(await EventsAsync());
-        Assert.Equal(Verdict.AllowedWithoutInspection, audit.Verdict);
+        Assert.Equal(Verdict.Blocked, audit.Verdict);
         Assert.StartsWith("parse_error:", audit.NotInspectedReason);
+    }
+
+    [Fact]
+    public async Task Arquivo_que_nao_abre_bloqueia_mesmo_em_modo_de_auditoria()
+    {
+        await InspectAsync(Text("nada"));
+        string policy = System.IO.File.ReadAllText(_workspace.PolicyFile);
+        _workspace.WritePolicy(policy.Replace("\"auditOnly\": false", "\"auditOnly\": true"));
+        byte[] broken = [.. "%PDF-1.7\n"u8, .. Encoding.UTF8.GetBytes("isto não é um pdf de verdade")];
+
+        WebInspectionResult result = await InspectAsync(File("quebrado.pdf", broken));
+
+        Assert.True(result.IsBlocked);
+        Assert.Equal(Verdict.Blocked, Assert.Single(await EventsAsync()).Verdict);
+    }
+
+    private Task<WebInspectionResult> OversizedAsync(string[] names, string? contentType, byte[] start) =>
+        _service.InspectOversizedAsync(
+            new WebOversizedUpload(new WebUpload(Destino, "msedge", 4242, []), names, contentType, start, 90_000_000),
+            CancellationToken.None);
+
+    [Fact]
+    public async Task Envio_grande_de_tipo_vigiado_bloqueia_e_registra()
+    {
+        WebInspectionResult result = await OversizedAsync(["planilha.csv"], "multipart/form-data; boundary=x", new byte[100]);
+
+        Assert.True(result.IsBlocked);
+        AuditEvent audit = Assert.Single(await EventsAsync());
+        Assert.Equal(Verdict.Blocked, audit.Verdict);
+        Assert.Equal("file_too_large", audit.NotInspectedReason);
+        Assert.Equal("planilha.csv", audit.FileName);
+        Assert.Equal(90_000_000, audit.SizeBytes);
+    }
+
+    [Fact]
+    public async Task Envio_grande_pelo_tipo_declarado_ou_pelos_primeiros_bytes()
+    {
+        Assert.True((await OversizedAsync([], "application/pdf", new byte[10])).IsBlocked);
+        Assert.True((await OversizedAsync([], "application/octet-stream", [.. "%PDF-1.7\n"u8])).IsBlocked);
+        Assert.True((await OversizedAsync([], "application/octet-stream", [.. "PK\u0003\u0004"u8, 0, 0])).IsBlocked);
+    }
+
+    /// <summary>RN-011: um vídeo para uma rede social não é julgado nem registrado, grande ou não.</summary>
+    [Fact]
+    public async Task Envio_grande_de_tipo_que_a_politica_nao_vigia_segue_sem_registro()
+    {
+        WebInspectionResult result = await OversizedAsync(["video.mp4"], "multipart/form-data; boundary=x", new byte[100]);
+
+        Assert.False(result.IsBlocked);
+        Assert.Empty(await EventsAsync());
+    }
+
+    [Fact]
+    public async Task Envio_grande_de_tipo_desconhecido_segue_e_fica_registrado()
+    {
+        WebInspectionResult result = await OversizedAsync([], "application/octet-stream", new byte[100]);
+
+        Assert.False(result.IsBlocked);
+        AuditEvent audit = Assert.Single(await EventsAsync());
+        Assert.Equal(Verdict.AllowedWithoutInspection, audit.Verdict);
+        Assert.Equal("file_too_large", audit.NotInspectedReason);
+    }
+
+    [Fact]
+    public async Task Erro_interno_segue_e_fica_registrado()
+    {
+        WebInspectionResult result = await _service.RecordErrorAsync(
+            new WebUpload(Destino, "msedge", 4242, []), 1234, "inspection_error:FormatException", CancellationToken.None);
+
+        Assert.False(result.IsBlocked);
+        AuditEvent audit = Assert.Single(await EventsAsync());
+        Assert.Equal(Verdict.AllowedWithoutInspection, audit.Verdict);
+        Assert.Equal("inspection_error:FormatException", audit.NotInspectedReason);
+        Assert.Equal(1234, audit.SizeBytes);
     }
 
     [Fact]

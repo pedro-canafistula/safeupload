@@ -578,6 +578,42 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
         }
     }
 
+    /// <summary>Quantos bytes do começo de um corpo grande demais vão para a decisão (nomes e tipo do arquivo).</summary>
+    private const int OversizedPrefixBytes = 64 * 1024;
+
+    /// <summary>
+    /// Pergunta ao inspetor sobre um corpo acima do limite, pelo começo dele. Bloqueado, responde 403 já; o chamador
+    /// descarta o resto do corpo. Falha do inspetor deixa seguir, como antes.
+    /// </summary>
+    private async Task<UploadDecision> DecideOversizedAsync(
+        Stream client, HttpRequestHead request, ReadOnlyMemory<byte> start, long? totalBytes, string host, int port,
+        int? processId, bool encrypted, CancellationToken cancellationToken)
+    {
+        UploadDecision decision;
+
+        try
+        {
+            decision = await _inspector.InspectOversizedAsync(
+                new UploadRequest(host, port, request, start, processId, encrypted), totalBytes, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Falha ao decidir sobre corpo acima do limite para {Host}; seguiu sem inspeção.", host);
+            decision = UploadDecision.Allow;
+        }
+
+        if (decision.Allowed)
+        {
+            _logger.LogInformation("Corpo para {Host} acima do limite de inspeção; seguiu sem inspeção.", host);
+            return decision;
+        }
+
+        _logger.LogInformation("Requisição {Method} para {Host} bloqueada: {Reason}", request.Method, host, decision.Reason);
+        await client.WriteAsync(
+            HttpResponseHead.Simple(403, "Forbidden", $"SafeUpload bloqueou este envio. {decision.Reason}"), cancellationToken).ConfigureAwait(false);
+        return decision;
+    }
+
     /// <summary>
     /// Repassa uma requisição ao servidor, segurando e inspecionando o corpo
     /// quando houver. Devolve se o proxy já respondeu "100 Continue" ao
@@ -615,25 +651,56 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
             handledContinue = true;
         }
 
-        // Corpo declarado maior que o limite: segue direto, sem inspeção.
+        // Corpo declarado maior que o limite: decide pelo começo (nome e tipo do arquivo) antes de mandar qualquer byte.
         if (framing == BodyFraming.ContentLength && contentLength > _options.MaxInspectableBodyBytes)
         {
-            _logger.LogInformation(
-                "Corpo de {Bytes} bytes para {Host} acima do limite de inspeção; seguiu sem inspeção.", contentLength, host);
+            using var prefix = new MemoryStream();
+            long prefixTarget = Math.Min(OversizedPrefixBytes, contentLength.Value);
+            UploadDecision? oversized = null;
 
-            await upstream.WriteAsync(request.Serialize(), cancellationToken).ConfigureAwait(false);
-            await clientReader.ReadBodyAsync(framing, contentLength, (data, ct) => upstream.WriteAsync(data, ct), cancellationToken).ConfigureAwait(false);
-            return handledContinue;
+            await clientReader.ReadBodyAsync(
+                framing,
+                contentLength,
+                async (data, ct) =>
+                {
+                    if (oversized is null)
+                    {
+                        int take = (int)Math.Min(data.Length, prefixTarget - prefix.Length);
+                        prefix.Write(data.Span[..take]);
+                        if (prefix.Length < prefixTarget) return;
+
+                        ReadOnlyMemory<byte> start = prefix.GetBuffer().AsMemory(0, (int)prefix.Length);
+                        oversized = await DecideOversizedAsync(
+                            client, request, start, contentLength, host, port, processId, encrypted, ct).ConfigureAwait(false);
+                        if (!oversized.Allowed) return;
+
+                        await upstream.WriteAsync(request.Serialize(), ct).ConfigureAwait(false);
+                        await upstream.WriteAsync(start, ct).ConfigureAwait(false);
+                        data = data[take..];
+                    }
+
+                    // Bloqueado: o resto do corpo é lido e descartado, para o navegador receber a resposta inteira.
+                    if (oversized.Allowed && !data.IsEmpty) await upstream.WriteAsync(data, ct).ConfigureAwait(false);
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            return oversized is { Allowed: false } ? null : handledContinue;
         }
 
         using var body = new MemoryStream(contentLength is { } declared ? (int)declared : 0);
         bool streaming = false;
+        UploadDecision? chunkedOversized = null;
 
         await clientReader.ReadBodyAsync(
             framing,
             contentLength,
             async (data, ct) =>
             {
+                if (chunkedOversized is { Allowed: false })
+                {
+                    return; // Bloqueado: descarta o resto.
+                }
+
                 if (!streaming && body.Length + data.Length <= _options.MaxInspectableBodyBytes)
                 {
                     body.Write(data.Span);
@@ -642,19 +709,30 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
 
                 if (!streaming)
                 {
-                    // Só acontece com corpo em pedaços, cujo tamanho não é
-                    // conhecido de antemão: passou do limite no meio. O que já
-                    // foi segurado sai como um pedaço, e o resto segue em
+                    // Só acontece com corpo em pedaços, cujo tamanho não é conhecido de antemão: passou do limite no
+                    // meio. Decide pelo começo; se segue, o que já foi segurado sai como um pedaço e o resto segue em
                     // pedaços conforme chega, sem inspeção.
+                    // Este pedaço entra no começo: pode ser ele que traz o cabeçalho com o nome do arquivo.
+                    body.Write(data.Span);
+                    ReadOnlyMemory<byte> start = body.GetBuffer().AsMemory(0, (int)Math.Min(body.Length, OversizedPrefixBytes));
+                    chunkedOversized = await DecideOversizedAsync(
+                        client, request, start, null, host, port, processId, encrypted, ct).ConfigureAwait(false);
+                    if (!chunkedOversized.Allowed) return;
+
                     streaming = true;
-                    _logger.LogInformation("Corpo em pedaços para {Host} passou do limite de inspeção; seguiu sem inspeção.", host);
                     await upstream.WriteAsync(request.Serialize(), ct).ConfigureAwait(false);
                     await WriteChunkAsync(upstream, body.GetBuffer().AsMemory(0, (int)body.Length), ct).ConfigureAwait(false);
+                    return;
                 }
 
                 await WriteChunkAsync(upstream, data, ct).ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
+
+        if (chunkedOversized is { Allowed: false })
+        {
+            return null;
+        }
 
         if (streaming)
         {
@@ -672,8 +750,9 @@ public sealed class TlsInspectionProxy : IAsyncDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Falha da inspeção libera, como no resto do produto (RN-013,
-            // fail-open). Está entre as decisões em aberto do plano.
+            // Erro interno segue (decisão do produto para o canal web). O inspetor do serviço registra os próprios
+            // erros na auditoria; aqui só chega o que nem ele conseguiu tratar. Arquivo que não abre não é erro
+            // interno: o inspetor o bloqueia.
             _logger.LogWarning(ex, "Falha ao inspecionar requisição para {Host}; liberada.", host);
             decision = UploadDecision.Allow;
         }

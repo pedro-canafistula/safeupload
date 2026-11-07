@@ -370,6 +370,40 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
         Assert.Empty(inspector.Requests);
     }
 
+    [Fact]
+    public async Task Corpo_acima_do_limite_bloqueado_pelo_comeco_nao_chega_ao_site()
+    {
+        var inspector = new OversizedInspector();
+        await using TlsInspectionProxy proxy = StartProxy(inspector, maxBody: 1024);
+        using HttpClient browser = Browser(proxy, out _);
+
+        HttpResponseMessage response = await browser.PostAsync(_site.Url("/grande"), new ByteArrayContent(new byte[5000]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(_site.Requests);
+        (int start, long? total) = Assert.Single(inspector.Oversized);
+        Assert.Equal(5000, start); // o começo é o corpo inteiro quando ele tem menos de 64 KB
+        Assert.Equal(5000, total);
+        Assert.Empty(inspector.Requests);
+    }
+
+    [Fact]
+    public async Task Corpo_em_pedacos_que_passa_do_limite_e_decidido_pelo_comeco()
+    {
+        var inspector = new OversizedInspector();
+        await using TlsInspectionProxy proxy = StartProxy(inspector, maxBody: 1024);
+        using HttpClient browser = Browser(proxy, out _);
+
+        HttpResponseMessage response = await browser.PostAsync(
+            _site.Url("/grande"), new StreamContent(new NonSeekableStream(new byte[5000])));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(_site.Requests);
+        (int start, long? total) = Assert.Single(inspector.Oversized);
+        Assert.True(start > 1024, $"começo de {start} bytes");
+        Assert.Null(total);
+    }
+
     /// <summary>
     /// O que o curl, o Outlook e o Teams fazem (TLS do Windows): verificação
     /// de revogação online. Sem lista de revogação o certificado é recusado;
@@ -512,6 +546,25 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
             // Cópia do corpo: o buffer do proxy é reaproveitado depois.
             Requests.Enqueue(request with { Body = request.Body.ToArray() });
             return ValueTask.FromResult(block ? UploadDecision.Block("bloqueado no teste") : UploadDecision.Allow);
+        }
+    }
+
+    /// <summary>Bloqueia todo corpo acima do limite e guarda o tamanho do começo recebido e o total declarado.</summary>
+    private sealed class OversizedInspector : IUploadInspector
+    {
+        public ConcurrentQueue<UploadRequest> Requests { get; } = new();
+        public ConcurrentQueue<(int Start, long? Total)> Oversized { get; } = new();
+
+        public ValueTask<UploadDecision> InspectAsync(UploadRequest request, CancellationToken cancellationToken)
+        {
+            Requests.Enqueue(request);
+            return ValueTask.FromResult(UploadDecision.Allow);
+        }
+
+        public ValueTask<UploadDecision> InspectOversizedAsync(UploadRequest request, long? totalBytes, CancellationToken cancellationToken)
+        {
+            Oversized.Enqueue((request.Body.Length, totalBytes));
+            return ValueTask.FromResult(UploadDecision.Block("grande demais no teste"));
         }
     }
 

@@ -58,8 +58,10 @@ formato validável (`Core/Domain/Validators/ContextDetectors.cs`).
 - **Clipboard** (desligado por padrão): bloqueia a colagem de texto sensível em navegadores e mensageiros. A
   auditoria inclui os nomes das regras personalizadas que dispararam. Desenho em
   [`docs/clipboard`](../docs/clipboard/README.md).
-- **Web/TLS** (desligado por padrão, `InspecaoTls:Habilitada`): proxy local que inspeciona uploads dos navegadores.
-  Diferente da unidade, libera quando a inspeção falha. Desenho e operação em
+- **Web/TLS** (desligado por padrão; liga pela política, "Envios pela web" no console): proxy local que inspeciona
+  uploads dos navegadores.
+  Como na unidade, o que não pode ser inspecionado não sai (arquivo que não abre, acima do limite); erro interno do
+  proxy deixa passar e fica na auditoria. Desenho e operação em
   [`docs/rede`](../docs/rede/ARQUITETURA-INSPECAO-TLS.md). Comandos (administrador):
   `SafeUpload.Agent.Service.exe ca install|status|remove` e `desvio status|remove` (devolve a internet aos
   navegadores se o serviço morrer com o desvio ligado).
@@ -144,7 +146,8 @@ Aplicativo. A desinstalação não apaga esses dados.
 ## Configuração do serviço
 
 `service\appsettings.json` (substituído a cada atualização): `Interception:Mode` (`Drive` ou `FileSystemWatcher`),
-`Drive:Letters`, e o bloco `InspecaoTls` (`Habilitada`, `Porta`, `DesviarNavegadores`, `Excecoes`).
+`Drive:Letters`, e o bloco `InspecaoTls` (`Porta`, `DesviarNavegadores`, `Excecoes`); ligar a inspeção web e os
+domínios de exceção vêm da política.
 
 ## Build e testes
 

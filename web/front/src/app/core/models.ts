@@ -110,6 +110,10 @@ export interface PoliticaConfiguracao {
   clipboard: ModoClipboard;
   /** Id da regra personalizada → ação; regras ausentes são ignoradas. */
   regrasPersonalizadas?: Record<string, AcaoCategoria>;
+  /** Inspeção dos envios pelo navegador (proxy TLS no agente). Políticas antigas não têm o campo: desligada. */
+  inspecaoWeb?: boolean;
+  /** Domínios nunca descriptografados, além das listas fixas de bancos, saúde e governo. */
+  excecoesWeb?: string[];
 }
 export interface PoliticaResumo {
   id: number;

@@ -5,7 +5,8 @@ const configuracao = {
   categorias: { cpf: 'bloquear', cnpj: 'bloquear', rg: 'bloquear', cartao_credito: 'bloquear', dados_bancarios: 'bloquear',
     credenciais: 'bloquear', dados_saude: 'bloquear', dados_pessoais: 'bloquear', documentos_confidenciais: 'bloquear' },
   pastas: [], pendrives: true, rede: false, extensoes: ['.txt', '.csv', '.docx', '.xlsx', '.pdf', '.pptx', '.zip'],
-  tamanhoMaximoMb: 100, tempoLimiteSegundos: 900, permitirJustificativa: false, clipboard: 'desligado', regrasPersonalizadas: {}
+  tamanhoMaximoMb: 100, tempoLimiteSegundos: 900, permitirJustificativa: false, clipboard: 'desligado', regrasPersonalizadas: {},
+  inspecaoWeb: false, excecoesWeb: []
 };
 
 test.beforeEach(async ({ page }) => {
@@ -36,6 +37,9 @@ test('editor envia todos os campos da configuração no formato do backend', asy
   await page.getByLabel('Tempo limite da inspeção (s)').fill('60');
   await page.getByLabel(/Permitir justificativa/).check();
   await page.getByLabel('Área de transferência (clipboard)').selectOption('alertar');
+  await expect(page.getByLabel(/Outros sites que nunca são abertos/)).toBeHidden();
+  await page.getByLabel(/Inspecionar arquivos e textos enviados pelo navegador/).check();
+  await page.getByLabel(/Outros sites que nunca são abertos/).fill('intranet.empresa.com.br\n\n parceiro.com.br ');
   await expect(page.getByText(/A empresa ainda não tem regras personalizadas/)).toBeVisible();
   await expect(page.getByRole('form').getByRole('link', { name: 'Regras', exact: true })).toHaveAttribute('href', '/regras');
   await page.getByRole('button', { name: 'Criar política' }).click();
@@ -46,10 +50,12 @@ test('editor envia todos os campos da configuração no formato do backend', asy
     configuracao: { ...configuracao, categorias: { ...configuracao.categorias, cpf: 'alertar', credenciais: 'ignorar' },
       pastas: ['C:\\Dados\\Financeiro', '\\\\servidor\\publico'], pendrives: false, rede: true,
       extensoes: ['.txt', '.pdf', '.xlsx', '.zip'], tamanhoMaximoMb: 250, tempoLimiteSegundos: 60,
-      permitirJustificativa: true, clipboard: 'alertar' }
+      permitirJustificativa: true, clipboard: 'alertar', inspecaoWeb: true,
+      excecoesWeb: ['intranet.empresa.com.br', 'parceiro.com.br'] }
   });
   await expect(page.getByRole('table', { name: 'Versões da política' })).toContainText('admin-teste');
   await expect(page.getByLabel('Nome da política')).toHaveValue('Financeiro');
+  await expect(page.getByLabel(/Outros sites que nunca são abertos/)).toHaveValue('intranet.empresa.com.br\nparceiro.com.br');
 });
 
 test('editor não envia política em que todas as categorias e regras são ignoradas', async ({ page }) => {
