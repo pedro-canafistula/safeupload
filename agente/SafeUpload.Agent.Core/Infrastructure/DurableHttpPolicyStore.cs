@@ -23,8 +23,10 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         Converters = { new JsonStringEnumConverter() }
     };
     private const int MaxDocumentBytes = 64 * 1024;
+    private const int CacheFormat = 3;
 
     private readonly HttpClient _http;
+    private readonly SignedAgentIdentity _identity;
     private readonly string _cacheFile;
     private readonly IPolicyStore _local;
     private readonly bool _enforceProtectedAcl;
@@ -38,14 +40,18 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
     /// <summary>Versão do console em uso, relatada no heartbeat; null quando vale o policy.json local.</summary>
     public int? ConsoleVersion { get; private set; }
 
-    public DurableHttpPolicyStore(HttpClient http, string cacheFile, IPolicyStore local, ICommunicationObserver? observer = null)
-        : this(http, cacheFile, local, enforceProtectedAcl: true, observer) { }
+    public DurableHttpPolicyStore(HttpClient http, SignedAgentIdentity identity, string cacheFile, IPolicyStore local,
+        ICommunicationObserver? observer = null)
+        : this(http, identity, cacheFile, local, enforceProtectedAcl: true, observer) { }
 
     // Testes isolados usam diretórios temporários sem privilégios administrativos.
-    internal DurableHttpPolicyStore(HttpClient http, string cacheFile, IPolicyStore local, bool enforceProtectedAcl,
-        ICommunicationObserver? observer = null)
+    internal DurableHttpPolicyStore(HttpClient http, SignedAgentIdentity identity, string cacheFile, IPolicyStore local,
+        bool enforceProtectedAcl, ICommunicationObserver? observer = null)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
+        _identity = identity ?? throw new ArgumentNullException(nameof(identity));
+        if (_http.BaseAddress != _identity.Server)
+            throw new ArgumentException("O cliente de política deve usar o servidor da identidade.", nameof(http));
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheFile);
         _cacheFile = cacheFile;
         _local = local ?? throw new ArgumentNullException(nameof(local));
@@ -166,9 +172,10 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         await using var stream = File.OpenRead(_cacheFile);
         var cache = JsonSerializer.Deserialize<CacheFile>(await ReadBoundedAsync(stream, cancellationToken)
             .ConfigureAwait(false), JsonOptions) ?? throw new JsonException("Cache vazio.");
-        // Cache de outro servidor (máquina cadastrada de novo) nunca vale.
-        if (cache.Format != 2 || cache.Server != _http.BaseAddress?.AbsoluteUri || cache.Policy is null)
-            throw new InvalidPolicyException("Cache da política pertence a outro servidor ou formato.");
+        // O mesmo servidor e id numérico podem ser reutilizados depois de um novo cadastro.
+        if (cache.Format != CacheFormat || cache.Server != _identity.Server.AbsoluteUri ||
+            cache.HostId != _identity.HostId || cache.PublicKey != _identity.PublicKey || cache.Policy is null)
+            throw new InvalidPolicyException("Cache da política pertence a outro cadastro ou formato.");
         var policy = cache.Policy.ToPolicy();
         policy.EnsureValid();
         return policy;
@@ -198,7 +205,8 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
                     : new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                         4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
                 {
-                    await JsonSerializer.SerializeAsync(stream, new CacheFile(2, _http.BaseAddress!.AbsoluteUri, document),
+                    var cache = new CacheFile(CacheFormat, _identity.Server.AbsoluteUri, _identity.HostId, _identity.PublicKey, document);
+                    await JsonSerializer.SerializeAsync(stream, cache,
                         JsonOptions, cancellationToken).ConfigureAwait(false);
                     await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 }
@@ -241,5 +249,5 @@ public sealed class DurableHttpPolicyStore : IPolicyStore
         return buffer.ToArray();
     }
 
-    private sealed record CacheFile(int Format, string Server, PolicyDocument Policy);
+    private sealed record CacheFile(int Format, string Server, int HostId, string PublicKey, PolicyDocument Policy);
 }

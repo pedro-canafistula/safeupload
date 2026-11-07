@@ -114,7 +114,7 @@ public sealed class ConsoleTransportTests : IDisposable
         string? body = ConsoleDocument;
         var wire = new Wire(_ => body is null ? throw new HttpRequestException("offline") : Reply(HttpStatusCode.OK, body));
         using var http = new HttpClient(wire) { BaseAddress = Server };
-        var store = new DurableHttpPolicyStore(http, _workspace.PolicyFile, TestPolicies.Local, false);
+        var store = new DurableHttpPolicyStore(http, TestPolicies.Identity(http.BaseAddress!), _workspace.PolicyFile, TestPolicies.Local, false);
 
         var policy = await store.LoadAsync(default);
         Assert.Equal("policy", wire.Requests[0].Path.Split('/').Last());
@@ -130,16 +130,61 @@ public sealed class ConsoleTransportTests : IDisposable
         body = null;
         Assert.Same(policy, await store.LoadAsync(default));
         Assert.Equal("memory", store.LastSource);
-        var restarted = new DurableHttpPolicyStore(http, _workspace.PolicyFile, TestPolicies.Local, false);
+        var restarted = new DurableHttpPolicyStore(http, TestPolicies.Identity(http.BaseAddress!), _workspace.PolicyFile, TestPolicies.Local, false);
         Assert.Equal(42, (await restarted.LoadAsync(default)).Version);
         Assert.Equal("disk", restarted.LastSource);
         Assert.Equal(42, restarted.ConsoleVersion);
 
         // Cache de outro servidor (máquina cadastrada de novo) não vale.
         using var other = new HttpClient(wire) { BaseAddress = new Uri("https://outro.test/agent/") };
-        var elsewhere = new DurableHttpPolicyStore(other, _workspace.PolicyFile, TestPolicies.Local, false);
+        var elsewhere = new DurableHttpPolicyStore(other, TestPolicies.Identity(other.BaseAddress!), _workspace.PolicyFile, TestPolicies.Local, false);
         Assert.Equal(LocalPolicyStore.CreateDefault().Version, (await elsewhere.LoadAsync(default)).Version);
         Assert.Null(elsewhere.ConsoleVersion);
+    }
+
+    [Fact]
+    public async Task Reenrollment_at_the_same_server_does_not_restore_the_previous_policy_offline()
+    {
+        var original = TestPolicies.Identity(Server);
+        var replacement = new SignedAgentIdentity(Server, original.HostId, new byte[32]);
+        bool online = true;
+        HttpClient Connect(SignedAgentIdentity identity) => new(new SignedRequestHandler(identity)
+        {
+            InnerHandler = new Wire(_ => online
+                ? Reply(HttpStatusCode.OK, ConsoleDocument)
+                : throw new HttpRequestException("offline"))
+        }) { BaseAddress = identity.Server };
+
+        using var originalHttp = Connect(original);
+        var enrolled = new DurableHttpPolicyStore(originalHttp, original, _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(42, (await enrolled.LoadAsync(default)).Version);
+        online = false;
+
+        // The console may reuse the numeric host id after its database is recreated.
+        using var replacementHttp = Connect(replacement);
+        var reenrolled = new DurableHttpPolicyStore(replacementHttp, replacement, _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(LocalPolicyStore.CreateDefault().Version, (await reenrolled.LoadCachedOrDefaultAsync(default)).Version);
+        Assert.Equal(LocalPolicyStore.CreateDefault().Version, (await reenrolled.LoadAsync(default)).Version);
+        Assert.Null(reenrolled.ConsoleVersion);
+
+        online = true;
+        Assert.Equal(42, (await reenrolled.LoadAsync(default)).Version);
+        online = false;
+        var restarted = new DurableHttpPolicyStore(replacementHttp, replacement, _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(42, (await restarted.LoadCachedOrDefaultAsync(default)).Version);
+    }
+
+    [Fact]
+    public async Task Unbound_cache_is_ignored_until_a_policy_is_fetched_for_the_current_enrollment()
+    {
+        _workspace.WritePolicy($$"""{"Format":2,"Server":"{{Server.AbsoluteUri}}","Policy":{{ConsoleDocument}}}""");
+        var wire = new Wire(_ => Reply(HttpStatusCode.OK, ConsoleDocument));
+        using var http = new HttpClient(wire) { BaseAddress = Server };
+        var store = new DurableHttpPolicyStore(http, TestPolicies.Identity(Server), _workspace.PolicyFile, TestPolicies.Local, false);
+        Assert.Equal(LocalPolicyStore.CreateDefault().Version, (await store.LoadCachedOrDefaultAsync(default)).Version);
+        Assert.Null(store.ConsoleVersion);
+        Assert.Empty(wire.Requests);
+        Assert.Equal(42, (await store.LoadAsync(default)).Version);
     }
 
     [Fact]
@@ -148,7 +193,7 @@ public sealed class ConsoleTransportTests : IDisposable
         var status = HttpStatusCode.OK;
         var wire = new Wire(_ => Reply(status, status == HttpStatusCode.OK ? ConsoleDocument : "{}"));
         using var http = new HttpClient(wire) { BaseAddress = Server };
-        var store = new DurableHttpPolicyStore(http, _workspace.PolicyFile, TestPolicies.Local, false);
+        var store = new DurableHttpPolicyStore(http, TestPolicies.Identity(http.BaseAddress!), _workspace.PolicyFile, TestPolicies.Local, false);
         Assert.Equal(42, (await store.LoadAsync(default)).Version);
         Assert.True(File.Exists(_workspace.PolicyFile));
         status = HttpStatusCode.NotFound;
@@ -163,7 +208,7 @@ public sealed class ConsoleTransportTests : IDisposable
     {
         string body = ConsoleDocument;
         using var http = new HttpClient(new Wire(_ => Reply(HttpStatusCode.OK, body))) { BaseAddress = Server };
-        var store = new DurableHttpPolicyStore(http, _workspace.PolicyFile, TestPolicies.Local, false);
+        var store = new DurableHttpPolicyStore(http, TestPolicies.Identity(http.BaseAddress!), _workspace.PolicyFile, TestPolicies.Local, false);
         await store.LoadAsync(default);
         body = """{"version":43,"activeCategories":["Cpf"],"alertCategories":["Rg"]}"""; // alerta fora das ativas
         Assert.Equal(42, (await store.LoadAsync(default)).Version);

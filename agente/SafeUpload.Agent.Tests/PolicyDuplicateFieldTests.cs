@@ -43,13 +43,13 @@ public sealed class PolicyDuplicateFieldTests
         using var workspace = new TestWorkspace();
         var handler = new Handler { Body = Good };
         using var http = Client(handler);
-        var store = new DurableHttpPolicyStore(http, workspace.PolicyFile, TestPolicies.Local, false);
+        var store = new DurableHttpPolicyStore(http, TestPolicies.Identity(http.BaseAddress!), workspace.PolicyFile, TestPolicies.Local, false);
         var original = await store.LoadAsync(default);
         byte[] persisted = await File.ReadAllBytesAsync(workspace.PolicyFile);
         handler.Body = document;
         Assert.Same(original, await store.LoadAsync(default));
         Assert.Equal(persisted, await File.ReadAllBytesAsync(workspace.PolicyFile));
-        var restarted = new DurableHttpPolicyStore(http, workspace.PolicyFile, TestPolicies.Local, false);
+        var restarted = new DurableHttpPolicyStore(http, TestPolicies.Identity(http.BaseAddress!), workspace.PolicyFile, TestPolicies.Local, false);
         Assert.Equal(7, (await restarted.LoadCachedOrDefaultAsync(default)).Version);
     }
 
@@ -61,7 +61,7 @@ public sealed class PolicyDuplicateFieldTests
         workspace.WritePolicy(document);
         byte[] before = await File.ReadAllBytesAsync(workspace.PolicyFile);
         using var http = Client(new Handler { Body = Good });
-        var store = new DurableHttpPolicyStore(http, workspace.PolicyFile, TestPolicies.Local, false);
+        var store = new DurableHttpPolicyStore(http, TestPolicies.Identity(http.BaseAddress!), workspace.PolicyFile, TestPolicies.Local, false);
         Assert.Equal(LocalPolicyStore.CreateDefault().Version, (await store.LoadCachedOrDefaultAsync(default)).Version);
         Assert.Equal(before, await File.ReadAllBytesAsync(workspace.PolicyFile));
     }
