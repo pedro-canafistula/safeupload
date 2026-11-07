@@ -1,6 +1,8 @@
 # Instalador do agente Windows — candidato de desenvolvimento
 
-Base do instalador integrada na main pelo #64, com origem nos #42/#49 e correção de remoção com UI aberta da issue #50. Recortes posteriores integraram auditoria/recibos, diagnóstico da fila, histórico e manutenção somente leitura. A versão candidata é 0.1.18; o manifesto de cada build identifica commit e hashes próprios. Ela não herda o aceite do pacote Windows 10 0.1.14. Consulte o resultado do workflow no commit exato antes de executar uma instalação de teste.
+Base do instalador integrada na main pelo #64, com origem nos #42/#49 e correção de remoção com UI aberta da issue #50. Recortes posteriores integraram auditoria/recibos, diagnóstico da fila, histórico e manutenção. O builder usa 0.1.18 por padrão; `-Version` identifica cada candidata posterior. O manifesto e `build-result.json` identificam versão, commit, alterações locais e hashes efetivamente empacotados. Os exemplos abaixo usam a versão padrão, sem selecionar o pacote mais recente. Consulte o resultado do workflow no commit exato antes de executar uma instalação de teste.
+
+Atualização/reversão/recuperação manuais foram entregues no #102, com aceite Windows 10 no modo sem driver. Esse aceite não se transfere a todo build posterior nem qualifica assinatura, Windows11 ou o par driver/WinFsp. Uma URL isolada não provisiona o dispositivo: use a [composição atual](../docs/COMPOSICAO-FINAL-20261105.md#configuração-e-provisionamento), com cadastro único e heartbeat Ed25519; emissão de token e publicação exigem sessão administrativa desde #110.
 
 Instalador `.exe` para Windows 10/11 x64, com serviço `SafeUploadAgent`, interface WPF na bandeja, atalho e desinstalador. Os dois executáveis são publicados com runtime .NET próprio; o computador de destino não precisa do SDK. A compilação usa Inno Setup 6.7.3, obtido de uma release oficial imutável, com SHA-256 e assinatura do editor verificados.
 

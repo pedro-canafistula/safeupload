@@ -1,5 +1,20 @@
 # Candidata Windows C# — demonstração de 07/11/2026
 
+## Situação vigente — 06/11/2026
+
+O [PR #100](https://github.com/pedro-canafistula/safeupload/pull/100) foi integrado; os PRs de origem foram incorporados
+e encerrados. A indicação de draft e as atribuições por agente no histórico abaixo descrevem a preparação original.
+O cenário nativo central foi concluído com política Bloquear→Alertar, auditoria correlacionada e par WinFsp/gate
+no laboratório declarado. A manutenção manual da aplicação foi entregue e validada no escopo de #102.
+
+Use a seção [Configuração e provisionamento](#configuração-e-provisionamento) abaixo e o
+[contrato vigente de integração](INTEGRACAO-CENTRAL.md#contrato-vigente--06112026).
+As correções posteriores até #113 têm testes de componentes/integração automática; conferir o manifesto e a fonte
+do pacote em uso. Não transferir o aceite nativo de #100/#102 para uma candidata posterior nem declarar clipboard/TLS,
+Windows11, assinatura ou distribuição completos a partir do CI. O restante conjunto permanece nas #43/#45–#48.
+
+## Histórico da composição inicial
+
 Branch própria `integracao/agente-final-20261105`, [PR #100](https://github.com/pedro-canafistula/safeupload/pull/100), draft para main. Base #95 `3c13b3e7b41bb7a66f276ca2a99eac2766dfde08`. O SHA inicial fixado e publicado é `57fb6ed72cece5ac2e5cf4ca855b791c7b06af3b`; os incrementos posteriores devem avançar essa história, sem amend/rebase/force-push. O SHA e os hashes do pacote entregue para instalação ficam no manifesto e na descrição do PR. Não transferir aceite entre SHAs.
 
 ## Conteúdo preservado

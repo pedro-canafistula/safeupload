@@ -1,12 +1,37 @@
 # Integração central do agente
 
+## Contrato vigente — 06/11/2026
+
+A composição central foi integrada no [#100](https://github.com/pedro-canafistula/safeupload/pull/100).
+Para configurar o serviço, use [configuração e provisionamento](COMPOSICAO-FINAL-20261105.md#configuração-e-provisionamento)
+e [cadastro/heartbeat Ed25519](AUTENTICACAO-ED25519-AGENTE5.md#contrato-implementado).
+Os estados de draft, protocolo legado e pendências do incremento original mais abaixo são históricos.
+
+| Operação | Contrato vigente |
+| --- | --- |
+| Cadastro e heartbeat | `POST /agent/heartbeat`, com `cadastro` ou `autenticacao` e `host`, usando Ed25519. Provisionamento explícito e único; serviço não cadastra no startup. |
+| Política | `GET /agent/api/policy?ip=...`, modo `ConsoleByIp`, conferindo IP/ID do host; `idPolitica` identifica a publicação. Serviço renova o snapshot validado em fundo e o mantém offline, sem HTTP por arquivo. |
+| Auditoria | `POST /agent/events`; fila durável e recibo integral com `acceptedEvents` e `acceptedOverrides`, IDs estáveis e reenvio sem duplicação. |
+| Administração | Tokens em `/admin/token`, publicação em `/politicas`, cadastros em `/auth/normalregister/**` e consultas administrativas exigem sessão ADMIN/ROOT; anônimo recebe 401, demais perfis 403 (#110). O primeiro cadastro público mantém sua restrição existente. |
+
+A sessão do administrador não é credencial do dispositivo. Política/auditoria ainda não têm autenticação
+de dispositivo equivalente ao heartbeat; ciclo de chaves, replay e sessões continuam na #47. Não configurar
+`AgentApi`/`Legacy` para o backend atual nem substituir Ed25519 por uma tentativa automática do protocolo antigo.
+
+O cenário nativo central de #100 e a manutenção manual de #102 têm seus aceites próprios. As correções
+posteriores de auditoria/transporte/painel (#106/#107), clipboard (#109/#112), autorização administrativa (#110)
+e cancelamento de política (#113) foram validadas por componentes/CI; não ampliam automaticamente o aceite
+de clipboard/TLS/driver/Windows ou da candidata instalada. Conferir fonte e manifesto do pacote usado.
+
+## Histórico do incremento de 04/11/2026
+
 Em 04/11/2026, #64 e #81 estão integrados na main `7dcf139f`; #90 e #91 continuam draft.
 Esta entrega usa branch isolada `feat/agente-integracao-central-20261104`, sobre o #91 (`07802232`),
 para preservar a correção preventiva do Agente 1. Não representa aceite ou merge dessas dependências.
 Guia dos agentes, Trilha, Arquitetura 3.1 e Requisitos 2.1 foram consultados. Os documentos de outubro
 descrevem contratos históricos; a composição atual usa WinFsp e gate v1.
 
-## Contratos conferidos no código atual
+## Contratos históricos anteriores ao #96
 
 | Operação | Contrato |
 | --- | --- |
@@ -16,7 +41,7 @@ descrevem contratos históricos; a composição atual usa WinFsp e gate v1.
 | Consulta do agente | `GET /agent/api/policy?ip=10.90.0.21`; confere `destino.idHost` e `destino.ip`. `idPolitica` identifica a publicação; `versao="1.0"` identifica o formato. |
 | Auditoria e consulta | `POST /agent/events`; `GET /auditoria`, `/endpoints`, `/painel` com sessão administrativa. A versão do inventário vem do último evento e não confirma aplicação no gate. |
 
-Configuração explícita do serviço, com valores reais do ambiente:
+Configuração histórica `AgentApi` para aquele backend; não usar com o contrato vigente acima:
 
 ```json
 {

@@ -1,5 +1,21 @@
 # Autenticação Ed25519 — Agente 5
 
+## Situação vigente — 06/11/2026
+
+Este incremento já foi incorporado à composição central no [#100](https://github.com/pedro-canafistula/safeupload/pull/100).
+O cenário nativo desse PR conferiu identidade/cadastro, heartbeat no mesmo ID após reinício e integração central;
+as instruções de incorporação e pendências do aceite inicial abaixo registram a etapa de 05/11, sem reabrir trabalho concluído.
+O contrato Ed25519 e a configuração de provisionamento abaixo permanecem vigentes.
+
+Desde [#110](https://github.com/pedro-canafistula/safeupload/pull/110), a emissão em `/admin/token` exige sessão ADMIN/ROOT.
+Obter o token pelo fluxo administrativo autenticado antes do provisionamento; não enviar cookies/senha do administrador
+ao serviço nem repetir cadastro em cada reinício. O primeiro cadastro público do painel mantém sua restrição existente.
+Autenticação de política/auditoria e ciclo completo de chaves/replay/sessões continuam na #47; a assinatura do heartbeat
+não autentica automaticamente essas rotas. Os números de testes e SHAs abaixo são históricos daquela entrega;
+não qualificam pacotes posteriores, driver, TLS ou a interface nativa atual.
+
+## Origem do incremento
+
 05/11/2026. Branch `feat/agente-auth-ed25519-20261105`, criada exatamente sobre
 o PR #95 (`3c13b3e7b41bb7a66f276ca2a99eac2766dfde08`). Backend de referência:
 main após #96, `4627bb1757976602aa53f19fea9f19079a4fe05b`. Guia dos Agentes,
