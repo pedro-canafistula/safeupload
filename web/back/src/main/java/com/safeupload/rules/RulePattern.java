@@ -58,8 +58,11 @@ public final class RulePattern {
         else out.append('\\').append(c);
     }
 
-    private PatternException error(String what) {
-        return new PatternException("Posição " + (pos + 1) + ": " + what + ".");
+    private PatternException error(String what) { return errorAt(pos, what); }
+
+    /** {@code at} é o índice (0-based) do caractere culpado; a mensagem conta a partir de 1. */
+    private PatternException errorAt(int at, String what) {
+        return new PatternException("Posição " + (at + 1) + ": " + what + ".");
     }
 
     private boolean more() { return pos < input.length(); }
@@ -82,10 +85,11 @@ public final class RulePattern {
     }
 
     private void atom() {
+        int at = pos;
         char c = input.charAt(pos++);
         switch (c) {
             case '(' -> {
-                if (++depth > 10) throw error("grupos aninhados demais");
+                if (++depth > 10) throw errorAt(at, "grupos aninhados demais");
                 if (input.startsWith("?:", pos)) { pos += 2; out.append("(?:"); }
                 else if (more() && peek() == '?') throw error("\"(?\" só é aceito como \"(?:\" (sem lookahead, lookbehind, nomes ou flags)");
                 else { out.append('('); groups++; }
@@ -98,9 +102,9 @@ public final class RulePattern {
             case '[' -> charClass();
             case '.' -> out.append("[^\\n]");
             case '\\' -> escape();
-            case '^', '$' -> throw error("âncoras ^ e $ não são aceitas (a regra procura no texto inteiro)");
-            case '*', '+', '?' -> throw error("quantificador \"" + c + "\" sem nada antes");
-            case '{' -> throw error("chave \"{\" fora de um quantificador; use \\{ para o caractere");
+            case '^', '$' -> throw errorAt(at, "âncoras ^ e $ não são aceitas (a regra procura no texto inteiro)");
+            case '*', '+', '?' -> throw errorAt(at, "quantificador \"" + c + "\" sem nada antes");
+            case '{' -> throw errorAt(at, "chave \"{\" fora de um quantificador; use \\{ para o caractere");
             case ']', '}' -> literal(out, c);
             default -> literal(out, c);
         }

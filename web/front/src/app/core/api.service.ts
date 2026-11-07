@@ -2,7 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { AddressPayload } from './auth.service';
 import {
-  Audit, Dashboard, Endpoints, Grupo, GrupoRequest, PoliticaDetalhe, PoliticaRequest, PoliticaResumo, TokenCadastro
+  Audit, Dashboard, Endpoints, Grupo, GrupoRequest, PoliticaDetalhe, PoliticaRequest, PoliticaResumo, RegraCondicao,
+  RegraDetalhe, RegraRequest, RegraResumo, RegraTeste, TokenCadastro
 } from './models';
 
 /** Resposta de POST /admin/token. */
@@ -110,6 +111,31 @@ export class ApiService {
 
   excluirGrupo(id: number) {
     return this.http.delete<void>(`/api/grupos/${id}`, sessao);
+  }
+
+  listarRegras() {
+    return this.http.get<RegraResumo[]>('/api/regras', sessao);
+  }
+
+  obterRegra(id: number) {
+    return this.http.get<RegraDetalhe>(`/api/regras/${id}`, sessao);
+  }
+
+  criarRegra(payload: RegraRequest) {
+    return this.http.post<{ id: number; revisao: number }>('/api/regras', payload, sessao);
+  }
+
+  atualizarRegra(id: number, payload: RegraRequest) {
+    return this.http.put<{ id: number; revisao: number }>(`/api/regras/${id}`, payload, sessao);
+  }
+
+  excluirRegra(id: number) {
+    return this.http.delete<void>(`/api/regras/${id}`, sessao);
+  }
+
+  /** Avalia condições ainda não salvas sobre até 10 textos. */
+  testarRegra(quando: RegraCondicao, textos: string[]) {
+    return this.http.post<RegraTeste[]>('/api/regras/testar', { quando, textos }, sessao);
   }
 
   gerarToken() {

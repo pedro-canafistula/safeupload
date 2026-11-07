@@ -32,6 +32,27 @@
     </fieldset>
 
     <fieldset class="group">
+      <legend>Regras personalizadas</legend>
+      <p role="alert" class="error-message" *ngIf="erroRegras">{{ erroRegras }} As regras que a política já usa são mantidas ao salvar.</p>
+      <p role="status" *ngIf="!regras && !erroRegras">Carregando regras…</p>
+      <p class="field-hint" *ngIf="regras && !regras.length">A empresa ainda não tem regras personalizadas. Crie regras em <a routerLink="/regras">Regras</a>
+        (palavras, máscaras ou expressões) e volte aqui para ligá-las nesta política.</p>
+      <ng-container *ngIf="regras?.length">
+        <p class="field-hint">Ignorar não procura a regra. Sugestão: ligue uma regra nova em Alertar e confira na auditoria o que ela encontra
+          antes de passar para Bloquear. Máquinas com agente sem suporte a regras impedem a publicação. <a routerLink="/regras">Gerenciar regras</a></p>
+        <div class="category-list">
+          <fieldset class="category-row" *ngFor="let regra of regras" [attr.aria-label]="'Regra ' + regra.nome">
+            <legend>{{ regra.nome }}<small class="rule-summary">{{ descreverRegra(regra.quando) }}</small></legend>
+            <div class="segmented">
+              <label *ngFor="let acao of acoes" [class.selected]="acoesRegras[regra.id] === acao.valor">
+                <input type="radio" [name]="'regra-' + regra.id" [value]="acao.valor" [(ngModel)]="acoesRegras[regra.id]" />{{ acao.nome }}</label>
+            </div>
+          </fieldset>
+        </div>
+      </ng-container>
+    </fieldset>
+
+    <fieldset class="group">
       <legend>Onde proteger</legend>
       <label class="field">Pastas protegidas (uma por linha)
         <textarea name="pastas" rows="4" [(ngModel)]="pastasTexto" placeholder="C:\Dados\Financeiro&#10;\\servidor\compartilhamento"></textarea></label>

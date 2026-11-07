@@ -52,6 +52,7 @@ td small { color: #7a8580; }
 .category-list { display: grid; gap: 6px; }
 .category-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 6px 10px; border: 1px solid #e9eeea; border-radius: 8px; }
 .category-row legend { float: left; padding: 0; color: #394640; font-size: 12px; font-weight: 700; }
+.category-row legend .rule-summary { display: block; margin-top: 2px; color: #89948e; font-family: monospace; font-size: 10px; font-weight: 400; overflow-wrap: anywhere; }
 .segmented { display: flex; gap: 4px; }
 .segmented label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid #dce3de; border-radius: 6px; color: #52615a; font-size: 11px; font-weight: 650; cursor: pointer; }
 .segmented label.selected { border-color: #8cc5ae; background: #eaf4ef; color: #1f6b56; }

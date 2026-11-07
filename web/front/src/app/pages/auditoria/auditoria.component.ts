@@ -33,8 +33,8 @@ export class AuditoriaComponent {
     const query = this.query.trim().toLocaleLowerCase();
     return events.filter(event => (!this.verdict || event.verdict === this.verdict)
       && (!this.channel || (event.channel ?? 'File') === this.channel)
-      && (!query || [event.eventId, event.hostname, event.endpointId, event.userName, event.fileName, event.processName, event.destinationPath]
-        .some(value => value?.toLocaleLowerCase().includes(query))));
+      && (!query || [event.eventId, event.hostname, event.endpointId, event.userName, event.fileName, event.processName, event.destinationPath,
+        ...(event.customRules ?? [])].some(value => value?.toLocaleLowerCase().includes(query))));
   }
 
   hostLabel(dados: Audit): string {

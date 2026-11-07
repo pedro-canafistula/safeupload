@@ -71,8 +71,10 @@ export class AgenteFalso {
     return this.request.dispose();
   }
 
-  heartbeat(politicaAplicada: number | null) {
-    return this.enviar('POST', 'heartbeat', { host: this.host, politica_aplicada: politicaAplicada, versao_agente: '0.2.0' });
+  /** Sem `formatoRegras`, o heartbeat é o de um agente que não entende regras personalizadas (o servidor grava 0). */
+  heartbeat(politicaAplicada: number | null, formatoRegras?: number) {
+    return this.enviar('POST', 'heartbeat', { host: this.host, politica_aplicada: politicaAplicada, versao_agente: '0.2.0',
+      ...(formatoRegras === undefined ? {} : { formato_regras: formatoRegras }) });
   }
 
   politica() {

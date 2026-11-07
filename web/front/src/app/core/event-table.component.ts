@@ -21,8 +21,7 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
           <td><span class="pill" [class.ok]="result(event).tone === 'ok'" [class.danger]="result(event).tone === 'danger'"
             [class.warn]="result(event).tone === 'warn'">{{ result(event).label }}</span>
             <small *ngIf="event.notInspectedReason">{{ event.notInspectedReason }}</small></td>
-          <td><span *ngFor="let category of event.categories; let last = last">{{ categories[category] }}{{ last ? '' : ', ' }}</span>
-            <span *ngIf="!event.categories.length">—</span></td>
+          <td>{{ categoryNames(event).join(', ') || '—' }}</td>
           <td><button type="button" class="btn-secondary" [attr.aria-expanded]="expandedEventId === event.eventId"
             [attr.aria-controls]="'evento-' + event.eventId" [attr.aria-label]="'Detalhes de ' + eventLabel(event)"
             (click)="toggle(event.eventId)">{{ expandedEventId === event.eventId ? 'Ocultar' : 'Ver detalhes' }}</button></td>
@@ -39,6 +38,7 @@ import { AuditEvent, AuditOverride, categoryLabels, verdictLabels } from './mode
                 <div *ngIf="event.hostname && event.endpointId && event.endpointId !== event.hostname"><dt>Identificação informada pelo agente</dt><dd>{{ event.endpointId }}</dd></div>
                 <div><dt>Usuário no endpoint</dt><dd>{{ event.userName || 'Não informado' }}</dd></div>
                 <div><dt>Canal</dt><dd>{{ channelLabel(event) }}</dd></div>
+                <div><dt>Categorias</dt><dd>{{ categoryNames(event).join(', ') || 'Nenhuma' }}</dd></div>
                 <div *ngIf="event.channel !== 'Clipboard' && (event.channel !== 'Web' || event.fileName)"><dt>Extensão</dt><dd>{{ event.extension || 'Não informada' }}</dd></div>
                 <div><dt>Processo de origem</dt><dd>{{ event.processName || 'Não informado' }}</dd></div>
                 <div><dt>PID do processo</dt><dd>{{ isObservation(event) ? 'Não informado' : (event.processId ?? 'Não informado') }}</dd></div>
@@ -76,6 +76,17 @@ export class EventTableComponent {
   /** A máquina autenticada que enviou o evento; eventos sem hostId (dados de teste) usam o rótulo do agente. */
   machine(event: AuditEvent): string {
     return event.hostname || event.endpointId || (event.hostId ? 'Máquina ' + event.hostId : 'Não informada');
+  }
+
+  /** Rótulos das categorias; as de regra personalizada mostram o nome da regra ("Regra: X"), como o painel e o CSV. */
+  categoryNames(event: AuditEvent): string[] {
+    const names: string[] = [];
+    for (const category of event.categories) {
+      const rules = category === 'CustomRule' || category === 'CustomRuleAlert' ? event.customRules ?? [] : [];
+      for (const name of rules.length ? rules.map(rule => 'Regra: ' + rule) : [this.categories[category] ?? category])
+        if (!names.includes(name)) names.push(name);
+    }
+    return names;
   }
 
   overridesFor(eventId: string): AuditOverride[] {

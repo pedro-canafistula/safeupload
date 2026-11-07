@@ -13,7 +13,7 @@ export interface ApiErro {
 
 export type Verdict = 'Approved' | 'Blocked' | 'AllowedWithoutInspection' | 'Retained';
 export type Category = 'Cpf' | 'Cnpj' | 'PaymentCard' | 'Password' | 'Secret'
-  | 'Rg' | 'BankData' | 'HealthData' | 'ConfidentialDocument' | 'PersonalData';
+  | 'Rg' | 'BankData' | 'HealthData' | 'ConfidentialDocument' | 'PersonalData' | 'CustomRule' | 'CustomRuleAlert';
 export type AuditChannel = 'File' | 'Clipboard' | 'Web';
 export interface AuditEvent {
   eventId: string;
@@ -36,6 +36,8 @@ export interface AuditEvent {
   destinationPath?: string | null;
   policyVersion?: number | null;
   elapsedMs?: number | null;
+  /** Nomes das regras personalizadas que acharam algo (categorias CustomRule/CustomRuleAlert). */
+  customRules?: string[] | null;
 }
 export interface Summary { total: number; bloqueados: number; aprovados: number; liberadosSemInspecao: number; retidos?: number; }
 export interface PoliticaRef { id: number; nome: string; versao: number; }
@@ -43,7 +45,8 @@ export interface Dashboard {
   periodo: string;
   resumo: Summary;
   tendencia: { data: string; quantidade: number }[];
-  categoriasBloqueadas: { codigo: Category; nome: string; quantidade: number }[];
+  /** Regras personalizadas vêm como codigo "Regra:<nome>" e nome "Regra: <nome>". */
+  categoriasBloqueadas: { codigo: string; nome: string; quantidade: number }[];
   recentes: AuditEvent[];
   politicaPadrao: PoliticaRef | null;
   maquinas: { total: number; online: number; politicaDesatualizada: number };
@@ -105,6 +108,8 @@ export interface PoliticaConfiguracao {
   tempoLimiteSegundos: number;
   permitirJustificativa: boolean;
   clipboard: ModoClipboard;
+  /** Id da regra personalizada → ação; regras ausentes são ignoradas. */
+  regrasPersonalizadas?: Record<string, AcaoCategoria>;
 }
 export interface PoliticaResumo {
   id: number;
@@ -127,6 +132,47 @@ export interface PoliticaDetalhe {
 export interface PoliticaRequest { nome: string; padrao: boolean; configuracao: PoliticaConfiguracao; }
 export interface Grupo { id: number; nome: string; politicaId: number | null; politica: string | null; hosts: number; }
 export interface GrupoRequest { nome: string; politicaId: number | null; }
+
+// ---- Regras personalizadas (docs/console-agente.md) ----
+
+export type RegraValidador = 'cpf' | 'cnpj' | 'luhn' | 'mod11';
+/** Exatamente um de todos, algum, nao, contem, mascara, regex; o backend devolve os demais como null. */
+export interface RegraCondicao {
+  todos?: RegraCondicao[] | null;
+  algum?: RegraCondicao[] | null;
+  nao?: RegraCondicao | null;
+  contem?: string[] | null;
+  mascara?: string | null;
+  regex?: string | null;
+  minimo?: number | null;
+  ignorarCaixa?: boolean | null;
+  validador?: RegraValidador | null;
+  grupoValidado?: number | null;
+}
+export interface RegraExemplos { sinalizar: string[]; naoSinalizar: string[]; }
+export interface RegraResumo {
+  id: number;
+  nome: string;
+  descricao: string | null;
+  revisao: number;
+  quando: RegraCondicao;
+  atualizadaEm: string;
+  atualizadaPor: string;
+  /** Políticas cuja versão atual usa a regra. */
+  politicas: string[];
+}
+export interface RegraDetalhe {
+  id: number;
+  nome: string;
+  descricao: string | null;
+  revisao: number;
+  quando: RegraCondicao;
+  exemplos: RegraExemplos;
+  politicas: string[];
+}
+export interface RegraRequest { nome: string; descricao: string; quando: RegraCondicao; exemplos: RegraExemplos; }
+/** Resultado de POST /regras/testar para um texto; `condicoes` segue a ordem das condições da regra. */
+export interface RegraTeste { matched: boolean; condicoes: { condicao: string; ocorrencias: number; atende: boolean }[]; }
 
 export interface TokenCadastro {
   id: number;
@@ -159,5 +205,6 @@ export const categoryLabels: Record<Category, string> = {
   Cpf: 'CPF', Cnpj: 'CNPJ', PaymentCard: 'Cartão de pagamento',
   Password: 'Senha em texto claro', Secret: 'Segredo/credencial',
   Rg: 'RG', BankData: 'Dados bancários', HealthData: 'Dados de saúde',
-  ConfidentialDocument: 'Documento confidencial', PersonalData: 'Dados pessoais'
+  ConfidentialDocument: 'Documento confidencial', PersonalData: 'Dados pessoais',
+  CustomRule: 'Regra personalizada', CustomRuleAlert: 'Regra personalizada (alerta)'
 };

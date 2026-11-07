@@ -22,6 +22,10 @@ class RulePatternTest {
             assertThatThrownBy(() -> RulePattern.regex(pattern)).as(pattern).isInstanceOf(RulePattern.PatternException.class);
         }
         assertThatThrownBy(() -> RulePattern.mask("abc")).isInstanceOf(RulePattern.PatternException.class);
+        // A posição aponta o caractere culpado (contando de 1).
+        assertThatThrownBy(() -> RulePattern.regex("^CT")).hasMessageStartingWith("Posição 1: âncoras");
+        assertThatThrownBy(() -> RulePattern.regex("ab*+")).hasMessageStartingWith("Posição 4: quantificadores seguidos");
+        assertThatThrownBy(() -> RulePattern.regex("a(?=b)")).hasMessageStartingWith("Posição 3: \"(?\"");
     }
 
     @Test void refusesPatternsThatMatchEmptyTextAndBadConditions() {
