@@ -67,6 +67,10 @@ até a primeira leitura bem-sucedida da política. Com `404`, usa o `policy.json
 só saem dela depois do recibo. O servidor grava cada evento com o `id_host` autenticado: o `endpointId` do corpo é
 apenas um rótulo.
 
+A fila associa cada evento ao cadastro que o originou. Depois de um recadastro, só os eventos do novo cadastro e
+as justificativas dos eventos dele são enviados. Registros do cadastro anterior e registros antigos sem vínculo
+ficam no histórico local, inclusive após recuperação de publicação. O formato enviado à API continua o mesmo.
+
 ## Documento de política
 
 É o mesmo formato do `policy.json` local, e o agente não traduz nada:

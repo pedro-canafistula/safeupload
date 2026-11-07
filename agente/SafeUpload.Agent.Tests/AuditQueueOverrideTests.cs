@@ -11,6 +11,30 @@ public sealed class AuditQueueOverrideTests : IDisposable
     public void Dispose() => _workspace.Dispose();
 
     [Fact]
+    public async Task Override_follows_its_event_enrollment_and_unbound_records_stay_local()
+    {
+        var server = new Uri("https://console.test/agent/");
+        var first = new LocalQueueAuditSink(_workspace.QueueFile, TestPolicies.Identity(server));
+        var second = new LocalQueueAuditSink(_workspace.QueueFile, new SignedAgentIdentity(server, 7, new byte[32]));
+        var local = new LocalQueueAuditSink(_workspace.QueueFile);
+        var audit = new AuditEvent(Guid.NewGuid(), DateTimeOffset.UtcNow, "PC", "synthetic", "file.txt", ".txt", 10,
+            Verdict.Blocked, [Category.Cpf], [], "explorer", 123, @"C:\Synthetic\file.txt", null, 1, 1, false);
+        var current = audit with { EventId = Guid.NewGuid() };
+        await first.WriteAsync(audit, default);
+        await first.RecordOverrideAsync(audit.EventId.ToString(), "original", default);
+        await second.RecordOverrideAsync(audit.EventId.ToString(), "wrong enrollment", default);
+        await second.RecordOverrideAsync(Guid.NewGuid().ToString(), "event missing", default);
+        await second.WriteAsync(current, default);
+        await second.RecordOverrideAsync(current.EventId.ToString(), "current", default);
+        var pending = await second.ReadPendingOverridesAsync(1, default);
+        Assert.Equal(current.EventId, Assert.Single(pending).EventId);
+        await second.MarkOverridesDispatchedAsync(pending, default);
+        Assert.Empty(await second.ReadPendingOverridesAsync(1, default));
+        Assert.Equal("original", Assert.Single(await first.ReadPendingOverridesAsync(10, default)).Justification);
+        Assert.Equal(3, (await local.ReadPendingOverridesAsync(10, default)).Count);
+    }
+
+    [Fact]
     public async Task Identidade_fornecida_pelo_servico_nao_e_substituida_pela_conta_do_processo()
     {
         var sink = new LocalQueueAuditSink(_workspace.QueueFile);

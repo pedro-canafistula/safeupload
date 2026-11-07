@@ -120,7 +120,7 @@ envio de eventos: [`docs/console-agente.md`](../docs/console-agente.md).
 |---|---|
 | `%ProgramFiles%\SafeUpload\Agent\` | Binários: `service\`, `ui\`, `setup\` (instalador) |
 | `%ProgramData%\SafeUpload\policy.json` | Política local |
-| `%ProgramData%\SafeUpload\queue.jsonl` | Fila de auditoria; é a fonte da verdade. Um evento só sai dela depois do recibo do console |
+| `%ProgramData%\SafeUpload\queue.jsonl` | Histórico e fila de auditoria. O agente envia os pendentes do cadastro atual e preserva os demais localmente |
 | `%ProgramData%\SafeUpload\console-policy-cache.json` | Última política válida recebida do console |
 | `%ProgramData%\SafeUpload\authentication\ed25519-identity.dat` | Identidade do cadastro (chave, URL, `id_host`, certificado), protegida com DPAPI de máquina |
 | `%ProgramData%\SafeUpload\drive\` | Uma pasta por destino: stage, snapshots, catálogo `stage-map.json` e registro de publicação |

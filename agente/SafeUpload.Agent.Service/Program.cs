@@ -74,12 +74,6 @@ public static class Program
         // A composição é a mesma que o aplicativo WPF fazia à mão, agora do
         // lado do serviço: são estes objetos que decidem, e é por isso que
         // saíram do processo da interface.
-        //
-        // A fila de auditoria é SEMPRE a local, com ou sem Centro de
-        // Administração configurado: é ela que deixa o endpoint continuar
-        // registrando com a rede fora do ar. O envio ao painel é uma etapa
-        // posterior, feita pelo HttpAgentDispatcher, e não um substituto.
-        ConfigureAuditStorage(builder.Services);
         builder.Services.AddSingleton(ExtractorRegistry.CreateDefault());
         builder.Services.AddSingleton<VerdictCache>();
         builder.Services.AddSingleton<InspectionService>();
@@ -113,6 +107,8 @@ public static class Program
         // vem do console (com cache offline) e um despachante entrega heartbeat e eventos (docs/console-agente.md).
         var identities = new SignedHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "authentication", "ed25519-identity.dat"));
         var administration = AdministrationConfiguration.Parse(builder.Configuration, identities.Load);
+        // A fila registra localmente em ambos os modos. O despacho usa apenas os registros do cadastro ativo.
+        ConfigureAuditStorage(builder.Services, administration.Identity);
         string endpointId = Environment.MachineName;
         builder.Services.AddSingleton(new CommunicationHealth(administration.BaseUri is not null));
         builder.Services.AddHostedService<CommunicationStatusPublisher>();
@@ -221,9 +217,9 @@ public static class Program
         services.AddSingleton(typeof(ILogger<>), typeof(BestEffortLogger<>));
     }
 
-    internal static void ConfigureAuditStorage(IServiceCollection services)
+    internal static void ConfigureAuditStorage(IServiceCollection services, SignedAgentIdentity? identity = null)
     {
-        services.AddSingleton(_ => new LocalQueueAuditSink()); // Never select the isolated-path test constructor through DI.
+        services.AddSingleton(_ => new LocalQueueAuditSink(identity)); // Never select the isolated-path test constructor through DI.
         services.AddSingleton<AuditQueueHealth>();
         services.AddSingleton<MonitoredAuditSink>(provider => new MonitoredAuditSink(
             provider.GetRequiredService<LocalQueueAuditSink>(), provider.GetRequiredService<AuditQueueHealth>(),
