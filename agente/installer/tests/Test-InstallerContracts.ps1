@@ -24,14 +24,14 @@ try {
     $installRoot = Join-Path $fixture 'Program Files\SafeUpload\Agent'
     Test-Case 'A path containing spaces remains one quoted service executable' {
         $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode Drive
-        $expected = '"' + (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') + '" --Interception:Mode=Drive --InspecaoTls:Habilitada=false'
+        $expected = '"' + (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') + '" --Interception:Mode=Drive'
         Assert-True ($plan.CommandLine -eq $expected)
         Assert-True (-not $plan.RestartRequired -and -not $plan.CommandLine.Contains('StagingPrototype'))
     }
     Test-Case 'Drive is the default mode' { Assert-True ((New-SafeUploadInstallPlan -InstallRoot $installRoot).Mode -eq 'Drive') }
     Test-Case 'Test mode is explicit and has no staged-driver flag' {
         $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode FileSystemWatcher
-        Assert-True ($plan.CommandLine.EndsWith('--Interception:Mode=FileSystemWatcher --InspecaoTls:Habilitada=false') -and
+        Assert-True ($plan.CommandLine.EndsWith('--Interception:Mode=FileSystemWatcher') -and
             -not $plan.CommandLine.Contains('--CentroAdministracao:BaseUrl=') -and
             -not $plan.CommandLine.Contains('StagingPrototype') -and -not $plan.RestartRequired)
     }

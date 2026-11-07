@@ -27,7 +27,7 @@ The previous design, an in-kernel staging driver of about 51K lines, is tagged `
 | `scripts/vm-session.sh` | Starts/ends a throwaway session of the test VM (base image: Windows 10 + Office, `win10-debug3.clean-20261101.qcow2`) |
 | `scripts/remote_ps.py` | Runs a PowerShell script on a builder or the test VM over SSH |
 | `scripts/run-disk.sh` | The overlay mechanics behind `vm-session.sh` |
-| `../smoke/` | End-to-end test: installs everything on a throwaway VM session and runs Office/Explorer/justification checks |
+| `../smoke/` | End-to-end test: installs everything on a throwaway VM session and runs Office/Explorer/justification, USB, SMB, clipboard paste and web upload checks |
 
 ## Build
 

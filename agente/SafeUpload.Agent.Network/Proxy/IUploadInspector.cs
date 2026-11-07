@@ -16,10 +16,19 @@ public interface IUploadInspector
     /// <summary>
     /// Decide sobre uma requisição com corpo, antes de ela seguir para o
     /// servidor. Só é chamada quando o corpo inteiro coube no limite de
-    /// inspeção; acima dele a requisição segue sem passar por aqui (ver
-    /// <see cref="TlsInspectionProxyOptions.MaxInspectableBodyBytes"/>).
+    /// inspeção; acima dele quem decide é <see cref="InspectOversizedAsync"/>
+    /// (ver <see cref="TlsInspectionProxyOptions.MaxInspectableBodyBytes"/>).
     /// </summary>
     ValueTask<UploadDecision> InspectAsync(UploadRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Decide sobre uma requisição cujo corpo passa do limite de inspeção, antes de qualquer byte do corpo seguir.
+    /// <paramref name="request"/> traz só o começo do corpo (o bastante para nomes e tipo de arquivo);
+    /// <paramref name="totalBytes"/> é o tamanho declarado, ou nulo se o corpo vem em pedaços. Sem implementação, a
+    /// requisição segue sem inspeção.
+    /// </summary>
+    ValueTask<UploadDecision> InspectOversizedAsync(UploadRequest request, long? totalBytes, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(UploadDecision.Allow);
 }
 
 /// <summary>Uma requisição com corpo, segurada pelo proxy.</summary>

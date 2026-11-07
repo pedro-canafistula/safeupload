@@ -53,7 +53,7 @@ try {
     $service = Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
     Require ($service.StartName -eq 'LocalSystem' -and $service.State -eq 'Running') 'Expected running LocalSystem service.'
     Require ($service.PathName.StartsWith(('"' + (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') + '" '))) 'Unquoted or unexpected service path.'
-    Require ($service.PathName.EndsWith('--Interception:Mode=FileSystemWatcher --InspecaoTls:Habilitada=false') -and
+    Require ($service.PathName.EndsWith('--Interception:Mode=FileSystemWatcher') -and
         -not $service.PathName.Contains('--CentroAdministracao:BaseUrl=')) 'Unexpected service configuration.'
     Require ((Get-ItemProperty -LiteralPath $serviceKey).ServiceSidType -eq 1) 'Expected unrestricted service SID.'
     Require (Test-Path -LiteralPath (Join-Path $installRoot 'service\coreclr.dll')) 'Self-contained service runtime missing.'

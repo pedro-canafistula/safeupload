@@ -78,6 +78,20 @@
         </select></label>
     </fieldset>
 
+    <fieldset class="group">
+      <legend>Envios pela web</legend>
+      <label class="check"><input type="checkbox" name="inspecaoWeb" [(ngModel)]="config.inspecaoWeb" /> Inspecionar arquivos e textos enviados pelo navegador
+        <small>Edge, Chrome e Firefox passam pelo agente, que confia numa autoridade de certificação local do SafeUpload para ler
+          os envios HTTPS. Um envio com dados das categorias acima recebe a mesma ação: bloquear ou alertar. Sites de bancos,
+          saúde e governo nunca são abertos. As máquinas aplicam em até 30 segundos.</small></label>
+      <ng-container *ngIf="config.inspecaoWeb">
+        <label class="field">Outros sites que nunca são abertos (um domínio por linha)
+          <textarea name="excecoesWeb" rows="3" [(ngModel)]="excecoesWebTexto" placeholder="intranet.empresa.com.br&#10;parceiro.com.br"></textarea></label>
+        <p class="field-hint">Cada domínio cobre os subdomínios; até 200. Avise os funcionários de que os envios feitos pelo navegador
+          são lidos pelo agente na própria máquina.</p>
+      </ng-container>
+    </fieldset>
+
     <p *ngIf="erro" class="error-message" role="alert">{{ erro }}</p>
     <div class="form-footer">
       <a class="button secondary" routerLink="/politicas">Cancelar</a>

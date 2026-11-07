@@ -332,6 +332,15 @@ class ConsoleAgentFlowTest {
         assertThat(ruleDocument.at("/customRules/0/alert").asBoolean()).isTrue();
         assertThat(ruleDocument.at("/customRules/0/when/all/1/pattern").asText()).isEqualTo("CT\\-[0-9][0-9][0-9][0-9]\\/[0-9][0-9]");
         assertThat(ruleDocument.get("alertCategories").toString()).contains("CustomRuleAlert");
+        assertThat(ruleDocument.has("web")).isFalse();
+        // Inspeção web ligada pela política: o agente recebe o bloco "web" com as exceções normalizadas.
+        config.put("inspecaoWeb", true);
+        config.put("excecoesWeb", List.of("Intranet.Empresa.com.br"));
+        withRule.put("configuracao", config);
+        call(put("/politicas/" + other).session(root), withRule, 200);
+        var webDocument = body(agentCall("GET", "policy", agent, null, 200));
+        assertThat(webDocument.at("/web/inspect").asBoolean()).isTrue();
+        assertThat(webDocument.at("/web/exceptionDomains/0").asText()).isEqualTo("intranet.empresa.com.br");
         // Editar a regra cria uma versão nova da política; regra em uso não pode ser excluída.
         call(put("/regras/" + ruleId).session(root), rule, 200);
         assertThat(body(agentCall("GET", "policy", agent, null, 200)).get("version").asInt()).isGreaterThan(ruleVersion);

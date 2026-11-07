@@ -9,8 +9,7 @@ namespace SafeUpload.Agent.Network.Bypass;
 /// escolha (ver a decisão em aberto 3 do plano, sobre LGPD).
 ///
 /// É uma lista curta de partida, não um catálogo. O que faltar entra pela
-/// configuração (<c>InspecaoTls:Excecoes:Dominios</c>); a edição pelo painel
-/// web e o envio com a política ficam para depois.
+/// política: o console publica os domínios de exceção no bloco <c>web</c>.
 /// </summary>
 public static class DefaultExceptionLists
 {
@@ -23,7 +22,7 @@ public static class DefaultExceptionLists
     /// <summary>Governo, Judiciário, Legislativo e Ministério Público.</summary>
     public const string Government = "governo";
 
-    /// <summary>Categoria dos domínios acrescentados pela configuração.</summary>
+    /// <summary>Categoria dos domínios de exceção que vêm da política.</summary>
     public const string Configured = "configurado";
 
     /// <summary>Domínios de cada categoria.</summary>

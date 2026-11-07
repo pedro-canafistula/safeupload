@@ -31,7 +31,7 @@ function New-SafeUploadInstallPlan {
     $exe = Join-Path $InstallRoot 'service\SafeUpload.Agent.Service.exe'
     [pscustomobject]@{
         Mode = $Mode; Executable = $exe
-        CommandLine = '"' + $exe + '" --Interception:Mode=' + $Mode + ' --InspecaoTls:Habilitada=false'
+        CommandLine = '"' + $exe + '" --Interception:Mode=' + $Mode
         RestartRequired = $false
     }
 }

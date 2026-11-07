@@ -37,35 +37,61 @@ public sealed class WebUploadInspector(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        IReadOnlyList<UploadPart> parts = UploadBodyParser.Parse(request.Head, request.Body);
-
-        if (parts.Count == 0)
-        {
-            return UploadDecision.Allow;
-        }
-
         string destination = Destination(request);
         string processName = ProcessName(request.ProcessId);
         SessionResolver.ProcessIdentity? owner = OwnerOf(request.ProcessId);
+        WebInspectionResult result;
 
-        WebInspectionResult result = await inspection
-            .InspectAsync(
-                new WebUpload(
-                    destination,
-                    processName,
-                    request.ProcessId ?? 0,
-                    [.. parts.Select(part => new WebUploadPart(part.FileName, part.Content, part.Kind == UploadPartKind.File))],
-                    UserNameOf(owner), owner?.UserSid.Value),
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            IReadOnlyList<UploadPart> parts = UploadBodyParser.Parse(request.Head, request.Body);
+
+            if (parts.Count == 0)
+            {
+                return UploadDecision.Allow;
+            }
+
+            result = await inspection
+                .InspectAsync(
+                    new WebUpload(
+                        destination,
+                        processName,
+                        request.ProcessId ?? 0,
+                        [.. parts.Select(part => new WebUploadPart(part.FileName, part.Content, part.Kind == UploadPartKind.File))],
+                        UserNameOf(owner), owner?.UserSid.Value),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Erro interno (corpo que não deu para separar, falha do motor): segue, mas fica na auditoria. Se nem o
+            // registro funcionar, o proxy registra no log e deixa seguir.
+            logger.LogSafeWarning(ex, "Falha ao inspecionar envio para {Destination}; liberado e registrado.", destination);
+            WebInspectionResult error = await inspection
+                .RecordErrorAsync(
+                    new WebUpload(destination, processName, request.ProcessId ?? 0, [], UserNameOf(owner), owner?.UserSid.Value),
+                    request.Body.Length, "inspection_error:" + ex.GetType().Name, cancellationToken)
+                .ConfigureAwait(false);
+            Announce(error, owner);
+            return UploadDecision.Allow;
+        }
 
         Announce(result, owner);
+
+        if (result.InspectionFailed)
+        {
+            logger.LogSafeInformation(
+                "Envio bloqueado: {Method} {Destination}, arquivo que não pôde ser inspecionado, por {Process}.",
+                request.Head.Method, destination, processName);
+
+            return UploadDecision.Block("Não foi possível inspecionar o arquivo enviado.");
+        }
 
         if (result.Findings.Count == 0)
         {
             logger.LogSafeDebug(
-                "Envio liberado: {Method} {Destination} ({Bytes} bytes, {Parts} partes) por {Process}.",
-                request.Head.Method, destination, request.Body.Length, parts.Count, processName);
+                "Envio liberado: {Method} {Destination} ({Bytes} bytes) por {Process}.",
+                request.Head.Method, destination, request.Body.Length, processName);
 
             return UploadDecision.Allow;
         }
@@ -86,6 +112,40 @@ public sealed class WebUploadInspector(
             request.Head.Method, destination, categories, processName);
 
         return UploadDecision.Block($"Dados sensíveis encontrados: {categories}.");
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<UploadDecision> InspectOversizedAsync(UploadRequest request, long? totalBytes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        string destination = Destination(request);
+        string processName = ProcessName(request.ProcessId);
+        SessionResolver.ProcessIdentity? owner = OwnerOf(request.ProcessId);
+
+        WebInspectionResult result = await inspection
+            .InspectOversizedAsync(
+                new WebOversizedUpload(
+                    new WebUpload(destination, processName, request.ProcessId ?? 0, [], UserNameOf(owner), owner?.UserSid.Value),
+                    UploadBodyParser.FileNamesNearStart(request.Head, request.Body),
+                    request.Head.Headers.Get("Content-Type"),
+                    request.Body,
+                    totalBytes),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        Announce(result, owner);
+
+        if (!result.IsBlocked)
+        {
+            return UploadDecision.Allow;
+        }
+
+        logger.LogSafeInformation(
+            "Envio bloqueado: {Method} {Destination}, arquivo acima do limite de inspeção, por {Process}.",
+            request.Head.Method, destination, processName);
+
+        return UploadDecision.Block("O arquivo passa do tamanho que o SafeUpload consegue inspecionar.");
     }
 
     /// <summary>

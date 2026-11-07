@@ -55,6 +55,27 @@ public sealed class UploadBodyParserTests
         Assert.Equal("nome;cpf\r\nAna;1", TextOf(parts[1]));
     }
 
+    /// <summary>Corpo grande demais: só o começo chega, e a última parte vem cortada logo depois do cabeçalho.</summary>
+    [Fact]
+    public void Nomes_de_arquivo_saem_do_comeco_de_um_corpo_cortado()
+    {
+        byte[] start = Encoding.UTF8.GetBytes(
+            "--XyZ\r\n"
+            + "Content-Disposition: form-data; name=\"observacao\"\r\n\r\n"
+            + "texto\r\n"
+            + "--XyZ\r\n"
+            + "Content-Disposition: form-data; name=\"arquivo\"; filename=\"base completa.csv\"\r\n"
+            + "Content-Type: text/csv\r\n\r\n"
+            + "nome;cpf\r\nAna;");
+        var fields = new HttpHeaders();
+        fields.Add("Content-Type", "multipart/form-data; boundary=XyZ");
+        fields.Add("X-File-Name", "envio.zip");
+
+        IReadOnlyList<string> names = UploadBodyParser.FileNamesNearStart(new HttpRequestHead("POST", "/upload", "HTTP/1.1", fields), start);
+
+        Assert.Equal(["envio.zip", "base completa.csv"], names);
+    }
+
     /// <summary>
     /// O formato do Google Drive para arquivo pequeno: metadados em JSON e o
     /// arquivo em base64. Sem decodificar, o CPF não aparece no corpo.
