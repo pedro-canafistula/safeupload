@@ -12,13 +12,14 @@ tag="${1:?tag}"; driver="${2:?driver dir}"; pkg="${3:?agent package dir}"; msi="
 host=192.168.122.52
 ssh_opts=(-F /dev/null -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR)
 out="out/smoke/$tag"; mkdir -p "$out"
-remote() { python3 driver/scripts/remote_ps.py "$host" 2>&1 | tr -d '\r' | grep -v '^#< CLIXML'; }
+remote() { python3 driver/scripts/remote_ps.py "$host" 2>&1 | tr -d '\r' | grep -av '^#< CLIXML'; }
 
 # Runs a PowerShell script as t5actor in its interactive session; the script reports with Out "...".
 as_user() {
     local script="$1" limit="$2" name="smk$(date +%s%N | tail -c 7)"
     { echo '$ErrorActionPreference = "Continue"'; echo "\$OutFile = 'C:\\T5\\$name.out'"
-      echo 'function Out([string]$t) { Add-Content -LiteralPath $OutFile -Value $t -Encoding UTF8 }'
+      # The administrator session polls the same file; a write that meets a read is retried, not lost.
+      echo 'function Out([string]$t) { for ($i = 0; $i -lt 50; $i++) { try { Add-Content -LiteralPath $OutFile -Value $t -Encoding UTF8 -ErrorAction Stop; return } catch { Start-Sleep -Milliseconds 100 } } }'
       echo 'try {'; cat "$script"; echo '} catch { Out ("SCRIPT_ERROR " + $_.Exception.Message) }'; echo 'Out "DONE"'
     } > "$out/$name.ps1"
     scp "${ssh_opts[@]}" "$out/$name.ps1" "vika@$host:C:/T5/$name.ps1" >/dev/null || return 1
@@ -56,6 +57,8 @@ echo "== administrator checks"
 remote < smoke/admin-test.ps1 | tee "$out/admin.txt"
 echo "== user checks (t5actor)"
 as_user smoke/user-test.ps1 900 | tee "$out/user.txt"
+echo "== clipboard (t5actor, tray app)"
+as_user smoke/clipboard-test.ps1 180 | tee "$out/clipboard.txt"
 echo "== USB stick (removable virtual disk)"
 truncate -s 64M "$out/usb.img" && mkfs.fat -F 32 -n PENDRIVE "$out/usb.img" >/dev/null
 virsh -c qemu:///system vol-create-as default "$usb" 64M --format raw >/dev/null &&
@@ -68,13 +71,15 @@ virsh -c qemu:///system attach-device win10-debug3 "$out/usb.xml" --live >/dev/n
 as_user smoke/usb-test.ps1 300 | tee "$out/usb.txt"
 echo "== SMB share"
 as_user smoke/smb-test.ps1 300 | tee "$out/smb.txt"
+echo "== web upload inspection (last: it turns inspection off in the policy)"
+remote < smoke/web-test.ps1 | tee "$out/web.txt"
 echo "== agent log"
 remote <<'PS' > "$out/agent-log.txt"
 Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'SafeUpload.Agent.Service' } -ErrorAction SilentlyContinue |
     Sort-Object TimeCreated | ForEach-Object { $_.TimeCreated.ToString('HH:mm:ss') + ' ' + ($_.Message -replace "`r?`n", ' | ') }
 PS
-grep -c . "$out/agent-log.txt" | sed 's/^/agent log lines: /'
-results=("$out/admin.txt" "$out/user.txt" "$out/usb.txt" "$out/smb.txt")
-pass=$(cat "${results[@]}" | grep -c '^PASS'); fail=$(cat "${results[@]}" | grep -c '^FAIL')
+grep -ac . "$out/agent-log.txt" | sed 's/^/agent log lines: /'
+results=("$out/admin.txt" "$out/user.txt" "$out/clipboard.txt" "$out/usb.txt" "$out/smb.txt" "$out/web.txt")
+pass=$(cat "${results[@]}" | grep -ac '^PASS'); fail=$(cat "${results[@]}" | grep -ac '^FAIL')
 echo "SMOKE $tag: $pass passed, $fail failed (details in $out)"
 [ "$fail" -eq 0 ]
