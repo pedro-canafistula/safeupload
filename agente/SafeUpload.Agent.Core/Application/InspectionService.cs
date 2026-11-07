@@ -142,8 +142,11 @@ public sealed class InspectionService
 
     public AuditEvent CreateTransferOutcomeEvent(FileOperation operation, InspectionResult inspection,
         Verdict outcome, string? reason, Guid eventId, string? publishedSha256Hex = null, string? auditUserName = null)
-        => CreateAuditEvent(operation, inspection with { Verdict = outcome, Reason = reason },
+    {
+        var item = CreateAuditEvent(operation, inspection with { Verdict = outcome, Reason = reason },
             eventId, publishedSha256Hex, auditUserName);
+        return _auditSink is IRecoverableAuditSink sink ? sink.BindNewPublication(item) : item;
+    }
 
     public bool SupportsPublicationRecovery => _auditSink is IRecoverableAuditSink;
 

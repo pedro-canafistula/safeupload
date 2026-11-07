@@ -21,27 +21,18 @@ function Write-Manifest($Entries) {
     @{schemaVersion=1;files=@($Entries)} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $fixture 'payload-manifest.json') -Encoding UTF8
 }
 try {
-    Test-Case 'Empty URL explicitly selects local operation' { Assert-True ((ConvertTo-SafeUploadAdminUrl '') -eq '') }
-    Test-Case 'HTTPS URL is normalized' { Assert-True ((ConvertTo-SafeUploadAdminUrl 'https://central.example.test/agent') -eq 'https://central.example.test/agent/') }
-    Test-Case 'Local HTTP can be used by the contract runner' { Assert-True ((ConvertTo-SafeUploadAdminUrl 'http://127.0.0.1:18080/agent/') -eq 'http://127.0.0.1:18080/agent/') }
-    foreach ($bad in @('http://central.example.test/agent/', 'https://user:secret@central.example.test/agent/',
-        'https://central.example.test/agent/?token=secret', 'https://central.example.test/agent/#secret',
-        'file:///C:/agent/', 'https://central.example.test/agent/api/', 'https://central.example.test/agent/ --bad',
-        'https://central.example.test/agent/"', "https://central.example.test/agent/`n")) {
-        $candidate = $bad
-        Test-Case "Reject unsafe URL: $($results.Count)" { Assert-Rejected { ConvertTo-SafeUploadAdminUrl $candidate } }
-    }
     $installRoot = Join-Path $fixture 'Program Files\SafeUpload\Agent'
     Test-Case 'A path containing spaces remains one quoted service executable' {
-        $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode Drive -AdminBaseUrl 'https://central.example.test/agent/'
-        Assert-True $plan.CommandLine.StartsWith(('"' + (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') + '" '))
-        Assert-True $plan.CommandLine.Contains('--Interception:Mode=Drive --CentroAdministracao:BaseUrl=https://central.example.test/agent/ --InspecaoTls:Habilitada=false')
+        $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode Drive
+        $expected = '"' + (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') + '" --Interception:Mode=Drive --InspecaoTls:Habilitada=false'
+        Assert-True ($plan.CommandLine -eq $expected)
         Assert-True (-not $plan.RestartRequired -and -not $plan.CommandLine.Contains('StagingPrototype'))
     }
     Test-Case 'Drive is the default mode' { Assert-True ((New-SafeUploadInstallPlan -InstallRoot $installRoot).Mode -eq 'Drive') }
     Test-Case 'Test mode is explicit and has no staged-driver flag' {
         $plan = New-SafeUploadInstallPlan -InstallRoot $installRoot -Mode FileSystemWatcher
-        Assert-True ($plan.CommandLine.Contains('--CentroAdministracao:BaseUrl= --InspecaoTls:Habilitada=false') -and
+        Assert-True ($plan.CommandLine.EndsWith('--Interception:Mode=FileSystemWatcher --InspecaoTls:Habilitada=false') -and
+            -not $plan.CommandLine.Contains('--CentroAdministracao:BaseUrl=') -and
             -not $plan.CommandLine.Contains('StagingPrototype') -and -not $plan.RestartRequired)
     }
     Test-Case 'Different target directory is refused' { Assert-Rejected { Assert-SafeUploadDirectory -Path $fixture -ExpectedPath $installRoot } }

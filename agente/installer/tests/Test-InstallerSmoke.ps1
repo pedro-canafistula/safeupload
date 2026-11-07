@@ -44,17 +44,17 @@ function Run-Installer([string]$Label, [string[]]$Additional) {
     return $process.ExitCode
 }
 try {
-    Require ((Run-Installer 'rejected-http' @('/MODE=FileSystemWatcher', '/ADMINURL=http://remote.example.test/agent/')) -ne 0) 'Remote HTTP must be rejected.'
+    Require ((Run-Installer 'rejected-adminurl' @('/MODE=FileSystemWatcher', '/ADMINURL=https://console.example.test/agent/')) -ne 0) 'The legacy server URL must be rejected.'
     Require (-not (Test-Path -LiteralPath $serviceKey)) 'Rejected setup registered a service.'
     Require ((Run-Installer 'rejected-drive' @('/MODE=Drive')) -ne 0) 'Drive mode without WinFsp (not installed, not bundled) must be rejected.'
     Require (-not (Test-Path -LiteralPath $serviceKey)) 'Driver preflight failure registered a service.'
-    $result.steps += 'unsafe URL and missing driver rejected before service creation'
+    $result.steps += 'legacy server URL and missing driver rejected before service creation'
     Require ((Run-Installer 'install' @('/MODE=FileSystemWatcher')) -eq 0) 'Initial installation failed.'
     $service = Get-CimInstance Win32_Service -Filter "Name='SafeUploadAgent'"
     Require ($service.StartName -eq 'LocalSystem' -and $service.State -eq 'Running') 'Expected running LocalSystem service.'
     Require ($service.PathName.StartsWith(('"' + (Join-Path $installRoot 'service\SafeUpload.Agent.Service.exe') + '" '))) 'Unquoted or unexpected service path.'
-    Require ($service.PathName.Contains('--Interception:Mode=FileSystemWatcher') -and
-        $service.PathName.Contains('--CentroAdministracao:BaseUrl= --InspecaoTls:Habilitada=false')) 'Unexpected service configuration.'
+    Require ($service.PathName.EndsWith('--Interception:Mode=FileSystemWatcher --InspecaoTls:Habilitada=false') -and
+        -not $service.PathName.Contains('--CentroAdministracao:BaseUrl=')) 'Unexpected service configuration.'
     Require ((Get-ItemProperty -LiteralPath $serviceKey).ServiceSidType -eq 1) 'Expected unrestricted service SID.'
     Require (Test-Path -LiteralPath (Join-Path $installRoot 'service\coreclr.dll')) 'Self-contained service runtime missing.'
     Require (Test-Path -LiteralPath (Join-Path $installRoot 'ui\coreclr.dll')) 'Self-contained UI runtime missing.'

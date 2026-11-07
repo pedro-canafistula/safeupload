@@ -8,8 +8,8 @@ Installs SafeUpload on this machine: WinFsp (if needed), the gate driver, the ag
 .\Install-SafeUploadAgent.ps1 -PackagePath C:\pkg\agent -DriverPath C:\pkg\driver -WinFspMsi C:\pkg\winfsp-2.1.25156.msi
 
 PackagePath holds SafeUpload.Agent.Service.exe and the tray app under App\. DriverPath holds SafeUpload.sys (signed
-with the test certificate; the machine needs test signing on). AdminBaseUrl points the agent at
-the web console (http://host:8080/agent/); leave it empty to use C:\ProgramData\SafeUpload\policy.json.
+with the test certificate; the machine needs test signing on). To connect to the console,
+run SafeUpload.Agent.Service.exe cadastrar after installation.
 
 -PrerequisitesOnly installs only WinFsp and the gate driver; the .exe installer (agente/installer) uses it.
 #>
@@ -22,6 +22,7 @@ param(
     [switch] $PrerequisitesOnly
 )
 $ErrorActionPreference = 'Stop'
+if ($AdminBaseUrl) { throw 'Install without -AdminBaseUrl, then use SafeUpload.Agent.Service.exe cadastrar.' }
 $programFiles = if ($env:ProgramW6432) { $env:ProgramW6432 } else { [Environment]::GetFolderPath('ProgramFiles') }
 # Same layout as the .exe installer: the tray app checks that its pipe peer is the service at ..\service\.
 $installRoot = Join-Path $programFiles 'SafeUpload\Agent'
@@ -70,7 +71,7 @@ if ($existing) { Stop-Service -Name SafeUploadAgent -Force -ErrorAction Silently
 Get-Process -Name 'SafeUpload.Agent.App' -ErrorAction SilentlyContinue | Stop-Process -Force
 New-Item -ItemType Directory -Force -Path $agentDirectory | Out-Null
 Get-ChildItem -LiteralPath $package -Force | Where-Object { $_.Name -ne 'App' } | Copy-Item -Destination $agentDirectory -Recurse -Force
-$binaryPath = '"' + (Join-Path $agentDirectory 'SafeUpload.Agent.Service.exe') + '" "--CentroAdministracao:BaseUrl=' + $AdminBaseUrl + '"'
+$binaryPath = '"' + (Join-Path $agentDirectory 'SafeUpload.Agent.Service.exe') + '"'
 if (-not $existing) {
     New-Service -Name SafeUploadAgent -BinaryPathName $binaryPath -StartupType Automatic -DisplayName 'SafeUpload Agent' | Out-Null
 } else {

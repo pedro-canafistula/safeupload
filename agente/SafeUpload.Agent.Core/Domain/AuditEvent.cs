@@ -1,3 +1,5 @@
+﻿using System.Text.Json.Serialization;
+
 namespace SafeUpload.Agent.Core.Domain;
 
 /// <summary>
@@ -57,8 +59,12 @@ public sealed record AuditEvent(
     /// <summary>Local authorization identity captured by the service; excluded from the network DTO.</summary>
     public string? OwnerSid { get; init; }
 
+    /// <summary>Public key of the enrollment that owned the event when it was created. Local metadata only.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ConsoleEnrollment { get; init; }
+
     /// <summary>Nomes das regras personalizadas que casaram; null quando nenhuma.</summary>
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? CustomRules { get; init; }
 
     public static IReadOnlyList<string>? RuleNames(IEnumerable<Finding> findings)

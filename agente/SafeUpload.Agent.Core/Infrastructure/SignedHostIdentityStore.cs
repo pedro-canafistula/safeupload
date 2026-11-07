@@ -40,8 +40,8 @@ public sealed class SignedHostIdentityStore
     });
 
     /// <summary>
-    /// Cria a chave, grava-a como pendente e cadastra com o token (uma tentativa). Uma identidade já cadastrada só é
-    /// substituída com <paramref name="replace"/>; uma pendente (resposta perdida) é sempre substituída.
+    /// Cria a chave e cadastra com o token (uma tentativa). Só grava após receber um ID válido.
+    /// Uma identidade já cadastrada só pode ser substituída com <paramref name="replace"/>.
     /// </summary>
     public async Task<SignedAgentIdentity> EnrollAsync(AgentApiClient client, string? certificateSha256,
         string enrollmentToken, AgentHeartbeatHost host, bool replace, CancellationToken token)
@@ -63,7 +63,6 @@ public sealed class SignedHostIdentityStore
             CertificateSha256 = certificateSha256 is null ? null : AgentHttp.NormalizePin(certificateSha256)
         };
         document.PublicKey = Ed25519AgentKey.PublicKey(document.Seed);
-        Safe(() => { Save(document); return true; });
         document.HostId = await client.EnrollAsync(enrollmentToken, document.PublicKey, host, token).ConfigureAwait(false);
         Safe(() => { Save(document); return true; });
         return Identity(document);

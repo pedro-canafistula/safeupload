@@ -34,7 +34,8 @@ public sealed class InstallSafeUploadAgentScriptTests
     {
         string script = ReadScript("scripts", "Install-SafeUploadAgent.ps1");
         Assert.Contains("New-Service -Name SafeUploadAgent -BinaryPathName $binaryPath -StartupType Automatic", script, StringComparison.Ordinal);
-        Assert.Contains("--CentroAdministracao:BaseUrl=", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("--CentroAdministracao:BaseUrl=", script, StringComparison.Ordinal);
+        Assert.Contains("if ($AdminBaseUrl) { throw", script, StringComparison.Ordinal);
         Assert.DoesNotContain("StagingPrototype", script, StringComparison.Ordinal);
         Assert.DoesNotContain("seed-boot-policy", script, StringComparison.Ordinal);
         Assert.Contains(@"HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name SafeUploadApp", script, StringComparison.Ordinal);

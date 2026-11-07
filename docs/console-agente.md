@@ -12,8 +12,8 @@ documento do contrato; se o código mudar, mude este arquivo junto.
    com DPAPI de máquina, a chave privada, a URL, o `id_host` e o certificado fixado em
    `%ProgramData%\SafeUpload\authentication\ed25519-identity.dat`. O servidor cria o host na empresa do token.
 3. Ao iniciar, o serviço lê esse arquivo: com identidade, fala com o servidor; sem identidade, protege só com o
-   `policy.json` local. Não há URL, IP, ID ou protocolo para configurar à mão. Para trocar de servidor, apague o
-   arquivo e cadastre de novo.
+   `policy.json` local. Para trocar o cadastro, use `cadastrar` com `--substituir` e um token novo. A identidade
+   anterior permanece válida se o novo cadastro for recusado ou se o agente não receber um ID válido.
 
 `POST /agent/enroll` (sem assinatura): `{"token","chave_publica","host":{...}}` → `201 {"id_host": n}`.
 
@@ -61,9 +61,15 @@ Vetor de teste (o mesmo nos testes Java e C#): semente `000102…1f` (32 bytes 0
 | `POST /agent/events` | lote de auditoria (formato inalterado, `schemaVersion` 1) | `200 {"acceptedEvents","acceptedOverrides"}` |
 
 A cada 30 s o agente envia heartbeat e lê a política. Com o servidor fora do ar, ele usa a última política válida
-guardada em `console-policy-cache.json`. Com `404`, usa o `policy.json` local. Os eventos ficam numa fila em disco e
+guardada em `console-policy-cache.json`, vinculada ao servidor, ao ID do host e à chave pública do cadastro.
+Após trocar o cadastro, ou se o cache for de um formato anterior sem esse vínculo, vale o `policy.json` local
+até a primeira leitura bem-sucedida da política. Com `404`, usa o `policy.json` local. Os eventos ficam numa fila em disco e
 só saem dela depois do recibo. O servidor grava cada evento com o `id_host` autenticado: o `endpointId` do corpo é
 apenas um rótulo.
+
+A fila associa cada evento ao cadastro que o originou. Depois de um recadastro, só os eventos do novo cadastro e
+as justificativas dos eventos dele são enviados. Registros do cadastro anterior e registros antigos sem vínculo
+ficam no histórico local, inclusive após recuperação de publicação. O formato enviado à API continua o mesmo.
 
 ## Documento de política
 

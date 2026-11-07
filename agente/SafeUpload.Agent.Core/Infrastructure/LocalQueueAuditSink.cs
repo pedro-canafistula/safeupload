@@ -45,13 +45,18 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
     // processos; a composição do serviço registra uma única fila por processo.
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly string _queueFile;
+    private readonly string? _consoleEnrollment;
     private readonly Func<string, FileStream>? _confirmationStreamFactory;
 
     /// <summary>Usa o caminho padrão do agente.</summary>
-    public LocalQueueAuditSink() : this(AgentPaths.QueueFile)
+    public LocalQueueAuditSink() : this((SignedAgentIdentity?)null) { }
+
+    /// <summary>Usa a fila protegida e limita o envio aos registros do cadastro.</summary>
+    public LocalQueueAuditSink(SignedAgentIdentity? identity) : this(AgentPaths.QueueFile)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Protected service queue requires Windows.");
         _protection = new QueueStorageProtection(AgentPaths.QueueFile);
+        _consoleEnrollment = identity?.PublicKey;
     }
 
     /// <summary>Unprotected explicit path for isolated tests/tools; the service uses the protected default constructor.</summary>
@@ -60,6 +65,9 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
         ArgumentException.ThrowIfNullOrWhiteSpace(queueFile);
         _queueFile = queueFile;
     }
+
+    internal LocalQueueAuditSink(string queueFile, SignedAgentIdentity identity) : this(queueFile)
+        => _consoleEnrollment = identity.PublicKey;
 
     // Owned-file I/O fault boundary for deterministic copy/cancellation tests.
     // Public constructors keep the native CreateNew FileStream path.
@@ -77,7 +85,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
     {
         ArgumentNullException.ThrowIfNull(auditEvent);
 
-        var line = JsonSerializer.Serialize(auditEvent, Options);
+        var line = JsonSerializer.Serialize(auditEvent with { ConsoleEnrollment = _consoleEnrollment }, Options);
 
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -114,21 +122,21 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
         ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.Justification);
         ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.UserName);
         ArgumentException.ThrowIfNullOrWhiteSpace(auditOverride.EndpointId);
-        var record = new
-        {
-            type = "override",
-            eventId = auditOverride.EventId,
-            justification = auditOverride.Justification,
-            occurredAtUtc = auditOverride.OccurredAtUtc,
-            userName = auditOverride.UserName,
-            endpointId = auditOverride.EndpointId,
-        };
-
-        var line = JsonSerializer.Serialize(record, Options);
-
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            string? enrollment = _consoleEnrollment is not null &&
+                await OwnsEventAsync(auditOverride.EventId, cancellationToken).ConfigureAwait(false) ? _consoleEnrollment : null;
+            var line = JsonSerializer.Serialize(new
+            {
+                type = "override",
+                eventId = auditOverride.EventId,
+                justification = auditOverride.Justification,
+                occurredAtUtc = auditOverride.OccurredAtUtc,
+                userName = auditOverride.UserName,
+                endpointId = auditOverride.EndpointId,
+                consoleEnrollment = enrollment,
+            }, Options);
             await AppendLineAsync(line, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -136,6 +144,32 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
             _writeLock.Release();
         }
     }
+
+    private async Task<bool> OwnsEventAsync(Guid eventId, CancellationToken token)
+    {
+        if (!QueueExistsChecked()) return false;
+        await using var stream = OpenQueueRead();
+        using var reader = new StreamReader(stream, Encoding.UTF8, true);
+        while (await reader.ReadLineAsync(token).ConfigureAwait(false) is { } line)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(line, new JsonDocumentOptions { AllowDuplicateProperties = false });
+                var item = document.RootElement;
+                if (item.ValueKind == JsonValueKind.Object && !item.TryGetProperty("type", out _) &&
+                    item.TryGetProperty("eventId", out var id) && id.ValueKind == JsonValueKind.String &&
+                    id.TryGetGuid(out Guid found) && found == eventId)
+                    return BelongsToEnrollment(item);
+            }
+            catch (JsonException) { /* Incomplete local records cannot establish ownership. */ }
+        }
+        return false;
+    }
+
+    private bool BelongsToEnrollment(JsonElement item) =>
+        _consoleEnrollment is null ||
+        (item.TryGetProperty("consoleEnrollment", out var enrollment) && enrollment.ValueKind == JsonValueKind.String &&
+            string.Equals(enrollment.GetString(), _consoleEnrollment, StringComparison.Ordinal));
 
     // Uma queda pode deixar a última linha sem terminador. Se anexássemos o
     // próximo evento diretamente, ele se perderia junto com a linha truncada.
@@ -244,14 +278,14 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
         finally { _writeLock.Release(); }
     }
 
-    private static string MarkSelectedLine(string line, HashSet<Guid> ids,
+    private string MarkSelectedLine(string line, HashSet<Guid> ids,
         HashSet<AuditOverride> overrides)
     {
         if (string.IsNullOrWhiteSpace(line)) return line;
         try
         {
             using var json = JsonDocument.Parse(line);
-            if (json.RootElement.ValueKind != JsonValueKind.Object) return line;
+            if (json.RootElement.ValueKind != JsonValueKind.Object || !BelongsToEnrollment(json.RootElement)) return line;
             bool selected;
             if (json.RootElement.TryGetProperty("type", out var type))
             {
@@ -296,6 +330,7 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
                     if (root.ValueKind != JsonValueKind.Object ||
                         !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String ||
                         type.GetString() != "override" ||
+                        !BelongsToEnrollment(root) ||
                         (root.TryGetProperty("dispatched", out var sent) && sent.ValueKind == JsonValueKind.True))
                         continue;
                     var record = JsonSerializer.Deserialize<AuditOverride>(line, Options);
@@ -361,7 +396,8 @@ public sealed partial class LocalQueueAuditSink : IAuditSink, IOverrideQueue, IR
                 using var json = JsonDocument.Parse(line);
                 if (json.RootElement.ValueKind != JsonValueKind.Object ||
                     json.RootElement.TryGetProperty("type", out _) ||
-                    !json.RootElement.TryGetProperty("eventId", out _))
+                    !json.RootElement.TryGetProperty("eventId", out _) ||
+                    (pendingOnly && !BelongsToEnrollment(json.RootElement)))
                 {
                     continue;
                 }

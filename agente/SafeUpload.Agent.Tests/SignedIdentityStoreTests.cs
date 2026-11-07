@@ -39,30 +39,41 @@ public sealed class SignedIdentityStoreTests : IDisposable
         Assert.DoesNotContain("TOKEN123", Encoding.Latin1.GetString(await System.IO.File.ReadAllBytesAsync(File)));
     }
 
-    [Fact]
-    public async Task Enrolled_machine_needs_replace_and_a_failed_attempt_stays_pending_until_retried()
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "{}", "http_status")]
+    [InlineData(HttpStatusCode.Created, "{}", "invalid_receipt")]
+    public async Task Failed_replacement_keeps_the_existing_enrollment(HttpStatusCode status, string body, string code)
     {
         var store = new SignedHostIdentityStore(File, enforceAcl: false);
+        SignedAgentIdentity original;
         using (var ok = new HttpClient(new Wire(_ => (HttpStatusCode.Created, "{\"id_host\":9}"))) { BaseAddress = Server })
         {
-            await store.EnrollAsync(new AgentApiClient(ok), null, "A", Host, false, default);
+            original = await store.EnrollAsync(new AgentApiClient(ok), null, "A", Host, false, default);
             var again = await Assert.ThrowsAsync<AgentIdentityException>(() =>
                 store.EnrollAsync(new AgentApiClient(ok), null, "B", Host, false, default));
             Assert.Equal("already_registered", again.Code);
         }
+        byte[] originalFile = await System.IO.File.ReadAllBytesAsync(File);
+        byte[] message = Encoding.UTF8.GetBytes("heartbeat");
+        string signature = original.Sign(message);
 
-        using (var refused = new HttpClient(new Wire(_ => (HttpStatusCode.Unauthorized, "{}"))) { BaseAddress = Server })
+        using (var refused = new HttpClient(new Wire(_ => (status, body))) { BaseAddress = new("https://other.test/agent/") })
         {
             var error = await Assert.ThrowsAsync<AgentApiException>(() =>
                 store.EnrollAsync(new AgentApiClient(refused), null, "C", Host, true, default));
-            Assert.Equal(401, error.StatusCode);
+            Assert.Equal(code, error.Code);
         }
-        Assert.Equal("registration_pending", Assert.Throws<AgentIdentityException>(() => store.Load()).Code);
+        var retained = store.Load()!;
+        Assert.Equal(original.HostId, retained.HostId);
+        Assert.Equal(Server, retained.Server);
+        Assert.Equal(original.PublicKey, retained.PublicKey);
+        Assert.Equal(signature, original.Sign(message));
+        Assert.Equal(originalFile, await System.IO.File.ReadAllBytesAsync(File));
 
-        // Cadastro pela metade é substituído sem --substituir.
         using var retry = new HttpClient(new Wire(_ => (HttpStatusCode.Created, "{\"id_host\":10}"))) { BaseAddress = Server };
-        Assert.Equal(10, (await store.EnrollAsync(new AgentApiClient(retry), null, "D", Host, false, default)).HostId);
+        Assert.Equal(10, (await store.EnrollAsync(new AgentApiClient(retry), null, "D", Host, true, default)).HostId);
         Assert.Equal(10, store.Load()!.HostId);
+        Assert.Equal("identity_changed", Assert.Throws<AgentIdentityException>(() => original.Sign(message)).Code);
     }
 
     [Fact]

@@ -4,6 +4,8 @@ namespace SafeUpload.Agent.Core.Domain;
 public sealed record AuditOverride(Guid EventId, string Justification, DateTimeOffset OccurredAtUtc,
     string UserName, string EndpointId)
 {
+    public string? ConsoleEnrollment { get; init; }
+
     /// <summary>New user submission only. Existing queue records retain their canonical text on replay.</summary>
     public static AuditOverride FromNewSubmission(Guid eventId, string justification, DateTimeOffset occurredAtUtc,
         string userName, string endpointId) => new(eventId, AuditTextPrivacy.Sanitize(justification), occurredAtUtc, userName, endpointId);
