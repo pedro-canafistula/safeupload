@@ -58,6 +58,7 @@ Vetor de teste (o mesmo nos testes Java e C#): semente `000102…1f` (32 bytes 0
 |---|---|---|
 | `POST /agent/heartbeat` | `{"host":{...},"politica_aplicada": <versão ou null>,"versao_agente":"0.3.0","formato_regras":1}` | `200 {"id_host": n}` |
 | `GET /agent/policy` | — | `200` documento de política · `404` sem política atribuída |
+| `GET /agent/identity` | — | `200 {"id_host": n}` do agente autenticado, sem alterar o estado do host |
 | `POST /agent/events` | lote de auditoria (formato inalterado, `schemaVersion` 1) | `200 {"acceptedEvents","acceptedOverrides"}` |
 
 A cada 30 s o agente envia heartbeat e lê a política. Com o servidor fora do ar, ele usa a última política válida
@@ -210,3 +211,8 @@ Fora do loopback o agente só fala HTTPS. Para o laboratório,
 `cadastrar --certificado`. O backend sobe com
 `--server.ssl.key-store=safeupload.p12 --server.ssl.key-store-password=... --server.port=8443`. Com o certificado
 fixado, o agente ignora a cadeia de confiança e compara só o SHA-256.
+
+Para trocar o certificado do mesmo servidor, rode como administrador
+`SafeUpload.Agent.Service.exe atualizar-certificado <novo-sha256>`. O comando abre HTTPS com o novo SHA-256 e
+confirma o cadastro com `GET /agent/identity` assinado. Salva somente após o console devolver o mesmo ID.
+A chave, o cache e a atribuição da fila são preservados. O serviço reinicia para carregar a configuração.

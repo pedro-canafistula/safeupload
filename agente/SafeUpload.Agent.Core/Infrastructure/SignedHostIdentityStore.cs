@@ -68,6 +68,34 @@ public sealed class SignedHostIdentityStore
         return Identity(document);
     }
 
+    /// <summary>Troca o certificado fixado depois de confirmar a identidade no console com a nova conexão.</summary>
+    public async Task<SignedAgentIdentity> UpdateCertificateAsync(string certificateSha256, CancellationToken token)
+    {
+        string pin = AgentHttp.NormalizePin(certificateSha256);
+        var current = Load() ?? throw new AgentIdentityException("missing");
+        if (current.Server.Scheme != Uri.UriSchemeHttps) throw new AgentIdentityException("https_required");
+
+        using var http = new HttpClient(new SignedRequestHandler(current) { InnerHandler = AgentHttp.CreateHandler(pin) })
+        {
+            BaseAddress = current.Server,
+            Timeout = TimeSpan.FromSeconds(15)
+        };
+        await new AgentApiClient(http).VerifyIdentityAsync(current.HostId, token).ConfigureAwait(false);
+
+        return Safe(() =>
+        {
+            using var gate = Lock();
+            using var document = Read();
+            if (document.HostId != current.HostId || document.PublicKey != current.PublicKey ||
+                document.Server != current.Server.AbsoluteUri || document.CertificateSha256 != current.CertificateSha256)
+                throw new AgentIdentityException("identity_changed");
+            token.ThrowIfCancellationRequested();
+            document.CertificateSha256 = pin;
+            Save(document);
+            return Identity(document);
+        });
+    }
+
     internal string Sign(int hostId, string publicKey, byte[] message) => Safe(() =>
     {
         using var gate = Lock();

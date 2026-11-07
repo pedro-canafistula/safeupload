@@ -36,6 +36,37 @@ internal static class EnrollCommand
         return await EnrollAsync(address, token.Trim(), pin, replace, output).ConfigureAwait(false);
     }
 
+    public static async Task<int> UpdateCertificateAsync(string[] args, TextWriter output)
+    {
+        if (args.Length != 1)
+        {
+            output.WriteLine("Uso: SafeUpload.Agent.Service.exe atualizar-certificado <sha256>");
+            return 2;
+        }
+        if (!OperatingSystem.IsWindows()) { output.WriteLine("O comando só roda no Windows."); return 1; }
+        var store = OpenIdentityStore();
+        try
+        {
+            var identity = await store.UpdateCertificateAsync(args[0], CancellationToken.None).ConfigureAwait(false);
+            output.WriteLine($"Novo certificado validado para o host {identity.HostId}. O cadastro foi preservado.");
+        }
+        catch (ArgumentException error) { output.WriteLine(error.Message); return 2; }
+        catch (AgentIdentityException error) { output.WriteLine(error.Message); return 3; }
+        catch (AgentApiException error)
+        {
+            output.WriteLine(error.StatusCode is { } status
+                ? $"O console respondeu HTTP {status} à verificação da identidade. O certificado atual foi preservado."
+                : "O console não confirmou a identidade com o novo certificado. O certificado atual foi preservado.");
+            return 4;
+        }
+        RestartService(output);
+        return 0;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static SignedHostIdentityStore OpenIdentityStore() =>
+        new(Path.Combine(AgentPaths.RootDirectory, "authentication", "ed25519-identity.dat"));
+
     [SupportedOSPlatform("windows")]
     private static async Task<int> EnrollAsync(string address, string token, string? pin, bool replace, TextWriter output)
     {
@@ -47,7 +78,7 @@ internal static class EnrollCommand
         }
         catch (ArgumentException error) { output.WriteLine(error.Message); return 2; }
 
-        var store = new SignedHostIdentityStore(Path.Combine(AgentPaths.RootDirectory, "authentication", "ed25519-identity.dat"));
+        var store = OpenIdentityStore();
         using var http = new HttpClient(AgentHttp.CreateHandler(pin)) { BaseAddress = server, Timeout = TimeSpan.FromSeconds(15) };
         try
         {
@@ -94,7 +125,7 @@ internal static class EnrollCommand
             using var service = new ServiceController(Program.ServiceName);
             if (service.Status != ServiceControllerStatus.Running)
             {
-                output.WriteLine("O cadastro vale quando o serviço SafeUploadAgent for iniciado.");
+                output.WriteLine("A configuração vale quando o serviço SafeUploadAgent for iniciado.");
                 return;
             }
             output.WriteLine("Reiniciando o serviço SafeUploadAgent...");

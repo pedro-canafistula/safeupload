@@ -64,7 +64,7 @@ public class AgentAuthFilter extends OncePerRequestFilter {
             return;
         }
         long now = clock.instant().getEpochSecond();
-        if (Math.abs(now - time) > MAX_SKEW_SECONDS) {
+        if (time < now - MAX_SKEW_SECONDS || time > now + MAX_SKEW_SECONDS) {
             reject(response, HttpStatus.UNAUTHORIZED, "Relógio do agente fora da janela de 5 minutos.");
             return;
         }

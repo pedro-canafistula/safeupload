@@ -72,6 +72,11 @@ public class AgentApiController {
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id_host", id));
     }
 
+    @GetMapping("/identity")
+    public Map<String, Object> identity(@RequestAttribute(AgentAuthFilter.HOST_ID) int hostId) {
+        return Map.of("id_host", hostId);
+    }
+
     @PostMapping("/heartbeat")
     public Map<String, Object> heartbeat(@RequestAttribute(AgentAuthFilter.HOST_ID) int hostId,
                                          @Valid @RequestBody HeartbeatRequest request) {

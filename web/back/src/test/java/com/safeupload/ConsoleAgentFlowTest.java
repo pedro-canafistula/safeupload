@@ -224,6 +224,8 @@ class ConsoleAgentFlowTest {
 
         // Máquina cadastrada por token; sem política atribuída o agente recebe 404.
         var agent = enroll(root, "PC-FIN-01");
+        call(get("/agent/identity"), null, 401);
+        assertThat(body(agentCall("GET", "identity", agent, null, 200)).get("id_host").asInt()).isEqualTo(agent.id());
         agentCall("POST", "heartbeat", agent, Map.of("host", host("PC-FIN-01"), "versao_agente", "0.2.0"), 200);
         agentCall("GET", "policy", agent, null, 404);
 
@@ -368,6 +370,7 @@ class ConsoleAgentFlowTest {
         mvc.perform(post("/agent/heartbeat").contentType(MediaType.APPLICATION_JSON).content(content))
             .andExpect(status().isUnauthorized());
         call(post("/endpoints/" + agent.id() + "/revogar").session(root), null, 204);
+        agentCall("GET", "identity", agent, null, 403);
         agentCall("GET", "policy", agent, null, 403);
         assertThat(body(call(get("/painel").session(root), null, 200)).at("/maquinas/politicaDesatualizada").asInt()).isZero();
 

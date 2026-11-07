@@ -1,4 +1,9 @@
 using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using SafeUpload.Agent.Core.Infrastructure;
@@ -78,6 +83,86 @@ public sealed class SignedIdentityStoreTests : IDisposable
 
     [Fact]
     public void No_file_means_not_enrolled() => Assert.Null(new SignedHostIdentityStore(File, enforceAcl: false).Load());
+
+    [Theory]
+    [InlineData("valid", HttpStatusCode.OK, 9, null)]
+    [InlineData("wrong-pin", HttpStatusCode.OK, 9, "transport")]
+    [InlineData("revoked", HttpStatusCode.Forbidden, 9, "http_status")]
+    [InlineData("wrong-host", HttpStatusCode.OK, 10, "invalid_receipt")]
+    [InlineData("old-server", HttpStatusCode.NotFound, 9, "http_status")]
+    public async Task Certificate_update_preserves_the_enrollment_and_only_saves_a_verified_pin(
+        string scenario, HttpStatusCode status, int receiptId, string? errorCode)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var address = new Uri($"https://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/agent/");
+        using var enrollment = new HttpClient(new Wire(_ => (HttpStatusCode.Created, "{\"id_host\":9}"))) { BaseAddress = address };
+        var store = new SignedHostIdentityStore(File, enforceAcl: false);
+        var oldPin = new string('a', 64);
+        var original = await store.EnrollAsync(new AgentApiClient(enrollment), oldPin, "A", Host, false, default);
+        byte[] before = await System.IO.File.ReadAllBytesAsync(File);
+        byte[] message = Encoding.UTF8.GetBytes("auditoria pendente");
+
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=SafeUpload local", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        // Schannel needs the same PKCS#12 key import used by the local TLS proxy.
+        using var certificate = X509CertificateLoader.LoadPkcs12(generated.Export(X509ContentType.Pkcs12), password: null);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var server = ReplyOverTlsAsync(listener, certificate, status, receiptId, scenario == "wrong-pin", deadline.Token);
+        var newPin = scenario == "wrong-pin" ? new string('b', 64) : AgentHttp.Fingerprint(certificate);
+        if (errorCode is null)
+        {
+            var updated = await store.UpdateCertificateAsync(newPin, deadline.Token);
+            Assert.Equal(newPin, updated.CertificateSha256);
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<AgentApiException>(() => store.UpdateCertificateAsync(newPin, deadline.Token));
+            Assert.Equal(errorCode, error.Code);
+            Assert.Equal(before, await System.IO.File.ReadAllBytesAsync(File));
+        }
+        var signedRequest = await server;
+        if (scenario != "wrong-pin")
+        {
+            Assert.NotNull(signedRequest);
+            Assert.StartsWith("GET /agent/identity HTTP/1.1", signedRequest);
+            Assert.Contains("X-SafeUpload-Host: 9", signedRequest, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("X-SafeUpload-Signature:", signedRequest, StringComparison.OrdinalIgnoreCase);
+        }
+        else Assert.Null(signedRequest);
+
+        var loaded = store.Load()!;
+        Assert.Equal(errorCode is null ? newPin : oldPin, loaded.CertificateSha256);
+        Assert.Equal(original.HostId, loaded.HostId);
+        Assert.Equal(original.PublicKey, loaded.PublicKey);
+        Assert.Equal(original.Server, loaded.Server);
+        Assert.Equal(original.Sign(message), loaded.Sign(message));
+    }
+
+    private static async Task<string?> ReplyOverTlsAsync(TcpListener listener, X509Certificate2 certificate,
+        HttpStatusCode status, int hostId, bool expectRejectedTls, CancellationToken token)
+    {
+        using var connection = await listener.AcceptTcpClientAsync(token);
+        await using var tls = new SslStream(connection.GetStream());
+        try
+        {
+            await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = certificate }, token);
+            using var reader = new StreamReader(tls, Encoding.ASCII, leaveOpen: true);
+            var headers = new StringBuilder();
+            while (await reader.ReadLineAsync(token) is { Length: > 0 } line) headers.AppendLine(line);
+            if (headers.Length == 0) return null;
+            string body = $"{{\"id_host\":{hostId}}}";
+            byte[] response = Encoding.ASCII.GetBytes(
+                $"HTTP/1.1 {(int)status} Response\r\nContent-Length: {body.Length}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}");
+            await tls.WriteAsync(response, token);
+            return headers.ToString();
+        }
+        catch (Exception error) when (expectRejectedTls && error is AuthenticationException or IOException)
+        {
+            return null;
+        }
+    }
 
     private sealed class Wire(Func<string, (HttpStatusCode, string)> respond) : HttpMessageHandler
     {
