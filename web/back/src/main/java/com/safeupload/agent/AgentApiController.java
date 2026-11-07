@@ -46,7 +46,8 @@ public class AgentApiController {
     public record HeartbeatRequest(
         @NotNull @Valid Host host,
         @JsonProperty("politica_aplicada") Integer politicaAplicada,
-        @Size(max = 50) @JsonProperty("versao_agente") String versaoAgente) {}
+        @Size(max = 50) @JsonProperty("versao_agente") String versaoAgente,
+        @Min(0) @Max(100) @JsonProperty("formato_regras") Integer formatoRegras) {}
 
     private final HostStore hosts;
     private final PolicyStore policies;
@@ -74,14 +75,15 @@ public class AgentApiController {
     @PostMapping("/heartbeat")
     public Map<String, Object> heartbeat(@RequestAttribute(AgentAuthFilter.HOST_ID) int hostId,
                                          @Valid @RequestBody HeartbeatRequest request) {
-        hosts.heartbeat(hostId, request.host().info(), request.politicaAplicada(), request.versaoAgente());
+        hosts.heartbeat(hostId, request.host().info(), request.politicaAplicada(), request.versaoAgente(),
+            request.formatoRegras() == null ? 0 : request.formatoRegras());
         return Map.of("id_host", hostId);
     }
 
     @GetMapping("/policy")
     public ResponseEntity<Map<String, Object>> policy(@RequestAttribute(AgentAuthFilter.HOST_ID) int hostId) {
-        return policies.effectiveForHost(hostId)
-            .map(effective -> ResponseEntity.ok(effective.configuracao().agentDocument(effective.versao())))
+        return policies.agentDocumentForHost(hostId)
+            .map(ResponseEntity::ok)
             .orElseGet(() -> ResponseEntity.notFound().build());
     }
 

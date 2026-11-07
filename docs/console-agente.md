@@ -56,7 +56,7 @@ Vetor de teste (o mesmo nos testes Java e C#): semente `000102…1f` (32 bytes 0
 
 | Rota | Corpo | Resposta |
 |---|---|---|
-| `POST /agent/heartbeat` | `{"host":{...},"politica_aplicada": <versão ou null>,"versao_agente":"0.2.0"}` | `200 {"id_host": n}` |
+| `POST /agent/heartbeat` | `{"host":{...},"politica_aplicada": <versão ou null>,"versao_agente":"0.3.0","formato_regras":1}` | `200 {"id_host": n}` |
 | `GET /agent/policy` | — | `200` documento de política · `404` sem política atribuída |
 | `POST /agent/events` | lote de auditoria (formato inalterado, `schemaVersion` 1) | `200 {"acceptedEvents","acceptedOverrides"}` |
 
@@ -140,9 +140,56 @@ Rotas administrativas (sessão ADMIN/ROOT, sempre dentro da empresa do usuário)
 ```
 
 Regras: as 9 categorias são obrigatórias (`bloquear`, `alertar` ou `ignorar`) e pelo menos uma não pode ser
-`ignorar`; `credenciais` vira `Password` + `Secret` no agente. `pastas` aceita até 32 caminhos absolutos (`C:\...`
+`ignorar` (ou uma regra personalizada precisa estar em uso); `credenciais` vira `Password` + `Secret` no agente. `pastas` aceita até 32 caminhos absolutos (`C:\...`
 ou `\\servidor\compartilhamento`). `extensoes` aceita de 1 a 64 itens no formato `.abc`. `tamanhoMaximoMb` vai de 1
 a 4096 e `tempoLimiteSegundos` de 5 a 3600. `clipboard` é `desligado`, `alertar` ou `bloquear`.
+`regrasPersonalizadas` (opcional) mapeia o id de uma regra da empresa para `bloquear`, `alertar` ou `ignorar`.
+
+## Regras personalizadas
+
+O administrador cria regras de detecção no console, sem recompilar o agente. Uma regra combina condições:
+
+| Condição (console) | O que procura |
+|---|---|
+| `contem: ["projeto atlas"]` | palavras ou frases inteiras; qualquer uma da lista conta. Maiúsculas e acentos não importam, e espaços, quebras de linha e hífens entre as palavras contam como um espaço |
+| `mascara: "CT-####/##"` | `#` = dígito, `A` = letra, o resto literal; sem diferenciar maiúsculas |
+| `regex: "\\bMAT-(\\d{8})\\b"` | expressão do subconjunto comum Java/.NET: literais, `[...]`, `.`, `( )`, `(?: )`, `\|`, `* + ? {n} {n,} {n,m}` (também preguiçosos) e `\d \D \w \W \s \S \b`. Sem lookaround, referência a grupo, `^`/`$` ou flags embutidas |
+| `todos: [...]` · `algum: [...]` · `nao: {...}` | combinações, até 4 níveis e 20 condições folha por regra |
+
+Opções das folhas: `minimo` (ocorrências, 1 a 1000), `ignorarCaixa` (regex), `validador` (`cpf`, `cnpj`, `luhn` ou
+`mod11`: último dígito verificador com pesos 2..9 da direita para a esquerda; resto menor que 2 dá 0, senão 11 − resto)
+e `grupoValidado` (o grupo da regex cujos dígitos vão para o validador; 0 = a ocorrência inteira).
+
+**Nada inválido é publicado.** Ao salvar, o servidor lê a regex com a gramática própria, normaliza (`\d` vira `[0-9]`,
+`.` vira `[^\n]`, `\w` vira `[\p{L}\p{N}_]`...) e recusa padrões que casam com texto vazio. Cada regra traz pelo menos
+um exemplo que deve ser sinalizado e um que não deve, e o servidor os confere. Publicar uma política com regras para
+máquinas cujo agente não informou `formato_regras` ≥ 1 no heartbeat é recusado com `409`, com a lista das máquinas.
+Editar uma regra cria uma versão nova de cada política que a usa. O agente ainda recusa uma versão cuja regra não
+compila e continua na anterior, como rede de segurança.
+
+No documento do agente, a política ganha `customRulesFormat: 1` e `customRules`:
+
+```json
+{ "id": 17, "revision": 2, "name": "Contratos do Projeto Atlas", "alert": true,
+  "when": { "all": [
+    { "words": ["projeto atlas"] },
+    { "pattern": "CT\\-[0-9][0-9][0-9][0-9]\\/[0-9][0-9]", "ignoreCase": true, "min": 2 },
+    { "not": { "words": ["divulgacao autorizada"] } } ] } }
+```
+
+Uma regra em Alertar entra como `CustomRuleAlert` em `activeCategories` e `alertCategories`; em Bloquear, como
+`CustomRule`. O evento de auditoria leva `categories: ["CustomRule"]` (ou `CustomRuleAlert`) e
+`customRules: ["Contratos do Projeto Atlas"]`. O agente procura no mesmo texto que já extrai (arquivo, ZIP, upload
+web, clipboard) e conta cada ocorrência uma vez; uma ocorrência pode ter até 256 caracteres. Os casos em
+`web/back/src/test/resources/regras-personalizadas-casos.json` são conferidos pelos testes do backend e do agente.
+
+| Rota (ADMIN/ROOT) | Uso |
+|---|---|
+| `GET /regras` | `id, nome, descricao, revisao, quando, atualizadaEm, atualizadaPor, politicas[]` |
+| `GET /regras/{id}` | `+ exemplos` |
+| `POST /regras` · `PUT /regras/{id}` | `{nome, descricao, quando, exemplos: {sinalizar[], naoSinalizar[]}}` → `{id, revisao}` |
+| `DELETE /regras/{id}` | `409` se alguma política usa a regra |
+| `POST /regras/testar` | `{quando, textos[]}` → `[{matched, condicoes: [{condicao, ocorrencias, atende}]}]` |
 
 ## Transporte
 

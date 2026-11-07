@@ -13,4 +13,8 @@ public sealed record Finding(Category Category, string MaskedSnippet)
     /// <summary>Archive diagnostic only; sensitive name components are redacted. Never a filesystem locator.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? MemberName { get; init; }
+
+    /// <summary>Nome da regra personalizada, para <see cref="Category.CustomRule"/> e <see cref="Category.CustomRuleAlert"/>.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? RuleName { get; init; }
 }

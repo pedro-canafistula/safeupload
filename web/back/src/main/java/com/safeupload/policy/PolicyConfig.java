@@ -25,8 +25,12 @@ public record PolicyConfig(
     Integer tamanhoMaximoMb,
     Integer tempoLimiteSegundos,
     Boolean permitirJustificativa,
-    String clipboard
+    String clipboard,
+    Map<String, String> regrasPersonalizadas
 ) {
+    /** Uma regra personalizada já compilada, como o agente a recebe. */
+    public record AgentRule(int id, int revision, String name, Map<String, Object> when) {}
+
     /** Código do console → categorias do agente. */
     public static final Map<String, List<String>> CATEGORIES = categories();
     private static final Pattern LOCAL_PATH = Pattern.compile("^[A-Za-z]:\\\\[^<>\"|?*\\p{Cntrl}]*$");
@@ -58,7 +62,19 @@ public record PolicyConfig(
                 throw invalid("Ação de categoria inválida: use bloquear, alertar ou ignorar.");
             any |= !action.equals("ignorar");
         }
-        if (!any) throw invalid("Pelo menos uma categoria precisa bloquear ou alertar.");
+        var rules = new java.util.TreeMap<String, String>();
+        for (var entry : (regrasPersonalizadas == null ? Map.<String, String>of() : regrasPersonalizadas).entrySet()) {
+            if (entry.getKey() == null || !entry.getKey().matches("[1-9][0-9]{0,8}"))
+                throw invalid("Regra personalizada inválida na política.");
+            if (!List.of("bloquear", "alertar", "ignorar").contains(entry.getValue()))
+                throw invalid("Ação de regra inválida: use bloquear, alertar ou ignorar.");
+            if (!entry.getValue().equals("ignorar")) {
+                rules.put(entry.getKey(), entry.getValue());
+                any = true;
+            }
+        }
+        if (rules.size() > 50) throw invalid("No máximo 50 regras personalizadas por política.");
+        if (!any) throw invalid("Pelo menos uma categoria ou regra precisa bloquear ou alertar.");
 
         var folders = new ArrayList<String>();
         var seenFolders = new HashSet<String>();
@@ -87,11 +103,19 @@ public record PolicyConfig(
             throw invalid("Clipboard deve ser desligado, alertar ou bloquear.");
         return new PolicyConfig(Map.copyOf(categorias), List.copyOf(folders), Boolean.TRUE.equals(pendrives),
             Boolean.TRUE.equals(rede), List.copyOf(exts), tamanhoMaximoMb, tempoLimiteSegundos,
-            Boolean.TRUE.equals(permitirJustificativa), clipboard);
+            Boolean.TRUE.equals(permitirJustificativa), clipboard, Map.copyOf(rules));
     }
 
-    /** Documento que o agente recebe em GET /agent/policy. */
-    public Map<String, Object> agentDocument(int version) {
+    /** Ids das regras que a política usa (ação diferente de "ignorar"). */
+    public List<Integer> ruleIds() {
+        return (regrasPersonalizadas == null ? Map.<String, String>of() : regrasPersonalizadas).entrySet().stream()
+            .filter(e -> !"ignorar".equals(e.getValue())).map(e -> Integer.valueOf(e.getKey())).sorted().toList();
+    }
+
+    public Map<String, Object> agentDocument(int version) { return agentDocument(version, Map.of()); }
+
+    /** Documento que o agente recebe em GET /agent/policy; {@code rules} traz as regras usadas, por id. */
+    public Map<String, Object> agentDocument(int version, Map<Integer, AgentRule> rules) {
         Set<String> active = new java.util.TreeSet<>();
         Set<String> alert = new java.util.TreeSet<>();
         CATEGORIES.forEach((code, agentCategories) -> {
@@ -105,6 +129,21 @@ public record PolicyConfig(
         scopes.put("destinationPaths", pastas);
         scopes.put("removableDrives", pendrives);
         scopes.put("networkPaths", rede);
+        var customRules = new java.util.ArrayList<Map<String, Object>>();
+        for (int id : ruleIds()) {
+            AgentRule rule = rules.get(id);
+            if (rule == null) throw new IllegalStateException("Regra " + id + " da política não encontrada.");
+            boolean alertRule = "alertar".equals(regrasPersonalizadas.get(String.valueOf(id)));
+            active.add(alertRule ? "CustomRuleAlert" : "CustomRule");
+            if (alertRule) alert.add("CustomRuleAlert");
+            var item = new LinkedHashMap<String, Object>();
+            item.put("id", rule.id());
+            item.put("revision", rule.revision());
+            item.put("name", rule.name());
+            item.put("alert", alertRule);
+            item.put("when", rule.when());
+            customRules.add(item);
+        }
         var document = new LinkedHashMap<String, Object>();
         document.put("version", version);
         document.put("activeCategories", List.copyOf(active));
@@ -120,6 +159,10 @@ public record PolicyConfig(
             case "bloquear" -> "Block";
             default -> "Off";
         }));
+        if (!customRules.isEmpty()) {
+            document.put("customRulesFormat", 1);
+            document.put("customRules", customRules);
+        }
         return document;
     }
 

@@ -36,7 +36,10 @@ internal sealed record AgentAuditEvent(
     long ElapsedMs,
     bool Dispatched,
     string? PublishedSha256Hex,
-    AuditChannel Channel)
+    AuditChannel Channel,
+    // Só aparece quando alguma regra personalizada casou: eventos antigos na fila mantêm o mesmo JSON.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? CustomRules = null)
 {
     public static AgentAuditEvent FromLocal(AuditEvent item) => new(
         item.EventId, item.OccurredAtUtc.ToUniversalTime(), item.EndpointId, item.UserName,
@@ -44,5 +47,5 @@ internal sealed record AgentAuditEvent(
         // can leave an already accepted event pending through an agent upgrade.
         item.FileName, item.Extension, item.SizeBytes, item.Verdict, item.Categories, [],
         item.ProcessName, item.ProcessId, item.DestinationPath, item.NotInspectedReason,
-        item.PolicyVersion, item.ElapsedMs, false, item.PublishedSha256Hex, item.Channel);
+        item.PolicyVersion, item.ElapsedMs, false, item.PublishedSha256Hex, item.Channel, item.CustomRules);
 }

@@ -1,0 +1,119 @@
+[
+  {
+    "nome": "frase inteira, sem caixa nem acento, com hífen ou quebra de linha",
+    "quando": { "contem": ["Projeto Átlas"] },
+    "when": { "words": ["projeto atlas"] },
+    "textos": [
+      { "texto": "Relatório do PROJETO ATLAS.", "esperado": true },
+      { "texto": "projeto-atlas, revisão 3", "esperado": true },
+      { "texto": "projeto\n   atlas", "esperado": true },
+      { "texto": "O Atlas do projeto", "esperado": false },
+      { "texto": "projetoatlas", "esperado": false },
+      { "texto": "Atlas", "esperado": false },
+      { "texto": "projeto atlasco", "esperado": false }
+    ]
+  },
+  {
+    "nome": "qualquer palavra da lista, com mínimo de ocorrências",
+    "quando": { "contem": ["confidencial", "sigiloso"], "minimo": 2 },
+    "when": { "words": ["confidencial", "sigiloso"], "min": 2 },
+    "textos": [
+      { "texto": "Confidencial e SIGILOSO", "esperado": true },
+      { "texto": "documento confidencial", "esperado": false },
+      { "texto": "confidencialidade confidencial", "esperado": false }
+    ]
+  },
+  {
+    "nome": "máscara com mínimo de 2",
+    "quando": { "mascara": "CT-####/##", "minimo": 2 },
+    "when": { "pattern": "CT\\-[0-9][0-9][0-9][0-9]\\/[0-9][0-9]", "ignoreCase": true, "min": 2 },
+    "textos": [
+      { "texto": "contratos CT-2041/26 e ct-2042/26", "esperado": true },
+      { "texto": "só o CT-2041/26", "esperado": false },
+      { "texto": "CT-20411/26 e CT-2042/2", "esperado": false }
+    ]
+  },
+  {
+    "nome": "regex com grupo validado por mod11 e fronteira de palavra",
+    "quando": { "regex": "\\bMAT-(\\d{8})\\b", "validador": "mod11", "grupoValidado": 1 },
+    "when": { "pattern": "\\bMAT\\-([0-9]{8})\\b", "validator": "mod11", "group": 1 },
+    "textos": [
+      { "texto": "Matrícula MAT-12345679 ativa", "esperado": true },
+      { "texto": "Matrícula MAT-12345670", "esperado": false },
+      { "texto": "XMAT-12345679", "esperado": false }
+    ]
+  },
+  {
+    "nome": "máscara de CPF com validador",
+    "quando": { "mascara": "###.###.###-##", "validador": "cpf" },
+    "when": { "pattern": "[0-9][0-9][0-9]\\.[0-9][0-9][0-9]\\.[0-9][0-9][0-9]\\-[0-9][0-9]", "ignoreCase": true, "validator": "cpf" },
+    "textos": [
+      { "texto": "CPF 529.982.247-25", "esperado": true },
+      { "texto": "CPF 529.982.247-26", "esperado": false }
+    ]
+  },
+  {
+    "nome": "regex de CNPJ com validador",
+    "quando": { "regex": "\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2}", "validador": "cnpj" },
+    "when": { "pattern": "[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}\\/[0-9]{4}\\-[0-9]{2}", "validator": "cnpj" },
+    "textos": [
+      { "texto": "Fornecedor 11.222.333/0001-81", "esperado": true },
+      { "texto": "Fornecedor 11.222.333/0001-82", "esperado": false }
+    ]
+  },
+  {
+    "nome": "regex de cartão com Luhn",
+    "quando": { "regex": "\\d{4}( \\d{4}){3}", "validador": "luhn" },
+    "when": { "pattern": "[0-9]{4}( [0-9]{4}){3}", "validator": "luhn" },
+    "textos": [
+      { "texto": "cartão 4111 1111 1111 1111", "esperado": true },
+      { "texto": "cartão 4111 1111 1111 1112", "esperado": false }
+    ]
+  },
+  {
+    "nome": "todas as condições, com um não",
+    "quando": { "todos": [
+      { "contem": ["projeto atlas"] },
+      { "mascara": "CT-####/##", "minimo": 2 },
+      { "nao": { "contem": ["divulgação autorizada"] } }
+    ] },
+    "when": { "all": [
+      { "words": ["projeto atlas"] },
+      { "pattern": "CT\\-[0-9][0-9][0-9][0-9]\\/[0-9][0-9]", "ignoreCase": true, "min": 2 },
+      { "not": { "words": ["divulgacao autorizada"] } }
+    ] },
+    "textos": [
+      { "texto": "Projeto Atlas: aditivos dos contratos CT-2041/26 e CT-2042/26.", "esperado": true },
+      { "texto": "Projeto Atlas: contratos CT-2041/26 e CT-2042/26 (Divulgação autorizada pela diretoria).", "esperado": false },
+      { "texto": "Projeto Atlas: contrato CT-2041/26.", "esperado": false }
+    ]
+  },
+  {
+    "nome": "alguma condição; \\w aceita letras acentuadas",
+    "quando": { "algum": [ { "contem": ["atlas"] }, { "regex": "codinome \\w+" } ] },
+    "when": { "any": [ { "words": ["atlas"] }, { "pattern": "codinome [\\p{L}\\p{N}_]+" } ] },
+    "textos": [
+      { "texto": "o codinome Fênix", "esperado": true },
+      { "texto": "ATLAS", "esperado": true },
+      { "texto": "nada aqui", "esperado": false }
+    ]
+  },
+  {
+    "nome": "regex sem diferenciar maiúsculas, com \\s e \\S",
+    "quando": { "regex": "senha:\\s*\\S+", "ignorarCaixa": true },
+    "when": { "pattern": "senha\\:[ \\t\\n\\r\\f]*[^ \\t\\n\\r\\f]+", "ignoreCase": true },
+    "textos": [
+      { "texto": "SENHA: abc123", "esperado": true },
+      { "texto": "a senha:", "esperado": false }
+    ]
+  },
+  {
+    "nome": "ponto não atravessa quebra de linha",
+    "quando": { "regex": "ID.\\d{3}" },
+    "when": { "pattern": "ID[^\\n][0-9]{3}" },
+    "textos": [
+      { "texto": "ID-123", "esperado": true },
+      { "texto": "ID\n123", "esperado": false }
+    ]
+  }
+]

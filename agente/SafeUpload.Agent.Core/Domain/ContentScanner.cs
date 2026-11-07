@@ -37,6 +37,15 @@ public static class ContentScanner
     /// Achados mascarados, na ordem em que aparecem no texto. Lista vazia
     /// quando não há nada — nunca <c>null</c>.
     /// </returns>
+    /// <summary>Categorias embutidas e, depois, as regras personalizadas da política (se houver).</summary>
+    public static IReadOnlyList<Finding> Scan(string text, IReadOnlySet<Category> active, CustomRuleSet? rules)
+    {
+        var builtIn = Scan(text, active);
+        if (rules is null || rules.Rules.Count == 0 || text.Length == 0) return builtIn;
+        var custom = rules.Scan(text);
+        return custom.Count == 0 ? builtIn : [.. builtIn, .. custom];
+    }
+
     public static IReadOnlyList<Finding> Scan(string text, IReadOnlySet<Category> active)
     {
         ArgumentNullException.ThrowIfNull(text);

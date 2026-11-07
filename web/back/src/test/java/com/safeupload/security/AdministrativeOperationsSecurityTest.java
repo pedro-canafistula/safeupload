@@ -34,7 +34,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdministrativeOperationsSecurityTest {
     static final List<String> ADMIN_PATHS = List.of("/painel", "/auditoria", "/auditoria/exportar", "/endpoints",
         "/endpoints/1/grupo", "/politicas", "/politicas/1", "/grupos", "/admin/token", "/admin/tokens",
-        "/auth/normalregister/empresa/list", "/auth/normalregister/usuario/set", "/qualquer/rota/nova");
+        "/auth/normalregister/empresa/list", "/auth/normalregister/usuario/set", "/regras", "/regras/1", "/regras/testar",
+        "/qualquer/rota/nova");
     static final List<String> AGENT_PATHS = List.of("/agent/enroll", "/agent/heartbeat", "/agent/policy", "/agent/events");
 
     @SpringBootConfiguration
@@ -48,7 +49,8 @@ class AdministrativeOperationsSecurityTest {
         final AtomicInteger calls = new AtomicInteger();
         @RequestMapping({"/painel", "/auditoria", "/auditoria/exportar", "/endpoints", "/endpoints/1/grupo", "/politicas",
             "/politicas/1", "/grupos", "/admin/token", "/admin/tokens", "/auth/normalregister/empresa/list",
-            "/auth/normalregister/usuario/set", "/auth/normalregister/empresa/set", "/qualquer/rota/nova",
+            "/auth/normalregister/usuario/set", "/auth/normalregister/empresa/set", "/regras", "/regras/1", "/regras/testar",
+            "/qualquer/rota/nova",
             "/auth/firstregister", "/agent/enroll", "/agent/heartbeat", "/agent/policy", "/agent/events"})
         Map<String, String> handle() { calls.incrementAndGet(); return Map.of("status", "OK"); }
     }

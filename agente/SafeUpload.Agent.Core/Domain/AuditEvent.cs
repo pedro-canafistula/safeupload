@@ -56,6 +56,16 @@ public sealed record AuditEvent(
 {
     /// <summary>Local authorization identity captured by the service; excluded from the network DTO.</summary>
     public string? OwnerSid { get; init; }
+
+    /// <summary>Nomes das regras personalizadas que casaram; null quando nenhuma.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? CustomRules { get; init; }
+
+    public static IReadOnlyList<string>? RuleNames(IEnumerable<Finding> findings)
+    {
+        var names = findings.Select(static f => f.RuleName).OfType<string>().Distinct(StringComparer.Ordinal).Take(10).ToList();
+        return names.Count == 0 ? null : names;
+    }
 }
 
 /// <summary>

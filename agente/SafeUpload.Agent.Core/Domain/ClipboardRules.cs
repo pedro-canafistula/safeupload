@@ -103,7 +103,7 @@ public static class ClipboardRules
                 []);
         }
 
-        var findings = ContentScanner.Scan(text, policy.ActiveCategories);
+        var findings = ContentScanner.Scan(text, policy.ActiveCategories, policy.Rules);
 
         return findings.Count == 0
             ? new ClipboardClassification(false, ClipboardCopyReason.Clean, [])

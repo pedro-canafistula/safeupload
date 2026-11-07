@@ -30,11 +30,14 @@ public class AgentAdminController {
     private final AgentAdminQueries queries;
     private final HostStore hosts;
     private final CurrentUser currentUser;
+    private final com.safeupload.policy.PolicyStore policies;
 
-    public AgentAdminController(AgentAdminQueries queries, HostStore hosts, CurrentUser currentUser) {
+    public AgentAdminController(AgentAdminQueries queries, HostStore hosts, CurrentUser currentUser,
+                                com.safeupload.policy.PolicyStore policies) {
         this.queries = queries;
         this.hosts = hosts;
         this.currentUser = currentUser;
+        this.policies = policies;
     }
 
     @GetMapping("/painel")
@@ -65,7 +68,7 @@ public class AgentAdminController {
     @PutMapping("/endpoints/{hostId}/grupo")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assignGroup(@PathVariable int hostId, @RequestBody GroupAssignment request, Authentication auth) {
-        hosts.assignGroup(currentUser.of(auth).idEmpresa(), hostId, request.grupoId());
+        policies.assignHostGroup(currentUser.of(auth).idEmpresa(), hostId, request.grupoId());
     }
 
     @PostMapping("/endpoints/{hostId}/revogar")

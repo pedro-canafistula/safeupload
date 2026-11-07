@@ -11,7 +11,8 @@ import java.util.UUID;
 public final class AuditContracts {
     private AuditContracts() {}
     public enum Verdict { Approved, Blocked, AllowedWithoutInspection, Retained }
-    public enum Category { Cpf, Cnpj, PaymentCard, Password, Secret, Rg, BankData, HealthData, ConfidentialDocument, PersonalData }
+    public enum Category { Cpf, Cnpj, PaymentCard, Password, Secret, Rg, BankData, HealthData, ConfidentialDocument, PersonalData,
+        CustomRule, CustomRuleAlert }
     public enum Channel { File, Clipboard, Web }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -46,7 +47,8 @@ public final class AuditContracts {
         @NotNull @Positive Integer policyVersion,
         @NotNull @PositiveOrZero Long elapsedMs,
         Channel channel,
-        @Pattern(regexp = "[0-9a-fA-F]{64}") String publishedSha256Hex
+        @Pattern(regexp = "[0-9a-fA-F]{64}") String publishedSha256Hex,
+        @Size(max = 10) List<@NotBlank @Size(max = 80) String> customRules
     ) {
         public Event {
             occurredAtUtc = utc(occurredAtUtc);

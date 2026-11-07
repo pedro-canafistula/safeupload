@@ -147,7 +147,9 @@ public sealed class WebInspectionService
 
         if (text.Length > 0)
         {
-            var found = TypedTextScanner.Scan(text.ToString(), policy.ActiveCategories);
+            var typed = text.ToString();
+            IReadOnlyList<Finding> found = TypedTextScanner.Scan(typed, policy.ActiveCategories);
+            if (policy.Rules.Rules.Count > 0) found = [.. found, .. policy.Rules.Scan(typed)];
 
             if (found.Count > 0)
             {
@@ -309,7 +311,7 @@ public sealed class WebInspectionService
                 {
                     using var content = ContentTypeSniffer.AsStream(part.Content);
                     string extracted = await extractor.ExtractAsync(content, cancellationToken).ConfigureAwait(false);
-                    return ContentScanner.Scan(extracted, policy.ActiveCategories);
+                    return ContentScanner.Scan(extracted, policy.ActiveCategories, policy.Rules);
                 },
                 cancellationToken);
 
@@ -366,7 +368,7 @@ public sealed class WebInspectionService
             policy.Version,
             stopwatch.ElapsedMilliseconds,
             Dispatched: false,
-            Channel: AuditChannel.Web) { OwnerSid = upload.OwnerSid };
+            Channel: AuditChannel.Web) { OwnerSid = upload.OwnerSid, CustomRules = AuditEvent.RuleNames(findings) };
 
         try
         {

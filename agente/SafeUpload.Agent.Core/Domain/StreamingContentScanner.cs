@@ -16,13 +16,13 @@ public static class StreamingContentScanner
 
     /// <summary>The factory rewinds the same immutable source. Readers are disposed after every pass.</summary>
     public static Task<IReadOnlyList<Finding>> ScanAsync(Func<Task<TextReader>> openReader,
-        IReadOnlySet<Category> active, CancellationToken token)
-        => ScanAsync(openReader, active, token, MaximumCandidates);
+        IReadOnlySet<Category> active, CancellationToken token, CustomRuleSet? rules = null)
+        => ScanAsync(openReader, active, token, MaximumCandidates, rules);
 
     // Archives share the existing candidate ceiling across all names/members.
     // All other callers keep the same public limit and detector behavior.
     internal static async Task<IReadOnlyList<Finding>> ScanAsync(Func<Task<TextReader>> openReader,
-        IReadOnlySet<Category> active, CancellationToken token, int maximumCandidates)
+        IReadOnlySet<Category> active, CancellationToken token, int maximumCandidates, CustomRuleSet? rules = null)
     {
         ArgumentNullException.ThrowIfNull(openReader);
         ArgumentNullException.ThrowIfNull(active);
@@ -68,6 +68,24 @@ public static class StreamingContentScanner
             await ScanContextAsync(openReader, state, window => ContextDetectors.Find(window, active), token).ConfigureAwait(false);
             read = true;
         }
+        IReadOnlyList<Finding> custom = [];
+        if (rules is { Rules.Count: > 0 })
+        {
+            // Uma passada só para todas as regras personalizadas; a mesma lógica do texto inteiro.
+            var scan = rules.Start();
+            using (var reader = await openReader().ConfigureAwait(false))
+            {
+                var buffer = new char[BufferCharacters];
+                int count;
+                while ((count = await reader.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false)) != 0)
+                {
+                    token.ThrowIfCancellationRequested();
+                    scan.Feed(buffer.AsSpan(0, count));
+                }
+            }
+            custom = scan.Complete();
+            read = true;
+        }
         if (!read)
         {
             // Extraction still validates the complete encoding even when no
@@ -78,7 +96,9 @@ public static class StreamingContentScanner
                 token.ThrowIfCancellationRequested();
         }
         state.Found.Sort(static (left, right) => left.Start.CompareTo(right.Start));
-        return state.Found.ConvertAll(static value => value.Finding);
+        var findings = state.Found.ConvertAll(static value => value.Finding);
+        findings.AddRange(custom);
+        return findings;
     }
 
     private static readonly HashSet<Category> ContextCategories =

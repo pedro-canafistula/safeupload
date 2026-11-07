@@ -49,5 +49,11 @@ public enum Category
     ConfidentialDocument,
 
     /// <summary>E-mail, telefone ou data de nascimento rotulada.</summary>
-    PersonalData
+    PersonalData,
+
+    /// <summary>Regra personalizada do console com ação Bloquear; o nome está em <see cref="Finding.RuleName"/>.</summary>
+    CustomRule,
+
+    /// <summary>Regra personalizada do console com ação Alertar.</summary>
+    CustomRuleAlert
 }

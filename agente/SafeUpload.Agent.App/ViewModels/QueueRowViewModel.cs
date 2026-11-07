@@ -106,6 +106,7 @@ public static class CategoryLabels
         Category.HealthData => "Dados de saúde",
         Category.ConfidentialDocument => "Documento confidencial",
         Category.PersonalData => "Dados pessoais",
+        Category.CustomRule or Category.CustomRuleAlert => "Regra da empresa",
         _ => category.ToString()
     };
 }
