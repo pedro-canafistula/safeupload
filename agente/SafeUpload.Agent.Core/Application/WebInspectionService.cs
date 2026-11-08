@@ -99,9 +99,9 @@ public sealed record WebOversizedUpload(
 /// site, vira um evento só dentro de <see cref="RepeatWindow"/>: há sites que
 /// enviam o texto a cada tecla, e cada envio é bloqueado.
 ///
-/// Fail-open como o resto do agente: tamanho, formato, prazo e erro de
-/// leitura liberam com o motivo registrado, nunca bloqueiam. E o conteúdo não
-/// é gravado em lugar nenhum (RN-006): daqui só saem achados mascarados.
+/// Arquivos vigiados que não podem ser inspecionados são bloqueados com o
+/// motivo registrado. O conteúdo não é gravado (RN-006): daqui só saem
+/// achados mascarados.
 /// </summary>
 public sealed class WebInspectionService
 {
@@ -193,11 +193,12 @@ public sealed class WebInspectionService
                 continue;
             }
 
-            string extension = ResolveExtension(part);
+            string fileName = FileNameOnly(part.FileName);
+            string? extension = ResolveMonitoredExtension(part, fileName, policy);
 
             // RN-011 — só o que a política manda vigiar. Uma foto enviada a uma
             // rede social não é julgada nem registrada.
-            if (!policy.IsMonitoredExtension(extension))
+            if (extension is null)
             {
                 continue;
             }
@@ -207,7 +208,7 @@ public sealed class WebInspectionService
             findings.AddRange(found);
             failed |= reason is not null;
             records.Add(await AuditAsync(
-                    upload, policy, stopwatch, FileNameOnly(part.FileName), extension, part.Content.Length, verdict, found, reason, cancellationToken)
+                    upload, policy, stopwatch, fileName, extension, part.Content.Length, verdict, found, reason, cancellationToken)
                 .ConfigureAwait(false));
         }
 
@@ -364,27 +365,25 @@ public sealed class WebInspectionService
     }
 
     /// <summary>
-    /// O formato do arquivo. Os bytes mandam; o nome só vale quando eles não
-    /// dizem nada (texto e csv não têm assinatura).
+    /// Extensão usada para inspecionar o arquivo, ou nulo se estiver fora do escopo.
+    /// Uma assinatura reconhecida tem prioridade. A heurística de texto pode
+    /// mudar o extrator sem retirar do escopo um nome de arquivo vigiado.
     /// </summary>
-    private string ResolveExtension(WebUploadPart part)
+    private string? ResolveMonitoredExtension(WebUploadPart part, string fileName, Policy policy)
     {
         if (ContentTypeSniffer.Sniff(part.Content) is { } sniffed)
         {
-            return sniffed;
+            return policy.IsMonitoredExtension(sniffed) ? sniffed : null;
         }
 
-        string named = Path.GetExtension(FileNameOnly(part.FileName)).ToLowerInvariant();
-        bool text = ContentTypeSniffer.LooksLikeText(part.Content.Span);
-
-        // Nome de formato com assinatura (.pdf, .docx) sem a assinatura nos
-        // bytes: o nome está errado, e o conteúdo é julgado pelo que parece.
-        if (text && !(_extractors.Resolve(named) is PlainTextExtractor))
+        string named = Path.GetExtension(fileName).ToLowerInvariant();
+        bool nameInScope = policy.IsMonitoredExtension(named);
+        if (ContentTypeSniffer.LooksLikeText(part.Content.Span) && _extractors.Resolve(named) is not PlainTextExtractor)
         {
-            return ".txt";
+            return nameInScope || policy.IsMonitoredExtension(".txt") ? ".txt" : null;
         }
 
-        return named;
+        return nameInScope ? named : null;
     }
 
     private async Task<(Verdict Verdict, IReadOnlyList<Finding> Findings, string? Reason)> InspectFileAsync(
