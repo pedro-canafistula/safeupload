@@ -79,6 +79,10 @@ A fila associa cada evento ao cadastro que o originou. Depois de um recadastro, 
 as justificativas dos eventos dele são enviados. Registros do cadastro anterior e registros antigos sem vínculo
 ficam no histórico local, inclusive após recuperação de publicação. O formato enviado à API continua o mesmo.
 
+Ao enviar a auditoria, o agente substitui nomes acima de 255 caracteres e extensões acima de 100 pelo marcador
+`[metadado omitido: limite de tamanho]`. Assim, um nome recebido pela web que excede o limite da API não impede
+o envio dos demais eventos. O ID, o veredito e o histórico local são preservados.
+
 ## Documento de política
 
 É o mesmo formato do `policy.json` local, e o agente não traduz nada:
