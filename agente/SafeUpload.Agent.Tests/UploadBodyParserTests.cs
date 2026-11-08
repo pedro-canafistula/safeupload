@@ -55,6 +55,24 @@ public sealed class UploadBodyParserTests
         Assert.Equal("nome;cpf\r\nAna;1", TextOf(parts[1]));
     }
 
+    [Theory]
+    [InlineData("\r\n")]
+    [InlineData("\n")]
+    public void Formulario_reconhece_separadores_com_preambulo_e_espacos_finais(string lineBreak)
+    {
+        byte[] body = Encoding.UTF8.GetBytes(string.Join(lineBreak,
+            "preâmbulo",
+            "--b \t",
+            "Content-Disposition: form-data; name=\"arquivo\"; filename=\"folha.csv\"",
+            "",
+            "conteúdo completo",
+            "--b-- \t"));
+
+        var part = Assert.Single(Parse("multipart/form-data; boundary=b", body));
+        Assert.Equal("folha.csv", part.FileName);
+        Assert.Equal("conteúdo completo", TextOf(part));
+    }
+
     /// <summary>Corpo grande demais: só o começo chega, e a última parte vem cortada logo depois do cabeçalho.</summary>
     [Fact]
     public void Nomes_de_arquivo_saem_do_comeco_de_um_corpo_cortado()
