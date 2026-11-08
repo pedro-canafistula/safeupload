@@ -117,6 +117,39 @@ public sealed class AgentAuditDispatchTests
     }
 
     [Fact]
+    public async Task Web_metadata_that_exceeds_the_api_limits_does_not_block_later_events()
+    {
+        using var work = new TestWorkspace();
+        var queue = new LocalQueueAuditSink(work.QueueFile);
+        var withinLimits = Event() with { Channel = AuditChannel.Web, FileName = new string('a', 255),
+            Extension = "." + new string('a', 99) };
+        var overLimits = withinLimits with { EventId = Guid.NewGuid(), FileName = withinLimits.FileName + "a",
+            Extension = withinLimits.Extension + "a" };
+        await queue.WriteAsync(overLimits, CancellationToken.None);
+        await queue.WriteAsync(withinLimits, CancellationToken.None);
+
+        var lostReply = new Wire(fail: true);
+        await Assert.ThrowsAsync<HttpRequestException>(() => Cycle(queue, lostReply));
+        var reopened = new LocalQueueAuditSink(work.QueueFile);
+        Assert.Equal(2, (await reopened.ReadPendingAsync(10, CancellationToken.None)).Count);
+        var accepted = new Wire();
+        await Cycle(reopened, accepted);
+
+        Assert.Equal(lostReply.Body, accepted.Body);
+        using var parsed = JsonDocument.Parse(accepted.Body!);
+        var events = parsed.RootElement.GetProperty("events").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("eventId").GetGuid());
+        Assert.Equal(AuditTextPrivacy.Oversized, events[overLimits.EventId].GetProperty("fileName").GetString());
+        Assert.Equal(AuditTextPrivacy.Oversized, events[overLimits.EventId].GetProperty("extension").GetString());
+        Assert.Equal(withinLimits.FileName, events[withinLimits.EventId].GetProperty("fileName").GetString());
+        Assert.Equal(withinLimits.Extension, events[withinLimits.EventId].GetProperty("extension").GetString());
+        Assert.Empty(await reopened.ReadPendingAsync(10, CancellationToken.None));
+        var local = (await reopened.ReadRecentAsync(10, CancellationToken.None)).Single(e => e.EventId == overLimits.EventId);
+        Assert.Equal(overLimits.FileName, local.FileName);
+        Assert.Equal(overLimits.Extension, local.Extension);
+    }
+
+    [Fact]
     public async Task Projection_confirms_only_the_transmitted_batch()
     {
         using var work = new TestWorkspace();
