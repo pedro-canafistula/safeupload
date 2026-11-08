@@ -240,6 +240,44 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
         Assert.Single(_site.Requests);
     }
 
+    [Theory]
+    [InlineData("folha.docx", HttpStatusCode.Forbidden)]
+    [InlineData("folha.txt", HttpStatusCode.OK)]
+    public async Task Texto_com_nome_de_documento_vigiado_nao_escapa_da_inspecao(string fileName, HttpStatusCode expected)
+    {
+        using var workspace = new TestWorkspace();
+        workspace.WritePolicy("""
+            {"version":1,"activeCategories":["Cpf"],"monitoredScopes":{"extensions":[".docx"]}}
+            """);
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var engine = new WebInspectionService(new LocalPolicyStore(workspace.PolicyFile), sink, ExtractorRegistry.CreateDefault());
+        await using TlsInspectionProxy proxy = StartProxy(new WebUploadInspector(engine, NullLogger<WebUploadInspector>.Instance));
+        using HttpClient browser = Browser(proxy, out _);
+        using var form = new MultipartFormDataContent
+        {
+            { new ByteArrayContent(Encoding.UTF8.GetBytes("nome;cpf\nAna;529.982.247-25\n")), "arquivo", fileName },
+        };
+
+        using HttpResponseMessage response = await browser.PostAsync(_site.Url("/upload"), form);
+
+        Assert.Equal(expected, response.StatusCode);
+        var events = await sink.ReadRecentAsync(10, CancellationToken.None);
+        if (expected == HttpStatusCode.Forbidden)
+        {
+            Assert.Empty(_site.Requests);
+            var audit = Assert.Single(events);
+            Assert.Equal(Verdict.Blocked, audit.Verdict);
+            Assert.Equal(fileName, audit.FileName);
+            Assert.Equal(".txt", audit.Extension);
+            Assert.Contains(Category.Cpf, audit.Categories);
+        }
+        else
+        {
+            Assert.Single(_site.Requests);
+            Assert.Empty(events);
+        }
+    }
+
     /// <summary>
     /// Fase 4: host na lista de exceções passa por túnel. O navegador vê o
     /// certificado do site de verdade, e o inspetor não é chamado.
