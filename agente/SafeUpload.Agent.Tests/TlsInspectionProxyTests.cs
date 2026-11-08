@@ -241,6 +241,31 @@ public sealed class TlsInspectionProxyTests : IAsyncLifetime
     }
 
     [Theory]
+    [InlineData("prefixo--safeupload-demo--")]
+    [InlineData("prefixo\r\n--safeupload-demo--continua")]
+    [InlineData("prefixo\n--safeupload-demo--")]
+    public async Task Marcador_dentro_do_arquivo_nao_encerra_a_inspecao_multipart(string prefix)
+    {
+        using var workspace = new TestWorkspace();
+        var sink = new LocalQueueAuditSink(workspace.QueueFile);
+        var engine = new WebInspectionService(new LocalPolicyStore(workspace.PolicyFile), sink, ExtractorRegistry.CreateDefault());
+        await using TlsInspectionProxy proxy = StartProxy(new WebUploadInspector(engine, NullLogger<WebUploadInspector>.Instance));
+        using HttpClient browser = Browser(proxy, out _);
+        using var form = new MultipartFormDataContent("safeupload-demo")
+        {
+            { new StringContent(prefix + "\r\nCPF 529.982.247-25"), "arquivo", "folha.csv" },
+        };
+
+        using HttpResponseMessage response = await browser.PostAsync(_site.Url("/upload"), form);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(_site.Requests);
+        var audit = Assert.Single(await sink.ReadRecentAsync(10, CancellationToken.None));
+        Assert.Equal(Verdict.Blocked, audit.Verdict);
+        Assert.Contains(Category.Cpf, audit.Categories);
+    }
+
+    [Theory]
     [InlineData("folha.docx", HttpStatusCode.Forbidden)]
     [InlineData("folha.txt", HttpStatusCode.OK)]
     public async Task Texto_com_nome_de_documento_vigiado_nao_escapa_da_inspecao(string fileName, HttpStatusCode expected)

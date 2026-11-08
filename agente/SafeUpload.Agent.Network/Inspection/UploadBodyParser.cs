@@ -177,34 +177,43 @@ public static class UploadBodyParser
         byte[] delimiter = Encoding.ASCII.GetBytes("--" + boundary);
         ReadOnlySpan<byte> span = body.Span;
 
-        int position = span.IndexOf(delimiter);
+        var boundaryLine = FindBoundary(span, delimiter, 0, requireCrLf: false);
+        bool requireCrLf = boundaryLine is { CrLf: true };
 
-        while (position >= 0)
+        while (boundaryLine is { Closing: false } current)
         {
-            int start = position + delimiter.Length;
-
-            // "--fronteira--" encerra o corpo.
-            if (span[start..].StartsWith("--"u8))
-            {
-                return;
-            }
-
-            int lineEnd = span[start..].IndexOf((byte)'\n');
-
-            if (lineEnd < 0)
-            {
-                return;
-            }
-
-            start += lineEnd + 1;
-
-            int next = span[start..].IndexOf(delimiter);
-            int end = next < 0 ? span.Length : start + next;
-
+            int start = current.ContentStart;
+            boundaryLine = FindBoundary(span, delimiter, start, requireCrLf);
+            int end = boundaryLine?.Position ?? span.Length;
             AddPart(parts, body[start..TrimLineBreak(span, start, end)], depth);
-
-            position = next < 0 ? -1 : start + next;
         }
+    }
+
+    private static (int Position, int ContentStart, bool Closing, bool CrLf)? FindBoundary(
+        ReadOnlySpan<byte> body, ReadOnlySpan<byte> delimiter, int start, bool requireCrLf)
+    {
+        while (start < body.Length)
+        {
+            int offset = body[start..].IndexOf(delimiter);
+            if (offset < 0) return null;
+
+            int position = start + offset;
+            start = position + 1;
+            // Uma ocorrência no meio do arquivo não separa partes. Se o
+            // formulário usa CRLF, um LF isolado no arquivo também não separa.
+            if (position != 0 && (requireCrLf ? !body[..position].EndsWith("\r\n"u8) : body[position - 1] != '\n'))
+                continue;
+
+            ReadOnlySpan<byte> suffix = body[(position + delimiter.Length)..];
+            bool closing = suffix.StartsWith("--"u8);
+            if (closing) suffix = suffix[2..];
+            while (!suffix.IsEmpty && suffix[0] is (byte)' ' or (byte)'\t') suffix = suffix[1..];
+
+            if (suffix.StartsWith("\r\n"u8)) return (position, body.Length - suffix.Length + 2, closing, true);
+            if (!requireCrLf && suffix.StartsWith("\n"u8)) return (position, body.Length - suffix.Length + 1, closing, false);
+            if (closing && suffix.IsEmpty) return (position, body.Length, true, false);
+        }
+        return null;
     }
 
     private static void AddPart(List<UploadPart> parts, ReadOnlyMemory<byte> part, int depth)
