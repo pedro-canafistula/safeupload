@@ -8,7 +8,7 @@ namespace SafeUpload.Agent.Drive;
 internal sealed record InspectionOutcome(bool Publish, string Summary, FileOperation? Operation = null, InspectionResult? Result = null);
 
 /// <summary>
-/// Inspects a private snapshot with the agent's normal engine. The file type comes from the content, not the name:
+/// Inspects a private snapshot with the agent's normal engine. Content selects the reader and the name also sets scope.
 /// Word and Excel save through temporary names such as "~WRL0001.tmp" or "1A2B3C4D".
 /// Anything that is not clearly approved is held (fail closed).
 /// </summary>
@@ -43,11 +43,11 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
             DriveApprovalKind.Inspection => result.Verdict == Verdict.Approved ||
                 (result.Verdict == Verdict.AllowedWithoutInspection &&
                  ((result.Reason == "excluded_process" && policy.IsExcludedProcess(operation.ProcessName)) ||
-                  (result.Reason == "out_of_scope" && !policy.IsMonitoredExtension(operation.Extension)))),
+                  (result.Reason == "out_of_scope" && !policy.IsMonitoredStagedFileType(operation)))),
             DriveApprovalKind.Audit => policy.ReleasesWithAlert(result.Categories) && result.InScope && result.IsBlocked &&
                 result.Reason is null,
             DriveApprovalKind.Justification => policy.OverrideAllowed && result.InScope && result.IsBlocked &&
-                result.FailureKind != InspectionFailureKind.NotEnoughStagingSpace && policy.IsMonitoredExtension(operation.Extension),
+                result.FailureKind != InspectionFailureKind.NotEnoughStagingSpace && policy.IsMonitoredStagedFileType(operation),
             _ => false
         };
     }
@@ -59,8 +59,7 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
         {
             var info = new System.IO.FileInfo(snapshot);
             var extension = DetectExtension(snapshot, Path.GetExtension(name));
-            var effectiveName = Path.GetFileNameWithoutExtension(name) + extension;
-            var operation = new FileOperation(snapshot, effectiveName, extension, info.Length, info.LastWriteTimeUtc,
+            var operation = new FileOperation(snapshot, name, extension, info.Length, info.LastWriteTimeUtc,
                 writer?.ProcessName ?? "unknown", writer?.ProcessId ?? 0, destinationPath, kind)
             {
                 AuditOwnerSid = writer?.UserSid, AuditUserName = writer?.UserName, AuditMetadataVersion = 1
@@ -75,7 +74,7 @@ public sealed class ContentInspector(InspectionService inspection, IPolicyStore 
                 // Everything written to a SafeUpload drive goes to a protected place. "Out of scope" may only mean a file
                 // type the policy does not inspect; a monitored type means the destination itself was not recognized.
                 var policy = await policies.LoadCurrentAsync(token).ConfigureAwait(false);
-                publish = result.Reason == "excluded_process" || !policy.IsMonitoredExtension(extension);
+                publish = result.Reason == "excluded_process" || !policy.IsMonitoredStagedFileType(operation);
                 if (!publish) summary += " held=destination_not_monitored";
             }
             return new InspectionOutcome(publish, summary, operation, result);

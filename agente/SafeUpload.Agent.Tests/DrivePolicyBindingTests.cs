@@ -53,6 +53,90 @@ public sealed partial class DrivePublicationTests
         Assert.Equal(File.ReadAllBytes(f.Content.Path), File.ReadAllBytes(target));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Malformed_monitored_docx_is_retained_regardless_of_zip_scope(bool monitorZip)
+    {
+        using var f = Create("unused", alert: true, name: "report.DOCX");
+        File.Delete(f.Target);
+        byte[] bytes = [0x50, 0x4B, 0x03, 0x04, 0x0A, 0x14, 0x1E];
+        File.WriteAllBytes(f.Content.Path, bytes);
+        f.Content.Size = bytes.Length;
+        var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".txt", ".docx" };
+        if (monitorZip) extensions.Add(".zip");
+        f.Store.Current = f.Policy with { MonitoredScopes = f.Policy.MonitoredScopes with { Extensions = extensions } };
+
+        f.Inspect();
+        var decision = Assert.Single(f.Observer.Decisions);
+        Assert.False(decision.Approved);
+        Assert.Equal(Verdict.Blocked, decision.Result!.Verdict);
+        Assert.StartsWith("parse_error:", decision.Result.Reason);
+        await f.Service.HandleDecisionAsync(decision, f.Policy, kind => f.FileSystem.Approve(decision.VersionId, kind));
+        f.Reconcile();
+
+        Assert.Empty(f.Observer.Publications);
+        Assert.False(File.Exists(f.Target));
+        Assert.Equal(bytes, File.ReadAllBytes(f.Content.Path));
+        var audit = Assert.Single(await f.Pending());
+        Assert.Equal(Verdict.Blocked, audit.Verdict);
+        Assert.Equal("report.DOCX", audit.FileName);
+        Assert.StartsWith("parse_error:", audit.NotInspectedReason);
+        Assert.Null(audit.PublishedSha256Hex);
+    }
+
+    [Theory]
+    [InlineData(".zip", true)]
+    [InlineData(".zip", false)]
+    [InlineData(".docx", true)]
+    [InlineData(".docx", false)]
+    public void Valid_clean_files_are_published_with_the_expected_scope(string extension, bool monitored)
+    {
+        using var f = Create("unused", name: "report" + extension);
+        byte[] bytes = extension == ".zip"
+            ? ArchiveFixture.Zip(ArchiveFixture.Text("report.txt", "Clean content"))
+            : File.ReadAllBytes(_workspace.WriteWordDocument("fixture.docx", "Clean content"));
+        File.WriteAllBytes(f.Content.Path, bytes);
+        f.Content.Size = bytes.Length;
+        var extensions = new HashSet<string> { monitored ? extension : ".txt" };
+        f.Store.Current = f.Policy with { MonitoredScopes = f.Policy.MonitoredScopes with { Extensions = extensions } };
+
+        f.Inspect();
+        var decision = Assert.Single(f.Observer.Decisions);
+        Assert.True(decision.Approved);
+        Assert.Equal(monitored ? Verdict.Approved : Verdict.AllowedWithoutInspection, decision.Result!.Verdict);
+        Assert.Equal(monitored ? null : "out_of_scope", decision.Result.Reason);
+        f.Reconcile();
+
+        Assert.True(Assert.Single(f.Observer.Publications).Succeeded);
+        Assert.Equal(bytes, File.ReadAllBytes(f.Target));
+    }
+
+    [Theory]
+    [InlineData("~WRL0001.tmp", true)]
+    [InlineData("1A2B3C4D", false)]
+    public void Office_temporary_names_are_inspected_by_content(string name, bool word)
+    {
+        using var f = Create("unused", name: name);
+        const string sensitive = "CPF: 529.982.247-25";
+        var office = word ? _workspace.WriteWordDocument("fixture.docx", sensitive)
+            : _workspace.WriteSpreadsheet("fixture.xlsx", sensitive);
+        File.Copy(office, f.Content.Path, overwrite: true);
+        f.Content.Size = new FileInfo(office).Length;
+        f.Store.Current = f.Policy with
+        {
+            MonitoredScopes = f.Policy.MonitoredScopes with { Extensions = new HashSet<string> { ".docx", ".xlsx" } }
+        };
+
+        f.Inspect();
+        var decision = Assert.Single(f.Observer.Decisions);
+        Assert.False(decision.Approved);
+        Assert.Contains(Category.Cpf, decision.Result!.Categories);
+        f.Reconcile();
+        Assert.Empty(f.Observer.Publications);
+        Assert.Equal("Previous bytes", File.ReadAllText(f.Target));
+    }
+
     [Fact]
     public async Task Policy_removed_destination_is_retained_without_offering_a_justification()
     {

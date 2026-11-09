@@ -112,7 +112,7 @@ public sealed class InspectionService
             string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
-            (operation.SizeBytes == 0 || current.IsMonitoredExtension(operation.Extension));
+            (operation.SizeBytes == 0 || current.IsMonitoredStagedFileType(operation));
     }
 
     public async Task<bool> IsCurrentStagedJustificationAllowedAsync(
@@ -125,7 +125,7 @@ public sealed class InspectionService
             string.Equals(result.PolicyContentFingerprint, PolicyContentFingerprint.Compute(current), StringComparison.Ordinal) &&
             !current.IsExcludedProcess(operation.ProcessName) &&
             current.IsMonitoredDestination(operation) &&
-            current.IsMonitoredExtension(operation.Extension);
+            current.IsMonitoredStagedFileType(operation);
     }
 
     public Task<AuditEvent?> RecordTransferOutcomeAsync(
@@ -187,8 +187,9 @@ public sealed class InspectionService
         }
 
         // 2. RN-011 — fora do escopo declarado não se inspeciona nada.
+        bool monitoredType = staged ? policy.IsMonitoredStagedFileType(operation) : policy.IsMonitoredExtension(operation.Extension);
         if (!policy.IsInScope(operation) ||
-            (!(staged && operation.SizeBytes == 0) && !policy.IsMonitoredExtension(operation.Extension)))
+            (!(staged && operation.SizeBytes == 0) && !monitoredType))
         {
             return OutOfScope(stopwatch, policy, "out_of_scope", staged);
         }

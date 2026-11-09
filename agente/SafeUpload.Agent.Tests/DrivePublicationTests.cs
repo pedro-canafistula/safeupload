@@ -215,11 +215,11 @@ public sealed partial class DrivePublicationTests : IDisposable
     }
 
     private Fixture Create(string bytes, bool alert = false, Func<IPolicyStore, IPolicyStore>? wrapPolicy = null,
-        IReadOnlySet<Category>? alertCategories = null)
+        IReadOnlySet<Category>? alertCategories = null, string name = "report.txt")
     {
         var backing = Path.Combine(_workspace.Root, "backing");
         Directory.CreateDirectory(backing);
-        var target = Path.Combine(backing, "report.txt");
+        var target = Path.Combine(backing, name);
         File.WriteAllText(target, "Previous bytes");
         var policy = new Policy(1, new HashSet<Category> { Category.Cpf, Category.Rg },
             new MonitoredScopes(new HashSet<string> { ".txt", ".zip" }, [], true, false), 10, 5, true,
@@ -231,7 +231,7 @@ public sealed partial class DrivePublicationTests : IDisposable
         var observer = new Observer();
         var fs = new DriveFileSystem(backing, Path.Combine(_workspace.Root, "private"), "S:",
             new ContentInspector(engine, effectivePolicies), observer, DestinationKind.RemovableDrive, "Synthetic", () => 123);
-        Assert.Equal(0, fs.Open(@"\report.txt", 0, 0, out var node, out var handle, out _, out _));
+        Assert.Equal(0, fs.Open(@"\" + name, 0, 0, out var node, out var handle, out _, out _));
         var content = ((Handle)handle).Node.Content!;
         fs.Close(node, handle);
         content.Path = Path.Combine(_workspace.Root, "private", "stage", Guid.NewGuid().ToString("N"));
