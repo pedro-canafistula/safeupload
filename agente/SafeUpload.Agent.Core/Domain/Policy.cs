@@ -193,6 +193,10 @@ public sealed record Policy(
     public bool IsMonitoredExtension(string? extension) =>
         !string.IsNullOrWhiteSpace(extension) && MonitoredScopes.Extensions.Contains(extension);
 
+    /// <summary>A staged file is monitored by either its detected type or its declared extension.</summary>
+    public bool IsMonitoredStagedFileType(FileOperation operation) =>
+        IsMonitoredExtension(operation.Extension) || IsMonitoredExtension(Path.GetExtension(operation.FileName));
+
     /// <summary>
     /// RN-011 — escopo. Só é inspecionado o que vai para um destino vigiado.
     /// Mídia removível e rede dependem das chaves da política; nuvem é uma

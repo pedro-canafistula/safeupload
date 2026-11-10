@@ -31,6 +31,8 @@ instalador e pelo `smoke/`.
 
 Regras:
 
+- **Escopo de arquivos na unidade.** A política monitora o arquivo quando a extensão do nome ou o formato
+  detectado está no escopo. O formato detectado escolhe o leitor, inclusive para nomes temporários do Office.
 - **Falha fecha.** Inspeção que falha, estoura `inspectionTimeoutSeconds`, arquivo acima de `maxFileSizeMb` ou
   formato sem leitor: a versão é bloqueada.
 - **Categorias em alerta** (`alertCategories`) liberam a versão e registram o achado.
