@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,6 +27,7 @@ import com.safeupload.presentation.config.CurrentUser;
 /** Painel, auditoria, endpoints e tokens de cadastro. SecurityConfig exige ADMIN ou ROOT. */
 @RestController
 public class AgentAdminController {
+    private static final Logger logger = LoggerFactory.getLogger(AgentAdminController.class);
     public record GroupAssignment(Integer grupoId) {}
 
     private final AgentAdminQueries queries;
@@ -68,19 +71,28 @@ public class AgentAdminController {
     @PutMapping("/endpoints/{hostId}/grupo")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assignGroup(@PathVariable int hostId, @RequestBody GroupAssignment request, Authentication auth) {
-        policies.assignHostGroup(currentUser.of(auth).idEmpresa(), hostId, request.grupoId());
+        var user = currentUser.of(auth);
+        policies.assignHostGroup(user.idEmpresa(), hostId, request.grupoId());
+        logger.info("event=admin.host.group_assigned actorId={} companyId={} hostId={} groupId={}",
+            user.idUsuario(), user.idEmpresa(), hostId, request.grupoId());
     }
 
     @PostMapping("/endpoints/{hostId}/revogar")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void revoke(@PathVariable int hostId, Authentication auth) {
-        hosts.revoke(currentUser.of(auth).idEmpresa(), hostId);
+        var user = currentUser.of(auth);
+        hosts.revoke(user.idEmpresa(), hostId);
+        logger.info("event=admin.host.revoked actorId={} companyId={} hostId={}",
+            user.idUsuario(), user.idEmpresa(), hostId);
     }
 
     @PostMapping("/admin/token")
     public Map<String, Object> issueToken(Authentication auth) {
         var user = currentUser.of(auth);
-        return hosts.issueToken(user.idEmpresa(), user.username());
+        var result = hosts.issueToken(user.idEmpresa(), user.username());
+        logger.info("event=admin.enrollment_token.issued actorId={} companyId={}",
+            user.idUsuario(), user.idEmpresa());
+        return result;
     }
 
     @GetMapping("/admin/tokens")
@@ -91,6 +103,9 @@ public class AgentAdminController {
     @DeleteMapping("/admin/tokens/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteToken(@PathVariable int id, Authentication auth) {
-        hosts.deleteToken(currentUser.of(auth).idEmpresa(), id);
+        var user = currentUser.of(auth);
+        hosts.deleteToken(user.idEmpresa(), id);
+        logger.info("event=admin.enrollment_token.deleted actorId={} companyId={} tokenId={}",
+            user.idUsuario(), user.idEmpresa(), id);
     }
 }
