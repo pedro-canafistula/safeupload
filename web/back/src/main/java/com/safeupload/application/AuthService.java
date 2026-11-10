@@ -3,6 +3,8 @@ package com.safeupload.application;
 import java.time.LocalDateTime;
 
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.safeupload.application.dto.AuthContracts.DefaultPostResponse;
 import com.safeupload.application.dto.AuthContracts.EmpresaRegister;
@@ -30,6 +32,7 @@ import java.time.Clock;
 
 @Service 
 public class AuthService {
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     private final EnderecoRepository enderecoRepository;
     private final EmpresaRepository empresaRepository;
@@ -74,6 +77,9 @@ public class AuthService {
         );
 
         usuario = usuarioRepository.save(usuario);
+
+        logger.info("event=user.first_register.success userId={} companyId={}",
+            usuario.getIdUsuario(), empresa.getIdEmpresa());
 
         return new DefaultPostResponse(
             HttpStatus.CREATED, 
@@ -146,6 +152,9 @@ public class AuthService {
 
         usuario = usuarioRepository.save(usuario);
 
+        logger.info("event=user.register.success userId={} companyId={}",
+            usuario.getIdUsuario(), empresa.getIdEmpresa());
+
         return new DefaultPostResponse(
             HttpStatus.CREATED, 
             "Usuário cadastrado com sucesso."); 
@@ -154,23 +163,26 @@ public class AuthService {
     public Usuario login(LoginRequest request){
         Usuario usuario = usuarioRepository
             .findByEmail(request.email())
-            .orElseThrow(() -> new AuthErrorException(
-                "Usuário ou senha inválidos."
-            ));
+            .orElseThrow(() -> {
+                logger.warn("event=auth.login.failure reason=invalid_credentials");
+                return new AuthErrorException("Usuário ou senha inválidos.");
+            });
 
         if (!passwordEncoder.matches(
                 request.senha(),
                 usuario.getSenha())) {
+            logger.warn("event=auth.login.failure reason=invalid_credentials");
             throw new AuthErrorException(
                 "Usuário ou senha inválidos."
             );
         }
 
         if (usuario.getBloqueado() == 1) {
+            logger.warn("event=auth.login.failure reason=account_blocked userId={}", usuario.getIdUsuario());
             throw new AuthErrorException("Usuário bloqueado.");
         }
 
+        logger.info("event=auth.login.success userId={}", usuario.getIdUsuario());
         return usuario;
     }
 }
-

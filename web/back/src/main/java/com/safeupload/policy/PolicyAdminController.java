@@ -3,6 +3,8 @@ package com.safeupload.policy;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,6 +21,7 @@ import com.safeupload.presentation.config.CurrentUser;
 /** Políticas e grupos da empresa do usuário. SecurityConfig exige ADMIN ou ROOT. */
 @RestController
 public class PolicyAdminController {
+    private static final Logger logger = LoggerFactory.getLogger(PolicyAdminController.class);
     public record PolicyRequest(String nome, Boolean padrao, PolicyConfig configuracao) {}
     public record GroupRequest(String nome, Integer politicaId) {}
 
@@ -44,21 +47,30 @@ public class PolicyAdminController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> create(@RequestBody PolicyRequest request, Authentication auth) {
         var user = currentUser.of(auth);
-        return policies.create(user.idEmpresa(), user.username(), request.nome(), Boolean.TRUE.equals(request.padrao()),
+        var result = policies.create(user.idEmpresa(), user.username(), request.nome(), Boolean.TRUE.equals(request.padrao()),
             config(request));
+        logger.info("event=admin.policy.created actorId={} companyId={} policyId={} version={}",
+            user.idUsuario(), user.idEmpresa(), result.get("id"), result.get("versao"));
+        return result;
     }
 
     @PutMapping("/politicas/{id}")
     public Map<String, Object> update(@PathVariable int id, @RequestBody PolicyRequest request, Authentication auth) {
         var user = currentUser.of(auth);
-        return policies.update(user.idEmpresa(), id, user.username(), request.nome(),
+        var result = policies.update(user.idEmpresa(), id, user.username(), request.nome(),
             Boolean.TRUE.equals(request.padrao()), config(request));
+        logger.info("event=admin.policy.updated actorId={} companyId={} policyId={} version={}",
+            user.idUsuario(), user.idEmpresa(), id, result.get("versao"));
+        return result;
     }
 
     @DeleteMapping("/politicas/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable int id, Authentication auth) {
-        policies.delete(currentUser.of(auth).idEmpresa(), id);
+        var user = currentUser.of(auth);
+        policies.delete(user.idEmpresa(), id);
+        logger.info("event=admin.policy.deleted actorId={} companyId={} policyId={}",
+            user.idUsuario(), user.idEmpresa(), id);
     }
 
     @GetMapping("/grupos")
@@ -69,19 +81,29 @@ public class PolicyAdminController {
     @PostMapping("/grupos")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> createGroup(@RequestBody GroupRequest request, Authentication auth) {
-        return policies.createGroup(currentUser.of(auth).idEmpresa(), request.nome(), request.politicaId());
+        var user = currentUser.of(auth);
+        var result = policies.createGroup(user.idEmpresa(), request.nome(), request.politicaId());
+        logger.info("a event=admin.group.created actorId={} companyId={} groupId={} policyId={}",
+            user.idUsuario(), user.idEmpresa(), result.get("id"), request.politicaId());
+        return result;
     }
 
     @PutMapping("/grupos/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateGroup(@PathVariable int id, @RequestBody GroupRequest request, Authentication auth) {
-        policies.updateGroup(currentUser.of(auth).idEmpresa(), id, request.nome(), request.politicaId());
+        var user = currentUser.of(auth);
+        policies.updateGroup(user.idEmpresa(), id, request.nome(), request.politicaId());
+        logger.info("event=admin.group.updated actorId={} companyId={} groupId={} policyId={}",
+            user.idUsuario(), user.idEmpresa(), id, request.politicaId());
     }
 
     @DeleteMapping("/grupos/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteGroup(@PathVariable int id, Authentication auth) {
-        policies.deleteGroup(currentUser.of(auth).idEmpresa(), id);
+        var user = currentUser.of(auth);
+        policies.deleteGroup(user.idEmpresa(), id);
+        logger.info("event=admin.group.deleted actorId={} companyId={} groupId={}",
+            user.idUsuario(), user.idEmpresa(), id);
     }
 
     private static PolicyConfig config(PolicyRequest request) {

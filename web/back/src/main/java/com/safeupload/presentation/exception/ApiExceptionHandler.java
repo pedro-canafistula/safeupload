@@ -27,6 +27,7 @@ public class ApiExceptionHandler {
     */ 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleDTOValidation(MethodArgumentNotValidException exception){
+        logger.warn("event=api.request.rejected status=400 category=validation_failed");
         String message = exception.getBindingResult()
             .getFieldErrors()
             .stream()
@@ -48,6 +49,7 @@ public class ApiExceptionHandler {
     */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleMalformedJson(HttpMessageNotReadableException exception){
+        logger.warn("event=api.request.rejected status=400 category=malformed_json");
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(Map.of(
@@ -60,6 +62,7 @@ public class ApiExceptionHandler {
     /* Retorna erro quando ocorre violação de integridade no banco de dados. */ 
     @ExceptionHandler(DataIntegrityViolationException.class) 
     public ResponseEntity<Map<String, Object>> handleIntegrityError( DataIntegrityViolationException exception) { 
+        logger.warn("event=api.request.rejected status=409 category=data_integrity_conflict");
         return ResponseEntity 
                 .status(HttpStatus.CONFLICT) 
                 .body(Map.of( 
@@ -72,7 +75,7 @@ public class ApiExceptionHandler {
     /* Retorna erro genérico de acesso ao banco de dados. */ 
     @ExceptionHandler(DataAccessException.class) 
     public ResponseEntity<Map<String, Object>> handleDatabaseError( DataAccessException exception) { 
-        logger.error("Falha de acesso ao banco durante uma requisição da API.", exception);
+        logger.error("event=api.database.failure exceptionType={}", exception.getClass().getSimpleName());
         return ResponseEntity 
                 .status(HttpStatus.INTERNAL_SERVER_ERROR) 
                 .body(Map.of( 
@@ -86,6 +89,8 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleDatabaseError(
         DatabaseErrorException e) {
 
+        logger.warn("event=api.request.rejected status=409 category=business_conflict");
+
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
             .body(Map.of(
@@ -97,6 +102,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(AuthErrorException.class)
     public ResponseEntity<Map<String, Object>> handleAuthError(AuthErrorException e) {
+        logger.warn("event=api.request.rejected status=401 category=authentication_failed");
         return ResponseEntity
             .status(HttpStatus.UNAUTHORIZED)
             .body(Map.of(
@@ -112,6 +118,8 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleStatus(ResponseStatusException e) {
         int status = e.getStatusCode().value();
+        logger.warn("event=api.request.rejected status={} category={} exceptionType={}",
+            status, statusCategory(status), e.getClass().getSimpleName());
         return ResponseEntity
             .status(status)
             .body(Map.of(
@@ -119,5 +127,28 @@ public class ApiExceptionHandler {
                 "erro", "ERRO_REQUISICAO",
                 "mensagem", e.getReason() == null ? "Requisição recusada." : e.getReason()
             ));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleUnexpectedError(Exception exception) {
+        logger.error("event=api.unexpected.failure exceptionType={}", exception.getClass().getSimpleName());
+        return ResponseEntity
+            .status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(Map.of(
+                "status", HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "erro", "ERRO_INTERNO",
+                "mensagem", "Ocorreu um erro interno. Informe o identificador da requisição ao suporte."
+            ));
+    }
+
+    private static String statusCategory(int status) {
+        return switch (status) {
+            case 400 -> "bad_request";
+            case 401 -> "authentication_required";
+            case 403 -> "forbidden";
+            case 404 -> "not_found";
+            case 409 -> "conflict";
+            default -> "request_rejected";
+        };
     }
 }

@@ -9,6 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import jakarta.servlet.FilterChain;
@@ -24,6 +26,7 @@ import jakarta.servlet.http.HttpServletResponse;
  * O id do host autenticado fica no atributo {@link #HOST_ID}; os controllers nunca leem o id do corpo.
  */
 public class AgentAuthFilter extends OncePerRequestFilter {
+    private static final Logger logger = LoggerFactory.getLogger(AgentAuthFilter.class);
     public static final String HOST_ID = "safeupload.agent.hostId";
     static final int MAX_BODY = 4 * 1024 * 1024;
     static final long MAX_SKEW_SECONDS = 300;
@@ -56,36 +59,36 @@ public class AgentAuthFilter extends OncePerRequestFilter {
             hostId = Integer.parseInt(request.getHeader(AgentSignature.HOST));
             time = Long.parseLong(request.getHeader(AgentSignature.TIME));
         } catch (NumberFormatException e) {
-            reject(response, HttpStatus.UNAUTHORIZED, "Requisição sem assinatura.");
+            reject(response, HttpStatus.UNAUTHORIZED, "Requisição sem assinatura.", "missing_signature");
             return;
         }
         if (signature == null || hostId <= 0 || nonce == null || !NONCE_FORMAT.matcher(nonce).matches()) {
-            reject(response, HttpStatus.UNAUTHORIZED, "Requisição sem assinatura.");
+            reject(response, HttpStatus.UNAUTHORIZED, "Requisição sem assinatura.", "missing_signature");
             return;
         }
         long now = clock.instant().getEpochSecond();
         if (time < now - MAX_SKEW_SECONDS || time > now + MAX_SKEW_SECONDS) {
-            reject(response, HttpStatus.UNAUTHORIZED, "Relógio do agente fora da janela de 5 minutos.");
+            reject(response, HttpStatus.UNAUTHORIZED, "Relógio do agente fora da janela de 5 minutos.", "timestamp_out_of_window");
             return;
         }
         byte[] body = request.getInputStream().readNBytes(MAX_BODY + 1);
         if (body.length > MAX_BODY) {
-            reject(response, HttpStatus.PAYLOAD_TOO_LARGE, "Corpo grande demais.");
+            reject(response, HttpStatus.PAYLOAD_TOO_LARGE, "Corpo grande demais.", "body_too_large");
             return;
         }
         var host = hosts.credentials(hostId);
         String route = route(request) + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
         String message = AgentSignature.message(request.getMethod(), route, hostId, time, nonce, body);
         if (host == null || !AgentSignature.verify(host.publicKey(), message, signature)) {
-            reject(response, HttpStatus.UNAUTHORIZED, "Assinatura inválida.");
+            reject(response, HttpStatus.UNAUTHORIZED, "Assinatura inválida.", "invalid_signature");
             return;
         }
         if (host.revoked()) {
-            reject(response, HttpStatus.FORBIDDEN, "Máquina revogada no console.");
+            reject(response, HttpStatus.FORBIDDEN, "Máquina revogada no console.", "host_revoked");
             return;
         }
         if (!firstUse(hostId + ":" + nonce, now)) {
-            reject(response, HttpStatus.UNAUTHORIZED, "Requisição repetida.");
+            reject(response, HttpStatus.UNAUTHORIZED, "Requisição repetida.", "replay_detected");
             return;
         }
         request.setAttribute(HOST_ID, hostId);
@@ -107,7 +110,9 @@ public class AgentAuthFilter extends OncePerRequestFilter {
         return seen.putIfAbsent(key, now + REPLAY_WINDOW_SECONDS) == null;
     }
 
-    private static void reject(HttpServletResponse response, HttpStatus status, String message) throws IOException {
+    private static void reject(HttpServletResponse response, HttpStatus status, String message, String reason)
+            throws IOException {
+        logger.warn("event=agent.auth.rejected reason={} status={}", reason, status.value());
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
