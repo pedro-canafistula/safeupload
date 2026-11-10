@@ -1,0 +1,19 @@
+local.file_match "safeupload" {
+  path_targets = [
+    {
+      "__path__" = "/var/log/safeupload/*.log",
+      "job" = "safeupload",
+    },
+  ]
+}
+
+loki.source.file "safeupload" {
+  targets    = local.file_match.safeupload.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
