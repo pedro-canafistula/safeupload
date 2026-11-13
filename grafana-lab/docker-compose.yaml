@@ -20,7 +20,7 @@ services:
     container_name: safeupload-loki
     command: -config.file=/etc/loki/config.yaml
     volumes:
-      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - ./loki-config:/etc/loki:ro
       - loki-data:/loki
     restart: unless-stopped
 

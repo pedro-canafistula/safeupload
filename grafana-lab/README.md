@@ -26,6 +26,8 @@ O arquivo `.env` contém a senha administrativa e não deve ser enviado ao git. 
 sed -n 's/^GRAFANA_ADMIN_PASSWORD=//p' .env
 ```
 
+O Loki carrega sua configuração de `loki-config/config.yaml`, montada como diretório no contêiner. Isso evita a montagem individual de arquivo, que pode falhar com Docker Desktop/WSL. Se o Loki não subir, confira `docker compose ps` e `docker compose logs --tail=100 loki`; verifique também se `loki-config/config.yaml` existe como arquivo e reinicie o Docker Desktop/WSL se a montagem de diretório continuar falhando.
+
 Abra <http://127.0.0.1:3000>, entre com usuário `admin` e a senha guardada em `.env`. A fonte `SafeUpload Loki` é provisionada automaticamente. Em **Explore**, use o seletor de fonte `SafeUpload Loki` e a consulta inicial:
 
 Se o volume `grafana-data` já tiver sido inicializado anteriormente, alterar `.env` não troca a senha que já está gravada no Grafana. Troque-a pela interface ou, somente se puder apagar os dados locais, recrie o volume com `docker compose down -v` antes de subir novamente.
